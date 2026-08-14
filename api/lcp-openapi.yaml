@@ -255,6 +255,15 @@ paths:
                           items:
                             type: string
                             pattern: ^[A-Z]{2}$
+                        payable_definition:
+                          type: string
+                          description: What makes this lead payable.
+                        daily_cap:
+                          type: integer
+                          description: Max leads per day for this offer.
+                        capacity_remaining:
+                          type: integer
+                          description: Leads remaining today for this offer.
 components:
   parameters:
     IdempotencyKey:
@@ -455,6 +464,29 @@ components:
                 items:
                   type: string
                 description: Optional — restricts window to specific channels (e.g. call-only).
+        capacity:
+          type: object
+          description: Current lead acceptance capacity. Absent = unlimited.
+          properties:
+            daily_cap:
+              type: integer
+              description: Max leads per calendar day.
+            daily_remaining:
+              type: integer
+              description: Leads remaining today.
+            hourly_cap:
+              type: integer
+              description: Max leads per hour.
+            hourly_remaining:
+              type: integer
+              description: Leads remaining this hour.
+            concurrent_call_cap:
+              type: integer
+              description: Max concurrent calls (for call buyers).
+            reset_at:
+              type: string
+              format: date-time
+              description: When daily/hourly counters reset.
     LeadEnvelope:
       type: object
       required:

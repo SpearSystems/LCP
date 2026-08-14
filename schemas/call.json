@@ -30,7 +30,9 @@
         },
         "hangup_cause": { "type": "string" },
         "direction": { "type": "string", "enum": ["inbound", "outbound"] },
-        "did": { "type": "string", "description": "Dialed number (Direct Inward Dial)." },
+        "did": { "type": "string", "description": "Dialed number (Direct Inward Dial) — the tracking number the consumer called." },
+        "forwarded_to": { "type": "string", "description": "Number the call was forwarded to (buyer's destination number). E.164." },
+        "tracking_number": { "type": "string", "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164." },
         "caller_phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "started_at": { "type": "string", "format": "date-time" },
         "durations": {

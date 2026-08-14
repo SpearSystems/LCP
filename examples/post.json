@@ -26,7 +26,9 @@
         "uncapped_price_cents": 2500,
         "max_allowed_price_cents": 3000,
         "price_guardrails": true,
-        "is_duplicate_resub": false
+        "is_duplicate_resub": false,
+        "payable_definition": "form_lead_valid_phone",
+        "payable_status": "payable"
       },
       "matched_preferences": {
         "states": ["NSW"],

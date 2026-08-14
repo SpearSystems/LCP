@@ -179,6 +179,24 @@ Vertical schemas MUST NOT redefine core field names (`phone`, `email`,
 `first_name`, `last_name`, `full_name`, `country_code`, etc.) inside
 `attributes` — core field names are reserved. See §12.
 
+Performance metrics (speed-to-contact, contact rate, close rate, close
+value) are **buyer-side analytics**, not lead data. They belong in the
+extensions mechanism, not in the core or vertical schemas:
+
+```json
+"extensions": {
+  "acme.metrics.performance": {
+    "speed_to_contact_seconds": 45,
+    "contact_rate": 0.72,
+    "close_rate": 0.18
+  }
+}
+```
+
+The `CONVERTED` event's `details.conversion_value_cents` is the one
+exception — close value on conversion is structured in the event
+(see §4 event) because it's a lifecycle fact, not a calculated metric.
+
 ### status
 
 `NEW`, `PINGED`, `POSTED`, `ACCEPTED`, `REJECTED`, `DUPLICATE`,
@@ -335,8 +353,27 @@ message can fail multiple field validations.
 ### event
 
 `lead_id`, `event` (DELIVERED|ACCEPTED|REJECTED|DISPUTED|REFUNDED|
-EXPIRED|CONVERTED|ARCHIVED), `timestamp`, `details`,
-`external_reference`.
+EXPIRED|CONVERTED|ARCHIVED), `timestamp`, `details`, `external_reference`.
+
+For `CONVERTED` events, `details` SHOULD include:
+
+| Field | Type | Notes |
+|---|---|---|
+| `conversion_type` | string | e.g. `loan_settled`, `policy_issued`, `appointment_booked`. |
+| `conversion_value_cents` | integer | Deal/loan/policy value in cents. |
+| `conversion_currency` | string | ISO 4217. |
+| `converted_at` | string (datetime) | When the conversion occurred. |
+| `buyer_reference` | string | Buyer's CRM deal/opp ID. |
+
+For `DISPUTED` events, `details` SHOULD include:
+
+| Field | Type | Notes |
+|---|---|---|
+| `dispute_reason` | string | e.g. `invalid_phone`, `duplicate`, `out_of_scope`, `already_customer`. |
+| `dispute_evidence_url` | string (uri) | Optional evidence (recording, screenshot). |
+
+These are recommended shapes — `details` is `additionalProperties: true`,
+so platforms can add custom fields without schema changes.
 
 ## 5. Error taxonomy
 
@@ -422,7 +459,25 @@ additive MINOR change, not a breaking MAJOR change.
 
 `GET /v1/lcp/capabilities` → `{ lcp_versions, message_types,
 verticals[{id, schema_version}], countries, auth_methods, events,
-conformance_level, delivery_windows[] }`.
+conformance_level, delivery_windows[], capacity }`.
+
+### capacity
+
+Optional. Declares the endpoint's current lead acceptance capacity.
+
+| Field | Type | Notes |
+|---|---|---|
+| `daily_cap` | integer | Max leads per calendar day (in endpoint's timezone). |
+| `daily_remaining` | integer | Leads remaining today. |
+| `hourly_cap` | integer | Max leads per hour. |
+| `hourly_remaining` | integer | Leads remaining this hour. |
+| `concurrent_call_cap` | integer | Max concurrent calls (for call buyers). |
+| `reset_at` | string (datetime) | When daily/hourly counters reset. |
+
+If `capacity` is absent, no caps are declared (unlimited). Caps are
+advisory — the platform may still route leads above cap, but the
+endpoint may reject them (LCP-011 RATE_LIMITED or a 200 with
+`ack.status = REJECTED`).
 
 `delivery_windows` is an optional array of time windows when the endpoint
 accepts lead/call delivery. Each entry:

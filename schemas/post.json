@@ -22,7 +22,17 @@
         "uncapped_price_cents": { "type": "integer", "minimum": 0 },
         "max_allowed_price_cents": { "type": "integer", "minimum": 0 },
         "price_guardrails": { "type": "boolean" },
-        "is_duplicate_resub": { "type": "boolean", "description": "True if this is an accidental resubmission of a previously delivered lead." }
+        "is_duplicate_resub": { "type": "boolean", "description": "True if this is an accidental resubmission of a previously delivered lead." },
+        "payable_definition": {
+          "type": "string",
+          "description": "What makes this lead payable (e.g. 'form_lead_valid_phone', 'call_answered_30s', 'connected_transfer', 'exclusive_delivery'). Open enumeration.",
+          "$comment": "Payable definition is agreed bilaterally between publisher and buyer. This field records which definition applies to this delivery."
+        },
+        "payable_status": {
+          "type": "string",
+          "enum": ["pending", "payable", "not_payable", "disputed"],
+          "description": "Current payable status. 'pending' = within validation window, 'payable' = meets payable definition, 'not_payable' = failed validation, 'disputed' = under review."
+        }
       },
       "additionalProperties": false
     },
