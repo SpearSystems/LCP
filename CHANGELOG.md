@@ -14,6 +14,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - GitHub issue and pull request templates
 - Trust model section in SECURITY.md
 - AI contribution disclosure policy in CONTRIBUTING.md
+- Bid message type (`schemas/bid.json`) — completes the ping/bid/post auction flow
+- 4 new vertical schemas: insurance, solar, legal, home_services
+- Platform integration guide (`docs/PLATFORM-INTEGRATION.md`)
+- Call tracking fields: `forwarded_to`, `tracking_number` on call block
+- IVR detail: `language`, `abandoned`, `menu_options_selected`
+- OTP detail block: `channel`, `verified_at`, `verified_value_hash`, `attempts`
+- Contact window: consumer availability hint (timezone, hours, days)
+- Platform source: ad platform attribution in provenance
+- Lead quality + verification: `verified_phone/email`, `verification{method, by, at}`
+- Compliance scrubs: DNC, litigator, blacklist (`scrubs[]` array)
+- Lead source/quality: `source_type` (open), `acquisition_method`, `is_incentivized`
+- Ping quality flags: verified, incentivized, duplicate_risk, spam_score, scrub statuses
+- Offer restrictions: excluded sources, reject incentivized, claim language, scrub rejections
+- Delivery windows + capacity in capabilities
+- Payable definition + payable status in post pricing
+- Dispute window hours + expiry in post pricing
+- `publisher_id` + `offer_id` + `lead_age_minutes` in ping
+- `offer_id` in post
+- `rejection_reason` (structured) in ack
+- `consent_expires_at` in compliance
+- `secondary_phone` + `preferred_contact_method` in consumer
+- `email_hash` for email-based dedup
+- `dedup_window_hours` hint in ping
+- `exclusivity` hint in ping
+- `submitted_at` on lead, call, and post
+- `CONSENT_WITHDRAWN` + `ERASURE_REQUEST` event patterns
+- Webhook signing documentation (same HMAC scheme)
+- `transferred_from` + `queue` blocks on call
+- 11 new mortgage fields (rate term, cash-out, bankruptcy, foreclosure, etc.)
 
 ## [1.0.0-draft] — 2026-08-15
 

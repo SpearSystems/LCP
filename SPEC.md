@@ -126,6 +126,7 @@ evidence array — no vendor-specific fields are baked into the core.
 | `session_capture_id` | string | Session replay reference (e.g. rrweb). |
 | `call_recording_id` | string | Call recording reference. |
 | `dnc_checked` | boolean | Do-not-call list checked. |
+| `consent_expires_at` | string (datetime) | When consent validity expires. Optional — absent = does not expire. Buyers should not contact after this. |
 | `scrubs` | array\<object\> | Compliance scrubbing results. See below. |
 
 #### `scrubs[]` entries
@@ -343,12 +344,15 @@ listed below are permitted — any other field is a validation error
 |---|---|---|
 | `ping_id` | string | Unique ping identifier. |
 | `lead_reference` | string |Opaque reference to the lead (not the lead_id). |
+| `publisher_id` | string | ID of the publisher that generated the lead. |
+| `offer_id` | string | ID of the buyer offer this ping targets. |
 | `phone_hash` | string | `HMAC-SHA256(shared_secret, e164)` — per-pair, see §9. |
 | `email_hash` | string | `HMAC-SHA256(shared_secret, normalized_email)` — per-pair, optional. |
 | `country_code` | string | ISO 3166-1 alpha-2. |
 | `state_region` | string | |
 | `postal_code` | string | |
 | `vertical` | string | |
+| `lead_age_minutes` | integer | Minutes since consumer submitted. Freshness signal for pricing. |
 | `attributes` | object | Only fields tagged `ping_safe: true` in the vertical schema. Banded/aggregated only — never exact values. |
 | `compliance_flags` | object | Presence indicators only (e.g. `{"consent": true, "otp_verified": true}`), never tokens or evidence. |
 | `floor_price_cents` | integer | |
@@ -396,10 +400,12 @@ the winner. Losers receive no further messages (no PII was shared).
 
 ### post
 
-`lead_id`, `delivered_at`, `submitted_at`, `price_cents`, `currency`,
-`buyer_id`, `buyer_reference`, `pricing{floor_price_cents, premium_cents,
-final_price_cents, uncapped_price_cents, max_allowed_price_cents,
-price_guardrails, is_duplicate_resub}`, `matched_preferences`,
+`lead_id`, `delivered_at`, `submitted_at`, `offer_id`, `price_cents`,
+`currency`, `buyer_id`, `buyer_reference`, `pricing{floor_price_cents,
+premium_cents, final_price_cents, uncapped_price_cents,
+max_allowed_price_cents, price_guardrails, is_duplicate_resub,
+payable_definition, payable_status, dispute_window_hours,
+dispute_window_expires_at}`, `matched_preferences`,
 `consumer` (full), `location`, `compliance` (full evidence),
 `attributes`, `provenance`, optional `exclusivity`.
 
@@ -415,6 +421,7 @@ message can fail multiple field validations.
 | `errors` | array\<error\> | Zero or more error objects (see §5). |
 | `lead_id` | string | Assigned lead ID, if applicable. |
 | `request_id` | string | Server-side request ID for tracing. |
+| `rejection_reason` | string | Structured rejection reason (open enum: `invalid_phone`, `duplicate`, `out_of_geography`, `credit_too_low`, `already_customer`, `compliance_fail`, `capacity_exceeded`, etc.). Enables publisher automation. |
 
 ### event
 
@@ -440,6 +447,33 @@ For `DISPUTED` events, `details` SHOULD include:
 
 These are recommended shapes — `details` is `additionalProperties: true`,
 so platforms can add custom fields without schema changes.
+
+For `CONSENT_WITHDRAWN` events (consumer opted out after delivery),
+`details` SHOULD include:
+
+| Field | Type | Notes |
+|---|---|---|
+| `phone_hash` | string | Hash of the consumer's phone for suppression. |
+| `email_hash` | string | Hash of the consumer's email for suppression. |
+| `withdrawn_at` | string (datetime) | When consent was withdrawn. |
+| `withdrawn_purposes` | array\<string\> | Which purposes were withdrawn (calls, sms, email, etc.). |
+
+Buyers receiving this event MUST update their contact suppression list.
+
+For `ERASURE_REQUEST` events (consumer requested data deletion under
+CCPA / AU Privacy Act / GDPR), `details` SHOULD include:
+
+| Field | Type | Notes |
+|---|---|---|
+| `phone_hash` | string | Hash for identifying the lead to delete. |
+| `email_hash` | string | Hash for identifying the lead to delete. |
+| `reason` | string | e.g. `ccpa_request`, `gdpr_erasure`, `privacy_act_request`. |
+| `requested_at` | string (datetime) | When the erasure was requested. |
+| `deadline_at` | string (datetime) | Legal deadline for deletion. |
+
+Buyers receiving this event MUST delete the lead data and respond with
+an `ack`. The event open enumeration supports both `CONSENT_WITHDRAWN`
+and `ERASURE_REQUEST` without schema changes.
 
 ## 5. Error taxonomy
 
@@ -662,6 +696,19 @@ Per-sender rate limits are enforced. Exceeding the limit returns
 - Post: TLS + per-contract retention policies.
 - Hashes for dedup (HMAC-SHA256, per-pair).
 - PII retention policies are deployment-defined.
+
+### Webhook delivery
+
+When a platform pushes `event` messages to a buyer's webhook (HTTP POST),
+the webhook request MUST be signed with the same HMAC scheme used for
+LCP messages: `X-LCP-Signature`, `X-LCP-Timestamp`,
+`X-LCP-Idempotency-Key` headers. The buyer verifies the signature
+before processing the event. This prevents forged events (e.g. a fake
+`CONVERTED` to avoid payment, or a fake `REJECTED` to manipulate
+routing).
+
+Webhook delivery is a platform implementation concern — the protocol
+defines the message format and signing, not the delivery mechanism.
 
 ### Agent-as-consumer timeout
 

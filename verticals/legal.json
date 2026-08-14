@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/legal.json",
+  "title": "LCP Legal Vertical Schema",
+  "description": "Legal lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "legal" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "case_type": {
+      "type": "string",
+      "enum": ["personal_injury", "divorce", "criminal", "dui", "bankruptcy", "immigration", "workers_comp", "medical_malpractice"],
+      "ping_safe": true
+    },
+    "incident_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of incident. Not ping_safe — could narrow identity.",
+      "ping_safe": false
+    },
+    "incident_state": {
+      "type": "string",
+      "description": "US state where incident occurred.",
+      "ping_safe": true
+    },
+    "has_attorney": {
+      "type": "boolean",
+      "description": "Does the consumer already have an attorney?",
+      "ping_safe": true
+    },
+    "injury_severity": {
+      "type": "string",
+      "enum": ["none", "minor", "moderate", "severe", "catastrophic", "fatal"],
+      "description": "Severity of injury sustained.",
+      "ping_safe": true
+    },
+    "medical_treatment_received": {
+      "type": "boolean",
+      "description": "Has medical treatment been received?",
+      "ping_safe": true
+    },
+    "at_fault": {
+      "type": "boolean",
+      "description": "Was the consumer at fault? Ping_safe for auto-related cases.",
+      "ping_safe": true
+    },
+    "police_report_filed": {
+      "type": "boolean",
+      "description": "Was a police report filed?",
+      "ping_safe": true
+    },
+    "insurance_company": {
+      "type": "string",
+      "description": "Insurance company involved. Company name — not ping_safe.",
+      "ping_safe": false
+    },
+    "claim_status": {
+      "type": "string",
+      "enum": ["not_filed", "filed", "under_review", "denied", "settled", "in_litigation"],
+      "description": "Current status of the claim.",
+      "ping_safe": true
+    },
+    "time_to_contact_deadline_days": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3650,
+      "description": "Days remaining to contact before statute of limitations or deadline.",
+      "ping_safe": true
+    }
+  },
+  "additionalProperties": false
+}

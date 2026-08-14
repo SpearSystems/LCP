@@ -15,6 +15,8 @@
         "full_name": { "type": "string", "description": "Unstructured name — use when Western given/family splitting does not apply." },
         "email": { "type": "string", "format": "email" },
         "phone": { "type": "string", "pattern": "^\\+[1-9]\\d{1,14}$", "description": "E.164 format." },
+        "secondary_phone": { "type": "string", "pattern": "^\\+[1-9]\\d{1,14}$", "description": "Secondary phone (work, spouse, alternate). E.164. Optional." },
+        "preferred_contact_method": { "type": "string", "enum": ["phone", "email", "sms", "any"], "description": "Consumer's preferred contact method. Affects contact strategy and compliance." },
         "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164). 64 hex chars." },
         "dob": { "type": "string", "format": "date", "description": "Sensitive." },
         "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email). For dedup in ping. Same per-pair model as phone_hash." },
@@ -92,6 +94,7 @@
         "session_capture_id": { "type": "string", "description": "Session replay reference (e.g. rrweb)." },
         "call_recording_id": { "type": "string" },
         "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." },
+        "consent_expires_at": { "type": "string", "format": "date-time", "description": "When the consent validity expires. Optional — if absent, consent does not expire. Buyers should not contact after this timestamp." },
         "scrubs": {
           "type": "array",
           "description": "Results of compliance scrubbing checks performed against the consumer's phone/email. Each entry is one scrub check.",

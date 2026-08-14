@@ -9,6 +9,7 @@
     "lead_id": { "type": "string" },
     "delivered_at": { "type": "string", "format": "date-time" },
     "submitted_at": { "type": "string", "format": "date-time", "description": "When the consumer originally submitted the lead. Lets buyer assess lead age." },
+    "offer_id": { "type": "string", "description": "ID of the buyer offer that matched. Audit trail for billing and disputes." },
     "price_cents": { "type": "integer", "minimum": 0 },
     "currency": { "$ref": "core.json#/$defs/currency" },
     "buyer_id": { "type": "string" },
@@ -32,6 +33,16 @@
           "type": "string",
           "enum": ["pending", "payable", "not_payable", "disputed"],
           "description": "Current payable status. 'pending' = within validation window, 'payable' = meets payable definition, 'not_payable' = failed validation, 'disputed' = under review."
+        },
+        "dispute_window_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Contractually agreed return window in hours. Buyer can dispute within this window."
+        },
+        "dispute_window_expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the dispute window closes. Platforms mechanically reject disputes after this timestamp."
         }
       },
       "additionalProperties": false

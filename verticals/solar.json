@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/solar.json",
+  "title": "LCP Solar Vertical Schema",
+  "description": "Solar lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "solar" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "system_size_kw_band": {
+      "type": "string",
+      "enum": ["under_5kw", "5_10kw", "10_15kw", "15_20kw", "over_20kw"],
+      "description": "Banded solar system size in kilowatts.",
+      "ping_safe": true
+    },
+    "property_type": {
+      "type": "string",
+      "enum": ["single_family", "condo", "townhouse", "multi_family", "commercial", "other"],
+      "ping_safe": true
+    },
+    "roof_type": {
+      "type": "string",
+      "enum": ["asphalt_shingle", "metal", "tile", "flat", "wood_shake", "slate", "other"],
+      "description": "Roof material type.",
+      "ping_safe": true
+    },
+    "ownership": {
+      "type": "string",
+      "enum": ["own", "rent"],
+      "description": "Property ownership status.",
+      "ping_safe": true
+    },
+    "monthly_electric_bill_band": {
+      "type": "string",
+      "enum": ["under_100", "100_150", "150_200", "200_300", "300_500", "over_500"],
+      "description": "Banded monthly electric bill in dollars.",
+      "ping_safe": true
+    },
+    "utility_provider": {
+      "type": "string",
+      "description": "Current utility provider name.",
+      "ping_safe": true
+    },
+    "shade_level": {
+      "type": "string",
+      "enum": ["none", "partial", "significant"],
+      "description": "Roof shade level affecting solar production.",
+      "ping_safe": true
+    },
+    "battery_storage_interest": {
+      "type": "boolean",
+      "description": "Consumer interest in battery storage.",
+      "ping_safe": true
+    },
+    "current_energy_source": {
+      "type": "string",
+      "enum": ["grid", "solar_existing", "wind", "generator", "hybrid", "other"],
+      "description": "Current energy source.",
+      "ping_safe": true
+    },
+    "number_of_panels_band": {
+      "type": "string",
+      "enum": ["under_10", "10_20", "20_30", "30_40", "over_40"],
+      "description": "Banded number of solar panels.",
+      "ping_safe": true
+    },
+    "installation_timeline": {
+      "type": "string",
+      "enum": ["immediate", "1_3_months", "3_6_months", "6_12_months", "exploring"],
+      "description": "Desired installation timeline.",
+      "ping_safe": true
+    }
+  },
+  "additionalProperties": false
+}

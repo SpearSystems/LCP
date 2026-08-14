@@ -8,12 +8,15 @@
   "properties": {
     "ping_id": { "type": "string", "description": "Unique ping identifier." },
     "lead_reference": { "type": "string", "description": "Opaque reference to the lead (not the lead_id)." },
+    "publisher_id": { "type": "string", "description": "ID of the publisher that generated the lead. Non-PII — buyers need this for quality tracking and routing." },
+    "offer_id": { "type": "string", "description": "ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes." },
     "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164) — per-pair. See SPEC.md §9." },
-    "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email) — per-pair. Optional, for email-based dedup." },
+    "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email) — per-pair, optional. Optional, for email-based dedup." },
     "country_code": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2." },
     "state_region": { "type": "string" },
     "postal_code": { "type": "string" },
     "vertical": { "type": "string", "description": "Vertical identifier." },
+    "lead_age_minutes": { "type": "integer", "minimum": 0, "description": "How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII." },
     "attributes": {
       "type": "object",
       "description": "Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only — never exact values.",
@@ -25,7 +28,8 @@
       "properties": {
         "consent": { "type": "boolean" },
         "otp_verified": { "type": "boolean" },
-        "dnc_checked": { "type": "boolean" }
+        "dnc_checked": { "type": "boolean" },
+        "consent_valid": { "type": "boolean", "description": "True if consent is still within its validity window (not expired)." }
       },
       "additionalProperties": true
     },
