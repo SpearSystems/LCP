@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Local tooling artifacts — never published
+.gitnexus/
+.claude/
+graphify-out/
+CLAUDE.md
+.hermes.md
