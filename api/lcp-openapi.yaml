@@ -301,6 +301,12 @@ paths:
                           - minimal
                           - standard
                           - rich
+                        reject_dnc_flagged:
+                          type: boolean
+                        reject_litigator_flagged:
+                          type: boolean
+                        reject_blacklist_flagged:
+                          type: boolean
 components:
   parameters:
     IdempotencyKey:

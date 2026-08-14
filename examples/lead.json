@@ -44,7 +44,27 @@
           }
         ],
         "otp_verified": true,
-        "dnc_checked": true
+        "dnc_checked": true,
+        "scrubs": [
+          {
+            "type": "dnc_national",
+            "provider": "au_dncregister",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:48Z"
+          },
+          {
+            "type": "litigator",
+            "provider": "litigator_list",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          },
+          {
+            "type": "blacklist",
+            "provider": "internal",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          }
+        ]
       },
       "provenance": {
         "received_at": "2026-08-15T10:20:01Z",

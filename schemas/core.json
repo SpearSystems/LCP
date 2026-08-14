@@ -91,7 +91,34 @@
         },
         "session_capture_id": { "type": "string", "description": "Session replay reference (e.g. rrweb)." },
         "call_recording_id": { "type": "string" },
-        "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." }
+        "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." },
+        "scrubs": {
+          "type": "array",
+          "description": "Results of compliance scrubbing checks performed against the consumer's phone/email. Each entry is one scrub check.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Scrub type. Known values: dnc_national, dnc_state, dnc_internal, litigator, blacklist, fraud_check, carrier_lookup, number_portability. Open enumeration.",
+                "$comment": "Open enum — new scrub types are additive."
+              },
+              "provider": {
+                "type": "string",
+                "description": "Service that performed the scrub (e.g. ftc_dnc, au_dncregister, litigator_list, tcpa_scrub, first_orion, hiya, internal). Open enumeration."
+              },
+              "result": {
+                "type": "string",
+                "enum": ["clean", "flagged", "blocked", "not_checked"],
+                "description": "clean = passed the check; flagged = on a list but not blocked (buyer decides); blocked = on a list and should not be contacted; not_checked = scrub was not run."
+              },
+              "checked_at": { "type": "string", "format": "date-time" },
+              "details": { "type": "string", "description": "Optional human-readable detail (e.g. 'matched litigator list: 3 prior TCPA filings'). Do not include PII." }
+            },
+            "required": ["type", "result"],
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },

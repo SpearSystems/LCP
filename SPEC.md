@@ -126,6 +126,31 @@ evidence array — no vendor-specific fields are baked into the core.
 | `session_capture_id` | string | Session replay reference (e.g. rrweb). |
 | `call_recording_id` | string | Call recording reference. |
 | `dnc_checked` | boolean | Do-not-call list checked. |
+| `scrubs` | array\<object\> | Compliance scrubbing results. See below. |
+
+#### `scrubs[]` entries
+
+Each entry is one scrub check performed against the consumer's
+phone/email:
+
+| Field | Type | Notes |
+|---|---|---|
+| `type` | string | Scrub type: `dnc_national`, `dnc_state`, `dnc_internal`, `litigator`, `blacklist`, `fraud_check`, `carrier_lookup`, `number_portability`. Open enumeration. |
+| `provider` | string | Service that performed the scrub (e.g. `ftc_dnc`, `au_dncregister`, `litigator_list`, `tcpa_scrub`, `first_orion`, `hiya`, `internal`). |
+| `result` | string | `clean` (passed), `flagged` (on a list, buyer decides), `blocked` (should not be contacted), `not_checked`. |
+| `checked_at` | string (datetime) | When the scrub was run. |
+| `details` | string | Optional human-readable detail. Do not include PII. |
+
+The `result` values are deliberately split into three actionable states:
+- `clean` — the consumer is not on any list; safe to contact.
+- `flagged` — the consumer appears on a list (e.g. known litigator, DNC
+  registry) but the publisher did not block the lead. The buyer decides
+  whether to accept. This is important for TCPA compliance: a
+  `litigator` flag doesn't mean the lead is invalid, it means the buyer
+  should be aware of elevated legal risk.
+- `blocked` — the consumer is on a list and the publisher blocked
+  further processing. This lead should not have been delivered. If a
+  buyer receives a `blocked` lead, they should reject it immediately.
 
 #### `consent_evidence[]` entries
 
@@ -504,6 +529,9 @@ these before pinging:
 | `max_spam_risk_score` | integer | Buyer will not accept leads with `spam_risk_score` above this value. |
 | `excluded_claim_language` | array\<string\> | Landing page / ad copy language the buyer prohibits (e.g. `["guaranteed savings", "free consultation", "no obligation"]`). Publisher declares in `extensions` if their copy contains these. |
 | `require_consent_evidence` | boolean | If true, buyer requires `consent_evidence[]` to be non-empty. |
+| `reject_dnc_flagged` | boolean | If true, buyer will not accept leads with `dnc_status = flagged` or `blocked`. |
+| `reject_litigator_flagged` | boolean | If true, buyer will not accept leads with `litigator_status != clean`. |
+| `reject_blacklist_flagged` | boolean | If true, buyer will not accept leads with `blacklist_status != clean`. |
 | `min_data_completeness` | string | Buyer requires at least this completeness level (`minimal`, `standard`, `rich`). |
 
 These are **contractual preferences**, not protocol enforcement. The

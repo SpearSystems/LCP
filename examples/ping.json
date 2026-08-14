@@ -42,7 +42,10 @@
         "is_incentivized": false,
         "duplicate_risk": "low",
         "spam_risk_score": 5,
-        "acquisition_method": "paid_ad"
+        "acquisition_method": "paid_ad",
+        "dnc_status": "clean",
+        "litigator_status": "clean",
+        "blacklist_status": "clean"
       },
       "floor_price_cents": 1500,
       "currency": "AUD",

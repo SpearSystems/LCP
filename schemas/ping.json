@@ -39,7 +39,10 @@
         "incentive_type": { "type": "string", "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum." },
         "duplicate_risk": { "type": "string", "enum": ["low", "medium", "high"] },
         "spam_risk_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "acquisition_method": { "type": "string", "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum." }
+        "acquisition_method": { "type": "string", "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum." },
+        "dnc_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "DNC scrub result." },
+        "litigator_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "Litigator scrub result." },
+        "blacklist_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "Blacklist alliance scrub result." }
       },
       "additionalProperties": true
     },
