@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/core.json",
+  "title": "LCP Core Definitions",
+  "description": "Shared definitions for the LCP canonical core. Referenced by message-type and vertical schemas via $ref.",
+  "type": "object",
+  "$defs": {
+    "consumer": {
+      "type": "object",
+      "title": "Consumer",
+      "description": "The person the lead is about.",
+      "properties": {
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "full_name": { "type": "string", "description": "Unstructured name — use when Western given/family splitting does not apply." },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string", "pattern": "^\\+[1-9]\\d{1,14}$", "description": "E.164 format." },
+        "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164). 64 hex chars." },
+        "dob": { "type": "string", "format": "date", "description": "Sensitive." },
+        "locale": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Z][a-zA-Z]{1,7})?$", "description": "BCP-47 language tag (e.g. en-AU, es-US)." }
+      },
+      "anyOf": [
+        { "required": ["email"] },
+        { "required": ["phone"] },
+        { "required": ["first_name", "last_name"] },
+        { "required": ["full_name"] }
+      ],
+      "additionalProperties": false
+    },
+
+    "location": {
+      "type": "object",
+      "title": "Location",
+      "properties": {
+        "country_code": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2. Required." },
+        "state_region": { "type": "string", "description": "Per-country validation registry (state, province, region)." },
+        "postal_code": { "type": "string", "description": "Per-country format." },
+        "city": { "type": "string" },
+        "timezone": { "type": "string", "description": "IANA timezone (e.g. Australia/Sydney)." }
+      },
+      "required": ["country_code"],
+      "anyOf": [
+        { "required": ["state_region"] },
+        { "required": ["postal_code"] }
+      ],
+      "additionalProperties": false
+    },
+
+    "consent_evidence_entry": {
+      "type": "object",
+      "title": "Consent Evidence Entry",
+      "description": "A single piece of consent or compliance evidence.",
+      "properties": {
+        "type": { "type": "string", "description": "Consent framework or evidence type (e.g. tcpa_consent, gdpr_opt_in)." },
+        "provider": { "type": "string", "description": "Vendor or system (e.g. jornaya, trustedform, internal)." },
+        "token_or_url": { "type": "string", "description": "Verification token, certificate URL, or reference." }
+      },
+      "required": ["type", "provider", "token_or_url"],
+      "additionalProperties": true
+    },
+
+    "compliance": {
+      "type": "object",
+      "title": "Compliance",
+      "description": "Consent and regulatory compliance evidence.",
+      "properties": {
+        "consent_timestamp": { "type": "string", "format": "date-time" },
+        "consent_source_url": { "type": "string", "format": "uri" },
+        "consent_text_version": { "type": "string" },
+        "consent_purposes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What was consented to (e.g. calls, sms, email, share_with_partners)."
+        },
+        "consent_evidence": {
+          "type": "array",
+          "items": { "$ref": "core.json#/$defs/consent_evidence_entry" }
+        },
+        "otp_verified": { "type": "boolean" },
+        "session_capture_id": { "type": "string", "description": "Session replay reference (e.g. rrweb)." },
+        "call_recording_id": { "type": "string" },
+        "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." }
+      },
+      "additionalProperties": false
+    },
+
+    "provenance": {
+      "type": "object",
+      "title": "Provenance",
+      "description": "Non-PII origin metadata.",
+      "properties": {
+        "received_at": { "type": "string", "format": "date-time" },
+        "source_type": {
+          "type": "string",
+          "enum": ["publisher", "direct", "agent", "api", "referral"]
+        },
+        "source_id": { "type": "string" },
+        "source_url": { "type": "string", "format": "uri" },
+        "ip_hash": { "type": "string" },
+        "user_agent_hash": { "type": "string" },
+        "funnel_key": { "type": "string" },
+        "flow_key": { "type": "string" },
+        "campaign_id": { "type": "string" },
+        "creative_id": { "type": "string" },
+        "landing_page_url": { "type": "string", "format": "uri" },
+        "agent": {
+          "type": "object",
+          "title": "Agent Provenance",
+          "description": "Present when source_type = agent.",
+          "properties": {
+            "agent_id": { "type": "string" },
+            "acting_for": { "type": "string", "description": "Party the agent acts on behalf of." },
+            "attestation": { "type": "string", "description": "Signed JWT proving agent identity and authority." }
+          },
+          "required": ["agent_id", "acting_for", "attestation"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "attributes": {
+      "type": "object",
+      "title": "Attributes",
+      "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/. Every field MUST be tagged ping_safe: true/false.",
+      "properties": {
+        "vertical": { "type": "string", "description": "Vertical identifier (e.g. mortgage, insurance, solar)." },
+        "schema_version": { "type": "string", "description": "Version of the vertical schema." }
+      },
+      "required": ["vertical", "schema_version"]
+    },
+
+    "status": {
+      "type": "string",
+      "title": "Lead Status",
+      "enum": ["NEW", "PINGED", "POSTED", "ACCEPTED", "REJECTED", "DUPLICATE", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED"]
+    },
+
+    "channel": {
+      "type": "string",
+      "title": "Lead Channel",
+      "enum": ["form", "chat", "click", "api", "agent", "referral"]
+    },
+
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code."
+    },
+
+    "error": {
+      "type": "object",
+      "title": "LCP Error",
+      "properties": {
+        "code": { "type": "string", "pattern": "^LCP-\\d{3}$", "description": "Error code (e.g. LCP-003)." },
+        "name": { "type": "string", "description": "Human-readable error name (e.g. MISSING_REQUIRED_FIELD)." },
+        "message": { "type": "string", "description": "Human-readable description." },
+        "field": { "type": "string", "description": "Field path that caused the error (e.g. consumer.phone)." },
+        "details": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+
+    "errors_array": {
+      "type": "object",
+      "title": "Errors Array",
+      "description": "Standard error response shape used in both HTTP error bodies and ack.errors[].",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "core.json#/$defs/error" },
+          "minItems": 1
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": false
+    },
+
+    "exclusivity": {
+      "type": "object",
+      "title": "Exclusivity",
+      "properties": {
+        "exclusivity": { "type": "string", "enum": ["exclusive", "shared"], "default": "shared" },
+        "max_buyers": { "type": "integer", "minimum": 1, "description": "For shared leads, maximum buyers who may receive the lead." }
+      },
+      "additionalProperties": false
+    },
+
+    "expiry": {
+      "type": "object",
+      "title": "Lead Expiry",
+      "description": "Either expires_at or ttl_seconds. If the lead reaches expiry without acceptance, it transitions to EXPIRED.",
+      "properties": {
+        "expires_at": { "type": "string", "format": "date-time" },
+        "ttl_seconds": { "type": "integer", "minimum": 1 }
+      },
+      "anyOf": [
+        { "required": ["expires_at"] },
+        { "required": ["ttl_seconds"] }
+      ],
+      "additionalProperties": false
+    },
+
+    "security": {
+      "type": "object",
+      "title": "Security Block",
+      "description": "Transport-neutral HMAC signature. Mirrors X-LCP-Signature / X-LCP-Timestamp headers for non-HTTP transports.",
+      "properties": {
+        "signature": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "algorithm": { "type": "string", "const": "HMAC-SHA256" }
+      },
+      "required": ["signature", "timestamp", "algorithm"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/event.json",
+  "title": "LCP Event Message",
+  "description": "Lifecycle notification. Events are open enumeration — receivers must store/pass through unknown values.",
+  "type": "object",
+  "required": ["lead_id", "event", "timestamp"],
+  "properties": {
+    "lead_id": { "type": "string" },
+    "event": {
+      "type": "string",
+      "description": "Lifecycle event. Open enumeration — unknown values must be stored and passed through, not rejected.",
+      "enum": ["DELIVERED", "ACCEPTED", "REJECTED", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED"]
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "details": { "type": "object", "additionalProperties": true },
+    "external_reference": { "type": "string" }
+  },
+  "additionalProperties": false
+}

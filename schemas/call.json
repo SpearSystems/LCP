@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/call.json",
+  "title": "LCP Call Message",
+  "description": "Telephony lead message. Structurally distinct from form-based lead — carries call-specific blocks (IVR, durations, recording, disposition).",
+  "type": "object",
+  "required": ["lead_id", "call_id", "status", "channel", "consumer", "location", "call"],
+  "properties": {
+    "lead_id": { "type": "string" },
+    "external_id": { "type": "string" },
+    "status": { "$ref": "core.json#/$defs/status" },
+    "channel": { "type": "string", "const": "call", "description": "Always 'call' for call messages." },
+    "consumer": { "$ref": "core.json#/$defs/consumer" },
+    "location": { "$ref": "core.json#/$defs/location" },
+    "compliance": { "$ref": "core.json#/$defs/compliance" },
+    "provenance": { "$ref": "core.json#/$defs/provenance" },
+    "attributes": { "$ref": "core.json#/$defs/attributes" },
+    "expiry": { "$ref": "core.json#/$defs/expiry" },
+    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" },
+    "call": {
+      "type": "object",
+      "title": "Call Detail Block",
+      "required": ["call_id", "status", "started_at"],
+      "properties": {
+        "call_id": { "type": "string", "description": "Unique call identifier." },
+        "status": {
+          "type": "string",
+          "enum": ["answered", "no_answer", "busy", "failed", "voicemail"],
+          "description": "Open enumeration — receivers must store/pass through unknown values."
+        },
+        "hangup_cause": { "type": "string" },
+        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+        "did": { "type": "string", "description": "Dialed number (Direct Inward Dial)." },
+        "caller_phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "durations": {
+          "type": "object",
+          "properties": {
+            "total_seconds": { "type": "integer", "minimum": 0 },
+            "ivr_seconds": { "type": "integer", "minimum": 0 },
+            "hold_seconds": { "type": "integer", "minimum": 0 },
+            "agent_seconds": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "recording": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "format": "uri" },
+            "transcript_url": { "type": "string", "format": "uri" },
+            "storage_ref": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "ivr": {
+          "type": "object",
+          "properties": {
+            "digits": { "type": "string" },
+            "path": { "type": "string", "description": "IVR menu path taken." }
+          },
+          "additionalProperties": false
+        },
+        "disposition": { "type": "string" },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

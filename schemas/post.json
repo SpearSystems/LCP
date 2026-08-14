@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/post.json",
+  "title": "LCP Post Message",
+  "description": "Full lead delivery to the winning buyer. Contains full PII.",
+  "type": "object",
+  "required": ["lead_id", "delivered_at", "price_cents", "currency", "buyer_id", "consumer", "location", "attributes"],
+  "properties": {
+    "lead_id": { "type": "string" },
+    "delivered_at": { "type": "string", "format": "date-time" },
+    "price_cents": { "type": "integer", "minimum": 0 },
+    "currency": { "$ref": "core.json#/$defs/currency" },
+    "buyer_id": { "type": "string" },
+    "buyer_reference": { "type": "string", "description": "Buyer's internal reference." },
+    "pricing": {
+      "type": "object",
+      "properties": {
+        "floor_price_cents": { "type": "integer", "minimum": 0 },
+        "premium_cents": { "type": "integer", "minimum": 0 },
+        "final_price_cents": { "type": "integer", "minimum": 0 },
+        "uncapped_price_cents": { "type": "integer", "minimum": 0 },
+        "max_allowed_price_cents": { "type": "integer", "minimum": 0 },
+        "price_guardrails": { "type": "boolean" },
+        "is_duplicate_resub": { "type": "boolean", "description": "True if this is an accidental resubmission of a previously delivered lead." }
+      },
+      "additionalProperties": false
+    },
+    "matched_preferences": {
+      "type": "object",
+      "description": "Buyer preferences that matched this lead.",
+      "additionalProperties": true
+    },
+    "consumer": { "$ref": "core.json#/$defs/consumer" },
+    "location": { "$ref": "core.json#/$defs/location" },
+    "compliance": { "$ref": "core.json#/$defs/compliance" },
+    "attributes": { "$ref": "core.json#/$defs/attributes" },
+    "provenance": { "$ref": "core.json#/$defs/provenance" }
+  },
+  "additionalProperties": false
+}

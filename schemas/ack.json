@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/ack.json",
+  "title": "LCP Ack Message",
+  "description": "Response to any message. Uses errors[] array — a single message can fail multiple field validations.",
+  "type": "object",
+  "required": ["original_message_id", "status"],
+  "properties": {
+    "original_message_id": { "type": "string", "format": "uuid", "description": "ID of the message being acknowledged." },
+    "status": {
+      "type": "string",
+      "enum": ["RECEIVED", "VALIDATED", "ACCEPTED", "REJECTED", "DUPLICATE", "ERROR"]
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "core.json#/$defs/error" },
+      "description": "Zero or more error objects. Present when status = ERROR or REJECTED."
+    },
+    "lead_id": { "type": "string", "description": "Assigned lead ID, if applicable." },
+    "request_id": { "type": "string", "description": "Server-side request ID for tracing." }
+  },
+  "additionalProperties": false
+}

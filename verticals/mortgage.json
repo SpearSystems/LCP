@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/mortgage.json",
+  "title": "LCP Mortgage Vertical Schema",
+  "description": "Mortgage lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "mortgage" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "loan_type": {
+      "type": "string",
+      "enum": ["purchase", "refinance", "cash_out_refinance", "debt_consolidation", "first_home_buyer", "investment"],
+      "ping_safe": true
+    },
+    "loan_amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Exact loan amount in cents. PII-adjacent — not ping_safe.",
+      "ping_safe": false
+    },
+    "loan_amount_band": {
+      "type": "string",
+      "enum": ["under_100k", "100k_250k", "250k_500k", "500k_750k", "750k_1m", "over_1m"],
+      "description": "Banded loan amount for ping use.",
+      "ping_safe": true
+    },
+    "property_type": {
+      "type": "string",
+      "enum": ["single_family", "condo", "townhouse", "multi_family", "investment_property", "land"],
+      "ping_safe": true
+    },
+    "property_value_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Estimated property value. Not ping_safe — could narrow identity.",
+      "ping_safe": false
+    },
+    "property_value_band": {
+      "type": "string",
+      "enum": ["under_200k", "200k_400k", "400k_600k", "600k_800k", "800k_1m", "over_1m"],
+      "ping_safe": true
+    },
+    "property_address": {
+      "type": "string",
+      "description": "Full property address. PII — never in ping.",
+      "ping_safe": false
+    },
+    "existing_rate_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30,
+      "description": "Current interest rate. Not ping_safe — can narrow identity.",
+      "ping_safe": false
+    },
+    "credit_rating_band": {
+      "type": "string",
+      "enum": ["excellent", "good", "fair", "poor", "unknown"],
+      "ping_safe": true
+    },
+    "employment_status": {
+      "type": "string",
+      "enum": ["employed", "self_employed", "retired", "unemployed", "student"],
+      "ping_safe": true
+    },
+    "annual_income_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Annual income. PII-adjacent — not ping_safe.",
+      "ping_safe": false
+    },
+    "annual_income_band": {
+      "type": "string",
+      "enum": ["under_40k", "40k_60k", "60k_80k", "80k_100k", "100k_150k", "over_150k"],
+      "ping_safe": true
+    },
+    "ltv_ratio_band": {
+      "type": "string",
+      "enum": ["under_60", "60_70", "70_80", "80_90", "90_95", "over_95"],
+      "description": "Loan-to-value ratio band.",
+      "ping_safe": true
+    },
+    "mortgage_purpose": {
+      "type": "string",
+      "enum": ["new_mortgage", "remortgage", "equity_release", "debt_consolidation"],
+      "ping_safe": true
+    },
+    "is_first_home_buyer": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "has_existing_mortgage": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "veteran_status": {
+      "type": "string",
+      "enum": ["veteran", "active_duty", "reservist", "non_veteran"],
+      "ping_safe": true
+    }
+  },
+  "additionalProperties": false
+}

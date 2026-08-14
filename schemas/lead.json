@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/lead.json",
+  "title": "LCP Lead Message",
+  "description": "Intake message — form/chat/click/api/agent/referral channel.",
+  "type": "object",
+  "required": ["lead_id", "status", "channel", "consumer", "location", "attributes"],
+  "properties": {
+    "lead_id": { "type": "string" },
+    "external_id": { "type": "string", "description": "Publisher's internal lead ID." },
+    "status": { "$ref": "core.json#/$defs/status" },
+    "channel": { "$ref": "core.json#/$defs/channel" },
+    "consumer": { "$ref": "core.json#/$defs/consumer" },
+    "location": { "$ref": "core.json#/$defs/location" },
+    "compliance": { "$ref": "core.json#/$defs/compliance" },
+    "provenance": { "$ref": "core.json#/$defs/provenance" },
+    "attributes": { "$ref": "core.json#/$defs/attributes" },
+    "expiry": { "$ref": "core.json#/$defs/expiry" },
+    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" }
+  },
+  "additionalProperties": false
+}
