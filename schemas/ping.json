@@ -9,6 +9,7 @@
     "ping_id": { "type": "string", "description": "Unique ping identifier." },
     "lead_reference": { "type": "string", "description": "Opaque reference to the lead (not the lead_id)." },
     "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164) — per-pair. See SPEC.md §9." },
+    "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email) — per-pair. Optional, for email-based dedup." },
     "country_code": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2." },
     "state_region": { "type": "string" },
     "postal_code": { "type": "string" },
@@ -30,6 +31,8 @@
     },
     "floor_price_cents": { "type": "integer", "minimum": 0 },
     "currency": { "$ref": "core.json#/$defs/currency" },
+    "exclusivity": { "type": "string", "enum": ["exclusive", "shared"], "description": "Hint to buyer: is this an exclusive or shared lead?" },
+    "dedup_window_hours": { "type": "integer", "minimum": 1, "description": "Sender hint: how many hours to dedup against. Optional." },
     "expires_at": { "type": "string", "format": "date-time" }
   },
   "additionalProperties": false

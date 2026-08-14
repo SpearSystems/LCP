@@ -59,3 +59,37 @@ secret is **high severity**.
 
 Good-faith security research is welcomed. Researchers who follow this
 policy and do not access or expose real PII will not face legal action.
+
+## Trust Model
+
+The following behaviors are **by design**, not vulnerabilities:
+
+- **Ping/post PII split.** Ping messages carry no PII by construction
+  (strict allowlist, `additionalProperties: false`). This is a structural
+  guarantee, not a filter. "Bypassing" the allowlist is not possible
+  without modifying the schema — a report that "ping accepts field X"
+  where X is in the allowlist is not a vulnerability.
+
+- **Per-pair HMAC phone hash.** `phone_hash` uses HMAC-SHA256 with a
+  per-pair shared secret. It is intentionally NOT a cross-buyer dedup
+  mechanism. Each buyer sees a different hash for the same phone number.
+  The hash is a dedup convenience within a single buyer's stream, not a
+  cryptographic privacy guarantee against an attacker who has the shared
+  secret. This is documented in SPEC.md §9.
+
+- **Agent attestation is the trust boundary.** AI agents submitting leads
+  must present a signed JWT attestation (`provenance.agent.attestation`).
+  The trust boundary is the issuer's signing key — an attestation from
+  an unknown issuer should be treated as untrusted. The spec does not
+  mandate a specific issuer; that is a deployment decision.
+
+- **Open enumerations.** Unknown `status`, `channel`, and `event` values
+  are stored and passed through, not rejected (SPEC.md §6). This is
+  forward-compatibility by design. A report that "the server accepts an
+  unknown status" is not a vulnerability.
+
+- **No built-in rate limiting in the spec.** Rate limiting is a
+  deployment concern (SPEC.md §9 mentions per-sender limits, but the
+  spec does not mandate specific limits or algorithms). An implementation
+  that does not rate-limit is non-conformant at L2+ but this is not a
+  spec-level security vulnerability.

@@ -61,6 +61,24 @@
           "additionalProperties": false
         },
         "disposition": { "type": "string" },
+        "transferred_from": {
+          "type": "object",
+          "description": "Present if this call was transferred from another call/queue.",
+          "properties": {
+            "original_call_id": { "type": "string" },
+            "transfer_reason": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "queue": {
+          "type": "object",
+          "description": "Call queue that handled this call.",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
         "agent": {
           "type": "object",
           "properties": {

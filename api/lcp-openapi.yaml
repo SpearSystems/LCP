@@ -1,0 +1,535 @@
+openapi: 3.1.0
+info:
+  title: LCP - Lead Context Protocol API
+  description: 'HTTP transport binding for the Lead Context Protocol (LCP).
+
+    This OpenAPI spec describes the REST endpoints that an LCP-compliant
+
+    platform must implement. The MCP server wraps these endpoints as
+
+    agent tools; A2A and future bindings map the same abstract operations.
+
+
+    See SPEC.md for the canonical specification.'
+  version: 1.0.0
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  contact:
+    name: LCP Maintainers
+    url: https://github.com/lcp-protocol/lcp
+servers:
+- url: https://{host}/v1/lcp
+  description: LCP API base URL
+  variables:
+    host:
+      default: api.example.com
+      description: Platform hostname
+tags:
+- name: Leads
+  description: Lead submission and lifecycle management
+- name: Calls
+  description: Call lead submission
+- name: Schema
+  description: Schema discovery
+- name: Capabilities
+  description: Endpoint capability discovery
+- name: Offers
+  description: Offer listing
+paths:
+  /leads:
+    post:
+      tags:
+      - Leads
+      summary: Submit a lead
+      operationId: submitLead
+      description: Submit a lead message (form, chat, click, API, agent, or referral channel). The request body is a full
+        LCP envelope with message.type = lead. Idempotency is enforced via message.idempotency_key.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadEnvelope'
+            examples:
+              mortgage_refinance:
+                summary: AU mortgage refinance lead
+                externalValue: ../examples/lead.json
+      responses:
+        '200':
+          description: Lead accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ack'
+        '400': &id001
+          description: Validation error (LCP-001, LCP-003, LCP-008, LCP-009, LCP-010, LCP-100)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+        '401': &id002
+          description: Authentication error (LCP-002, LCP-012)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+        '409': &id004
+          description: Duplicate lead (LCP-005)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+        '429': &id003
+          description: Rate limited (LCP-011)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+  /calls:
+    post:
+      tags:
+      - Calls
+      summary: Submit a call lead
+      operationId: submitCall
+      description: Submit a call (telephony) lead message. The request body is a full LCP envelope with message.type = call.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallEnvelope'
+            examples:
+              inbound_call:
+                summary: NZ inbound call lead
+                externalValue: ../examples/call.json
+      responses:
+        '200':
+          description: Call lead accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ack'
+        '400': *id001
+        '401': *id002
+        '429': *id003
+  /leads/{leadId}:
+    get:
+      tags:
+      - Leads
+      summary: Query lead status
+      operationId: queryLeadStatus
+      description: Query the status and lifecycle of a previously submitted lead.
+      parameters:
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The lead ID to query.
+      responses:
+        '200':
+          description: Lead status and lifecycle
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lead_id:
+                    type: string
+                  status:
+                    type: string
+                    description: Current lead status (open enumeration)
+                  channel:
+                    type: string
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventPayload'
+                  expires_at:
+                    type: string
+                    format: date-time
+        '404':
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+  /schemas/{name}:
+    get:
+      tags:
+      - Schema
+      summary: Retrieve a JSON Schema
+      operationId: getSchema
+      description: 'Get a JSON Schema by name. Core schemas: envelope, core, lead, call, ping, post, ack, event. Vertical
+        schemas: use prefix verticals/ (e.g. verticals/mortgage).'
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          examples:
+          - envelope
+          - lead
+          - verticals/mortgage
+        description: Schema name.
+      responses:
+        '200':
+          description: JSON Schema document
+          content:
+            application/json:
+              schema:
+                type: object
+                description: A JSON Schema Draft 2020-12 document.
+        '404':
+          description: Schema not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+  /capabilities:
+    get:
+      tags:
+      - Capabilities
+      summary: Discover endpoint capabilities
+      operationId: getCapabilities
+      description: Returns the endpoint supported LCP versions, message types, verticals, countries, auth methods, events,
+        and conformance level.
+      responses:
+        '200':
+          description: Capabilities response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capabilities'
+  /offers:
+    get:
+      tags:
+      - Offers
+      summary: List active offers
+      operationId: listOffers
+      description: List active offers available to the authenticated sender.
+      parameters:
+      - name: vertical
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter offers by vertical (e.g. mortgage).
+      responses:
+        '200':
+          description: Offer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        offer_id:
+                          type: string
+                        vertical:
+                          type: string
+                        floor_price_cents:
+                          type: integer
+                        currency:
+                          type: string
+                          pattern: ^[A-Z]{3}$
+                        countries:
+                          type: array
+                          items:
+                            type: string
+                            pattern: ^[A-Z]{2}$
+components:
+  parameters:
+    IdempotencyKey:
+      name: X-LCP-Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Idempotency key - duplicate submissions with the same key return the original result.
+    TestMode:
+      name: X-LCP-Test
+      in: header
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: Test mode - infrastructure can filter test traffic without parsing the JSON body.
+  responses:
+    ValidationError: *id001
+    AuthError: *id002
+    DuplicateLead: *id004
+    RateLimited: *id003
+  schemas:
+    ErrorArray:
+      type: object
+      required:
+      - errors
+      properties:
+        errors:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+            - code
+            - message
+            properties:
+              code:
+                type: string
+                pattern: ^LCP-\d{3}$
+                examples:
+                - LCP-003
+              name:
+                type: string
+                examples:
+                - MISSING_REQUIRED_FIELD
+              message:
+                type: string
+              field:
+                type: string
+                examples:
+                - consumer.phone
+              details:
+                type: object
+                additionalProperties: true
+    AckPayload:
+      type: object
+      required:
+      - original_message_id
+      - status
+      properties:
+        original_message_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - RECEIVED
+          - VALIDATED
+          - ACCEPTED
+          - REJECTED
+          - DUPLICATE
+          - ERROR
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorArray/properties/errors/items'
+        lead_id:
+          type: string
+        request_id:
+          type: string
+    Ack:
+      type: object
+      description: LCP envelope wrapping an ack payload.
+      properties:
+        lcp:
+          type: object
+          properties:
+            version:
+              type: string
+            message:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                  - ack
+            payload:
+              $ref: '#/components/schemas/AckPayload'
+    EventPayload:
+      type: object
+      required:
+      - lead_id
+      - event
+      - timestamp
+      properties:
+        lead_id:
+          type: string
+        event:
+          type: string
+          description: 'Open enumeration - known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED,
+            ARCHIVED'
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+        external_reference:
+          type: string
+    Capabilities:
+      type: object
+      properties:
+        lcp_versions:
+          type: array
+          items:
+            type: string
+        message_types:
+          type: array
+          items:
+            type: string
+        verticals:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              schema_version:
+                type: string
+        countries:
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Z]{2}$
+          description: ISO 3166-1 alpha-2 country codes.
+        auth_methods:
+          type: array
+          items:
+            type: string
+            enum:
+            - bearer
+            - hmac
+        events:
+          type: array
+          items:
+            type: string
+        conformance_level:
+          type: string
+          enum:
+          - L1
+          - L2
+          - L3
+    LeadEnvelope:
+      type: object
+      required:
+      - lcp
+      properties:
+        lcp:
+          type: object
+          required:
+          - version
+          - message
+          - payload
+          properties:
+            version:
+              type: string
+              pattern: ^\d+\.\d+\.\d+$
+            message:
+              type: object
+              required:
+              - id
+              - type
+              - timestamp
+              - sender_id
+              - receiver_id
+              - idempotency_key
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  enum:
+                  - lead
+                timestamp:
+                  type: string
+                  format: date-time
+                sender_id:
+                  type: string
+                receiver_id:
+                  type: string
+                correlation_id:
+                  type:
+                  - string
+                  - 'null'
+                idempotency_key:
+                  type: string
+                test:
+                  type: boolean
+                  default: false
+            payload:
+              type: object
+              description: Lead payload - see schemas/lead.json for full definition.
+    CallEnvelope:
+      type: object
+      required:
+      - lcp
+      properties:
+        lcp:
+          type: object
+          required:
+          - version
+          - message
+          - payload
+          properties:
+            version:
+              type: string
+              pattern: ^\d+\.\d+\.\d+$
+            message:
+              type: object
+              required:
+              - id
+              - type
+              - timestamp
+              - sender_id
+              - receiver_id
+              - idempotency_key
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  enum:
+                  - call
+                timestamp:
+                  type: string
+                  format: date-time
+                sender_id:
+                  type: string
+                receiver_id:
+                  type: string
+                correlation_id:
+                  type:
+                  - string
+                  - 'null'
+                idempotency_key:
+                  type: string
+                test:
+                  type: boolean
+                  default: false
+            payload:
+              type: object
+              description: Call payload - see schemas/call.json for full definition.
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: API key via Bearer token.
+    HMACAuth:
+      type: apiKey
+      in: header
+      name: X-LCP-Signature
+      description: HMAC-SHA256 signature. Requires X-LCP-Signature, X-LCP-Timestamp, and X-LCP-Idempotency-Key headers.
+security:
+- BearerAuth: []
+- HMACAuth: []

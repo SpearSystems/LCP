@@ -8,6 +8,7 @@
   "properties": {
     "lead_id": { "type": "string" },
     "delivered_at": { "type": "string", "format": "date-time" },
+    "submitted_at": { "type": "string", "format": "date-time", "description": "When the consumer originally submitted the lead. Lets buyer assess lead age." },
     "price_cents": { "type": "integer", "minimum": 0 },
     "currency": { "$ref": "core.json#/$defs/currency" },
     "buyer_id": { "type": "string" },
@@ -34,7 +35,8 @@
     "location": { "$ref": "core.json#/$defs/location" },
     "compliance": { "$ref": "core.json#/$defs/compliance" },
     "attributes": { "$ref": "core.json#/$defs/attributes" },
-    "provenance": { "$ref": "core.json#/$defs/provenance" }
+    "provenance": { "$ref": "core.json#/$defs/provenance" },
+    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" }
   },
   "additionalProperties": false
 }

@@ -8,6 +8,7 @@
   "properties": {
     "lead_id": { "type": "string" },
     "external_id": { "type": "string", "description": "Publisher's internal lead ID." },
+    "submitted_at": { "type": "string", "format": "date-time", "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it)." },
     "status": { "$ref": "core.json#/$defs/status" },
     "channel": { "$ref": "core.json#/$defs/channel" },
     "consumer": { "$ref": "core.json#/$defs/consumer" },

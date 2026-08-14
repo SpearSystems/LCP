@@ -91,6 +91,7 @@ The core contains zero vertical-specific or market-specific fields.
 | `email` | string (email) | |
 | `phone` | string | E.164 format. |
 | `phone_hash` | string | `HMAC-SHA256(shared_secret, e164)` — see §9. |
+| `email_hash` | string | `HMAC-SHA256(shared_secret, normalized_email)` — per-pair, for email dedup in ping. |
 | `dob` | string (date) | Sensitive. |
 | `locale` | string | BCP-47 language tag (e.g. `en-AU`, `es-US`). Optional; for non-English free-text fields. |
 
@@ -261,8 +262,8 @@ addresses accidental resubmission.
 ### lead
 
 `consumer` + `location` + `compliance` + `provenance` + `attributes` +
-`external_id` + `channel` (form|chat|click|api|agent|referral) +
-optional `expires_at` / `ttl_seconds` + optional `exclusivity`.
+`external_id` + `submitted_at` + `channel` (form|chat|click|api|agent|
+referral) + optional `expires_at` / `ttl_seconds` + optional `exclusivity`.
 
 ### call
 
@@ -270,7 +271,8 @@ optional `expires_at` / `ttl_seconds` + optional `exclusivity`.
 voicemail), `hangup_cause`, `direction`, `did`, `caller_phone_hash`,
 `started_at`, `durations{total_seconds, ivr_seconds, hold_seconds,
 agent_seconds}`, `recording{url, transcript_url, storage_ref}`,
-`ivr{digits, path}`, `disposition`, `agent{id, name}` + `consumer` +
+`ivr{digits, path}`, `disposition`, `transferred_from{original_call_id,
+transfer_reason}`, `queue{id, name}`, `agent{id, name}` + `consumer` +
 `location` + `compliance` + `attributes`.
 
 ### ping
@@ -285,6 +287,7 @@ listed below are permitted — any other field is a validation error
 | `ping_id` | string | Unique ping identifier. |
 | `lead_reference` | string |Opaque reference to the lead (not the lead_id). |
 | `phone_hash` | string | `HMAC-SHA256(shared_secret, e164)` — per-pair, see §9. |
+| `email_hash` | string | `HMAC-SHA256(shared_secret, normalized_email)` — per-pair, optional. |
 | `country_code` | string | ISO 3166-1 alpha-2. |
 | `state_region` | string | |
 | `postal_code` | string | |
@@ -293,6 +296,8 @@ listed below are permitted — any other field is a validation error
 | `compliance_flags` | object | Presence indicators only (e.g. `{"consent": true, "otp_verified": true}`), never tokens or evidence. |
 | `floor_price_cents` | integer | |
 | `currency` | string | ISO 4217. |
+| `exclusivity` | string | `exclusive` or `shared` — hint to buyer. |
+| `dedup_window_hours` | integer | Sender hint: how many hours to dedup against. |
 | `expires_at` | string (datetime) | Optional ping expiry. |
 
 The conformance runner mechanically validates:
@@ -302,12 +307,12 @@ The conformance runner mechanically validates:
 
 ### post
 
-`lead_id`, `delivered_at`, `price_cents`, `currency`, `buyer_id`,
-`buyer_reference`, `pricing{floor_price_cents, premium_cents,
+`lead_id`, `delivered_at`, `submitted_at`, `price_cents`, `currency`,
+`buyer_id`, `buyer_reference`, `pricing{floor_price_cents, premium_cents,
 final_price_cents, uncapped_price_cents, max_allowed_price_cents,
 price_guardrails, is_duplicate_resub}`, `matched_preferences`,
 `consumer` (full), `location`, `compliance` (full evidence),
-`attributes`, `provenance`.
+`attributes`, `provenance`, optional `exclusivity`.
 
 ### ack
 

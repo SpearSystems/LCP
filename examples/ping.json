@@ -38,6 +38,8 @@
       },
       "floor_price_cents": 1500,
       "currency": "AUD",
+      "exclusivity": "shared",
+      "dedup_window_hours": 24,
       "expires_at": "2026-08-15T10:25:05Z"
     }
   }

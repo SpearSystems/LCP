@@ -29,3 +29,20 @@ restrictions, proprietary data requirements, or vendor-specific
 dependencies into the core LCP specification is acting in violation of
 LCP governance. Implementations that impose such restrictions on
 conformant LCP participants are themselves non-conformant.
+
+## AI Contributions
+
+AI-assisted contributions are welcome but must be disclosed. If you used
+an AI tool (LLM, coding agent, etc.) to help write your contribution:
+
+1. Check the "AI-assisted" box in the pull request template.
+2. Briefly describe what the AI did (e.g. "generated initial schema draft,
+   reviewed and adjusted by hand").
+
+This is a transparency requirement, not a restriction. LCP itself was
+initially developed with AI assistance. The goal is that every merged
+contribution has an honest record of its origin.
+
+## Code of Conduct
+
+All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).

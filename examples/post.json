@@ -14,6 +14,7 @@
     "payload": {
       "lead_id": "lead_abc123",
       "delivered_at": "2026-08-15T10:20:10Z",
+      "submitted_at": "2026-08-15T10:19:50Z",
       "price_cents": 2200,
       "currency": "AUD",
       "buyer_id": "buyer_001",
@@ -86,6 +87,10 @@
         "campaign_id": "camp_mortgage_nsw_2026",
         "creative_id": "cre_001",
         "landing_page_url": "https://publisher.example.com/landing/mortgage"
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
       }
     }
   }

@@ -97,6 +97,56 @@
       "type": "string",
       "enum": ["veteran", "active_duty", "reservist", "non_veteran"],
       "ping_safe": true
+    },
+    "desired_rate_term": {
+      "type": "string",
+      "enum": ["15_year_fixed", "20_year_fixed", "30_year_fixed", "5_1_arm", "7_1_arm", "10_1_arm", "interest_only", "other"],
+      "description": "Desired mortgage rate term.",
+      "ping_safe": true
+    },
+    "loan_term_years": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 40,
+      "description": "Exact loan term in years. Not ping_safe.",
+      "ping_safe": false
+    },
+    "loan_term_band": {
+      "type": "string",
+      "enum": ["under_15", "15", "20", "30", "over_30"],
+      "description": "Banded loan term.",
+      "ping_safe": true
+    },
+    "cash_out_amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
+      "ping_safe": false
+    },
+    "cash_out_amount_band": {
+      "type": "string",
+      "enum": ["none", "under_25k", "25k_50k", "50k_100k", "over_100k"],
+      "ping_safe": true
+    },
+    "current_lender": {
+      "type": "string",
+      "description": "Current mortgage lender (refinance context). Company name — not ping_safe.",
+      "ping_safe": false
+    },
+    "bankruptcy_history": {
+      "type": "boolean",
+      "description": "Has the consumer filed for bankruptcy? Disqualifier for many loan products.",
+      "ping_safe": true
+    },
+    "foreclosure_history": {
+      "type": "boolean",
+      "description": "Has the consumer had a foreclosure? Disqualifier for many loan products.",
+      "ping_safe": true
+    },
+    "self_employed_income_verified": {
+      "type": "boolean",
+      "description": "For self-employed leads, whether income has been verified (bank statements, tax returns).",
+      "ping_safe": true
     }
   },
   "additionalProperties": false
