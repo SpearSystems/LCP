@@ -594,7 +594,7 @@ core changes. Audit checklist:
 - [x] Add `governance/SECURITY.md` (responsible disclosure).
 - [x] Add trademark/usage policy for "LCP compliant" claims.
 - [x] Fill extension registry format (namespace, registration, payload location).
-- [ ] Write CLA full text (currently placeholder).
+- [x] Write CLA full text (`governance/CLA.md`).
 - [ ] Spec site (LEX-style).
 - [ ] Publish decision (repo public, branding, announcement).
 
