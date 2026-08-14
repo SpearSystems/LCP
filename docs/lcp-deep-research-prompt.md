@@ -21,7 +21,7 @@ vertical).
 ## Context: the existing system
 
 The protocol formalizes an existing production wire contract
-(`spx-pingpost-v1`) that already handles: HMAC-signed posts with
+(`production-pingpost-v1`) that already handles: HMAC-signed posts with
 idempotency keys and nonce replay protection; a strict PII split (ping =
 non-PII attributes + hashes only, with a forbidden-keys list; post = full
 PII to the winning buyer); phone normalization to E.164 with sha256

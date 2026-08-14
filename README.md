@@ -19,34 +19,45 @@ accept/reject → dispute/refund → conversion).
 
 ## Status
 
-**DRAFT v1.0** — spec under active development. Not yet published.
+**DRAFT v1.0** — spec amendments complete, schemas authored, conformance
+tests passing (27/27), reference MCP server working. Pre-publication.
 
 ## Quickstart
 
 ```bash
-# Validate a lead against the LCP core + a vertical schema
-# (reference validators land in implementations/)
-```
+# Validate examples against schemas (conformance runner)
+python3 test-vectors/conformance.py --verbose
 
-See [SPEC.md](SPEC.md) for the full specification and
-[examples/](examples/) for sample payloads.
+# Run the MCP server (needs: pip install -e implementations/mcp-server/)
+lcp-mcp-server
+```
 
 ## Repository layout
 
 ```
 LICENSE            Apache 2.0
 SPEC.md            The canonical specification
-schemas/           JSON Schema for the envelope, core, and message types
-verticals/         Per-vertical attribute schemas
+schemas/           JSON Schema (Draft 2020-12) for envelope, core, and message types
+verticals/         Per-vertical attribute schemas (mortgage first)
 examples/          Sample payloads (lead, call, ping, post, ack, event)
-test-vectors/      Conformance fixtures (L1/L2/L3)
-governance/        CONTRIBUTING, CLA, extension registry
-implementations/   Reference implementations (incl. MCP server)
-docs/              Design notes and research
+test-vectors/      Conformance fixtures (L1/L2/L3) + conformance runner
+governance/        CONTRIBUTING, CLA, EXTENSION-REGISTRY, SECURITY, TRADEMARK
+implementations/   Reference MCP server (thin REST adapter)
+docs/              Design notes and deep-research review
 ```
+
+## Key documents
+
+- [SPEC.md](SPEC.md) — the full specification (14 sections + appendices)
+- [governance/SECURITY.md](governance/SECURITY.md) — responsible disclosure policy
+- [governance/TRADEMARK.md](governance/TRADEMARK.md) — "LCP compliant" usage rules
+- [governance/EXTENSION-REGISTRY.md](governance/EXTENSION-REGISTRY.md) — extension namespace registry
+- [implementations/mcp-server/](implementations/mcp-server/) — reference MCP server
+- [docs/lcp-deep-research-review.md](docs/lcp-deep-research-review.md) — adversarial review + resolutions
 
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE). The spec is free to implement
 without payment, approval, or membership. See
-[governance/](governance/) for the anti-capture and extension policies.
+[governance/](governance/) for the anti-capture, security, trademark,
+and extension policies.

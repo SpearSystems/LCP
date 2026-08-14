@@ -79,9 +79,9 @@
             "id": "770e8400-e29b-41d4-a716-446655440002",
             "type": "ping",
             "timestamp": "2026-08-15T10:20:05Z",
-            "sender_id": "spx",
+            "sender_id": "platform_001",
             "receiver_id": "buyer_001",
-            "idempotency_key": "spx-ping-bad-001"
+            "idempotency_key": "platform-001-ping-bad-001"
           },
           "payload": {
             "ping_id": "ping_bad",
@@ -112,9 +112,9 @@
             "id": "770e8400-e29b-41d4-a716-446655440002",
             "type": "ping",
             "timestamp": "2026-08-15T10:20:05Z",
-            "sender_id": "spx",
+            "sender_id": "platform_001",
             "receiver_id": "buyer_001",
-            "idempotency_key": "spx-ping-bad-002"
+            "idempotency_key": "platform-001-ping-bad-002"
           },
           "payload": {
             "ping_id": "ping_bad2",
@@ -146,9 +146,9 @@
             "id": "770e8400-e29b-41d4-a716-446655440002",
             "type": "ping",
             "timestamp": "2026-08-15T10:20:05Z",
-            "sender_id": "spx",
+            "sender_id": "platform_001",
             "receiver_id": "buyer_001",
-            "idempotency_key": "spx-ping-bad-003"
+            "idempotency_key": "platform-001-ping-bad-003"
           },
           "payload": {
             "ping_id": "ping_bad3",
@@ -184,7 +184,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "pub-lead-bad-001"
           },
           "payload": {
@@ -222,7 +222,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "pub-lead-bad-002"
           },
           "payload": {
@@ -260,7 +260,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "pub-lead-cn-001"
           },
           "payload": {

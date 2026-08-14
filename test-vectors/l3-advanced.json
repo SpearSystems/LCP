@@ -15,7 +15,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T12:00:00Z",
             "sender_id": "agent_pub_001",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "agent-lead-001"
           },
           "payload": {
@@ -116,9 +116,9 @@
             "id": "cc0e8400-e29b-41d4-a716-446655440011",
             "type": "ping",
             "timestamp": "2026-08-15T12:00:00Z",
-            "sender_id": "spx",
+            "sender_id": "platform_001",
             "receiver_id": "buyer_002",
-            "idempotency_key": "spx-ping-dedup-001"
+            "idempotency_key": "platform-001-ping-dedup-001"
           },
           "payload": {
             "ping_id": "ping_dedup_001",
@@ -156,7 +156,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T13:00:00Z",
             "sender_id": "pub_us_001",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "pub-us-lead-001"
           },
           "payload": {
@@ -231,9 +231,9 @@
             "id": "ee0e8400-e29b-41d4-a716-446655440013",
             "type": "ack",
             "timestamp": "2026-08-15T10:20:12Z",
-            "sender_id": "spx",
+            "sender_id": "platform_001",
             "receiver_id": "pub_123",
-            "idempotency_key": "spx-ack-bad-001"
+            "idempotency_key": "platform-001-ack-bad-001"
           },
           "payload": {
             "original_message_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -271,7 +271,7 @@
             "type": "event",
             "timestamp": "2026-08-15T15:00:00Z",
             "sender_id": "buyer_001",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "buyer-event-future-001"
           },
           "payload": {
@@ -300,7 +300,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T09:00:00Z",
             "sender_id": "pub_789",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "pub-exclusive-001"
           },
           "payload": {

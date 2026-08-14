@@ -7,7 +7,7 @@ agents can interact with any LCP-compliant endpoint via MCP.
 > **Architecture:** The LCP core never depends on MCP. This server is a
 > stateless adapter — it translates MCP tool calls into HTTP requests and
 > HTTP responses into MCP tool results. It works with any LCP-compliant
-> endpoint (SpearPointX is the first wired endpoint).
+> endpoint (any LCP-compliant REST API).
 
 ## Tools
 

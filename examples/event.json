@@ -6,7 +6,7 @@
       "type": "event",
       "timestamp": "2026-08-15T14:30:00Z",
       "sender_id": "buyer_001",
-      "receiver_id": "spx",
+      "receiver_id": "platform_001",
       "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
       "idempotency_key": "buyer-event-lead_abc123-001",
       "test": false

@@ -6,7 +6,7 @@
       "type": "ack",
       "timestamp": "2026-08-15T10:20:12Z",
       "sender_id": "buyer_001",
-      "receiver_id": "spx",
+      "receiver_id": "platform_001",
       "correlation_id": "880e8400-e29b-41d4-a716-446655440003",
       "idempotency_key": "buyer-ack-lead_abc123-001",
       "test": false

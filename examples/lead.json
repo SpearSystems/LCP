@@ -6,7 +6,7 @@
       "type": "lead",
       "timestamp": "2026-08-15T10:20:00Z",
       "sender_id": "pub_123",
-      "receiver_id": "spx",
+      "receiver_id": "platform_001",
       "correlation_id": null,
       "idempotency_key": "pub-lead-20260815-001",
       "test": false

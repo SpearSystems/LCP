@@ -36,7 +36,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx"
+            "receiver_id": "platform_001"
           },
           "payload": {}
         }
@@ -55,7 +55,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "test-001"
           },
           "payload": {}
@@ -76,7 +76,7 @@
             "type": "lead",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "test-001"
           },
           "payload": {}
@@ -97,7 +97,7 @@
             "type": "bid",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "test-001"
           },
           "payload": {}
@@ -118,7 +118,7 @@
             "type": "lead",
             "timestamp": "2026/08/15 10:20",
             "sender_id": "pub_123",
-            "receiver_id": "spx",
+            "receiver_id": "platform_001",
             "idempotency_key": "test-001"
           },
           "payload": {}

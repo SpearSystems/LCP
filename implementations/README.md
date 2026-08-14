@@ -4,7 +4,6 @@
 
 The official LCP MCP server — a thin adapter exposing LCP REST endpoints
 as agent tools. Generic: works with any LCP-compliant endpoint.
-SpearPointX is the first wired endpoint.
 
 **Status: working** — 6 tools, stdio transport, local schema fallback.
 

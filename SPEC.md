@@ -4,7 +4,7 @@
 **License:** Apache 2.0 (see [LICENSE](LICENSE)).
 
 > This is the working specification. The design is grounded in the
-> production `spx-pingpost-v1` wire contract (HMAC signing, idempotency,
+> production ping/post wire contract (HMAC signing, idempotency,
 > nonce replay protection, PII-stripped pings) and the industry-standard
 > ping/post model. Findings from the deep-research review pass
 > (`docs/lcp-deep-research-review.md`) have been resolved — see the
@@ -57,7 +57,7 @@ state, not the payment's state.
       "type": "lead",
       "timestamp": "2026-08-15T10:20:00Z",
       "sender_id": "pub_123",
-      "receiver_id": "spx",
+      "receiver_id": "platform_001",
       "correlation_id": null,
       "idempotency_key": "pub-lead-20260815-001",
       "test": false
@@ -577,23 +577,26 @@ core changes. Audit checklist:
   `markets` grouping).
 - [ ] Status transition table is published and matches §3.
 - [ ] Open/closed enum policy is stated (§6).
-- [ ] Legacy `spx-pingpost-v1` fields map 1:1 into LCP.
+- [ ] Legacy production wire contract fields map 1:1 into LCP.
 
 ## 13. TODO (authoring order)
 
 - [x] Run the deep-research review pass (`docs/lcp-deep-research-prompt.md`).
 - [x] Resolve or explicitly defer every finding (see §14).
-- [ ] Fill envelope + core schemas (`schemas/*.json`).
-- [ ] Fill message-type schemas (lead, call, ping, post, ack, event).
-- [ ] Fill vertical schemas (`verticals/*.json`) — mortgage first.
-- [ ] Tag every vertical attribute field `ping_safe: true/false`.
-- [ ] Fill examples (`examples/*.json`).
-- [ ] Fill test vectors (`test-vectors/`).
-- [ ] Write conformance runner (L1/L2/L3).
-- [ ] Write reference MCP server (`implementations/mcp-server/`).
-- [ ] Add `governance/SECURITY.md` (responsible disclosure).
-- [ ] Add trademark/usage policy for "LCP compliant" claims.
-- [ ] Publish decision (spec site, branding, public repo readiness).
+- [x] Fill envelope + core schemas (`schemas/*.json`).
+- [x] Fill message-type schemas (lead, call, ping, post, ack, event).
+- [x] Fill vertical schemas — mortgage first (`verticals/mortgage.json`).
+- [x] Tag every vertical attribute field `ping_safe: true/false`.
+- [x] Fill examples (`examples/*.json`).
+- [x] Fill test vectors (`test-vectors/`).
+- [x] Write conformance runner (L1/L2/L3) — 27/27 pass.
+- [x] Write reference MCP server (`implementations/mcp-server/`).
+- [x] Add `governance/SECURITY.md` (responsible disclosure).
+- [x] Add trademark/usage policy for "LCP compliant" claims.
+- [x] Fill extension registry format (namespace, registration, payload location).
+- [ ] Write CLA full text (currently placeholder).
+- [ ] Spec site (LEX-style).
+- [ ] Publish decision (repo public, branding, announcement).
 
 ## 14. Review-log appendix
 
