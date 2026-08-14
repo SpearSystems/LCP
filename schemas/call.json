@@ -2,56 +2,141 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/call.json",
   "title": "LCP Call Message",
-  "description": "Telephony lead message. Structurally distinct from form-based lead — carries call-specific blocks (IVR, durations, recording, disposition).",
+  "description": "Telephony lead message. Structurally distinct from form-based lead \u2014 carries call-specific blocks (IVR, durations, recording, disposition). Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
   "type": "object",
-  "required": ["lead_id", "status", "channel", "consumer", "location", "call"],
+  "required": [
+    "lead_id",
+    "status",
+    "channel",
+    "consumer",
+    "location",
+    "call"
+  ],
   "properties": {
-    "lead_id": { "type": "string" },
-    "external_id": { "type": "string" },
-    "submitted_at": { "type": "string", "format": "date-time", "description": "When the call was initiated (distinct from provenance.received_at)." },
-    "status": { "$ref": "core.json#/$defs/status" },
-    "channel": { "type": "string", "const": "call", "description": "Always 'call' for call messages." },
-    "consumer": { "$ref": "core.json#/$defs/consumer" },
-    "location": { "$ref": "core.json#/$defs/location" },
-    "compliance": { "$ref": "core.json#/$defs/compliance" },
-    "provenance": { "$ref": "core.json#/$defs/provenance" },
-    "attributes": { "$ref": "core.json#/$defs/attributes" },
-    "expiry": { "$ref": "core.json#/$defs/expiry" },
-    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" },
+    "lead_id": {
+      "type": "string"
+    },
+    "external_id": {
+      "type": "string"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the call was initiated (distinct from provenance.received_at)."
+    },
+    "status": {
+      "$ref": "core.json#/$defs/status"
+    },
+    "channel": {
+      "type": "string",
+      "const": "call",
+      "description": "Always 'call' for call messages."
+    },
+    "consumer": {
+      "$ref": "core.json#/$defs/consumer"
+    },
+    "location": {
+      "$ref": "core.json#/$defs/location"
+    },
+    "compliance": {
+      "$ref": "core.json#/$defs/compliance"
+    },
+    "provenance": {
+      "$ref": "core.json#/$defs/provenance"
+    },
+    "attributes": {
+      "$ref": "core.json#/$defs/attributes"
+    },
+    "expiry": {
+      "$ref": "core.json#/$defs/expiry"
+    },
+    "exclusivity": {
+      "$ref": "core.json#/$defs/exclusivity"
+    },
     "call": {
       "type": "object",
       "title": "Call Detail Block",
-      "required": ["call_id", "status", "started_at"],
+      "required": [
+        "call_id",
+        "status",
+        "started_at"
+      ],
       "properties": {
-        "call_id": { "type": "string", "description": "Unique call identifier." },
+        "call_id": {
+          "type": "string",
+          "description": "Unique call identifier."
+        },
         "status": {
           "type": "string",
-          "description": "OPEN ENUMERATION — known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
-          "$comment": "Open enumeration per SPEC.md §6."
+          "description": "OPEN ENUMERATION \u2014 known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
+          "$comment": "Open enumeration per SPEC.md \u00a76."
         },
-        "hangup_cause": { "type": "string" },
-        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
-        "did": { "type": "string", "description": "Dialed number (Direct Inward Dial) — the tracking number the consumer called." },
-        "forwarded_to": { "type": "string", "description": "Number the call was forwarded to (buyer's destination number). E.164." },
-        "tracking_number": { "type": "string", "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164." },
-        "caller_phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "started_at": { "type": "string", "format": "date-time" },
+        "hangup_cause": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound"
+          ]
+        },
+        "did": {
+          "type": "string",
+          "description": "Dialed number (Direct Inward Dial) \u2014 the tracking number the consumer called."
+        },
+        "forwarded_to": {
+          "type": "string",
+          "description": "Number the call was forwarded to (buyer's destination number). E.164."
+        },
+        "tracking_number": {
+          "type": "string",
+          "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164."
+        },
+        "caller_phone_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "durations": {
           "type": "object",
           "properties": {
-            "total_seconds": { "type": "integer", "minimum": 0 },
-            "ivr_seconds": { "type": "integer", "minimum": 0 },
-            "hold_seconds": { "type": "integer", "minimum": 0 },
-            "agent_seconds": { "type": "integer", "minimum": 0 }
+            "total_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ivr_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hold_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "agent_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
           },
           "additionalProperties": false
         },
         "recording": {
           "type": "object",
           "properties": {
-            "url": { "type": "string", "format": "uri" },
-            "transcript_url": { "type": "string", "format": "uri" },
-            "storage_ref": { "type": "string" }
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "transcript_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "storage_ref": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
@@ -59,25 +144,45 @@
           "type": "object",
           "description": "IVR menu interaction data. Core fields are universal; platform-specific IVR data goes in extensions.",
           "properties": {
-            "digits": { "type": "string", "description": "DTMF digits pressed during IVR." },
-            "path": { "type": "string", "description": "IVR menu path taken (e.g. 'sales > mortgage > refinance')." },
-            "language": { "type": "string", "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US')." },
-            "abandoned": { "type": "boolean", "description": "True if the caller dropped during IVR before reaching an agent." },
+            "digits": {
+              "type": "string",
+              "description": "DTMF digits pressed during IVR."
+            },
+            "path": {
+              "type": "string",
+              "description": "IVR menu path taken (e.g. 'sales > mortgage > refinance')."
+            },
+            "language": {
+              "type": "string",
+              "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US')."
+            },
+            "abandoned": {
+              "type": "boolean",
+              "description": "True if the caller dropped during IVR before reaching an agent."
+            },
             "menu_options_selected": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Ordered list of menu option labels selected."
             }
           },
           "additionalProperties": true
         },
-        "disposition": { "type": "string" },
+        "disposition": {
+          "type": "string"
+        },
         "transferred_from": {
           "type": "object",
           "description": "Present if this call was transferred from another call/queue.",
           "properties": {
-            "original_call_id": { "type": "string" },
-            "transfer_reason": { "type": "string" }
+            "original_call_id": {
+              "type": "string"
+            },
+            "transfer_reason": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
@@ -85,16 +190,24 @@
           "type": "object",
           "description": "Call queue that handled this call.",
           "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" }
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
         "agent": {
           "type": "object",
           "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" }
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }

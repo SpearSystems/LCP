@@ -2,6 +2,9 @@
 
 When the REST endpoint is unavailable (e.g. local development), the MCP server
 can serve schemas directly from the repo's schemas/ and verticals/ directories.
+
+LCP — Lead Context Protocol. Created by Spear Systems (a Spear company).
+Open standard — Apache 2.0, free to implement.
 """
 
 from __future__ import annotations

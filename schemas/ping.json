@@ -2,34 +2,86 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/ping.json",
   "title": "LCP Ping Message",
-  "description": "Non-PII offer to buyers. STRICT ALLOWLIST — additionalProperties: false. No PII fields are permitted. The conformance runner also validates that every field in attributes is tagged ping_safe: true in the vertical schema.",
+  "description": "Non-PII offer to buyers. STRICT ALLOWLIST \u2014 additionalProperties: false. No PII fields are permitted. The conformance runner also validates that every field in attributes is tagged ping_safe: true in the vertical schema. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
   "type": "object",
-  "required": ["ping_id", "lead_reference", "phone_hash", "country_code", "vertical", "floor_price_cents", "currency"],
+  "required": [
+    "ping_id",
+    "lead_reference",
+    "phone_hash",
+    "country_code",
+    "vertical",
+    "floor_price_cents",
+    "currency"
+  ],
   "properties": {
-    "ping_id": { "type": "string", "description": "Unique ping identifier." },
-    "lead_reference": { "type": "string", "description": "Opaque reference to the lead (not the lead_id)." },
-    "publisher_id": { "type": "string", "description": "ID of the publisher that generated the lead. Non-PII — buyers need this for quality tracking and routing." },
-    "offer_id": { "type": "string", "description": "ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes." },
-    "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164) — per-pair. See SPEC.md §9." },
-    "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email) — per-pair, optional. Optional, for email-based dedup." },
-    "country_code": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2." },
-    "state_region": { "type": "string" },
-    "postal_code": { "type": "string" },
-    "vertical": { "type": "string", "description": "Vertical identifier." },
-    "lead_age_minutes": { "type": "integer", "minimum": 0, "description": "How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII." },
+    "ping_id": {
+      "type": "string",
+      "description": "Unique ping identifier."
+    },
+    "lead_reference": {
+      "type": "string",
+      "description": "Opaque reference to the lead (not the lead_id)."
+    },
+    "publisher_id": {
+      "type": "string",
+      "description": "ID of the publisher that generated the lead. Non-PII \u2014 buyers need this for quality tracking and routing."
+    },
+    "offer_id": {
+      "type": "string",
+      "description": "ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes."
+    },
+    "phone_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "HMAC-SHA256(shared_secret, e164) \u2014 per-pair. See SPEC.md \u00a79."
+    },
+    "email_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "HMAC-SHA256(shared_secret, normalized_email) \u2014 per-pair, optional. Optional, for email-based dedup."
+    },
+    "country_code": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2."
+    },
+    "state_region": {
+      "type": "string"
+    },
+    "postal_code": {
+      "type": "string"
+    },
+    "vertical": {
+      "type": "string",
+      "description": "Vertical identifier."
+    },
+    "lead_age_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII."
+    },
     "attributes": {
       "type": "object",
-      "description": "Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only — never exact values.",
+      "description": "Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only \u2014 never exact values.",
       "additionalProperties": true
     },
     "compliance_flags": {
       "type": "object",
-      "description": "Presence indicators only — never tokens or evidence.",
+      "description": "Presence indicators only \u2014 never tokens or evidence.",
       "properties": {
-        "consent": { "type": "boolean" },
-        "otp_verified": { "type": "boolean" },
-        "dnc_checked": { "type": "boolean" },
-        "consent_valid": { "type": "boolean", "description": "True if consent is still within its validity window (not expired)." }
+        "consent": {
+          "type": "boolean"
+        },
+        "otp_verified": {
+          "type": "boolean"
+        },
+        "dnc_checked": {
+          "type": "boolean"
+        },
+        "consent_valid": {
+          "type": "boolean",
+          "description": "True if consent is still within its validity window (not expired)."
+        }
       },
       "additionalProperties": true
     },
@@ -37,24 +89,94 @@
       "type": "object",
       "description": "Non-PII quality signals for buyer filtering. All publisher-declared.",
       "properties": {
-        "verified_phone": { "type": "boolean" },
-        "verified_email": { "type": "boolean" },
-        "is_incentivized": { "type": "boolean", "description": "True if consumer was offered an incentive (free consultation, gift card, etc.)." },
-        "incentive_type": { "type": "string", "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum." },
-        "duplicate_risk": { "type": "string", "enum": ["low", "medium", "high"] },
-        "spam_risk_score": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "acquisition_method": { "type": "string", "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum." },
-        "dnc_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "DNC scrub result." },
-        "litigator_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "Litigator scrub result." },
-        "blacklist_status": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"], "description": "Blacklist alliance scrub result." }
+        "verified_phone": {
+          "type": "boolean"
+        },
+        "verified_email": {
+          "type": "boolean"
+        },
+        "is_incentivized": {
+          "type": "boolean",
+          "description": "True if consumer was offered an incentive (free consultation, gift card, etc.)."
+        },
+        "incentive_type": {
+          "type": "string",
+          "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum."
+        },
+        "duplicate_risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "spam_risk_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "acquisition_method": {
+          "type": "string",
+          "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum."
+        },
+        "dnc_status": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "DNC scrub result."
+        },
+        "litigator_status": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "Litigator scrub result."
+        },
+        "blacklist_status": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "Blacklist alliance scrub result."
+        }
       },
       "additionalProperties": true
     },
-    "floor_price_cents": { "type": "integer", "minimum": 0 },
-    "currency": { "$ref": "core.json#/$defs/currency" },
-    "exclusivity": { "type": "string", "enum": ["exclusive", "shared"], "description": "Hint to buyer: is this an exclusive or shared lead?" },
-    "dedup_window_hours": { "type": "integer", "minimum": 1, "description": "Sender hint: how many hours to dedup against. Optional." },
-    "expires_at": { "type": "string", "format": "date-time" }
+    "floor_price_cents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "exclusivity": {
+      "type": "string",
+      "enum": [
+        "exclusive",
+        "shared"
+      ],
+      "description": "Hint to buyer: is this an exclusive or shared lead?"
+    },
+    "dedup_window_hours": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sender hint: how many hours to dedup against. Optional."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
   "additionalProperties": false
 }

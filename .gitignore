@@ -7,3 +7,5 @@
 graphify-out/
 CLAUDE.md
 .hermes.md
+*.pyc
+__pycache__/

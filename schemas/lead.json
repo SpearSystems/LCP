@@ -2,29 +2,85 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/lead.json",
   "title": "LCP Lead Message",
-  "description": "Intake message — form/chat/click/api/agent/referral channel.",
+  "description": "Intake message \u2014 form/chat/click/api/agent/referral channel. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
   "type": "object",
-  "required": ["lead_id", "status", "channel", "consumer", "location", "attributes"],
+  "required": [
+    "lead_id",
+    "status",
+    "channel",
+    "consumer",
+    "location",
+    "attributes"
+  ],
   "properties": {
-    "lead_id": { "type": "string" },
-    "external_id": { "type": "string", "description": "Publisher's internal lead ID." },
-    "submitted_at": { "type": "string", "format": "date-time", "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it)." },
-    "status": { "$ref": "core.json#/$defs/status" },
-    "channel": { "$ref": "core.json#/$defs/channel" },
-    "consumer": { "$ref": "core.json#/$defs/consumer" },
-    "location": { "$ref": "core.json#/$defs/location" },
-    "compliance": { "$ref": "core.json#/$defs/compliance" },
-    "provenance": { "$ref": "core.json#/$defs/provenance" },
-    "attributes": { "$ref": "core.json#/$defs/attributes" },
-    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" },
+    "lead_id": {
+      "type": "string"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Publisher's internal lead ID."
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it)."
+    },
+    "status": {
+      "$ref": "core.json#/$defs/status"
+    },
+    "channel": {
+      "$ref": "core.json#/$defs/channel"
+    },
+    "consumer": {
+      "$ref": "core.json#/$defs/consumer"
+    },
+    "location": {
+      "$ref": "core.json#/$defs/location"
+    },
+    "compliance": {
+      "$ref": "core.json#/$defs/compliance"
+    },
+    "provenance": {
+      "$ref": "core.json#/$defs/provenance"
+    },
+    "attributes": {
+      "$ref": "core.json#/$defs/attributes"
+    },
+    "exclusivity": {
+      "$ref": "core.json#/$defs/exclusivity"
+    },
     "contact_window": {
       "type": "object",
       "description": "Optional. Publisher hint for when the consumer is available to be contacted.",
       "properties": {
-        "timezone": { "type": "string", "description": "IANA timezone for the window times (e.g. Australia/Sydney)." },
-        "available_from": { "type": "string", "description": "Local time HH:MM format (24h)." },
-        "available_to": { "type": "string", "description": "Local time HH:MM format (24h)." },
-        "days": { "type": "array", "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }, "description": "Days of week the consumer is available." }
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone for the window times (e.g. Australia/Sydney)."
+        },
+        "available_from": {
+          "type": "string",
+          "description": "Local time HH:MM format (24h)."
+        },
+        "available_to": {
+          "type": "string",
+          "description": "Local time HH:MM format (24h)."
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ]
+          },
+          "description": "Days of week the consumer is available."
+        }
       },
       "additionalProperties": false
     },
@@ -32,8 +88,14 @@
       "type": "object",
       "description": "Optional. Publisher-provided quality signals. Buyers use these to filter/route. All fields are publisher-declared and not independently verified by LCP.",
       "properties": {
-        "verified_phone": { "type": "boolean", "description": "Phone number was verified (OTP, call connect, or carrier lookup)." },
-        "verified_email": { "type": "boolean", "description": "Email was verified (OTP, bounce check, or SMTP validation)." },
+        "verified_phone": {
+          "type": "boolean",
+          "description": "Phone number was verified (OTP, call connect, or carrier lookup)."
+        },
+        "verified_email": {
+          "type": "boolean",
+          "description": "Email was verified (OTP, bounce check, or SMTP validation)."
+        },
         "verification": {
           "type": "object",
           "description": "Details on how phone/email were verified. Supports OTP, enrichment tools, carrier lookup, SMTP validation, etc.",
@@ -41,27 +103,62 @@
             "phone_method": {
               "type": "string",
               "description": "How the phone was verified. Known values: otp, carrier_lookup, call_connect, twilio_lookup, manual_call, none. Open enumeration.",
-              "$comment": "Open enum — new verification methods (e.g. new enrichment providers) are additive."
+              "$comment": "Open enum \u2014 new verification methods (e.g. new enrichment providers) are additive."
             },
-            "phone_verified_at": { "type": "string", "format": "date-time" },
-            "phone_verified_by": { "type": "string", "description": "Provider that performed the verification (e.g. twilio, numverify, internal, publisher_otp)." },
+            "phone_verified_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "phone_verified_by": {
+              "type": "string",
+              "description": "Provider that performed the verification (e.g. twilio, numverify, internal, publisher_otp)."
+            },
             "email_method": {
               "type": "string",
               "description": "How the email was verified. Known values: otp, smtp_check, bounce_check, briteverify, zerobounce, kickbox, none. Open enumeration.",
-              "$comment": "Open enum — new email verification services are additive."
+              "$comment": "Open enum \u2014 new email verification services are additive."
             },
-            "email_verified_at": { "type": "string", "format": "date-time" },
-            "email_verified_by": { "type": "string", "description": "Provider that performed the verification (e.g. briteverify, zerobounce, internal, publisher_otp)." }
+            "email_verified_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "email_verified_by": {
+              "type": "string",
+              "description": "Provider that performed the verification (e.g. briteverify, zerobounce, internal, publisher_otp)."
+            }
           },
           "additionalProperties": false
         },
-        "duplicate_risk": { "type": "string", "enum": ["low", "medium", "high"], "description": "Publisher's assessment of duplicate risk based on their dedup window." },
-        "spam_risk_score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined." },
-        "data_completeness": { "type": "string", "enum": ["minimal", "standard", "rich"], "description": "How complete the lead data is. 'minimal' = name+phone only, 'standard' = core fields, 'rich' = core + vertical attributes fully populated." }
+        "duplicate_risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "Publisher's assessment of duplicate risk based on their dedup window."
+        },
+        "spam_risk_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined."
+        },
+        "data_completeness": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "rich"
+          ],
+          "description": "How complete the lead data is. 'minimal' = name+phone only, 'standard' = core fields, 'rich' = core + vertical attributes fully populated."
+        }
       },
       "additionalProperties": false
     },
-    "expiry": { "$ref": "core.json#/$defs/expiry" }
+    "expiry": {
+      "$ref": "core.json#/$defs/expiry"
+    }
   },
   "additionalProperties": false
 }

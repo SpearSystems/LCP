@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/verticals/insurance.json",
   "title": "LCP Insurance Vertical Schema",
-  "description": "Insurance lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field.",
+  "description": "Insurance lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
   "type": "object",
   "required": ["vertical", "schema_version"],
   "properties": {

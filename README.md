@@ -1,5 +1,10 @@
 # LCP — Lead Context Protocol
 
+> **Created and maintained by Spear Systems** (a Spear company).
+> This is an open standard — Apache 2.0, free to implement.
+> Spear Systems stewards the conformance test suite and reference
+> implementations, but the protocol is community-governed.
+
 **The open standard for exchanging consumer lead data.**
 
 LCP is a universal, Apache-2.0 protocol for transferring consumer lead

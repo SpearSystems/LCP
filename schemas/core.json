@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/core.json",
   "title": "LCP Core Definitions",
-  "description": "Shared definitions for the LCP canonical core. Referenced by message-type and vertical schemas via $ref.",
+  "description": "Shared definitions for the LCP canonical core. Referenced by message-type and vertical schemas via $ref. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
   "type": "object",
   "$defs": {
     "consumer": {

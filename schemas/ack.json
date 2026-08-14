@@ -2,26 +2,48 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/ack.json",
   "title": "LCP Ack Message",
-  "description": "Response to any message. Uses errors[] array — a single message can fail multiple field validations.",
+  "description": "Response to any message. Uses errors[] array \u2014 a single message can fail multiple field validations. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
   "type": "object",
-  "required": ["original_message_id", "status"],
+  "required": [
+    "original_message_id",
+    "status"
+  ],
   "properties": {
-    "original_message_id": { "type": "string", "format": "uuid", "description": "ID of the message being acknowledged." },
+    "original_message_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the message being acknowledged."
+    },
     "status": {
       "type": "string",
-      "enum": ["RECEIVED", "VALIDATED", "ACCEPTED", "REJECTED", "DUPLICATE", "ERROR"]
+      "enum": [
+        "RECEIVED",
+        "VALIDATED",
+        "ACCEPTED",
+        "REJECTED",
+        "DUPLICATE",
+        "ERROR"
+      ]
     },
     "errors": {
       "type": "array",
-      "items": { "$ref": "core.json#/$defs/error" },
+      "items": {
+        "$ref": "core.json#/$defs/error"
+      },
       "description": "Zero or more error objects. Present when status = ERROR or REJECTED."
     },
-    "lead_id": { "type": "string", "description": "Assigned lead ID, if applicable." },
-    "request_id": { "type": "string", "description": "Server-side request ID for tracing." },
+    "lead_id": {
+      "type": "string",
+      "description": "Assigned lead ID, if applicable."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Server-side request ID for tracing."
+    },
     "rejection_reason": {
       "type": "string",
       "description": "Structured rejection reason when status = REJECTED. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged. Open enumeration.",
-      "$comment": "Open enum — enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)"
+      "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)"
     }
   },
   "additionalProperties": false

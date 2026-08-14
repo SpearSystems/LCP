@@ -2,14 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/schemas/bid.json",
   "title": "LCP Bid Message",
-  "description": "Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner.",
+  "description": "Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
   "type": "object",
-  "required": ["ping_id", "decision", "bid_price_cents", "currency"],
+  "required": [
+    "ping_id",
+    "decision",
+    "bid_price_cents",
+    "currency"
+  ],
   "properties": {
-    "ping_id": { "type": "string", "description": "ID of the ping being responded to." },
+    "ping_id": {
+      "type": "string",
+      "description": "ID of the ping being responded to."
+    },
     "decision": {
       "type": "string",
-      "enum": ["accept", "reject", "pass"],
+      "enum": [
+        "accept",
+        "reject",
+        "pass"
+      ],
       "description": "accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason)."
     },
     "bid_price_cents": {
@@ -17,7 +29,9 @@
       "minimum": 0,
       "description": "Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass."
     },
-    "currency": { "$ref": "core.json#/$defs/currency" },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
     "estimated_contact_seconds": {
       "type": "integer",
       "minimum": 0,

@@ -1,5 +1,8 @@
 # LCP — Lead Context Protocol Specification
 
+> **Created and maintained by Spear Systems** (a Spear company).
+> Open standard — Apache 2.0, free to implement.
+
 **Status:** DRAFT v1.0 — under active development. Not yet published.
 **License:** Apache 2.0 (see [LICENSE](LICENSE)).
 
