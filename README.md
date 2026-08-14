@@ -53,6 +53,7 @@ docs/              Design notes and deep-research review
 - [governance/TRADEMARK.md](governance/TRADEMARK.md) — "LCP compliant" usage rules
 - [governance/EXTENSION-REGISTRY.md](governance/EXTENSION-REGISTRY.md) — extension namespace registry
 - [implementations/mcp-server/](implementations/mcp-server/) — reference MCP server
+- [docs/PLATFORM-INTEGRATION.md](docs/PLATFORM-INTEGRATION.md) — platform mapping guide (Facebook, Google, Twilio, HubSpot, Salesforce, TikTok)
 - [docs/lcp-deep-research-review.md](docs/lcp-deep-research-review.md) — adversarial review + resolutions
 
 ## License

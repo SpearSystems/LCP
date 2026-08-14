@@ -9,3 +9,6 @@
 - [publishing-gap-analysis.md](publishing-gap-analysis.md) — pre-publish
   comparison against LEX and MCP repos. 20-item gap analysis with
   prioritized action checklist.
+- [PLATFORM-INTEGRATION.md](PLATFORM-INTEGRATION.md) — how common
+  platforms (Facebook Lead Ads, Google Lead Forms, Twilio, HubSpot,
+  Salesforce, TikTok) map to/from LCP fields.
