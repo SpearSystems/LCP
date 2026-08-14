@@ -29,6 +29,20 @@
       },
       "additionalProperties": true
     },
+    "quality_flags": {
+      "type": "object",
+      "description": "Non-PII quality signals for buyer filtering. All publisher-declared.",
+      "properties": {
+        "verified_phone": { "type": "boolean" },
+        "verified_email": { "type": "boolean" },
+        "is_incentivized": { "type": "boolean", "description": "True if consumer was offered an incentive (free consultation, gift card, etc.)." },
+        "incentive_type": { "type": "string", "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum." },
+        "duplicate_risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "spam_risk_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "acquisition_method": { "type": "string", "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum." }
+      },
+      "additionalProperties": true
+    },
     "floor_price_cents": { "type": "integer", "minimum": 0 },
     "currency": { "$ref": "core.json#/$defs/currency" },
     "exclusivity": { "type": "string", "enum": ["exclusive", "shared"], "description": "Hint to buyer: is this an exclusive or shared lead?" },

@@ -264,6 +264,43 @@ paths:
                         capacity_remaining:
                           type: integer
                           description: Leads remaining today for this offer.
+                        excluded_source_types:
+                          type: array
+                          items:
+                            type: string
+                          description: Source types the buyer rejects.
+                        excluded_acquisition_methods:
+                          type: array
+                          items:
+                            type: string
+                          description: Acquisition methods the buyer rejects.
+                        reject_incentivized:
+                          type: boolean
+                          description: Buyer will not accept incentivized leads.
+                        excluded_incentive_types:
+                          type: array
+                          items:
+                            type: string
+                          description: Specific incentive types rejected.
+                        require_verified_phone:
+                          type: boolean
+                        require_verified_email:
+                          type: boolean
+                        max_spam_risk_score:
+                          type: integer
+                        excluded_claim_language:
+                          type: array
+                          items:
+                            type: string
+                          description: Landing page / ad copy language the buyer prohibits.
+                        require_consent_evidence:
+                          type: boolean
+                        min_data_completeness:
+                          type: string
+                          enum:
+                          - minimal
+                          - standard
+                          - rich
 components:
   parameters:
     IdempotencyKey:

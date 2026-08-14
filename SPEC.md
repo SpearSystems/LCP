@@ -151,11 +151,15 @@ provider examples in [Appendix A](#appendix-a-consent-evidence-provider-examples
 
 ### provenance (non-PII)
 
-`received_at`, `source_type` (publisher|direct|agent|api|referral),
-`source_id`, `source_url`, `ip_hash`, `user_agent_hash`, `funnel_key`,
-`flow_key`, `campaign_id`, `creative_id`, `landing_page_url`,
-`platform_source` (google_ads|facebook|tiktok|bing_ads|organic|direct,
-open enum).
+`received_at`, `source_type` (publisher|direct|agent|api|referral|
+organic|marketplace|outbound|scraped — open enum), `acquisition_method`
+(paid_ad|organic_search|marketplace|gmb|directory|cold_outbound|
+warm_transfer|scraped|unknown — open enum), `is_incentivized` (boolean),
+`incentive_type` (free_consultation|gift_card|discount_coupon|free_quote|
+cash_offer — open enum), `source_id`, `source_url`, `ip_hash`,
+`user_agent_hash`, `funnel_key`, `flow_key`, `campaign_id`, `creative_id`,
+`landing_page_url`, `platform_source` (google_ads|facebook|tiktok|
+bing_ads|organic|direct, open enum).
 
 Agent-specific provenance (when `source_type` = `agent`):
 
@@ -478,6 +482,30 @@ If `capacity` is absent, no caps are declared (unlimited). Caps are
 advisory — the platform may still route leads above cap, but the
 endpoint may reject them (LCP-011 RATE_LIMITED or a 200 with
 `ack.status = REJECTED`).
+
+### offer restrictions
+
+Offers (`GET /v1/lcp/offers`) may declare restrictions — lead
+characteristics the buyer will not accept. The platform filters against
+these before pinging:
+
+| Field | Type | Notes |
+|---|---|---|
+| `excluded_source_types` | array\<string\> | Source types the buyer rejects (e.g. `["scraped", "outbound", "marketplace"]`). |
+| `excluded_acquisition_methods` | array\<string\> | Acquisition methods the buyer rejects (e.g. `["cold_outbound", "scraped"]`). |
+| `reject_incentivized` | boolean | If true, buyer will not accept incentivized leads (`is_incentivized = true`). |
+| `excluded_incentive_types` | array\<string\> | Specific incentive types the buyer rejects (e.g. `["free_consultation"]`). |
+| `require_verified_phone` | boolean | If true, buyer requires `verified_phone = true`. |
+| `require_verified_email` | boolean | If true, buyer requires `verified_email = true`. |
+| `max_spam_risk_score` | integer | Buyer will not accept leads with `spam_risk_score` above this value. |
+| `excluded_claim_language` | array\<string\> | Landing page / ad copy language the buyer prohibits (e.g. `["guaranteed savings", "free consultation", "no obligation"]`). Publisher declares in `extensions` if their copy contains these. |
+| `require_consent_evidence` | boolean | If true, buyer requires `consent_evidence[]` to be non-empty. |
+| `min_data_completeness` | string | Buyer requires at least this completeness level (`minimal`, `standard`, `rich`). |
+
+These are **contractual preferences**, not protocol enforcement. The
+platform uses them to filter before pinging. A buyer receiving a lead
+that violates their restrictions may reject it (`ack.status = REJECTED`
+with `LCP-100 VALIDATION_ERROR`).
 
 `delivery_windows` is an optional array of time windows when the endpoint
 accepts lead/call delivery. Each entry:

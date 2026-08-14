@@ -28,6 +28,18 @@
       },
       "additionalProperties": false
     },
+    "lead_quality": {
+      "type": "object",
+      "description": "Optional. Publisher-provided quality signals. Buyers use these to filter/route. All fields are publisher-declared and not independently verified by LCP.",
+      "properties": {
+        "verified_phone": { "type": "boolean", "description": "Phone number was verified (OTP, call connect, or carrier lookup)." },
+        "verified_email": { "type": "boolean", "description": "Email was verified (OTP, bounce check, or SMTP validation)." },
+        "duplicate_risk": { "type": "string", "enum": ["low", "medium", "high"], "description": "Publisher's assessment of duplicate risk based on their dedup window." },
+        "spam_risk_score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined." },
+        "data_completeness": { "type": "string", "enum": ["minimal", "standard", "rich"], "description": "How complete the lead data is. 'minimal' = name+phone only, 'standard' = core fields, 'rich' = core + vertical attributes fully populated." }
+      },
+      "additionalProperties": false
+    },
     "expiry": { "$ref": "core.json#/$defs/expiry" }
   },
   "additionalProperties": false

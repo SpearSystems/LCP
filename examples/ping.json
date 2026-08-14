@@ -36,6 +36,14 @@
         "otp_verified": true,
         "dnc_checked": true
       },
+      "quality_flags": {
+        "verified_phone": true,
+        "verified_email": true,
+        "is_incentivized": false,
+        "duplicate_risk": "low",
+        "spam_risk_score": 5,
+        "acquisition_method": "paid_ad"
+      },
       "floor_price_cents": 1500,
       "currency": "AUD",
       "exclusivity": "shared",

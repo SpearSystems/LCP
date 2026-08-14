@@ -103,7 +103,20 @@
         "received_at": { "type": "string", "format": "date-time" },
         "source_type": {
           "type": "string",
-          "enum": ["publisher", "direct", "agent", "api", "referral"]
+          "description": "OPEN ENUMERATION — known values: publisher, direct, agent, api, referral, organic, marketplace, outbound, scraped. Unknown values must be stored and passed through.",
+          "$comment": "Was a closed enum. Opened per SPEC.md section 6 — new source types are additive."
+        },
+        "acquisition_method": {
+          "type": "string",
+          "description": "How the lead was acquired. Known values: paid_ad, organic_search, marketplace, gmb (Google Business Profile), directory, cold_outbound, warm_transfer, scraped, unknown. Open enumeration."
+        },
+        "is_incentivized": {
+          "type": "boolean",
+          "description": "True if the consumer was offered an incentive (free consultation, gift card, discount) to submit the lead. Buyers who don't want incentivized leads filter on this."
+        },
+        "incentive_type": {
+          "type": "string",
+          "description": "What incentive was offered (e.g. free_consultation, gift_card, discount_coupon, free_quote, cash_offer). Open enumeration."
         },
         "source_id": { "type": "string" },
         "source_url": { "type": "string", "format": "uri" },
