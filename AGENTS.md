@@ -44,16 +44,25 @@ docs/              Design notes and research
    N+2 deprecation with 2-year grace. Unknown optional fields are
    ignored; unknown message types get a structured error.
 5. **PII discipline.** Ping messages carry non-PII attributes + hashes
-   only (forbidden-keys list in SPEC.md §4). Full PII flows only in
-   post messages to the winning buyer.
+  only. The ping schema is a strict **allowlist**
+  (`additionalProperties: false`), not a blocklist. Every vertical
+  schema field MUST be tagged `ping_safe: true/false`; the conformance
+  runner rejects any ping containing a non-`ping_safe` field. Full PII
+  flows only in post messages to the winning buyer.
 6. **Machine-readable schemas.** Every message type and vertical ships
-   a JSON Schema. A schema change without its schema file is not a
-   change.
+  a JSON Schema. A schema change without its schema file is not a
+  change. Vertical schemas MUST NOT redefine core field names
+  (`phone`, `email`, `first_name`, `last_name`, `full_name`,
+  `country_code`, etc.) inside `attributes` — core field names are
+  reserved.
 
 ## Quality gate
 
 - Every schema in `schemas/` and `verticals/` must validate its
   examples in `examples/`.
+- Ping schemas are strict allowlists (`additionalProperties: false`);
+  the conformance runner rejects any ping containing non-`ping_safe`
+  fields.
 - Test vectors in `test-vectors/` must pass the conformance runner
   (L1/L2/L3) once one exists.
 - No secrets, credentials, or internal platform details in this repo —
