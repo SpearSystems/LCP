@@ -1,0 +1,339 @@
+{
+  "suite": "L3",
+  "description": "Dedup fingerprints, capability discovery, agent binding, consent evidence, status transitions.",
+  "vectors": [
+    {
+      "id": "L3-001",
+      "name": "valid_agent_submitted_lead",
+      "expect": "pass",
+      "description": "Lead submitted by an AI agent with attestation JWT.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "bb0e8400-e29b-41d4-a716-446655440010",
+            "type": "lead",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "agent_pub_001",
+            "receiver_id": "spx",
+            "idempotency_key": "agent-lead-001"
+          },
+          "payload": {
+            "lead_id": "lead_agent_001",
+            "status": "NEW",
+            "channel": "agent",
+            "consumer": {
+              "full_name": "John Doe",
+              "email": "john.doe@example.com",
+              "phone": "+12125551234"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "CA",
+              "postal_code": "90210"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T11:59:00Z",
+              "consent_purposes": ["calls", "sms"],
+              "consent_evidence": [
+                {
+                  "type": "tcpa_consent",
+                  "provider": "trustedform",
+                  "token_or_url": "https://cert.trustedform.com/abc123"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T12:00:01Z",
+              "source_type": "agent",
+              "source_id": "agent_pub_001",
+              "agent": {
+                "agent_id": "ai-assist-001",
+                "acting_for": "pub_123",
+                "attestation": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudF9pZCI6ImFpLWFzc2lzdC0wMDEiLCJhY3RpbmdfZm9yIjoicHViXzEyMyIsImlzc3VlciI6InNwZC1hZ2VudC1hdXRoIiwiaWF0IjoiMjAyNi0wOC0xNVQxMjowMDowMFoiLCJleHAiOiIyMDI2LTA4LTE1VDEyOjMwOjAwWiJ9.signature"
+              }
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "purchase",
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "credit_rating_band": "good",
+              "employment_status": "self_employed",
+              "annual_income_band": "100k_150k",
+              "is_first_home_buyer": true,
+              "has_existing_mortgage": false
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema", "agent_provenance", "attestation_present"]
+    },
+    {
+      "id": "L3-002",
+      "name": "valid_status_transitions",
+      "expect": "pass",
+      "description": "Valid status transition sequence: NEW → PINGED → POSTED → ACCEPTED → CONVERTED.",
+      "transitions": [
+        {"from": "NEW", "to": "PINGED", "valid": true},
+        {"from": "PINGED", "to": "POSTED", "valid": true},
+        {"from": "POSTED", "to": "ACCEPTED", "valid": true},
+        {"from": "ACCEPTED", "to": "CONVERTED", "valid": true},
+        {"from": "POSTED", "to": "REJECTED", "valid": true},
+        {"from": "POSTED", "to": "EXPIRED", "valid": true},
+        {"from": "POSTED", "to": "DUPLICATE", "valid": true},
+        {"from": "ACCEPTED", "to": "DISPUTED", "valid": true},
+        {"from": "DISPUTED", "to": "REFUNDED", "valid": true},
+        {"from": "DISPUTED", "to": "ACCEPTED", "valid": true},
+        {"from": "ACCEPTED", "to": "ARCHIVED", "valid": true},
+        {"from": "NEW", "to": "REJECTED", "valid": true},
+        {"from": "NEW", "to": "EXPIRED", "valid": true},
+        {"from": "NEW", "to": "DUPLICATE", "valid": true},
+        {"from": "PINGED", "to": "EXPIRED", "valid": true},
+        {"from": "PINGED", "to": "DUPLICATE", "valid": true},
+        {"from": "CONVERTED", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "CONVERTED", "to": "DISPUTED", "valid": false, "error": "LCP-004"},
+        {"from": "REJECTED", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "EXPIRED", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "REFUNDED", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "ARCHIVED", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "DUPLICATE", "to": "POSTED", "valid": false, "error": "LCP-004"},
+        {"from": "NEW", "to": "ACCEPTED", "valid": false, "error": "LCP-004"},
+        {"from": "NEW", "to": "CONVERTED", "valid": false, "error": "LCP-004"}
+      ],
+      "checks": ["status_transition_graph"]
+    },
+    {
+      "id": "L3-003",
+      "name": "ping_safe_dedup_hash",
+      "expect": "pass",
+      "description": "Ping with HMAC-SHA256 phone hash (64 hex chars) — dedup capable, not reversible without shared secret.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "cc0e8400-e29b-41d4-a716-446655440011",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "spx",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "spx-ping-dedup-001"
+          },
+          "payload": {
+            "ping_id": "ping_dedup_001",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "purchase",
+              "loan_amount_band": "500k_750k",
+              "credit_rating_band": "good"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": false
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      },
+      "checks": ["ping_schema", "ping_allowlist_no_pii", "ping_safe_attributes_only"]
+    },
+    {
+      "id": "L3-004",
+      "name": "us_lead_with_tcpa_consent_evidence",
+      "expect": "pass",
+      "description": "US mortgage lead with Jornaya + TrustedForm consent evidence — uses generic consent_evidence[] array, not vendor-specific core fields.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "dd0e8400-e29b-41d4-a716-446655440012",
+            "type": "lead",
+            "timestamp": "2026-08-15T13:00:00Z",
+            "sender_id": "pub_us_001",
+            "receiver_id": "spx",
+            "idempotency_key": "pub-us-lead-001"
+          },
+          "payload": {
+            "lead_id": "lead_us_001",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Robert",
+              "last_name": "Johnson",
+              "email": "rjohnson@example.com",
+              "phone": "+12125551234"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "CA",
+              "postal_code": "90210"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T12:59:00Z",
+              "consent_source_url": "https://publisher.example.com/mortgage-ca",
+              "consent_text_version": "tcpa-v3.0",
+              "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+              "consent_evidence": [
+                {
+                  "type": "tcpa_consent",
+                  "provider": "jornaya",
+                  "token_or_url": "jrn_abc123def456"
+                },
+                {
+                  "type": "tcpa_consent",
+                  "provider": "trustedform",
+                  "token_or_url": "https://cert.trustedform.com/xyz789"
+                }
+              ],
+              "dnc_checked": true
+            },
+            "provenance": {
+              "received_at": "2026-08-15T13:00:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_us_001"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "purchase",
+              "loan_amount_cents": 75000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "good",
+              "employment_status": "employed",
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "80_90",
+              "is_first_home_buyer": true,
+              "has_existing_mortgage": false,
+              "veteran_status": "non_veteran"
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema", "compliance_evidence_array", "no_vendor_fields_in_core"]
+    },
+    {
+      "id": "L3-005",
+      "name": "ack_with_errors_array",
+      "expect": "pass",
+      "description": "Ack with multiple errors — demonstrates errors[] array for multi-field validation failure.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "ee0e8400-e29b-41d4-a716-446655440013",
+            "type": "ack",
+            "timestamp": "2026-08-15T10:20:12Z",
+            "sender_id": "spx",
+            "receiver_id": "pub_123",
+            "idempotency_key": "spx-ack-bad-001"
+          },
+          "payload": {
+            "original_message_id": "550e8400-e29b-41d4-a716-446655440000",
+            "status": "ERROR",
+            "errors": [
+              {
+                "code": "LCP-003",
+                "name": "MISSING_REQUIRED_FIELD",
+                "message": "consumer.phone is required when no email or name is provided",
+                "field": "consumer.phone"
+              },
+              {
+                "code": "LCP-010",
+                "name": "INVALID_TERRITORY",
+                "message": "state_region 'XX' is not a valid AU territory",
+                "field": "location.state_region"
+              }
+            ],
+            "request_id": "req_err_001"
+          }
+        }
+      },
+      "checks": ["ack_schema", "errors_array_multiple"]
+    },
+    {
+      "id": "L3-006",
+      "name": "event_unknown_value_open_enum",
+      "expect": "pass",
+      "description": "Event with a value not in the known enum — must be stored/passed through, not rejected (open enumeration policy).",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "ff0e8400-e29b-41d4-a716-446655440014",
+            "type": "event",
+            "timestamp": "2026-08-15T15:00:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "spx",
+            "idempotency_key": "buyer-event-future-001"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "event": "PARTIALLY_REFUNDED",
+            "timestamp": "2026-08-15T15:00:00Z",
+            "details": {
+              "refund_amount_cents": 500,
+              "reason": "partial_service_issue"
+            }
+          }
+        }
+      },
+      "checks": ["event_open_enum_pass_through"]
+    },
+    {
+      "id": "L3-007",
+      "name": "lead_with_exclusivity_and_expiry",
+      "expect": "pass",
+      "description": "Exclusive lead with expiry — exercises exclusivity and expiry fields.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00e8400-e29b-41d4-a716-446655440015",
+            "type": "lead",
+            "timestamp": "2026-08-15T09:00:00Z",
+            "sender_id": "pub_789",
+            "receiver_id": "spx",
+            "idempotency_key": "pub-exclusive-001"
+          },
+          "payload": {
+            "lead_id": "lead_excl_001",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Sarah",
+              "last_name": "Brown",
+              "email": "sarah.brown@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "QLD",
+              "postal_code": "4000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "investment",
+              "loan_amount_band": "250k_500k",
+              "credit_rating_band": "excellent"
+            },
+            "exclusivity": {
+              "exclusivity": "exclusive"
+            },
+            "expiry": {
+              "ttl_seconds": 1800
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema", "exclusivity_field", "expiry_field"]
+    }
+  ]
+}

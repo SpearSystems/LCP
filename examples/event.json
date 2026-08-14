@@ -1,0 +1,26 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "aa0e8400-e29b-41d4-a716-446655440005",
+      "type": "event",
+      "timestamp": "2026-08-15T14:30:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "spx",
+      "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+      "idempotency_key": "buyer-event-lead_abc123-001",
+      "test": false
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "event": "CONVERTED",
+      "timestamp": "2026-08-15T14:30:00Z",
+      "details": {
+        "conversion_type": "loan_settled",
+        "settlement_date": "2026-08-15",
+        "loan_amount_cents": 65000000
+      },
+      "external_reference": "buyer-crm-deal-456"
+    }
+  }
+}

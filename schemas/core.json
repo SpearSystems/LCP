@@ -133,13 +133,15 @@
     "status": {
       "type": "string",
       "title": "Lead Status",
-      "enum": ["NEW", "PINGED", "POSTED", "ACCEPTED", "REJECTED", "DUPLICATE", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED"]
+      "description": "OPEN ENUMERATION — known values: NEW, PINGED, POSTED, ACCEPTED, REJECTED, DUPLICATE, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected.",
+      "$comment": "No enum constraint — this is an open enumeration per SPEC.md §6."
     },
 
     "channel": {
       "type": "string",
       "title": "Lead Channel",
-      "enum": ["form", "chat", "click", "api", "agent", "referral"]
+      "description": "OPEN ENUMERATION — known values: form, chat, click, api, agent, referral. Unknown values MUST be stored and passed through, not rejected.",
+      "$comment": "No enum constraint — this is an open enumeration per SPEC.md §6."
     },
 
     "currency": {

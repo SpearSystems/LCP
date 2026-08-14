@@ -1,0 +1,44 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "770e8400-e29b-41d4-a716-446655440002",
+      "type": "ping",
+      "timestamp": "2026-08-15T10:20:05Z",
+      "sender_id": "spx",
+      "receiver_id": "buyer_001",
+      "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+      "idempotency_key": "spx-ping-lead_abc123-001",
+      "test": false
+    },
+    "payload": {
+      "ping_id": "ping_001",
+      "lead_reference": "ref_xyz789",
+      "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "country_code": "AU",
+      "state_region": "NSW",
+      "postal_code": "2000",
+      "vertical": "mortgage",
+      "attributes": {
+        "loan_type": "refinance",
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "compliance_flags": {
+        "consent": true,
+        "otp_verified": true,
+        "dnc_checked": true
+      },
+      "floor_price_cents": 1500,
+      "currency": "AUD",
+      "expires_at": "2026-08-15T10:25:05Z"
+    }
+  }
+}

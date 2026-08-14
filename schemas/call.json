@@ -4,7 +4,7 @@
   "title": "LCP Call Message",
   "description": "Telephony lead message. Structurally distinct from form-based lead — carries call-specific blocks (IVR, durations, recording, disposition).",
   "type": "object",
-  "required": ["lead_id", "call_id", "status", "channel", "consumer", "location", "call"],
+  "required": ["lead_id", "status", "channel", "consumer", "location", "call"],
   "properties": {
     "lead_id": { "type": "string" },
     "external_id": { "type": "string" },
@@ -25,8 +25,8 @@
         "call_id": { "type": "string", "description": "Unique call identifier." },
         "status": {
           "type": "string",
-          "enum": ["answered", "no_answer", "busy", "failed", "voicemail"],
-          "description": "Open enumeration — receivers must store/pass through unknown values."
+          "description": "OPEN ENUMERATION — known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
+          "$comment": "Open enumeration per SPEC.md §6."
         },
         "hangup_cause": { "type": "string" },
         "direction": { "type": "string", "enum": ["inbound", "outbound"] },

@@ -1,0 +1,87 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "660e8400-e29b-41d4-a716-446655440001",
+      "type": "call",
+      "timestamp": "2026-08-15T11:05:00Z",
+      "sender_id": "pub_456",
+      "receiver_id": "spx",
+      "correlation_id": null,
+      "idempotency_key": "pub-call-20260815-001",
+      "test": false
+    },
+    "payload": {
+      "lead_id": "lead_def456",
+      "external_id": "pub-internal-789",
+      "status": "NEW",
+      "channel": "call",
+      "consumer": {
+        "first_name": "Michael",
+        "last_name": "Nguyen",
+        "phone": "+6498765432",
+        "locale": "en-NZ"
+      },
+      "location": {
+        "country_code": "NZ",
+        "state_region": "AUK",
+        "postal_code": "1010",
+        "city": "Auckland",
+        "timezone": "Pacific/Auckland"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T11:04:30Z",
+        "consent_purposes": ["calls"],
+        "otp_verified": false,
+        "dnc_checked": true,
+        "call_recording_id": "rec_xyz789"
+      },
+      "provenance": {
+        "received_at": "2026-08-15T11:05:01Z",
+        "source_type": "publisher",
+        "source_id": "pub_456",
+        "campaign_id": "camp_insurance_nz_2026"
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "first_home_buyer",
+        "loan_amount_band": "250k_500k",
+        "property_type": "condo",
+        "credit_rating_band": "good",
+        "employment_status": "employed",
+        "annual_income_band": "80k_100k",
+        "is_first_home_buyer": true,
+        "has_existing_mortgage": false
+      },
+      "call": {
+        "call_id": "call_20260815_001",
+        "status": "answered",
+        "direction": "inbound",
+        "did": "+6491234567",
+        "caller_phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "started_at": "2026-08-15T11:04:00Z",
+        "durations": {
+          "total_seconds": 185,
+          "ivr_seconds": 22,
+          "hold_seconds": 8,
+          "agent_seconds": 155
+        },
+        "recording": {
+          "url": "https://storage.example.com/recordings/call_001.mp3",
+          "transcript_url": "https://storage.example.com/transcripts/call_001.txt",
+          "storage_ref": "s3://recordings/2026/08/call_001.mp3"
+        },
+        "ivr": {
+          "digits": "1,3",
+          "path": "sales > mortgage > refinance"
+        },
+        "disposition": "qualified_lead",
+        "agent": {
+          "id": "agent_007",
+          "name": "Sarah"
+        }
+      }
+    }
+  }
+}

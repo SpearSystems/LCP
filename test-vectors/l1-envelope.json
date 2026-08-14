@@ -1,0 +1,130 @@
+{
+  "suite": "L1",
+  "description": "Envelope structure, required fields, idempotency, valid timestamps, ack.",
+  "vectors": [
+    {
+      "id": "L1-001",
+      "name": "valid_lead_envelope",
+      "expect": "pass",
+      "file": "lead.json",
+      "checks": ["envelope_schema", "required_fields", "idempotency_key", "uuid_message_id", "iso_timestamp"]
+    },
+    {
+      "id": "L1-002",
+      "name": "valid_call_envelope",
+      "expect": "pass",
+      "file": "call.json",
+      "checks": ["envelope_schema", "required_fields", "idempotency_key", "uuid_message_id", "iso_timestamp"]
+    },
+    {
+      "id": "L1-003",
+      "name": "valid_ack_envelope",
+      "expect": "pass",
+      "file": "ack.json",
+      "checks": ["envelope_schema", "required_fields", "idempotency_key", "uuid_message_id", "iso_timestamp"]
+    },
+    {
+      "id": "L1-004",
+      "name": "missing_idempotency_key",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx"
+          },
+          "payload": {}
+        }
+      },
+      "checks": ["envelope_schema"]
+    },
+    {
+      "id": "L1-005",
+      "name": "missing_version",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "payload": {
+        "lcp": {
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "test-001"
+          },
+          "payload": {}
+        }
+      },
+      "checks": ["envelope_schema"]
+    },
+    {
+      "id": "L1-006",
+      "name": "invalid_uuid_message_id",
+      "expect": "fail",
+      "error_code": "LCP-001",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "not-a-uuid",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "test-001"
+          },
+          "payload": {}
+        }
+      },
+      "checks": ["envelope_schema"]
+    },
+    {
+      "id": "L1-007",
+      "name": "unknown_message_type",
+      "expect": "fail",
+      "error_code": "LCP-006",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "bid",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "test-001"
+          },
+          "payload": {}
+        }
+      },
+      "checks": ["envelope_schema"]
+    },
+    {
+      "id": "L1-008",
+      "name": "invalid_timestamp_format",
+      "expect": "fail",
+      "error_code": "LCP-001",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026/08/15 10:20",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "test-001"
+          },
+          "payload": {}
+        }
+      },
+      "checks": ["envelope_schema"]
+    }
+  ]
+}

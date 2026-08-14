@@ -9,8 +9,8 @@
     "lead_id": { "type": "string" },
     "event": {
       "type": "string",
-      "description": "Lifecycle event. Open enumeration — unknown values must be stored and passed through, not rejected.",
-      "enum": ["DELIVERED", "ACCEPTED", "REJECTED", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED"]
+      "description": "Lifecycle event. OPEN ENUMERATION — known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected. Adding new values is a MINOR version bump, not breaking.",
+      "$comment": "No enum constraint — this is an open enumeration per SPEC.md §6. Receivers must accept any string value."
     },
     "timestamp": { "type": "string", "format": "date-time" },
     "details": { "type": "object", "additionalProperties": true },

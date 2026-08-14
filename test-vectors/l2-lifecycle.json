@@ -1,0 +1,295 @@
+{
+  "suite": "L2",
+  "description": "Full lifecycle, ping/post PII split (strict allowlist), compliance records.",
+  "vectors": [
+    {
+      "id": "L2-001",
+      "name": "valid_lead_payload",
+      "expect": "pass",
+      "file": "lead.json",
+      "checks": [
+        "lead_schema",
+        "consumer_required_fields",
+        "location_required",
+        "attributes_vertical_version"
+      ]
+    },
+    {
+      "id": "L2-002",
+      "name": "valid_call_payload",
+      "expect": "pass",
+      "file": "call.json",
+      "checks": [
+        "call_schema",
+        "call_block_required",
+        "consumer_required_fields"
+      ]
+    },
+    {
+      "id": "L2-003",
+      "name": "valid_ping_no_pii",
+      "expect": "pass",
+      "file": "ping.json",
+      "checks": [
+        "ping_schema",
+        "ping_allowlist_no_pii",
+        "ping_safe_attributes_only"
+      ]
+    },
+    {
+      "id": "L2-004",
+      "name": "valid_post_full_pii",
+      "expect": "pass",
+      "file": "post.json",
+      "checks": [
+        "post_schema",
+        "consumer_full_pii",
+        "compliance_full_evidence"
+      ]
+    },
+    {
+      "id": "L2-005",
+      "name": "valid_event_lifecycle",
+      "expect": "pass",
+      "file": "event.json",
+      "checks": [
+        "event_schema",
+        "event_open_enum"
+      ]
+    },
+    {
+      "id": "L2-006",
+      "name": "valid_ack_accepted",
+      "expect": "pass",
+      "file": "ack.json",
+      "checks": [
+        "ack_schema",
+        "ack_no_errors_when_accepted"
+      ]
+    },
+    {
+      "id": "L2-007",
+      "name": "ping_contains_pii_email",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440002",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "spx",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "spx-ping-bad-001"
+          },
+          "payload": {
+            "ping_id": "ping_bad",
+            "lead_reference": "ref_bad",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mortgage",
+            "floor_price_cents": 1500,
+            "currency": "AUD",
+            "email": "jane.smith@example.com"
+          }
+        }
+      },
+      "checks": [
+        "ping_schema",
+        "ping_allowlist_no_pii"
+      ]
+    },
+    {
+      "id": "L2-008",
+      "name": "ping_contains_pii_first_name",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440002",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "spx",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "spx-ping-bad-002"
+          },
+          "payload": {
+            "ping_id": "ping_bad2",
+            "lead_reference": "ref_bad2",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mortgage",
+            "floor_price_cents": 1500,
+            "currency": "AUD",
+            "first_name": "Jane"
+          }
+        }
+      },
+      "checks": [
+        "ping_schema",
+        "ping_allowlist_no_pii"
+      ]
+    },
+    {
+      "id": "L2-009",
+      "name": "ping_attributes_contain_non_ping_safe_field",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "description": "Attributes contains loan_amount_cents which is ping_safe: false in mortgage.json. The conformance runner must reject this.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440002",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "spx",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "spx-ping-bad-003"
+          },
+          "payload": {
+            "ping_id": "ping_bad3",
+            "lead_reference": "ref_bad3",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k"
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_safe_attributes_only"
+      ]
+    },
+    {
+      "id": "L2-010",
+      "name": "lead_missing_consumer_contact",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "description": "Consumer has no name, email, or phone \u2014 violates anyOf requirement.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "pub-lead-bad-001"
+          },
+          "payload": {
+            "lead_id": "lead_bad",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "dob": "1990-01-01"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema"
+      ]
+    },
+    {
+      "id": "L2-011",
+      "name": "lead_invalid_phone_format",
+      "expect": "fail",
+      "error_code": "LCP-009",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "pub-lead-bad-002"
+          },
+          "payload": {
+            "lead_id": "lead_bad2",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "phone": "0412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema"
+      ]
+    },
+    {
+      "id": "L2-012",
+      "name": "lead_non_western_name_full_name_only",
+      "expect": "pass",
+      "description": "Consumer uses full_name only (no first_name/last_name) \u2014 valid for non-Western names.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "spx",
+            "idempotency_key": "pub-lead-cn-001"
+          },
+          "payload": {
+            "lead_id": "lead_cn_001",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Li Wei",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC",
+              "postal_code": "3000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "purchase",
+              "loan_amount_band": "250k_500k",
+              "credit_rating_band": "good"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "consumer_required_fields"
+      ]
+    }
+  ]
+}

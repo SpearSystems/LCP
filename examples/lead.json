@@ -1,0 +1,85 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "lead",
+      "timestamp": "2026-08-15T10:20:00Z",
+      "sender_id": "pub_123",
+      "receiver_id": "spx",
+      "correlation_id": null,
+      "idempotency_key": "pub-lead-20260815-001",
+      "test": false
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "external_id": "pub-internal-456",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true
+      },
+      "provenance": {
+        "received_at": "2026-08-15T10:20:01Z",
+        "source_type": "publisher",
+        "source_id": "pub_123",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage"
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
+      },
+      "expiry": {
+        "expires_at": "2026-08-15T10:50:00Z"
+      }
+    }
+  }
+}

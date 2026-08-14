@@ -1,0 +1,92 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "880e8400-e29b-41d4-a716-446655440003",
+      "type": "post",
+      "timestamp": "2026-08-15T10:20:10Z",
+      "sender_id": "spx",
+      "receiver_id": "buyer_001",
+      "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+      "idempotency_key": "spx-post-lead_abc123-001",
+      "test": false
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "delivered_at": "2026-08-15T10:20:10Z",
+      "price_cents": 2200,
+      "currency": "AUD",
+      "buyer_id": "buyer_001",
+      "buyer_reference": "buyer-internal-987",
+      "pricing": {
+        "floor_price_cents": 1500,
+        "premium_cents": 700,
+        "final_price_cents": 2200,
+        "uncapped_price_cents": 2500,
+        "max_allowed_price_cents": 3000,
+        "price_guardrails": true,
+        "is_duplicate_resub": false
+      },
+      "matched_preferences": {
+        "states": ["NSW"],
+        "loan_types": ["refinance", "cash_out_refinance"],
+        "credit_bands": ["excellent", "good"]
+      },
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "provenance": {
+        "received_at": "2026-08-15T10:20:01Z",
+        "source_type": "publisher",
+        "source_id": "pub_123",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage"
+      }
+    }
+  }
+}
