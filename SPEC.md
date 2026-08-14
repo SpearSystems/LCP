@@ -209,6 +209,13 @@ Vertical schemas MUST NOT redefine core field names (`phone`, `email`,
 `first_name`, `last_name`, `full_name`, `country_code`, etc.) inside
 `attributes` — core field names are reserved. See §12.
 
+When a vertical needs country-specific data (e.g. mortgage product
+types like HELOC, FHA, VA, etc.), model it as a country-scoped object
+within the vertical schema — NOT as separate per-country vertical files.
+Each country-scoped object has a `country_code` (ISO 3166-1 alpha-2)
+required field and nullable country-specific enum fields. See AGENTS.md
+rule 7 for details.
+
 Performance metrics (speed-to-contact, contact rate, close rate, close
 value) are **buyer-side analytics**, not lead data. They belong in the
 extensions mechanism, not in the core or vertical schemas:

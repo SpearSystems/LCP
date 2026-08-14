@@ -43,6 +43,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Webhook signing documentation (same HMAC scheme)
 - `transferred_from` + `queue` blocks on call
 - 11 new mortgage fields (rate term, cash-out, bankruptcy, foreclosure, etc.)
+- `mortgage_product` object in mortgage vertical — country-scoped product enums (US: conventional, FHA, VA, HELOC, jumbo, USDA; CA: insured, insurable, uninsured; GB: standard_variable, discount, tracker, offset; AU: principal_and_interest, interest_only, offset)
+- Country-scoping rule for vertical schemas (AGENTS.md rule 7, SPEC.md §3)
 
 ## [1.0.0-draft] — 2026-08-15
 

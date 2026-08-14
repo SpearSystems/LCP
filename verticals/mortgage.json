@@ -147,6 +147,44 @@
       "type": "boolean",
       "description": "For self-employed leads, whether income has been verified (bank statements, tax returns).",
       "ping_safe": true
+    },
+    "mortgage_product": {
+      "type": "object",
+      "description": "Country-specific mortgage product. Include only fields relevant to your country; all others MAY be null or omitted. Follows the country-scoping rule in AGENTS.md §7.",
+      "properties": {
+        "country_code": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code (e.g. US, CA, GB, AU).",
+          "ping_safe": true
+        },
+        "us_product": {
+          "type": ["string", "null"],
+          "enum": ["conventional", "fha", "va", "heloc", "jumbo", "usda", null],
+          "description": "US mortgage product type. Null if not US.",
+          "ping_safe": true
+        },
+        "ca_product": {
+          "type": ["string", "null"],
+          "enum": ["insured", "insurable", "uninsured", null],
+          "description": "Canadian mortgage product type. Null if not CA.",
+          "ping_safe": true
+        },
+        "gb_product": {
+          "type": ["string", "null"],
+          "enum": ["standard_variable", "discount", "tracker", "offset", null],
+          "description": "UK mortgage product type. Null if not GB.",
+          "ping_safe": true
+        },
+        "au_product": {
+          "type": ["string", "null"],
+          "enum": ["principal_and_interest", "interest_only", "offset", null],
+          "description": "Australian mortgage product type. Null if not AU.",
+          "ping_safe": true
+        }
+      },
+      "required": ["country_code"],
+      "additionalProperties": false,
+      "ping_safe": true
     }
   },
   "additionalProperties": false

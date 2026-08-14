@@ -56,6 +56,18 @@ docs/              Design notes and research
   `country_code`, etc.) inside `attributes` — core field names are
   reserved.
 
+7. **Country-scoped fields in verticals.** When a vertical needs
+  country-specific data (e.g. mortgage product types like HELOC, FHA,
+  VA, etc.), model it as a country-scoped object within the vertical
+  schema — NOT as separate per-country vertical files. Each
+  country-scoped object has a `country_code` (ISO 3166-1 alpha-2)
+  required field and nullable country-specific enum fields. This keeps
+  the number of schemas manageable for global buyers. Exception: if a
+  country requires a fundamentally different set of fields (not just
+  different enums), a separate vertical file MAY be created, but this
+  requires a design discussion. New verticals MUST justify their
+  country-scoping strategy in their schema description.
+
 ## Quality gate
 
 - Every schema in `schemas/` and `verticals/` must validate its
