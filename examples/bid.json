@@ -1,0 +1,24 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "bb1e8400-e29b-41d4-a716-446655440006",
+      "type": "bid",
+      "timestamp": "2026-08-15T10:20:08Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "770e8400-e29b-41d4-a716-446655440002",
+      "idempotency_key": "buyer-001-bid-ping_001-001",
+      "test": false
+    },
+    "payload": {
+      "ping_id": "ping_001",
+      "decision": "accept",
+      "bid_price_cents": 2200,
+      "currency": "AUD",
+      "estimated_contact_seconds": 45,
+      "buyer_reference": "buyer-internal-bid-001",
+      "capacity_remaining": 47
+    }
+  }
+}

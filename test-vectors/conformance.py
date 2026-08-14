@@ -79,7 +79,7 @@ def make_validator(schema: dict) -> Draft202012Validator:
 # --- Message schema registry -------------------------------------------------
 
 _validators: Dict[str, Draft202012Validator] = {}
-for _msg_type in ["lead", "call", "ping", "post", "ack", "event"]:
+for _msg_type in ["lead", "call", "ping", "post", "ack", "event", "bid"]:
     _validators[_msg_type] = make_validator(load_schema(_msg_type))
 
 _envelope_validator = make_validator(load_schema("envelope"))

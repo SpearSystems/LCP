@@ -15,5 +15,6 @@ as agent tools. Generic: works with any LCP-compliant endpoint.
 | `get_schema` | `GET /v1/lcp/schemas/{name}` | Retrieve a JSON Schema (falls back to local repo) |
 | `get_capabilities` | `GET /v1/lcp/capabilities` | Discover endpoint capabilities |
 | `list_offers` | `GET /v1/lcp/offers` | List active offers |
+| `submit_bid` | `POST /v1/lcp/bids` | Submit a bid in response to a ping |
 
 See [mcp-server/README.md](mcp-server/README.md) for setup and configuration.

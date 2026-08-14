@@ -8,6 +8,7 @@
   "properties": {
     "lead_id": { "type": "string" },
     "external_id": { "type": "string" },
+    "submitted_at": { "type": "string", "format": "date-time", "description": "When the call was initiated (distinct from provenance.received_at)." },
     "status": { "$ref": "core.json#/$defs/status" },
     "channel": { "type": "string", "const": "call", "description": "Always 'call' for call messages." },
     "consumer": { "$ref": "core.json#/$defs/consumer" },

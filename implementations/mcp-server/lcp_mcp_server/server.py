@@ -143,6 +143,23 @@ async def list_tools() -> list[types.Tool]:
                 },
             },
         ),
+        types.Tool(
+            name="submit_bid",
+            description="Submit a bid in response to a ping. The platform collects all bids and selects the winner. The winner receives a post with full PII.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ping_id": {"type": "string", "description": "ID of the ping being responded to."},
+                    "decision": {"type": "string", "enum": ["accept", "reject", "pass"], "description": "accept = bid for the lead; reject = do not want; pass = decline to bid."},
+                    "bid_price_cents": {"type": "integer", "minimum": 0, "description": "Bid price in cents. Required when decision = accept."},
+                    "currency": {"type": "string", "description": "ISO 4217 currency code (e.g. AUD, USD)."},
+                    "estimated_contact_seconds": {"type": "integer", "minimum": 0, "description": "Estimated time-to-contact in seconds."},
+                    "buyer_reference": {"type": "string", "description": "Buyer's internal tracking reference."},
+                    "reject_reason": {"type": "string", "description": "Why rejected (optional)."},
+                },
+                "required": ["ping_id", "decision"],
+            },
+        ),
     ]
 
 
@@ -197,6 +214,25 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     elif name == "list_offers":
         vertical = arguments.get("vertical")
         result = client.list_offers(vertical)
+        return _tool_result(result)
+
+    elif name == "submit_bid":
+        ping_id = arguments.get("ping_id", "")
+        decision = arguments.get("decision", "pass")
+        bid_price = arguments.get("bid_price_cents", 0)
+        currency = arguments.get("currency", "USD")
+        payload = {
+            "ping_id": ping_id,
+            "decision": decision,
+            "bid_price_cents": bid_price,
+            "currency": currency,
+        }
+        for opt_field in ["estimated_contact_seconds", "buyer_reference", "reject_reason"]:
+            if opt_field in arguments:
+                payload[opt_field] = arguments[opt_field]
+        receiver_id = "platform"  # bids go to the platform, not a buyer
+        envelope = _make_envelope("bid", client.sender_id, receiver_id, payload)
+        result = client.post("/v1/lcp/bids", envelope)
         return _tool_result(result)
 
     else:

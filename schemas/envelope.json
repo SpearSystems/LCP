@@ -27,7 +27,7 @@
             },
             "type": {
               "type": "string",
-              "enum": ["lead", "call", "ping", "post", "ack", "event"],
+              "enum": ["lead", "call", "ping", "post", "ack", "event", "bid"],
               "description": "Message type. Closed enumeration — unknown types trigger LCP-006."
             },
             "timestamp": {

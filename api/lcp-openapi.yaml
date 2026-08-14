@@ -36,6 +36,8 @@ tags:
   description: Endpoint capability discovery
 - name: Offers
   description: Offer listing
+- name: Bids
+  description: Bid submission in response to pings
 paths:
   /leads:
     post:
@@ -307,6 +309,83 @@ paths:
                           type: boolean
                         reject_blacklist_flagged:
                           type: boolean
+  /bids:
+    post:
+      tags:
+      - Bids
+      summary: Submit a bid in response to a ping
+      description: Buyer responds to a ping with their bid. The platform collects all bids and selects the winner.
+      operationId: submitBid
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - lcp
+              properties:
+                lcp:
+                  type: object
+                  required:
+                  - version
+                  - message
+                  - payload
+                  properties:
+                    version:
+                      type: string
+                      pattern: ^\d+\.\d+\.\d+$
+                    message:
+                      type: object
+                      required:
+                      - id
+                      - type
+                      - timestamp
+                      - sender_id
+                      - receiver_id
+                      - idempotency_key
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        type:
+                          type: string
+                          enum:
+                          - bid
+                        timestamp:
+                          type: string
+                          format: date-time
+                        sender_id:
+                          type: string
+                        receiver_id:
+                          type: string
+                        correlation_id:
+                          type:
+                          - string
+                          - 'null'
+                        idempotency_key:
+                          type: string
+                        test:
+                          type: boolean
+                          default: false
+                    payload:
+                      $ref: '#/components/schemas/BidPayload'
+      responses:
+        '200':
+          description: Bid received
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ack'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 components:
   parameters:
     IdempotencyKey:
@@ -632,6 +711,38 @@ components:
             payload:
               type: object
               description: Call payload - see schemas/call.json for full definition.
+    BidPayload:
+      type: object
+      required:
+      - ping_id
+      - decision
+      - bid_price_cents
+      - currency
+      properties:
+        ping_id:
+          type: string
+        decision:
+          type: string
+          enum:
+          - accept
+          - reject
+          - pass
+        bid_price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        estimated_contact_seconds:
+          type: integer
+          minimum: 0
+        buyer_reference:
+          type: string
+        reject_reason:
+          type: string
+        capacity_remaining:
+          type: integer
+          minimum: 0
   securitySchemes:
     BearerAuth:
       type: http

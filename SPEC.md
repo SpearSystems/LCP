@@ -296,6 +296,7 @@ addresses accidental resubmission.
 | `lead` | Intake (form/chat/click/api/agent/referral) | Full |
 | `call` | Telephony lead | Full |
 | `ping` | Non-PII offer to buyers | None (hashes only) |
+| `bid` | Buyer's response to a ping (price, decision) | None |
 | `post` | Full delivery to winning buyer | Full |
 | `ack` | Response to any message | None |
 | `event` | Lifecycle notification | None |
@@ -360,6 +361,38 @@ The conformance runner mechanically validates:
 1. Ping payload has no fields outside the allowlist (`additionalProperties: false`).
 2. Every field in `attributes` is tagged `ping_safe: true` in the vertical schema.
 3. No `consumer`, `compliance` (full), `provenance` (full), or other PII-bearing block is present.
+
+### bid
+
+Buyer's response to a ping. No PII — the buyer has not received the
+lead yet, only the ping attributes.
+
+| Field | Type | Notes |
+|---|---|---|
+| `ping_id` | string | ID of the ping being responded to. |
+| `decision` | string | `accept` (wants the lead at bid price), `reject` (does not want), `pass` (declines to bid). |
+| `bid_price_cents` | integer | Bid price in cents. Required when `decision = accept`. |
+| `currency` | string | ISO 4217. |
+| `estimated_contact_seconds` | integer | Estimated time-to-contact. For speed-to-contact routing. |
+| `buyer_reference` | string | Buyer's internal tracking reference. |
+| `reject_reason` | string | Why rejected (e.g. `out_of_hours`, `capacity_full`, `vertical_mismatch`). Open enum. |
+| `capacity_remaining` | integer | Remaining capacity after this bid. Helps platform route future pings. |
+
+The ping/bid/post flow:
+
+```
+Platform ──ping──► Buyer A ──bid(accept, $22)──► Platform
+         ──ping──► Buyer B ──bid(accept, $18)──► Platform
+         ──ping──► Buyer C ──bid(pass)─────────► Platform
+
+Platform selects Buyer A (highest bid)
+Platform ──post──► Buyer A (full PII delivered)
+```
+
+The platform collects bids within the ping expiry window. The winner is
+selected by the platform's routing logic (highest bid, fastest estimated
+contact, exclusivity rules, etc.). The platform then sends a `post` to
+the winner. Losers receive no further messages (no PII was shared).
 
 ### post
 
@@ -671,9 +704,9 @@ concept. The MCP binding maps this to MCP identity; other bindings
 
 The official reference MCP server (see
 [implementations/mcp-server/](implementations/mcp-server/)) exposes:
-`submit_lead`, `submit_call`, `query_lead_status`, `get_schema`,
-`get_capabilities`, `list_offers`. It is a thin adapter — the core
-never depends on MCP.
+`submit_lead`, `submit_call`, `submit_bid`, `query_lead_status`,
+`get_schema`, `get_capabilities`, `list_offers`. It is a thin adapter —
+the core never depends on MCP.
 
 > **Future:** `submit_leads_batch` and `subscribe_to_events` (webhook/
 > push delivery) are planned for v1.1. The current single-item, pull-

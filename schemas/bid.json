@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/bid.json",
+  "title": "LCP Bid Message",
+  "description": "Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner.",
+  "type": "object",
+  "required": ["ping_id", "decision", "bid_price_cents", "currency"],
+  "properties": {
+    "ping_id": { "type": "string", "description": "ID of the ping being responded to." },
+    "decision": {
+      "type": "string",
+      "enum": ["accept", "reject", "pass"],
+      "description": "accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason)."
+    },
+    "bid_price_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass."
+    },
+    "currency": { "$ref": "core.json#/$defs/currency" },
+    "estimated_contact_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional."
+    },
+    "buyer_reference": {
+      "type": "string",
+      "description": "Buyer's internal reference for this bid (for tracking)."
+    },
+    "reject_reason": {
+      "type": "string",
+      "description": "Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional."
+    },
+    "capacity_remaining": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional."
+    }
+  },
+  "additionalProperties": false
+}
