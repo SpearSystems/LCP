@@ -16,8 +16,19 @@
     "compliance": { "$ref": "core.json#/$defs/compliance" },
     "provenance": { "$ref": "core.json#/$defs/provenance" },
     "attributes": { "$ref": "core.json#/$defs/attributes" },
-    "expiry": { "$ref": "core.json#/$defs/expiry" },
-    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" }
+    "exclusivity": { "$ref": "core.json#/$defs/exclusivity" },
+    "contact_window": {
+      "type": "object",
+      "description": "Optional. Publisher hint for when the consumer is available to be contacted.",
+      "properties": {
+        "timezone": { "type": "string", "description": "IANA timezone for the window times (e.g. Australia/Sydney)." },
+        "available_from": { "type": "string", "description": "Local time HH:MM format (24h)." },
+        "available_to": { "type": "string", "description": "Local time HH:MM format (24h)." },
+        "days": { "type": "array", "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }, "description": "Days of week the consumer is available." }
+      },
+      "additionalProperties": false
+    },
+    "expiry": { "$ref": "core.json#/$defs/expiry" }
   },
   "additionalProperties": false
 }

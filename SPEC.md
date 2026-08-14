@@ -122,6 +122,7 @@ evidence array — no vendor-specific fields are baked into the core.
 | `consent_purposes` | array\<string\> | What was consented to (e.g. `"calls"`, `"sms"`, `"email"`, `"share_with_partners"`). Consent *scope* is what gets litigated — capture it. |
 | `consent_evidence` | array\<object\> | Structured evidence records. See below. |
 | `otp_verified` | boolean | One-time-passcode verified. |
+| `otp` | object | OTP details: `channel` (sms/email/voice), `verified_at`, `verified_value_hash`. |
 | `session_capture_id` | string | Session replay reference (e.g. rrweb). |
 | `call_recording_id` | string | Call recording reference. |
 | `dnc_checked` | boolean | Do-not-call list checked. |
@@ -152,7 +153,9 @@ provider examples in [Appendix A](#appendix-a-consent-evidence-provider-examples
 
 `received_at`, `source_type` (publisher|direct|agent|api|referral),
 `source_id`, `source_url`, `ip_hash`, `user_agent_hash`, `funnel_key`,
-`flow_key`, `campaign_id`, `creative_id`, `landing_page_url`.
+`flow_key`, `campaign_id`, `creative_id`, `landing_page_url`,
+`platform_source` (google_ads|facebook|tiktok|bing_ads|organic|direct,
+open enum).
 
 Agent-specific provenance (when `source_type` = `agent`):
 
@@ -263,7 +266,9 @@ addresses accidental resubmission.
 
 `consumer` + `location` + `compliance` + `provenance` + `attributes` +
 `external_id` + `submitted_at` + `channel` (form|chat|click|api|agent|
-referral) + optional `expires_at` / `ttl_seconds` + optional `exclusivity`.
+referral) + optional `expires_at` / `ttl_seconds` + optional `exclusivity`
++ optional `contact_window` (timezone, available_from/to, days — publisher
+hint for when the consumer can be contacted).
 
 ### call
 

@@ -54,11 +54,19 @@
         },
         "ivr": {
           "type": "object",
+          "description": "IVR menu interaction data. Core fields are universal; platform-specific IVR data goes in extensions.",
           "properties": {
-            "digits": { "type": "string" },
-            "path": { "type": "string", "description": "IVR menu path taken." }
+            "digits": { "type": "string", "description": "DTMF digits pressed during IVR." },
+            "path": { "type": "string", "description": "IVR menu path taken (e.g. 'sales > mortgage > refinance')." },
+            "language": { "type": "string", "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US')." },
+            "abandoned": { "type": "boolean", "description": "True if the caller dropped during IVR before reaching an agent." },
+            "menu_options_selected": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Ordered list of menu option labels selected."
+            }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "disposition": { "type": "string" },
         "transferred_from": {

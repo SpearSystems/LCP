@@ -77,7 +77,17 @@
           "type": "array",
           "items": { "$ref": "core.json#/$defs/consent_evidence_entry" }
         },
-        "otp_verified": { "type": "boolean" },
+        "otp_verified": { "type": "boolean", "description": "One-time-passcode verified." },
+        "otp": {
+          "type": "object",
+          "description": "OTP verification details. Optional — if present, otp_verified should be true.",
+          "properties": {
+            "channel": { "type": "string", "enum": ["sms", "email", "voice"], "description": "How the OTP was delivered." },
+            "verified_at": { "type": "string", "format": "date-time" },
+            "verified_value_hash": { "type": "string", "description": "Hash of the value that was verified (phone or email). Do not include the raw value." }
+          },
+          "additionalProperties": false
+        },
         "session_capture_id": { "type": "string", "description": "Session replay reference (e.g. rrweb)." },
         "call_recording_id": { "type": "string" },
         "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." }
@@ -104,6 +114,7 @@
         "campaign_id": { "type": "string" },
         "creative_id": { "type": "string" },
         "landing_page_url": { "type": "string", "format": "uri" },
+        "platform_source": { "type": "string", "description": "Ad/marketing platform the lead originated from (e.g. google_ads, facebook, tiktok, bing_ads, organic, direct). Open enumeration." },
         "agent": {
           "type": "object",
           "title": "Agent Provenance",
