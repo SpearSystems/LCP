@@ -1,5 +1,15 @@
 # LCP — Deep Research Prompt (cross-LLM review)
 
+> **Status: historical artifact.** This prompt was used to stress-test the
+> LCP v1.0 design before implementation. The review it generated
+> (`lcp-deep-research-review.md`) is resolved — all 5 blockers and 15
+> should-fixes are addressed in SPEC.md (see §14 review-log appendix).
+> This file is kept for provenance — it documents the adversarial review
+> process the spec went through. It does not reflect the current state of
+> the spec (e.g. it references the old blocklist ping model, unsalted
+> SHA-256 phone hash, and US vendor fields in core — all of which have
+> been fixed).
+
 > Purpose: run this prompt through several frontier LLMs to stress-test
 > the LCP v1.0 design before implementation. The goal is a bulletproof,
 > universally applicable lead exchange protocol. Collect their critiques,

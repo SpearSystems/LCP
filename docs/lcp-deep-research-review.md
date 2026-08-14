@@ -1,5 +1,11 @@
 # LCP v1.0 — Deep Research Review
 
+> **Status: resolved.** All 5 blockers and 15 should-fixes in this review
+> have been addressed in SPEC.md (see §14 review-log appendix). This file
+> is kept for provenance — it documents the adversarial review the spec
+> passed before v1.0. The findings below describe the spec as it was
+> *before* the fixes, not as it is now.
+
 **Reviewer role:** senior protocol architect, adversarial pass
 **Reviewed:** SPEC.md (canonical), cross-checked against AGENTS.md rules, README.md, and the deep-research prompt itself
 **Date:** 2026-08-15

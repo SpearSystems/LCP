@@ -858,19 +858,27 @@ Findings from the deep-research review
 | Finding | Trigger | Planned resolution |
 |---|---|---|
 | Batch submission (`submit_leads_batch`) | Agent submission volume grows | Add as MCP tool + REST endpoint |
-| Push delivery (webhook/event subscription) | Polling at volume becomes costly | Add `subscribe_to_events` MCP tool |
-| `governance/SECURITY.md` | Before public launch | Responsible disclosure process |
-| Trademark/usage policy | Before public launch | "LCP compliant" usage rules |
-| `locale`/language field | Added to v1.0 as optional — may need broader use | §3 consumer |
+| Push delivery (webhook/event subscription) | Polling at volume becomes costly | Add `subscribe_to_events` MCP tool + `POST /v1/lcp/events/subscribe` |
+| Platform quality score in ping/post | Platforms want to share independent scoring | Extensions namespace `{org}.platform.assessment` |
+| Delivery receipt (`PROCESSED` ack status) | Buyer CRM sync failures need detection | Add `PROCESSED` to ack status enum |
+| Vertical-specific buyer criteria in offers | Complex matching rules per vertical | Extensions namespace `{org}.buyer.criteria` |
+| Raw IP address in post (full PII context) | Fraud detection + geo-validation | Add `ip_address` to provenance (post only, not ping) |
+| Raw form submission data | Dispute evidence — what consumer actually entered | Extensions namespace `{org}.intake.raw_form` |
+| Multi-currency pricing | Cross-border lead-gen (US buyer purchasing AU leads) | `price_cents_original` + `fx_rate` fields, or bilateral |
+| Core schema version in envelope | Schema-level breaking change detection | `core_schema_version` in message block, or document that protocol version = core schema version |
+| Address fields in core (`street_address`) | Multiple verticals need consumer residential address | Add to `location` or document as vertical-specific |
+| Spec site (LEX-style) | Adoption grows beyond GitHub | Static site render of SPEC.md |
 
 ### Deferred to v1.1+ (with trigger)
 
 | Finding | Trigger |
 |---|---|
-| Erasure/DSAR message type | Operating in a market with statutory erasure obligations |
 | Agent-to-agent price negotiation | Agent bidding volume large enough that static floor pricing is suboptimal |
 | Formal sensitivity taxonomy for PII | A market regulates a category not covered (e.g. biometric) |
 | Multi-maintainer governance | External contributors adopt LCP |
+| LEP (LCP Enhancement Proposal) process | Community growth requires structured proposal workflow |
+| Hosted conformance sandbox | Self-hosted conformance runner is insufficient for certification |
+| Split SPEC.md into focused documents | Spec exceeds ~1000 lines or gets second major section |
 
 ### Naming
 

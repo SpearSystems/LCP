@@ -1,5 +1,12 @@
 # LCP Publishing Gap Analysis
 
+> **Status: resolved.** All high-priority and medium-priority gaps in this
+> analysis have been addressed (OpenAPI spec, CODE_OF_CONDUCT, CHANGELOG,
+> MAINTAINERS, ADOPTERS, GitHub templates, AI contribution policy, trust
+> model, bid message type, vertical schemas, platform integration guide).
+> This file is kept for provenance. Lower-priority items are tracked in
+> SPEC.md §14 deferred items tables.
+
 **Date:** 2026-08-15
 **Purpose:** Patterns and features LCP should borrow from LEX and MCP spec repos before publishing to GitHub.
 
