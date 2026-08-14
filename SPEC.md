@@ -422,7 +422,21 @@ additive MINOR change, not a breaking MAJOR change.
 
 `GET /v1/lcp/capabilities` → `{ lcp_versions, message_types,
 verticals[{id, schema_version}], countries, auth_methods, events,
-conformance_level }`.
+conformance_level, delivery_windows[] }`.
+
+`delivery_windows` is an optional array of time windows when the endpoint
+accepts lead/call delivery. Each entry:
+
+| Field | Type | Notes |
+|---|---|---|
+| `timezone` | string | IANA timezone for the window (e.g. `Australia/Sydney`). |
+| `available_from` | string | Local time `HH:MM` (24h). |
+| `available_to` | string | Local time `HH:MM` (24h). |
+| `days` | array\<string\> | `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`. |
+| `verticals` | array\<string\> | Optional — restricts window to specific verticals. |
+| `channels` | array\<string\> | Optional — restricts window to specific channels (e.g. `["call"]` for call-only buyers). |
+
+If `delivery_windows` is absent, the endpoint accepts delivery 24/7.
 
 `countries` is an array of ISO 3166-1 alpha-2 country codes the
 endpoint supports (e.g. `["AU", "NZ", "US"]`). This replaces the

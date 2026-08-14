@@ -418,6 +418,43 @@ components:
           - L1
           - L2
           - L3
+        delivery_windows:
+          type: array
+          description: Time windows when the endpoint accepts lead/call delivery. Absent = 24/7.
+          items:
+            type: object
+            properties:
+              timezone:
+                type: string
+                description: IANA timezone (e.g. Australia/Sydney).
+              available_from:
+                type: string
+                description: Local time HH:MM (24h).
+              available_to:
+                type: string
+                description: Local time HH:MM (24h).
+              days:
+                type: array
+                items:
+                  type: string
+                  enum:
+                  - mon
+                  - tue
+                  - wed
+                  - thu
+                  - fri
+                  - sat
+                  - sun
+              verticals:
+                type: array
+                items:
+                  type: string
+                description: Optional — restricts window to specific verticals.
+              channels:
+                type: array
+                items:
+                  type: string
+                description: Optional — restricts window to specific channels (e.g. call-only).
     LeadEnvelope:
       type: object
       required:
