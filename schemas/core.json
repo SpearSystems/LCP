@@ -80,11 +80,12 @@
         "otp_verified": { "type": "boolean", "description": "One-time-passcode verified." },
         "otp": {
           "type": "object",
-          "description": "OTP verification details. Optional — if present, otp_verified should be true.",
+          "description": "OTP verification details. Optional — if present, otp_verified should be true. The actual OTP code MUST NOT be included — it is ephemeral and poses a replay risk if leaked.",
           "properties": {
             "channel": { "type": "string", "enum": ["sms", "email", "voice"], "description": "How the OTP was delivered." },
             "verified_at": { "type": "string", "format": "date-time" },
-            "verified_value_hash": { "type": "string", "description": "Hash of the value that was verified (phone or email). Do not include the raw value." }
+            "verified_value_hash": { "type": "string", "description": "Hash of the value that was verified (phone or email). Do not include the raw value." },
+            "attempts": { "type": "integer", "minimum": 1, "description": "Number of OTP attempts before success. High counts may indicate fraud." }
           },
           "additionalProperties": false
         },

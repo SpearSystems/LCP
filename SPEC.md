@@ -122,7 +122,7 @@ evidence array — no vendor-specific fields are baked into the core.
 | `consent_purposes` | array\<string\> | What was consented to (e.g. `"calls"`, `"sms"`, `"email"`, `"share_with_partners"`). Consent *scope* is what gets litigated — capture it. |
 | `consent_evidence` | array\<object\> | Structured evidence records. See below. |
 | `otp_verified` | boolean | One-time-passcode verified. |
-| `otp` | object | OTP details: `channel` (sms/email/voice), `verified_at`, `verified_value_hash`. |
+| `otp` | object | OTP details: `channel` (sms/email/voice), `verified_at`, `verified_value_hash`, `attempts`. The actual OTP code MUST NOT be included — it is ephemeral and poses a replay risk. |
 | `session_capture_id` | string | Session replay reference (e.g. rrweb). |
 | `call_recording_id` | string | Call recording reference. |
 | `dnc_checked` | boolean | Do-not-call list checked. |
@@ -290,7 +290,11 @@ addresses accidental resubmission.
 `external_id` + `submitted_at` + `channel` (form|chat|click|api|agent|
 referral) + optional `expires_at` / `ttl_seconds` + optional `exclusivity`
 + optional `contact_window` (timezone, available_from/to, days — publisher
-hint for when the consumer can be contacted).
+hint for when the consumer can be contacted) + optional `lead_quality`
+(publisher-declared quality signals: `verified_phone`, `verified_email`,
+`verification{phone_method, phone_verified_by, phone_verified_at,
+email_method, email_verified_by, email_verified_at}`, `duplicate_risk`,
+`spam_risk_score`, `data_completeness`).
 
 ### call
 
