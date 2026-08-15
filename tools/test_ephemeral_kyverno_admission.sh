@@ -83,8 +83,10 @@ assert_rejected() {
   local expected_policy="$3"
   local output_file="${WORK_DIR}/${pod_name}.output"
 
-  set +e
-  kubectl --context "${CONTEXT}" create --dry-run=server -f - >"${output_file}" 2>&1 <<EOF
+  local status=0
+  for attempt in 1 2 3; do
+    set +e
+    kubectl --context "${CONTEXT}" create --dry-run=server -f - >"${output_file}" 2>&1 <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -94,8 +96,16 @@ spec:
     - name: app
       image: ${image}
 EOF
-  local status=$?
-  set -e
+    status=$?
+    set -e
+    if [[ "${status}" -ne 0 ]] && grep -Eiq 'denied|rejected|failed to verify|verification failed|signature not found|invalid signature|attestation|no matching (signature|attestation)|does not satisfy' "${output_file}"; then
+      break
+    fi
+    if [[ "${attempt}" -lt 3 ]]; then
+      echo "Admission verification for ${pod_name} was inconclusive; retrying (${attempt}/3)" >&2
+      sleep 5
+    fi
+  done
 
   if [[ "${status}" -eq 0 ]]; then
     cat "${output_file}"
