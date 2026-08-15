@@ -65,7 +65,8 @@ jobs:
           echo "${OSV_SCANNER_SHA256}  ${RUNNER_TEMP}/osv-scanner" | sha256sum --check --strict
           chmod +x "${RUNNER_TEMP}/osv-scanner"
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
-          osv-scanner version
+          # GITHUB_PATH only affects later steps; invoke the binary directly here.
+          "${RUNNER_TEMP}/osv-scanner" version
       - name: Scan all SDK lockfiles
         run: |
           set -euo pipefail
