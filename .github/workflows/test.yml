@@ -77,3 +77,31 @@ jobs:
         run: python -m unittest discover -s tools/tests -v
       - name: Test image verification fixtures
         run: kyverno test implementations/reference-platform/kubernetes/tests/verify-images --registry --detailed-results
+
+  admission:
+    name: Ephemeral Kyverno admission enforcement
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Install pinned kind binary
+        env:
+          KIND_VERSION: v0.32.0
+          KIND_SHA256: 50030de23cf40a18505f20426f6a8506bedf13c6e509244bd1fa9463721b0f54
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64" \
+            --output "${RUNNER_TEMP}/kind-linux-amd64"
+          echo "${KIND_SHA256}  ${RUNNER_TEMP}/kind-linux-amd64" | sha256sum --check --strict
+          install -m 0755 "${RUNNER_TEMP}/kind-linux-amd64" "${RUNNER_TEMP}/kind"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/kind" version
+          kubectl version --client=true
+      - name: Run ephemeral Kyverno admission rejection test
+        env:
+          KYVERNO_VERSION: v1.18.2
+          KYVERNO_INSTALL_SHA256: 3dcd43eaf11f0719084217148cd0c82a8fa49faa9b1a783ea5bea2cf84041bda
+          KIND_NODE_IMAGE: kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95
+        run: bash tools/test_ephemeral_kyverno_admission.sh

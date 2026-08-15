@@ -3,7 +3,11 @@ kind: ClusterPolicy
 metadata:
   name: lcp-fixture-provenance-policy
 spec:
+  validationFailureAction: Enforce
   background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
   rules:
     - name: require-lcp-workflow-provenance
       match:

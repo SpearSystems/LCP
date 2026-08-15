@@ -79,3 +79,10 @@ policy engine or its CLI.
 The fixture is a policy-behavior test, not a substitute for a live admission
 test against the organization's registry, Kyverno version, credentials, and
 network policy.
+
+The CI `admission` job also creates a disposable, pinned kind cluster, installs
+Kyverno from a digest-checked release manifest, applies these policies in
+`Enforce` mode, and submits the four fixtures through the Kubernetes API server
+with server-side dry runs. It fails unless Kyverno rejects the unsigned,
+wrong-workflow, missing-provenance, and missing-SBOM cases through the live
+admission webhook.

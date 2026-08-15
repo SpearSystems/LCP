@@ -109,6 +109,13 @@ Before applying it:
 The policy mutates tags to digests and requires immutable digests after
 verification. This prevents a signed tag from being moved after admission.
 
+CI also runs a real ephemeral admission check in the `Test` workflow. It uses a
+pinned kind node image and kind binary, installs a SHA-256-verified Kyverno
+release manifest, applies the fixture policies in `Enforce` mode, and submits
+server-side dry-run Pods. The job must observe Kyverno rejecting unsigned,
+wrong-workflow, missing-provenance, and missing-SBOM images; a generic webhook
+or cluster failure does not count as a passing rejection.
+
 ```bash
 kubectl apply --dry-run=server -f \
   implementations/reference-platform/kubernetes/verify-images-kyverno.example.yaml
