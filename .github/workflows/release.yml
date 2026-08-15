@@ -264,7 +264,8 @@ jobs:
                       "buildType": "https://github.com/SpearSystems/LCP/.github/workflows/release.yml",
                       "externalParameters": {
                           "release_tag": os.environ["RELEASE_TAG"],
-                          "package": os.environ["REGISTRY_COORDINATE"],
+                          "package": "${{ matrix.name }}",
+                          "registry": os.environ["REGISTRY_COORDINATE"],
                           "source_path": "${{ matrix.path }}",
                       },
                       "resolvedDependencies": [{
@@ -413,8 +414,8 @@ jobs:
       - name: Sign release notes and manifest
         run: |
           set -euo pipefail
-          cosign sign-blob --yes --bundle release-notes.sigstore.json release-notes.md
-          cosign sign-blob --yes --bundle release-manifest.sigstore.json release-manifest.json
+          cosign sign-blob --yes --bundle release-notes.md.sigstore.json release-notes.md
+          cosign sign-blob --yes --bundle release-manifest.json.sigstore.json release-manifest.json
       - name: Verify release notes and manifest signatures
         env:
           IDENTITY_REF: ${{ needs.prepare.outputs.identity_ref }}
@@ -432,8 +433,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence-root
-          cp release-notes.md release-notes.sigstore.json \
-            release-manifest.json release-manifest.sigstore.json evidence-root/
+          cp release-notes.md release-notes.md.sigstore.json \
+            release-manifest.json release-manifest.json.sigstore.json evidence-root/
           cp lcp-source-sbom.cdx.json lcp-source-sbom.cdx.json.sigstore.json evidence-root/
           cp -r release-assets/. evidence-root/
           python3 tools/verify_release_evidence.py evidence-root
@@ -444,9 +445,9 @@ jobs:
           name: lcp-release-dry-run-${{ needs.prepare.outputs.release_tag }}
           path: |
             release-notes.md
-            release-notes.sigstore.json
+            release-notes.md.sigstore.json
             release-manifest.json
-            release-manifest.sigstore.json
+            release-manifest.json.sigstore.json
             release-assets
           if-no-files-found: error
           retention-days: 30
@@ -457,9 +458,9 @@ jobs:
           name: lcp-release-record-${{ needs.prepare.outputs.release_tag }}
           path: |
             release-notes.md
-            release-notes.sigstore.json
+            release-notes.md.sigstore.json
             release-manifest.json
-            release-manifest.sigstore.json
+            release-manifest.json.sigstore.json
             release-assets
           if-no-files-found: error
           retention-days: 90
@@ -557,6 +558,6 @@ jobs:
               --title "LCP ${RELEASE_TAG}" --notes-file release-record/release-notes.md
           fi
           gh release upload "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
-            release-record/release-notes.md release-record/release-notes.sigstore.json \
-            release-record/release-manifest.json release-record/release-manifest.sigstore.json \
+            release-record/release-notes.md release-record/release-notes.md.sigstore.json \
+            release-record/release-manifest.json release-record/release-manifest.json.sigstore.json \
             release-record/release-assets/*

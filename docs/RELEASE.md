@@ -184,13 +184,13 @@ export WORKFLOW_IDENTITY="https://github.com/${REPOSITORY}/.github/workflows/rel
 export OIDC_ISSUER='https://token.actions.githubusercontent.com'
 
 cosign verify-blob \
-  --bundle release-manifest.sigstore.json \
+  --bundle release-manifest.json.sigstore.json \
   --certificate-identity "${WORKFLOW_IDENTITY}" \
   --certificate-oidc-issuer "${OIDC_ISSUER}" \
   release-manifest.json
 
 cosign verify-blob \
-  --bundle release-notes.sigstore.json \
+  --bundle release-notes.md.sigstore.json \
   --certificate-identity "${WORKFLOW_IDENTITY}" \
   --certificate-oidc-issuer "${OIDC_ISSUER}" \
   release-notes.md
