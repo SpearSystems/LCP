@@ -1,8 +1,9 @@
 # Container Signing and Provenance Verification
 
 The reference platform's container release workflow publishes a digest-addressed
-image, creates a GitHub SLSA build-provenance attestation, signs the image with
-Sigstore keyless signing, and verifies both before the workflow succeeds.
+image, creates GitHub SLSA build-provenance and CycloneDX SBOM attestations,
+signs the image with Sigstore keyless signing, and verifies all of them before
+the workflow succeeds.
 
 The workflow is intentionally separate from the package release workflow:
 
@@ -29,11 +30,12 @@ The container release job requires these GitHub permissions:
   service and linked artifact metadata.
 - `contents: read` for the source checkout.
 
-The job uses BuildKit `provenance: mode=max` and `sbom: true`, then calls
-`actions/attest` with the pushed image digest. It signs the same digest with
-Cosign and verifies the signature's workflow identity and OIDC issuer. A later
-verification step uses the GitHub CLI to verify the build attestation against
-the repository.
+The job uses BuildKit `provenance: mode=max` and `sbom: true`, generates a
+CycloneDX SBOM for the pushed digest, and calls `actions/attest` once for SLSA
+provenance and once for the SBOM. It signs the same digest with Cosign and
+verifies the signature's workflow identity and OIDC issuer. Later verification
+steps use the GitHub CLI to verify both the build and CycloneDX attestations
+against the repository.
 
 GitHub Artifact Attestations are subject to GitHub plan and repository
 visibility requirements. If a deployment cannot use GitHub's attestation
@@ -58,6 +60,12 @@ cosign verify "$IMAGE" \
 gh attestation verify \
   "oci://${IMAGE}" \
   --repo SpearSystems/LCP
+
+# The SBOM is a separate CycloneDX attestation on the same image digest.
+gh attestation verify \
+  "oci://${IMAGE}" \
+  --predicate-type 'https://cyclonedx.org/bom' \
+  --repo SpearSystems/LCP
 ```
 
 For manual-dispatch builds, use the workflow identity for the branch that was
@@ -71,10 +79,15 @@ signature exists is insufficient.
 ## Kubernetes admission enforcement
 
 [`implementations/reference-platform/kubernetes/verify-images-kyverno.example.yaml`](../implementations/reference-platform/kubernetes/verify-images-kyverno.example.yaml)
-is a Kyverno example that requires both:
+is a Kyverno example that requires all three controls:
 
 1. A valid Cosign keyless signature from the container release workflow.
 2. An SLSA provenance attestation with the same expected workflow identity.
+3. A signed CycloneDX SBOM attestation with the same expected workflow identity.
+
+The three checks are separate Kyverno `verifyImages` rules because Kyverno
+requires a rule to verify either image signatures or image attestations, not
+both at once.
 
 Before applying it:
 

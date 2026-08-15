@@ -1,0 +1,29 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lcp-fixture-sbom-policy
+spec:
+  background: false
+  rules:
+    - name: require-lcp-cyclonedx-sbom
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - ghcr.io/kyverno/test-verify-image:signed-by-someone-else
+          type: SigstoreBundle
+          required: true
+          verifyDigest: true
+          attestations:
+            - predicateType: https://cyclonedx.org/bom
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subject: https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v*
+                        issuer: https://token.actions.githubusercontent.com
+                        rekor:
+                          url: https://rekor.sigstore.dev

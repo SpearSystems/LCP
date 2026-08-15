@@ -34,6 +34,7 @@
   GitHub attestations, digest deployment, and Kyverno admission enforcement.
 - [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
   full-image scan review, owners, dispositions, and expiry-based follow-up.
+  The CI machine-readable register is [`vulnerability-exceptions.json`](vulnerability-exceptions.json).
 - [Integration examples](../examples/integrations/) — Python, Node.js, cURL,
   and buyer webhook templates.
 

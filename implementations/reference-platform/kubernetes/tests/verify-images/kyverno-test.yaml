@@ -1,0 +1,32 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: lcp-image-verification-negative-fixtures
+policies:
+  - signature-policy.yaml
+  - provenance-policy.yaml
+  - sbom-policy.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: lcp-fixture-signature-policy
+    rule: require-lcp-workflow-signature
+    resources:
+      - unsigned-image
+      - wrong-workflow-image
+    kind: Pod
+    result: fail
+  - policy: lcp-fixture-provenance-policy
+    rule: require-lcp-workflow-provenance
+    resources:
+      - missing-provenance-image
+      - missing-sbom-image
+    kind: Pod
+    result: fail
+  - policy: lcp-fixture-sbom-policy
+    rule: require-lcp-cyclonedx-sbom
+    resources:
+      - missing-provenance-image
+      - missing-sbom-image
+    kind: Pod
+    result: fail

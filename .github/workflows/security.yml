@@ -113,12 +113,21 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: "0"
+      - name: Reconcile full Trivy report
+        if: always()
+        run: |
+          python tools/reconcile_trivy_sarif.py \
+            --sarif trivy-full-results.sarif \
+            --exceptions docs/vulnerability-exceptions.json \
+            --output trivy-reconciliation.md
       - name: Upload full Trivy report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-full-report
-          path: trivy-full-results.sarif
+          path: |
+            trivy-full-results.sarif
+            trivy-reconciliation.md
           if-no-files-found: error
           retention-days: 90
       - name: Upload Trivy SARIF

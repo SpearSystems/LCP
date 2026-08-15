@@ -40,9 +40,10 @@ GitHub Actions dependencies. Update pull requests must pass the normal tests,
 security checks, and package builds before merging.
 
 `.github/workflows/container-release.yml` publishes the reference image for
-version tags, emits BuildKit and GitHub SLSA provenance, signs the immutable
-image digest with Sigstore keyless signing, and verifies both the signature and
-GitHub attestation before the job succeeds. See the [container verification
+version tags, emits BuildKit and GitHub SLSA provenance plus a CycloneDX SBOM
+attestation, signs the immutable image digest with Sigstore keyless signing,
+and verifies the signature, provenance, and SBOM attestations before the job
+succeeds. See the [container verification
 guide](CONTAINER-SUPPLY-CHAIN.md) and the Kyverno example for deployment-side
 enforcement.
 

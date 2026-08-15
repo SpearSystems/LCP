@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lcp-fixture-signature-policy
+spec:
+  background: false
+  rules:
+    - name: require-lcp-workflow-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - ghcr.io/kyverno/test-verify-image:unsigned
+            - ghcr.io/kyverno/test-verify-image:signed-keyless
+          required: true
+          verifyDigest: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v*
+                    issuer: https://token.actions.githubusercontent.com
+                    rekor:
+                      url: https://rekor.sigstore.dev

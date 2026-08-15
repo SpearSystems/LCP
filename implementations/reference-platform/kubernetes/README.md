@@ -47,7 +47,30 @@ same Postgres database but does not need a public Service.
 - Centralized redacted logs, metrics, traces, and alerts.
 - Image signing, admission policy, SBOM verification, and vulnerability scans.
 - `verify-images-kyverno.example.yaml` — optional Kyverno enforcement for
-  keyless signatures and SLSA provenance attestations.
+  keyless signatures, SLSA provenance, and CycloneDX SBOM attestations.
+- `tests/verify-images/` — CI fixtures proving unsigned, wrong-workflow,
+  missing-provenance, and missing-SBOM images are rejected.
 
 See [container signing and provenance verification](../../../docs/CONTAINER-SUPPLY-CHAIN.md)
 for Cosign/GitHub verification commands and cloud-neutral admission guidance.
+
+## Policy test fixtures
+
+The `tests/verify-images/` fixture uses Kyverno's public verification-test
+images and expects rejection for four negative cases:
+
+- an unsigned image;
+- an image signed by a different workflow/identity;
+- an image without the required SLSA provenance attestation; and
+- an image without the required CycloneDX SBOM attestation.
+
+Run it with the Kyverno CLI and registry access:
+
+```bash
+kyverno test implementations/reference-platform/kubernetes/tests/verify-images \
+  --registry --detailed-results
+```
+
+The fixture is a policy-behavior test, not a substitute for a live admission
+test against the organization's registry, Kyverno version, credentials, and
+network policy.

@@ -41,3 +41,21 @@ jobs:
         env:
           LCP_TEST_POSTGRES_URL: postgresql://lcp_test:lcp_test@localhost:5432/lcp_test
         run: PYTHONPATH=implementations/reference-platform python -m unittest discover -s implementations/reference-platform/tests -v
+
+  tooling:
+    name: Supply-chain tooling and Kyverno fixtures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+      - name: Install Kyverno CLI
+        uses: kyverno/action-install-cli@fcee92fca5c883169ef9927acf543e0b5fc58289 # v0.2.0
+        with:
+          release: v1.18.0
+          verify: true
+      - name: Test reviewed SARIF tooling
+        run: python -m unittest discover -s tools/tests -v
+      - name: Test image verification fixtures
+        run: kyverno test implementations/reference-platform/kubernetes/tests/verify-images --registry --detailed-results
