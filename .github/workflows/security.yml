@@ -63,7 +63,7 @@ jobs:
             "https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64" \
             --output "${RUNNER_TEMP}/osv-scanner"
           echo "${OSV_SCANNER_SHA256}  ${RUNNER_TEMP}/osv-scanner" | sha256sum --check --strict
-          install -m 0755 "${RUNNER_TEMP}/osv-scanner" "${RUNNER_TEMP}/osv-scanner-bin"
+          chmod +x "${RUNNER_TEMP}/osv-scanner"
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
           osv-scanner version
       - name: Scan all SDK lockfiles
