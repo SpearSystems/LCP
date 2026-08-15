@@ -57,7 +57,10 @@ jobs:
           file: implementations/reference-platform/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image.outputs.tag }}
-          provenance: mode=max
+          # GitHub actions/attest below provides the signed SLSA provenance.
+          # Disable BuildKit's registry attestation exporter for compatibility
+          # with the GHCR push path.
+          provenance: false
       - name: Generate CycloneDX container SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:

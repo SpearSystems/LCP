@@ -30,8 +30,9 @@ The container release job requires these GitHub permissions:
   service and linked artifact metadata.
 - `contents: read` for the source checkout.
 
-The job uses BuildKit `provenance: mode=max`, generates a CycloneDX SBOM for
-the pushed digest, and calls `actions/attest` once for SLSA
+The job disables BuildKit's registry attestation exporter for the GHCR push,
+generates a CycloneDX SBOM for the pushed digest, and calls `actions/attest`
+once for SLSA
 provenance and once for the SBOM. It signs the same digest with Cosign and
 verifies the signature's workflow identity and OIDC issuer. Later verification
 steps use the GitHub CLI to verify both the build and CycloneDX attestations
