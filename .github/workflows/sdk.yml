@@ -13,7 +13,7 @@ jobs:
     name: Canonical schemas and generated models
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -27,7 +27,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -41,7 +41,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/typescript
         run: npm install --ignore-scripts --no-audit --no-fund && npm test
 
@@ -50,7 +50,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/go
         run: go test ./...
 
@@ -59,7 +59,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/csharp
         run: dotnet run --project tests/LcpSdk.Tests.csproj
 
@@ -68,7 +68,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/java
         run: mvn --batch-mode --no-transfer-progress test
 
@@ -77,7 +77,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/php
         run: composer install --no-interaction --no-progress --prefer-dist && php tests/shared_vector.php
 
@@ -86,7 +86,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/rust
         run: cargo test --locked
 
@@ -95,7 +95,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - run: gem install json_schemer --version '~> 2.5'
       - run: ruby implementations/sdk/ruby/test/shared_vector_test.rb
 
@@ -104,7 +104,7 @@ jobs:
     needs: schema-contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/kotlin
         run: gradle --no-daemon test
 
@@ -113,7 +113,7 @@ jobs:
     needs: schema-contract
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
       - working-directory: implementations/sdk/swift
         env:
           LCP_REPO_ROOT: ${{ github.workspace }}
