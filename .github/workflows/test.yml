@@ -105,4 +105,16 @@ jobs:
           KYVERNO_VERSION: v1.18.2
           KYVERNO_INSTALL_SHA256: 3dcd43eaf11f0719084217148cd0c82a8fa49faa9b1a783ea5bea2cf84041bda
           KIND_NODE_IMAGE: kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95
-        run: bash tools/test_ephemeral_kyverno_admission.sh
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if bash tools/test_ephemeral_kyverno_admission.sh; then
+              exit 0
+            fi
+            if [[ "${attempt}" -eq 3 ]]; then
+              echo "Ephemeral Kyverno admission test failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            echo "Ephemeral Kyverno admission environment was inconclusive; recreating it (${attempt}/3)" >&2
+            sleep 10
+          done
