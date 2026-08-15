@@ -101,8 +101,20 @@ statements with signatures. Keep the source, container, full Trivy, and signed
 release reports with the release record even though CI stores them as artifacts
 or release assets rather than commits. The workflow also supports a
 non-publishing dry run which checks registry version availability and verifies
-all release signatures before a real tag. See [RELEASE.md](RELEASE.md) for
-adopter and maintainer verification commands.
+all release signatures before a real tag.
+
+The release workflow additionally runs the offline evidence verifier
+(`tools/verify_release_evidence.py`) on its own generated bundle before
+uploading, so manifest/file/digest inconsistencies fail the job even when every
+signature is valid. Maintainers and adopters can run the same tool against a
+downloaded dry-run artifact or release asset directory without network access:
+
+```bash
+python3 tools/verify_release_evidence.py ./release-assets
+```
+
+Add `--identity`/`--issuer` to also verify the Sigstore bundles with Cosign.
+See [RELEASE.md](RELEASE.md) for adopter and maintainer verification commands.
 
 The PyPI workflow uses Trusted Publishing and does not store a long-lived PyPI
 API token in the repository. Package ownership, PyPI Trusted Publisher

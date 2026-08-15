@@ -110,6 +110,39 @@ export WORKFLOW_IDENTITY="https://github.com/SpearSystems/LCP/.github/workflows/
 A registry outage or an occupied version fails closed. Resolve the issue or
 choose a new patch version before creating the real tag.
 
+## Verify downloaded release evidence offline
+
+Download the release assets (or the `lcp-release-dry-run-*` artifact) and run
+the offline verifier before approving a real tag or consuming a release. The
+verifier does not need GitHub or a network: it checks the manifest structure,
+that every referenced source archive, SBOM, provenance statement, and Sigstore
+bundle is present, that the SHA-256 digests in the manifest and provenance
+statements match the downloaded files, and that the SBOMs and provenance
+statements are valid CycloneDX and SLSA v1 JSON.
+
+```bash
+python3 tools/verify_release_evidence.py ./release-assets
+```
+
+Pass `--identity` and `--issuer` to also verify every Sigstore bundle with
+Cosign. The identity depends on how the evidence was produced:
+
+```bash
+# Dry-run evidence generated from refs/heads/main:
+python3 tools/verify_release_evidence.py ./release-assets \
+  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/heads/main" \
+  --issuer "https://token.actions.githubusercontent.com"
+
+# Tagged release evidence generated from refs/tags/v0.1.0:
+python3 tools/verify_release_evidence.py ./release-assets \
+  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v0.1.0" \
+  --issuer "https://token.actions.githubusercontent.com"
+```
+
+The tool fails closed: a missing file, digest mismatch, malformed JSON, or a
+Cosign rejection aborts the release review. It is the same structural check the
+release workflow runs on its own evidence before uploading.
+
 ## Published SDK coordinates
 
 | Registry | Package or module | Publication mechanism |

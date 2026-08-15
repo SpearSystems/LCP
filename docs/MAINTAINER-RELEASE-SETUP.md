@@ -148,8 +148,16 @@ bumps.
      -f target_sha="$(git rev-parse HEAD)"
    ```
 
-5. Download the dry-run artifact and verify the manifest, package evidence,
-   SBOMs, and Sigstore bundles before approving a release ticket.
+5. Download the dry-run artifact, unzip it, and verify the manifest, package
+   evidence, SBOMs, and Sigstore bundles before approving a release ticket:
+
+   ```bash
+   python3 tools/verify_release_evidence.py ./release-assets
+   ```
+
+   Add `--identity`/`--issuer` (see [RELEASE.md](RELEASE.md)) to also verify
+   every Sigstore bundle with Cosign. The workflow runs the same structural
+   check on its own evidence before uploading.
 6. Create and push the exact signed tag only after the dry run and approvals
    pass:
 
