@@ -10,7 +10,7 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <networknt.version>1.5.6</networknt.version>
+    <networknt.version>1.5.9</networknt.version>
     <gpg.skip>false</gpg.skip>
   </properties>
   <licenses><license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>

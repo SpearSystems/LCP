@@ -9,7 +9,7 @@ version = "0.1.0"
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("com.networknt:json-schema-validator:1.5.6")
+    implementation("com.networknt:json-schema-validator:1.5.9")
     testImplementation(kotlin("test"))
 }
 

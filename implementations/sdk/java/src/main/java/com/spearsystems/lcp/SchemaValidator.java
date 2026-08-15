@@ -2,24 +2,24 @@ package com.spearsystems.lcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.Error;
 import com.networknt.schema.InputFormat;
-import com.networknt.schema.Schema;
+import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SchemaRegistry;
-import com.networknt.schema.SpecificationVersion;
+import com.networknt.schema.SpecVersion.VersionFlag;
+import com.networknt.schema.ValidationMessage;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Full JSON Schema 2020-12 validation for canonical schemas and verticals. */
 public final class SchemaValidator {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final SchemaRegistry registry;
+    private final JsonSchemaFactory factory;
     private final Map<String, String> idsByName = new LinkedHashMap<>();
 
     public SchemaValidator(Map<String, String> schemaTexts) throws IOException {
@@ -31,28 +31,35 @@ public final class SchemaValidator {
             idsByName.put(normalize(entry.getKey()), id);
             idsByName.put(normalize(id), id);
         }
-        registry = SchemaRegistry.withDefaultDialect(
-            SpecificationVersion.DRAFT_2020_12,
-            builder -> builder.schemas(resources));
+        factory = JsonSchemaFactory.getInstance(VersionFlag.V202012,
+            builder -> builder.schemaLoaders(loaders -> loaders.schemas(resources)));
     }
 
     public static SchemaValidator fromDirectory(Path root) throws IOException {
         Map<String, String> schemas = new LinkedHashMap<>();
         try (var paths = Files.walk(root)) {
             paths.filter(path -> path.toString().endsWith(".json")).forEach(path -> {
-                try { schemas.put(root.relativize(path).toString().replace('\\', '/'), Files.readString(path)); }
-                catch (IOException error) { throw new SchemaLoadException(error); }
+                try {
+                    schemas.put(root.relativize(path).toString().replace('\\', '/'), Files.readString(path));
+                } catch (IOException error) {
+                    throw new SchemaLoadException(error);
+                }
             });
-        } catch (SchemaLoadException error) { throw error.ioException; }
+        } catch (SchemaLoadException error) {
+            throw error.ioException;
+        }
         return new SchemaValidator(schemas);
     }
 
     public void validate(String schemaName, String document) throws IOException {
         String id = idsByName.get(normalize(schemaName));
         if (id == null) throw new IllegalArgumentException("Unknown LCP schema: " + schemaName);
-        Schema schema = registry.getSchema(SchemaLocation.of(id));
-        List<Error> errors = schema.validate(document, InputFormat.JSON);
-        if (!errors.isEmpty()) throw new IllegalArgumentException("LCP schema validation failed for " + schemaName + ": " + errors);
+        JsonSchema schema = factory.getSchema(SchemaLocation.of(id));
+        Set<ValidationMessage> errors = schema.validate(document, InputFormat.JSON, executionContext ->
+            executionContext.getExecutionConfig().setFormatAssertionsEnabled(true));
+        if (!errors.isEmpty()) {
+            throw new IllegalArgumentException("LCP schema validation failed for " + schemaName + ": " + errors);
+        }
     }
 
     public void validateEnvelope(String envelope) throws IOException {
@@ -63,10 +70,15 @@ public final class SchemaValidator {
     }
 
     public void validateOffer(String offer) throws IOException { validate("schemas/offer.json", offer); }
-    public void validateVertical(String vertical, String attributes) throws IOException { validate("verticals/" + vertical + ".json", attributes); }
+    public void validateVertical(String vertical, String attributes) throws IOException {
+        validate("verticals/" + vertical + ".json", attributes);
+    }
 
     private static String normalize(String value) {
-        return value.replace('\\', '/').replaceFirst("^/", "").replaceFirst("^schemas/", "").replaceFirst("^verticals/", "vertical:").replaceFirst("\\.json$", "");
+        return value.replace('\\', '/').replaceFirst("^/", "")
+            .replaceFirst("^schemas/", "")
+            .replaceFirst("^verticals/", "vertical:")
+            .replaceFirst("\\.json$", "");
     }
 
     private static final class SchemaLoadException extends RuntimeException {

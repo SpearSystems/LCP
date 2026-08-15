@@ -2,16 +2,16 @@ package com.spearsystems.lcp
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.networknt.schema.InputFormat
+import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SchemaLocation
-import com.networknt.schema.SchemaRegistry
-import com.networknt.schema.SpecificationVersion
+import com.networknt.schema.SpecVersion.VersionFlag
 import java.nio.file.Files
 import java.nio.file.Path
 
 class LcpSchemaValidator(schemaTexts: Map<String, String>) {
     private val mapper = ObjectMapper()
     private val ids = mutableMapOf<String, String>()
-    private val registry: SchemaRegistry
+    private val factory: JsonSchemaFactory
 
     init {
         val resources = linkedMapOf<String, String>()
@@ -21,12 +21,16 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
             ids[normalize(name)] = id
             ids[normalize(id)] = id
         }
-        registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12) { builder -> builder.schemas(resources) }
+        factory = JsonSchemaFactory.getInstance(VersionFlag.V202012) { builder ->
+            builder.schemaLoaders { loaders -> loaders.schemas(resources) }
+        }
     }
 
     fun validate(schemaName: String, document: String) {
         val id = ids[normalize(schemaName)] ?: error("Unknown LCP schema: $schemaName")
-        val errors = registry.getSchema(SchemaLocation.of(id)).validate(document, InputFormat.JSON)
+        val errors = factory.getSchema(SchemaLocation.of(id)).validate(document, InputFormat.JSON) { executionContext ->
+            executionContext.executionConfig.setFormatAssertionsEnabled(true)
+        }
         require(errors.isEmpty()) { "LCP schema validation failed for $schemaName: $errors" }
     }
 
@@ -52,5 +56,6 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
         }
     }
 
-    private fun normalize(value: String): String = value.replace('\\', '/').trimStart('/').removePrefix("schemas/").removePrefix("verticals/").removeSuffix(".json")
+    private fun normalize(value: String): String = value.replace('\\', '/').trimStart('/')
+        .removePrefix("schemas/").removePrefix("verticals/").removeSuffix(".json")
 }
