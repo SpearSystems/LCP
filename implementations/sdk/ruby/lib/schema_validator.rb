@@ -1,12 +1,21 @@
 # frozen_string_literal: true
 
+require "json"
+
 module LcpSdk
   class SchemaValidationError < StandardError; end
 
   class SchemaValidator
     def initialize(schema_documents)
       require "json_schemer"
-      @documents = schema_documents
+      # Keep a private copy so self-references in core.json can be made
+      # fragment-local without mutating the caller's canonical documents.
+      @documents = schema_documents.transform_values do |document|
+        JSON.parse(JSON.generate(document))
+      end
+      @documents.each_value do |document|
+        rewrite_core_refs(document) if document["$id"] == "https://lcp.dev/schemas/core.json"
+      end
       @ids = {}
       @documents.each do |name, document|
         id = document.fetch("$id", name)
@@ -53,6 +62,18 @@ module LcpSdk
     end
 
     private
+
+    def rewrite_core_refs(value)
+      case value
+      when Hash
+        if value["$ref"].is_a?(String)
+          value["$ref"] = value["$ref"].sub(/\Acore\.json(?=#)/, "")
+        end
+        value.each_value { |child| rewrite_core_refs(child) }
+      when Array
+        value.each { |child| rewrite_core_refs(child) }
+      end
+    end
 
     def normalize(name)
       name.to_s.tr("\\", "/").sub(%r{^/}, "").sub(%r{^(schemas|verticals)/}, "").sub(/\.json$/, "")
