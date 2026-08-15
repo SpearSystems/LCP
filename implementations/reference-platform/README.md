@@ -24,7 +24,8 @@ hardening.
 See [the implementation decisions](../../docs/IMPLEMENTATION-DECISIONS.md) for
 matching, signing, retry, and sandbox behavior. See the
 [supply-chain security guide](../../docs/SUPPLY-CHAIN-SECURITY.md) for package,
-image, and release controls.
+image, and release controls, and the [container verification guide](../../docs/CONTAINER-SUPPLY-CHAIN.md)
+for signing, provenance, and admission enforcement.
 
 ## Install
 

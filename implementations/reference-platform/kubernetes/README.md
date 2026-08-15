@@ -15,7 +15,9 @@ cluster configuration.
    namespaces, network policies, ingress, and residency controls.
 5. Configure a production WSGI server or adapt the image entry point to the
    organization's process manager.
-6. Add a TLS ingress/WAF and private egress policy.
+6. Publish the image through the signed container workflow, resolve its digest,
+   and replace the example image reference with that digest.
+7. Add a TLS ingress/WAF and private egress policy.
 
 ## Apply
 
@@ -44,3 +46,8 @@ same Postgres database but does not need a public Service.
 - Postgres HA, backups, encryption, and restore drills.
 - Centralized redacted logs, metrics, traces, and alerts.
 - Image signing, admission policy, SBOM verification, and vulnerability scans.
+- `verify-images-kyverno.example.yaml` — optional Kyverno enforcement for
+  keyless signatures and SLSA provenance attestations.
+
+See [container signing and provenance verification](../../../docs/CONTAINER-SUPPLY-CHAIN.md)
+for Cosign/GitHub verification commands and cloud-neutral admission guidance.

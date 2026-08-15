@@ -80,6 +80,10 @@ jobs:
           format: cyclonedx-json
           output-file: lcp-container-sbom.cdx.json
           artifact-name: lcp-container-sbom.cdx.json
+      - name: Smoke-test hardened runtime
+        run: |
+          docker run --rm --entrypoint python lcp-reference-platform:ci -c \
+            'import cryptography, gunicorn, httpx, jsonschema, psycopg, lcp_platform; print("runtime imports OK")'
       - name: Scan image OS packages with Trivy
         # Python libraries are audited by pip-audit above. Keep this image gate
         # focused on OS packages so inherited base-image SBOM metadata cannot

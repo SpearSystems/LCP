@@ -20,7 +20,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/replace-me/lcp-reference-platform:0.1.0
+          image: ghcr.io/replace-me/lcp-reference-platform@sha256:REPLACE_WITH_SIGNED_DIGEST
           imagePullPolicy: IfNotPresent
           command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "3", "--threads", "4", "--access-logfile", "-", "lcp_platform.wsgi:application"]
           ports:
@@ -101,7 +101,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/replace-me/lcp-reference-platform:0.1.0
+          image: ghcr.io/replace-me/lcp-reference-platform@sha256:REPLACE_WITH_SIGNED_DIGEST
           imagePullPolicy: IfNotPresent
           command: ["lcp-platform-worker"]
           envFrom:

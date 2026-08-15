@@ -1,0 +1,91 @@
+name: Publish, sign, and attest reference container
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Registry tag to publish for a manual verification run"
+        required: true
+        default: manual
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-sign-verify:
+    name: Publish, sign, and verify container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository_owner }}/lcp-reference-platform
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Select immutable registry tag
+        id: image
+        env:
+          REQUESTED_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          if [ -n "$REQUESTED_IMAGE_TAG" ]; then
+            echo "tag=$REQUESTED_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push reference image
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: implementations/reference-platform/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image.outputs.tag }}
+          provenance: mode=max
+          sbom: true
+      - name: Generate GitHub build provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+      - name: Sign image digest with Sigstore keyless signing
+        env:
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign sign --yes "${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+      - name: Verify Cosign signature
+        env:
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container-release.yml@refs/(heads/[^/]+|tags/v.*)"
+          cosign verify \
+            --certificate-identity-regexp "${identity}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+      - name: Verify GitHub build provenance attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          gh attestation verify \
+            "oci://${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}" \
+            --repo "${GITHUB_REPOSITORY}"

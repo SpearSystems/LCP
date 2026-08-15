@@ -19,6 +19,8 @@ security workflow provides:
   are intentionally skipped because they are not PyPI-published artifacts;
   their installed and transitive dependencies are still audited.
 - **CycloneDX SBOMs** for the repository source tree and reference container.
+- **Pinned minimal runtime** built from the official Python Alpine manifest
+  digest, with a non-root application user and Kubernetes hardening defaults.
 - **Trivy** scanning of the built reference image's OS packages for HIGH and
   CRITICAL issues. Fixed findings fail the CI gate; upstream findings without a
   fix do not block a build that cannot remediate them and must be reviewed in a
@@ -36,6 +38,13 @@ security workflow provides:
 `.github/dependabot.yml` opens weekly update pull requests for Python and
 GitHub Actions dependencies. Update pull requests must pass the normal tests,
 security checks, and package builds before merging.
+
+`.github/workflows/container-release.yml` publishes the reference image for
+version tags, emits BuildKit and GitHub SLSA provenance, signs the immutable
+image digest with Sigstore keyless signing, and verifies both the signature and
+GitHub attestation before the job succeeds. See the [container verification
+guide](CONTAINER-SUPPLY-CHAIN.md) and the Kyverno example for deployment-side
+enforcement.
 
 ## Vulnerability report review
 
@@ -69,8 +78,9 @@ Before publishing a package or container:
 5. Resolve or formally accept every HIGH/CRITICAL dependency and image
    finding. CI blocks actionable fixed findings; operators must track upstream
    findings without a fix in the vulnerability exception register.
-6. Pin the deployment image by digest and verify its provenance/signature where
-   the registry supports it.
+6. Pin the deployment image by digest and verify its provenance/signature
+   before admission. For Kubernetes, enforce the approved signer and SLSA
+   predicate with the Kyverno example.
 7. Confirm that no secrets, real PII, credentials, or private configuration are
    present in the source, SBOM, image, or release artifacts.
 

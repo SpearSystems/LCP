@@ -113,7 +113,9 @@ They demonstrate:
 
 The example intentionally does not include a public Ingress, cloud load
 balancer, or managed-Postgres resource. Add those according to the chosen
-cloud, network, residency, and organization policies.
+cloud, network, residency, and organization policies. Before applying a
+production image, follow the [container signing and provenance guide](CONTAINER-SUPPLY-CHAIN.md)
+and enforce the verified digest with the selected admission controller.
 
 ## Scaling
 

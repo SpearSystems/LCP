@@ -1,0 +1,52 @@
+# Example only: replace the image registry and repository before enforcing.
+# Requires Kyverno with verifyImages support and network access to the registry
+# and Sigstore transparency log during admission.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-lcp-reference-images
+  annotations:
+    policies.kyverno.io/title: Verify LCP reference images
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.8.3
+    policies.kyverno.io/description: >-
+      Require LCP reference-platform images to carry a valid Sigstore keyless
+      signature and a GitHub Actions SLSA provenance attestation. Replace the
+      example registry path and workflow identity with the operator's values.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-lcp-image-signature-and-provenance
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - ghcr.io/REPLACE_ME/lcp-reference-platform*
+          required: true
+          mutateDigest: true
+          verifyDigest: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v*
+                    issuer: https://token.actions.githubusercontent.com
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          attestations:
+            - predicateType: https://slsa.dev/provenance/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subject: https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v*
+                        issuer: https://token.actions.githubusercontent.com
+                        rekor:
+                          url: https://rekor.sigstore.dev
