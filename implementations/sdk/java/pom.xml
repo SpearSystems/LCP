@@ -10,8 +10,11 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <networknt.version>1.5.9</networknt.version>
-    <jackson.version>2.18.9</jackson.version>
+    <networknt.version>3.0.6</networknt.version>
+    <!-- Jackson 3 (tools.jackson) is used for both the SDK's own envelope/$id
+         parsing and networknt 3.x. 3.1.4 fixes CVE-2026-54512 and
+         CVE-2026-54513; the old Jackson 2 pins are gone with the 1.5.9 line. -->
+    <jackson3.version>3.1.4</jackson3.version>
     <gpg.skip>false</gpg.skip>
   </properties>
   <licenses><license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>
@@ -19,11 +22,7 @@
   <scm><url>https://github.com/SpearSystems/LCP</url><connection>scm:git:https://github.com/SpearSystems/LCP.git</connection><developerConnection>scm:git:ssh://git@github.com/SpearSystems/LCP.git</developerConnection></scm>
   <dependencies>
     <dependency><groupId>com.networknt</groupId><artifactId>json-schema-validator</artifactId><version>${networknt.version}</version></dependency>
-    <!-- Pin Jackson above the patched 2.18.9 line: networknt 1.5.9 pulls 2.18.3,
-         which is affected by multiple CVEs fixed in 2.18.9. Explicit nearest-wins
-         entries override the transitive versions while staying on the 2.x API. -->
-    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId><version>${jackson.version}</version></dependency>
-    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${jackson.version}</version></dependency>
+    <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${jackson3.version}</version></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>6.1.3</version><scope>test</scope></dependency>
   </dependencies>
   <build>

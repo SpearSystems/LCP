@@ -1,25 +1,26 @@
 package com.spearsystems.lcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.Error;
 import com.networknt.schema.InputFormat;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SpecVersion.VersionFlag;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Full JSON Schema 2020-12 validation for canonical schemas and verticals. */
 public final class SchemaValidator {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final JsonSchemaFactory factory;
+    private final SchemaRegistry registry;
     private final Map<String, String> idsByName = new LinkedHashMap<>();
 
     public SchemaValidator(Map<String, String> schemaTexts) throws IOException {
@@ -31,8 +32,8 @@ public final class SchemaValidator {
             idsByName.put(normalize(entry.getKey()), id);
             idsByName.put(normalize(id), id);
         }
-        factory = JsonSchemaFactory.getInstance(VersionFlag.V202012,
-            builder -> builder.schemaLoaders(loaders -> loaders.schemas(resources)));
+        registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+            builder -> builder.schemas(resources));
     }
 
     public static SchemaValidator fromDirectory(Path root) throws IOException {
@@ -54,9 +55,9 @@ public final class SchemaValidator {
     public void validate(String schemaName, String document) throws IOException {
         String id = idsByName.get(normalize(schemaName));
         if (id == null) throw new IllegalArgumentException("Unknown LCP schema: " + schemaName);
-        JsonSchema schema = factory.getSchema(SchemaLocation.of(id));
-        Set<ValidationMessage> errors = schema.validate(document, InputFormat.JSON, executionContext ->
-            executionContext.getExecutionConfig().setFormatAssertionsEnabled(true));
+        Schema schema = registry.getSchema(SchemaLocation.of(id));
+        List<Error> errors = schema.validate(document, InputFormat.JSON, executionContext ->
+            executionContext.executionConfig(config -> config.formatAssertionsEnabled(true)));
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException("LCP schema validation failed for " + schemaName + ": " + errors);
         }
