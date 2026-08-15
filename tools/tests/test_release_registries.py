@@ -19,7 +19,8 @@ class ReleaseRegistryTests(unittest.TestCase):
         self.assertIn("PyPI lcp-mcp-server", names)
         self.assertIn("PyPI lcp-reference-platform", names)
         self.assertIn("npm @spearsystems/lcp-sdk", names)
-        self.assertIn("Maven Central Java/Kotlin", names)
+        self.assertIn("Maven Central lcp-sdk", names)
+        self.assertIn("Maven Central lcp-sdk-kotlin", names)
         self.assertIn("Packagist spearsystems/lcp-sdk", names)
         self.assertTrue(any("0.1.0" in check.url for check in checks))
 
@@ -30,10 +31,16 @@ class ReleaseRegistryTests(unittest.TestCase):
         with self.assertRaises(RegistryCheckError):
             contains_version(check, 503, b"", "0.1.0")
 
-    def test_maven_response_is_version_specific(self):
-        check = next(item for item in registry_checks("0.1.0") if item.kind == "maven")
-        self.assertTrue(contains_version(check, 200, b'{"response":{"numFound":1}}', "0.1.0"))
-        self.assertFalse(contains_version(check, 200, b'{"response":{"numFound":0}}', "0.1.0"))
+    def test_maven_checks_are_exact_repo1_artifact_probes(self):
+        maven = [item for item in registry_checks("0.1.0") if item.name.startswith("Maven Central")]
+        self.assertEqual(len(maven), 2)
+        for check in maven:
+            self.assertEqual(check.kind, "exact")
+            self.assertIn("https://repo1.maven.org/maven2/com/spearsystems/", check.url)
+            self.assertIn("0.1.0", check.url)
+            # 404 on repo1 means the version is absent (available); 200 occupied.
+            self.assertFalse(contains_version(check, 404, b"", "0.1.0"))
+            self.assertTrue(contains_version(check, 200, b"<pom/>", "0.1.0"))
 
     def test_packagist_response_is_version_specific(self):
         check = next(item for item in registry_checks("0.1.0") if item.kind == "packagist")

@@ -34,16 +34,6 @@ class RegistryCheckError(RuntimeError):
 def registry_checks(version: str) -> tuple[RegistryCheck, ...]:
     encoded_npm = quote("@spearsystems/lcp-sdk", safe="")
     encoded_version = quote(version, safe="")
-    maven_query = urlencode(
-        {
-            "q": (
-                'g:"com.spearsystems" AND '
-                f'(a:"lcp-sdk" OR a:"lcp-sdk-kotlin") AND v:"{version}"'
-            ),
-            "rows": "20",
-            "wt": "json",
-        }
-    )
     return (
         RegistryCheck(
             "PyPI lcp-sdk",
@@ -65,10 +55,17 @@ def registry_checks(version: str) -> tuple[RegistryCheck, ...]:
             "NuGet LcpSdk",
             f"https://api.nuget.org/v3-flatcontainer/lcpsdk/{encoded_version}/lcpsdk.nuspec",
         ),
+        # repo1.maven.org is the authoritative CDN: an absent version returns
+        # HTTP 404 for the artifact POM, so each coordinate is an exact check.
+        # (The legacy search.maven.org SOLR endpoint is flaky and frequently
+        # times out, so it is deliberately not used as a release gate.)
         RegistryCheck(
-            "Maven Central Java/Kotlin",
-            f"https://search.maven.org/solrsearch/select?{maven_query}",
-            "maven",
+            "Maven Central lcp-sdk",
+            f"https://repo1.maven.org/maven2/com/spearsystems/lcp-sdk/{encoded_version}/lcp-sdk-{encoded_version}.pom",
+        ),
+        RegistryCheck(
+            "Maven Central lcp-sdk-kotlin",
+            f"https://repo1.maven.org/maven2/com/spearsystems/lcp-sdk-kotlin/{encoded_version}/lcp-sdk-kotlin-{encoded_version}.pom",
         ),
         RegistryCheck(
             "crates.io lcp-sdk",
@@ -112,8 +109,6 @@ def contains_version(check: RegistryCheck, status: int, body: bytes, version: st
         document = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise RegistryCheckError(f"{check.name}: invalid JSON response") from error
-    if check.kind == "maven":
-        return int(document.get("response", {}).get("numFound", 0)) > 0
     if check.kind == "packagist":
         packages = document.get("packages", {})
         versions = packages.get("spearsystems/lcp-sdk", [])
