@@ -73,7 +73,7 @@ jobs:
           artifact-name: lcp-release-source-sbom.cdx.json
       - uses: docker/setup-buildx-action@v3
       - name: Build release reference image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: implementations/reference-platform/Dockerfile
