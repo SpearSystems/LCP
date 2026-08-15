@@ -42,7 +42,7 @@ flowchart LR
         M3 -->|GET /v1/lcp/schemas/...| EP
     end
 
-    style EP fill:#f9f,stroke:#333
+    style EP fill:#a78bfa,stroke:#333
 ```
 
 ## I'm a...
@@ -65,6 +65,7 @@ See [PLATFORM-INTEGRATION.md](docs/PLATFORM-INTEGRATION.md) for form/CRM mapping
 **No MCP?** Just POST directly to `POST /v1/lcp/leads` with an HMAC-signed JSON body. The [MCP server](implementations/mcp-server/) is a thin adapter — you can write your own in any language.
 
 ### Buyer (receiving leads)
+
 Implement one webhook endpoint. Depending on the routing model:
 
 | Model | Your endpoint receives | Your response |
@@ -73,7 +74,50 @@ Implement one webhook endpoint. Depending on the routing model:
 | **Auction** | `ping` (no PII, hashed) | `bid` (accept/reject + price) |
 | **Auction** | `post` (full PII — only if you won) | HTTP 200 (ack) |
 
-**No server?** Use the MCP server as your buyer adapter — it translates between HTTP callbacks and MCP tool calls.
+**Concrete example** — respond to a ping and accept a post:
+
+```python
+from flask import Flask, request, jsonify
+import hmac, hashlib
+
+app = Flask(__name__)
+HMAC_SECRET = "your-shared-secret-with-publisher"
+
+@app.route("/lcp/webhook", methods=["POST"])
+def receive_lcp():
+    # Verify HMAC signature (prevents forged pings/posts)
+    signature = request.headers.get("X-LCP-Signature")
+    body = request.data
+    expected = hmac.new(HMAC_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return "Unauthorized", 401
+
+    envelope = request.json
+    msg_type = envelope["lcp"]["message"]["type"]
+
+    if msg_type == "ping":
+        # Ping = no PII, just hashed attributes + floor price
+        return jsonify({
+            "lcp": {
+                "version": "1.0.0",
+                "message": {"type": "bid", "id": envelope["lcp"]["message"]["id"]},
+                "payload": {
+                    "ping_id": envelope["lcp"]["payload"]["ping_id"],
+                    "decision": "accept",
+                    "bid_price_cents": 2200,
+                    "currency": "USD"
+                }
+            }
+        }), 200
+
+    elif msg_type == "post":
+        # Post = full PII — only delivered here if you won the auction
+        consumer = envelope["lcp"]["payload"]["consumer"]
+        print(f"New lead: {consumer.get('first_name')} — {consumer.get('phone')}")
+        return jsonify({"status": "received"}), 200
+```
+
+**No server?** Use the MCP server as your buyer adapter — it translates between HTTP callbacks and MCP tool calls. Or use `submit_bid` in ChatGPT/Claude with the MCP server configured as a plugin.
 
 ### Platform operator
 Deploy the reference MCP server, configure buyers/publishers with their HMAC secrets, and you're routing leads. See `schemas/bid.json` for the bid response format and `schemas/` for message types.
