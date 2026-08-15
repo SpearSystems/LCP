@@ -17,14 +17,20 @@ public sealed class LcpSchemaValidator
 
     public LcpSchemaValidator(IReadOnlyDictionary<string, string> schemaTexts)
     {
-        // JsonSchema.Net registers schemas by their $id in SchemaRegistry.Global.
-        // Register every document before evaluating any document with $ref.
-        foreach (var (name, text) in schemaTexts)
+        // JsonSchema.Net resolves external $refs through its global registry.
+        // Build and register core first, then all referencing documents.
+        foreach (var (name, text) in schemaTexts.OrderBy(pair =>
+                     pair.Key.Equals("core.json", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
         {
             var schema = JsonSchema.FromText(text);
+            var id = JsonNode.Parse(text)?["$id"]?.GetValue<string>();
+            if (id is not null)
+                SchemaRegistry.Global.Register(new Uri(id), schema);
             schemas[Normalize(name)] = schema;
             if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 schemas[Normalize(Path.GetFileNameWithoutExtension(name))] = schema;
+            if (id is not null)
+                schemas[Normalize(id)] = schema;
         }
     }
 

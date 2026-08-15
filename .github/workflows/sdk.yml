@@ -32,7 +32,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install jsonschema referencing httpx mcp
-      - run: python -m pip install -e implementations/sdk/python -e implementations/mcp-server
+      - run: python -m pip install -e implementations/sdk/python
+      # The MCP adapter is intentionally installed without dependencies here: its
+      # published lcp-sdk dependency is satisfied by the editable SDK above.
+      - run: python -m pip install --no-deps -e implementations/mcp-server
       - run: PYTHONPATH=implementations/sdk/python python -m unittest discover -s implementations/sdk/python/tests -v
       - run: python -c "from lcp_mcp_server.server import app; print('MCP adapter shared SDK wiring passed')"
 
@@ -96,7 +99,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
-      - run: gem install json_schemer --version '~> 2.5'
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3"
+      - run: gem install json_schemer --version 2.5.0 --no-document
       - run: ruby implementations/sdk/ruby/test/shared_vector_test.rb
 
   kotlin:

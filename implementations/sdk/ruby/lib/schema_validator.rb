@@ -28,7 +28,10 @@ module LcpSdk
       id = @ids.fetch(normalize(schema_name)) { raise KeyError, "unknown LCP schema: #{schema_name}" }
       schema = @documents.values.find { |candidate| candidate["$id"] == id } || @documents.fetch(schema_name)
       errors = JSONSchemer.schema(schema, ref_resolver: lambda do |uri|
-        @documents.values.find { |candidate| candidate["$id"] == uri } || @documents[uri]
+        reference = uri.to_s
+        @documents.values.find { |candidate| candidate["$id"].to_s == reference } ||
+          @documents[reference] ||
+          @documents[reference.sub(%r{.*/}, "")]
       end).validate(instance).to_a
       raise SchemaValidationError, "LCP schema validation failed for #{schema_name}: #{errors.first}" unless errors.empty?
       true
