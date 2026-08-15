@@ -6,6 +6,8 @@ CLUSTER_NAME="${KYVERNO_KIND_CLUSTER_NAME:-lcp-kyverno-admission}"
 KYVERNO_VERSION="${KYVERNO_VERSION:-v1.18.2}"
 KYVERNO_INSTALL_SHA256="${KYVERNO_INSTALL_SHA256:-3dcd43eaf11f0719084217148cd0c82a8fa49faa9b1a783ea5bea2cf84041bda}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95}"
+ADMISSION_ATTEMPTS="${KYVERNO_ADMISSION_ATTEMPTS:-8}"
+ADMISSION_RETRY_SECONDS="${KYVERNO_ADMISSION_RETRY_SECONDS:-10}"
 WORK_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/lcp-kyverno-admission"
 CONTEXT="kind-${CLUSTER_NAME}"
 
@@ -17,6 +19,11 @@ dump_diagnostics() {
   kubectl --context "${CONTEXT}" get clusterpolicies -o yaml >&2 || true
   kubectl --context "${CONTEXT}" get events -A --sort-by=.lastTimestamp >&2 || true
   kubectl --context "${CONTEXT}" -n kyverno logs deployment/kyverno-admission-controller --all-containers --tail=200 >&2 || true
+  for output in "${WORK_DIR}"/*.output; do
+    [[ -f "${output}" ]] || continue
+    echo "--- ${output} ---" >&2
+    cat "${output}" >&2 || true
+  done
 }
 
 cleanup() {
@@ -76,6 +83,10 @@ for policy_name in lcp-fixture-signature-policy lcp-fixture-provenance-policy lc
 done
 
 kubectl --context "${CONTEXT}" get clusterpolicy
+# Allow admission webhook caches and registry metadata to settle before the
+# negative cases begin. This avoids treating a newly-ready webhook as a failed
+# verification result.
+sleep "${KYVERNO_ADMISSION_SETTLE_SECONDS:-10}"
 
 assert_rejected() {
   local pod_name="$1"
@@ -84,7 +95,7 @@ assert_rejected() {
   local output_file="${WORK_DIR}/${pod_name}.output"
 
   local status=0
-  for attempt in 1 2 3 4 5; do
+  for attempt in $(seq 1 "${ADMISSION_ATTEMPTS}"); do
     set +e
     kubectl --context "${CONTEXT}" create --dry-run=server -f - >"${output_file}" 2>&1 <<EOF
 apiVersion: v1
@@ -101,9 +112,9 @@ EOF
     if [[ "${status}" -ne 0 ]] && grep -Eiq 'image verification|denied|rejected|failed to verify|verification failed|signature[s]? (not found|invalid|mismatch)|invalid signature|attestation[s]?|no matching (signature[s]?|attestation[s]?)|no (signature[s]?|attestation[s]?) found|does not satisfy' "${output_file}"; then
       break
     fi
-    if [[ "${attempt}" -lt 5 ]]; then
-      echo "Admission verification for ${pod_name} was inconclusive; retrying (${attempt}/5)" >&2
-      sleep 5
+    if [[ "${attempt}" -lt "${ADMISSION_ATTEMPTS}" ]]; then
+      echo "Admission verification for ${pod_name} was inconclusive; retrying (${attempt}/${ADMISSION_ATTEMPTS})" >&2
+      sleep "${ADMISSION_RETRY_SECONDS}"
     fi
   done
 
