@@ -59,9 +59,20 @@ jobs:
           OSV_SCANNER_SHA256: edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c
         run: |
           set -euo pipefail
+          fail() {
+            local status=$?
+            local cmd="${BASH_COMMAND}"
+            echo "::error::install step failed (${status}): ${cmd}"
+            exit "${status}"
+          }
+          trap fail ERR
+          command -v curl
+          command -v sha256sum
+          echo "RUNNER_TEMP=${RUNNER_TEMP:-<unset>}"
           curl --fail --silent --show-error --location --retry 3 \
             "https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64" \
             --output "${RUNNER_TEMP}/osv-scanner"
+          ls -l "${RUNNER_TEMP}/osv-scanner"
           echo "${OSV_SCANNER_SHA256}  ${RUNNER_TEMP}/osv-scanner" | sha256sum --check --strict
           chmod +x "${RUNNER_TEMP}/osv-scanner"
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
