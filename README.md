@@ -47,7 +47,7 @@ flowchart LR
 
 ## I'm a...
 
-### Publisher (collecting leads)
+### Publisher (sending leads)
 ```bash
 # 1. Install the MCP server (gives you submit_lead, get_schema, etc.)
 pip install -e implementations/mcp-server/
