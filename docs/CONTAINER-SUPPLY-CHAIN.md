@@ -50,7 +50,7 @@ Set the immutable image reference and the expected GitHub Actions workflow
 identity. The identity must be changed if the workflow is renamed or moved.
 
 ```bash
-export IMAGE='ghcr.io/SpearSystems/lcp-reference-platform@sha256:<published-digest>'
+export IMAGE='ghcr.io/spearsystems/lcp-reference-platform@sha256:<published-digest>'
 export WORKFLOW_IDENTITY='https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v<version>'
 
 cosign verify "$IMAGE" \
