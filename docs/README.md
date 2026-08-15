@@ -2,9 +2,13 @@
 
 ## Current documentation
 
-- [PLATFORM-INTEGRATION.md](PLATFORM-INTEGRATION.md) — how common
-  platforms (Facebook Lead Ads, Google Lead Forms, Twilio, HubSpot,
-  Salesforce, TikTok) map to/from LCP fields.
+- [PUBLISHER-ONBOARDING.md](PUBLISHER-ONBOARDING.md) — publisher setup,
+  source mapping, authentication, retries, sandbox testing, and go-live checks.
+- [BUYER-ONBOARDING.md](BUYER-ONBOARDING.md) — buyer offers, auction bids,
+  webhook verification, idempotency, and production controls.
+- [PLATFORM-INTEGRATION.md](PLATFORM-INTEGRATION.md) — how common platforms
+  (Facebook Lead Ads, Google Lead Forms, Twilio, HubSpot, Salesforce, TikTok)
+  map to/from LCP fields.
 - [IMPLEMENTATION-DECISIONS.md](IMPLEMENTATION-DECISIONS.md) — approved
   production reference profile: offer matching, auction selection, HMAC,
   webhook retries, SDK boundaries, and sandbox parity.
@@ -24,6 +28,10 @@
   Regulated deployment expectations.
 - [Operations runbook](OPERATIONS.md) — health, metrics, deployment, privacy
   operations, and incident practices.
+- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits, SBOMs,
+  image scanning, and release controls.
+- [Integration examples](../examples/integrations/) — Python, Node.js, cURL,
+  and buyer webhook templates.
 
 ## Historical artifacts (kept for provenance)
 

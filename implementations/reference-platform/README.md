@@ -22,7 +22,9 @@ hardening.
 - Admin CLI for credentials, offers, and controlled lead erasure.
 
 See [the implementation decisions](../../docs/IMPLEMENTATION-DECISIONS.md) for
-matching, signing, retry, and sandbox behavior.
+matching, signing, retry, and sandbox behavior. See the
+[supply-chain security guide](../../docs/SUPPLY-CHAIN-SECURITY.md) for package,
+image, and release controls.
 
 ## Install
 
@@ -45,6 +47,24 @@ export LCP_PII_ENCRYPTION_KEY='<urlsafe-base64-32-byte-key>'
 
 The package targets Python 3.10+. The `[production]` extra adds Gunicorn and
 Psycopg for the Postgres/WSGI deployment profile.
+
+## Validate a real Postgres deployment
+
+The repository's normal CI runs the reference-platform suite against a fresh
+Postgres 16 service, including encrypted intake, duplicate idempotency, and
+privacy erasure. To run the same test locally, provision an isolated
+throwaway database, install the Postgres extra, and set its URL:
+
+```bash
+python3 -m pip install -e 'implementations/reference-platform[production]'
+export LCP_TEST_POSTGRES_URL='postgresql://lcp_test:<password>@127.0.0.1:5432/lcp_test'
+PYTHONPATH=implementations/reference-platform \
+  python3 -m unittest discover -s implementations/reference-platform/tests -v
+```
+
+Never point the integration test at a shared or production database. The test
+creates its own uniquely named tenants and IDs but does not perform a full
+schema reset.
 
 ## Configure credentials and offers
 

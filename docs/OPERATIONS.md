@@ -33,7 +33,8 @@ from a tenant.
 ## Deployment procedure
 
 1. Review schema/spec/changelog changes.
-2. Run conformance, SDK/platform, security, build, and image scans.
+2. Run conformance, SDK/platform, real-Postgres integration, security, build,
+   SBOM, dependency, and image scans.
 3. Apply database migrations under change control.
 4. Deploy API canaries.
 5. Verify readiness and synthetic test traffic.

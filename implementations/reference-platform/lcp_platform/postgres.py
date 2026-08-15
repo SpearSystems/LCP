@@ -26,11 +26,21 @@ class _PostgresConnection:
         return sql.replace("?", "%s")
 
     def execute(self, sql: str, params: Any = None):
+        from psycopg.pq import TransactionStatus
+
+        statement = self._sql(sql)
+        # Reads execute in autocommit mode. Only create a savepoint when the
+        # caller is inside an explicit transaction; otherwise PostgreSQL
+        # rejects SAVEPOINT before the actual statement is run.
+        in_transaction = self.raw.info.transaction_status == TransactionStatus.INTRANS
+        if not in_transaction:
+            return self.raw.execute(statement, params or ())
+
         # Savepoints keep a uniqueness error from poisoning the outer
         # transaction, matching the SQLite store's IntegrityError behavior.
         self.raw.execute("SAVEPOINT lcp_statement")
         try:
-            cursor = self.raw.execute(self._sql(sql), params or ())
+            cursor = self.raw.execute(statement, params or ())
         except Exception as exc:
             self.raw.execute("ROLLBACK TO SAVEPOINT lcp_statement")
             self.raw.execute("RELEASE SAVEPOINT lcp_statement")
@@ -81,14 +91,12 @@ class PostgresStore(Store):
     @contextmanager
     def transaction(self) -> Iterator[_PostgresConnection]:
         with self._lock:
-            self._raw.execute("BEGIN")
-            try:
+            # Use psycopg's transaction manager rather than issuing a bare
+            # BEGIN/COMMIT while autocommit is enabled. This keeps explicit
+            # transactions reliable after standalone read statements and
+            # preserves the savepoint behavior in _PostgresConnection.
+            with self._raw.transaction():
                 yield self._connection
-            except Exception:
-                self._raw.rollback()
-                raise
-            else:
-                self._raw.commit()
 
     def _migrate_sqlite_columns(self, db: _PostgresConnection) -> None:
         db.execute(

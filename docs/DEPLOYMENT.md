@@ -40,7 +40,13 @@ connections, enable database encryption/backups, and test restores regularly.
 The reference store creates its required tables idempotently and maintains
 compatibility columns for upgrades. A production operator should wrap schema
 changes in its normal migration/release process before rolling out multiple
-API or worker versions. Production startup fails closed unless
+API or worker versions. The normal CI workflow runs the full reference-platform
+suite against a fresh Postgres 16 service; the integration test covers actual
+Postgres transactions, encrypted persisted envelopes, duplicate idempotency,
+and privacy erasure. Run it locally only against an isolated disposable
+database, using the command in the [reference-platform README](../implementations/reference-platform/README.md#validate-a-real-postgres-deployment).
+
+Production startup fails closed unless
 `LCP_PII_ENCRYPTION_KEY` is configured; it is a URL-safe base64 32-byte AES-GCM
 key used to protect persisted envelopes.
 

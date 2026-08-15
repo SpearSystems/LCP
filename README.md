@@ -71,7 +71,11 @@ curl -X POST https://your-platform.example/v1/lcp/leads \
 
 Use a per-partner authentication secret. See [SPEC.md §9](SPEC.md#9-security) for TLS, API-key, HMAC, replay protection, and per-pair hash requirements.
 
-See [the platform integration guide](docs/PLATFORM-INTEGRATION.md) for mappings from Facebook Lead Ads, Google Lead Forms, Twilio, Typeform, HubSpot, Salesforce, and TikTok.
+Start with the [publisher onboarding guide](docs/PUBLISHER-ONBOARDING.md), then use the
+[platform integration guide](docs/PLATFORM-INTEGRATION.md) for mappings from
+Facebook Lead Ads, Google Lead Forms, Twilio, Typeform, HubSpot, Salesforce,
+and TikTok. Copy-paste Python, Node.js, cURL, and buyer webhook templates are
+in [`examples/integrations/`](examples/integrations/).
 
 ### Python SDK
 
@@ -166,7 +170,7 @@ A bid is an LCP message, not just an arbitrary JSON response. It must include th
 }
 ```
 
-The platform's bid endpoint is documented as `POST /v1/lcp/bids` in the [OpenAPI definition](api/lcp-openapi.yaml). The exact webhook delivery and response arrangement can be deployment-specific, but all messages should remain valid LCP envelopes.
+The platform's bid endpoint is documented as `POST /v1/lcp/bids` in the [OpenAPI definition](api/lcp-openapi.yaml). The exact webhook delivery and response arrangement can be deployment-specific, but all messages should remain valid LCP envelopes. See the [buyer onboarding guide](docs/BUYER-ONBOARDING.md) for webhook verification, durable deduplication, offer criteria, and go-live controls.
 
 ### Signature verification
 
@@ -309,7 +313,7 @@ Schemas are available directly in [`schemas/`](schemas/) and [`verticals/`](vert
 ```
 schemas/         ── Envelope, core, and message JSON Schemas
 verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services)
-examples/        ── Sample payloads plus the end-to-end synthetic sandbox
+examples/        ── Sample payloads, onboarding templates, integrations, and the synthetic sandbox
 test-vectors/    ── 27 conformance vectors across L1/L2/L3
 implementations/ ── Python SDK, reference platform/router, and MCP adapter
 docs/            ── Integration guides, implementation decisions, and design notes
@@ -322,7 +326,10 @@ SPEC.md          ── Canonical protocol specification
 
 - [Canonical specification](SPEC.md)
 - [HTTP API definition](api/lcp-openapi.yaml)
+- [Publisher onboarding](docs/PUBLISHER-ONBOARDING.md)
+- [Buyer onboarding](docs/BUYER-ONBOARDING.md)
 - [Platform integration guide](docs/PLATFORM-INTEGRATION.md)
+- [Integration examples and templates](examples/integrations/)
 - [JSON Schemas](schemas/)
 - [Examples](examples/)
 - [End-to-end sandbox](examples/sandbox/README.md)
@@ -336,6 +343,7 @@ SPEC.md          ── Canonical protocol specification
 - [Security profiles](docs/SECURITY-PROFILES.md)
 - [Privacy and data governance](docs/PRIVACY-DATA-GOVERNANCE.md)
 - [Operations runbook](docs/OPERATIONS.md)
+- [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)
 - [Reference MCP adapter](implementations/mcp-server/)
