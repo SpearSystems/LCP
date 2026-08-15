@@ -49,13 +49,13 @@ for policy_name in lcp-fixture-signature-policy lcp-fixture-provenance-policy lc
   ready=""
   for _ in $(seq 1 90); do
     ready="$(kubectl --context "${CONTEXT}" get clusterpolicy "${policy_name}" \
-      -o jsonpath='{.status.ready}' 2>/dev/null || true)"
-    if [[ "${ready}" == "true" ]]; then
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+    if [[ "${ready}" == "True" ]]; then
       break
     fi
     sleep 2
   done
-  if [[ "${ready}" != "true" ]]; then
+  if [[ "${ready}" != "True" ]]; then
     kubectl --context "${CONTEXT}" get clusterpolicy "${policy_name}" -o yaml
     echo "Kyverno policy ${policy_name} did not become ready" >&2
     exit 1
