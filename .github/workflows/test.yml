@@ -120,3 +120,11 @@ jobs:
             echo "Ephemeral Kyverno admission environment was inconclusive; recreating it (${attempt}/3)" >&2
             sleep 10
           done
+      - name: Upload Kyverno admission diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kyverno-admission-diagnostics
+          path: ${{ runner.temp }}/lcp-kyverno-admission-diag.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -15,26 +15,42 @@ ADMISSION_ATTEMPTS="${KYVERNO_ADMISSION_ATTEMPTS:-8}"
 ADMISSION_RETRY_SECONDS="${KYVERNO_ADMISSION_RETRY_SECONDS:-10}"
 WORK_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/lcp-kyverno-admission"
 CONTEXT="kind-${CLUSTER_NAME}"
+# Kept outside WORK_DIR so the cleanup trap can preserve it for CI artifact upload.
+DIAG_LOG="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/lcp-kyverno-admission-diag.log"
 
 mkdir -p "${WORK_DIR}"
+: > "${DIAG_LOG}"
+
+# Record the exact failing command so CI artifacts identify the failure point.
+report_error() {
+  local status=$?
+  {
+    echo "Script failed: ${BASH_COMMAND}"
+    echo "  around line ${BASH_LINENO[0]} of ${BASH_SOURCE[0]}"
+  } 2>&1 | tee -a "${DIAG_LOG}" >&2
+  exit "${status}"
+}
+trap report_error ERR
 
 # The registry container is an OCI transport fixture only. It is pinned to a
 # multi-architecture digest; the test images and signing keys are generated
 # inside this disposable run and never come from a public test-image registry.
 
 dump_diagnostics() {
-  echo '--- Kyverno diagnostics ---' >&2
-  kubectl --context "${CONTEXT}" get pods -A -o wide >&2 || true
-  kubectl --context "${CONTEXT}" get clusterpolicies -o yaml >&2 || true
-  kubectl --context "${CONTEXT}" get events -A --sort-by=.lastTimestamp >&2 || true
-  kubectl --context "${CONTEXT}" -n kyverno logs deployment/kyverno-admission-controller --all-containers --tail=200 >&2 || true
-  docker ps -a --filter "name=^/${REGISTRY_NAME}$" >&2 || true
-  docker logs "${REGISTRY_NAME}" --tail=200 >&2 || true
-  for output in "${WORK_DIR}"/*.output; do
-    [[ -f "${output}" ]] || continue
-    echo "--- ${output} ---" >&2
-    cat "${output}" >&2 || true
-  done
+  {
+    echo '--- Kyverno diagnostics ---'
+    kubectl --context "${CONTEXT}" get pods -A -o wide || true
+    kubectl --context "${CONTEXT}" get clusterpolicies -o yaml || true
+    kubectl --context "${CONTEXT}" get events -A --sort-by=.lastTimestamp || true
+    kubectl --context "${CONTEXT}" -n kyverno logs deployment/kyverno-admission-controller --all-containers --tail=200 || true
+    docker ps -a --filter "name=^/${REGISTRY_NAME}$" || true
+    docker logs "${REGISTRY_NAME}" --tail=200 || true
+    for output in "${WORK_DIR}"/*.output; do
+      [[ -f "${output}" ]] || continue
+      echo "--- ${output} ---"
+      cat "${output}" || true
+    done
+  } 2>&1 | tee -a "${DIAG_LOG}" >&2 || true
 }
 
 cleanup() {
