@@ -63,7 +63,9 @@ jobs:
             -e implementations/sdk/python \
             -e implementations/mcp-server \
             -e 'implementations/reference-platform[production]'
-          pip-audit --strict
+          # Local implementation distributions are not published PyPI artifacts;
+          # audit their installed dependencies while skipping those editables.
+          pip-audit --strict --skip-editable
       - name: Generate source SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -87,7 +89,8 @@ jobs:
           output-file: lcp-release-container-sbom.cdx.json
           artifact-name: lcp-release-container-sbom.cdx.json
       - name: Scan release image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        # v0.36.0; pin the signed commit after the 2026 action-tag incident.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: lcp-reference-platform:release-check
           format: sarif

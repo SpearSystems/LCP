@@ -15,10 +15,13 @@ security workflow provides:
 
 - **Dependency review** for pull-request dependency changes.
 - **pip-audit** against the SDK, MCP adapter, and production reference-platform
-  dependency environments.
+  dependency environments. The local implementation distributions themselves
+  are intentionally skipped because they are not PyPI-published artifacts;
+  their installed and transitive dependencies are still audited.
 - **CycloneDX SBOMs** for the repository source tree and reference container.
 - **Trivy** scanning of the built reference image for HIGH and CRITICAL issues,
-  including unfixed findings.
+  including unfixed findings. The Trivy action is pinned to the signed v0.36.0
+  commit rather than a mutable version tag.
 - **CodeQL** static analysis for Python.
 
 `.github/dependabot.yml` opens weekly update pull requests for Python and
