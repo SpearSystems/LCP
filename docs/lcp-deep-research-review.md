@@ -1,5 +1,6 @@
 # LCP v1.0 — Deep Research Review
-
+> **Research page · Page 6 of 6**
+>
 > **Status: resolved.** All 5 blockers and 15 should-fixes in this review
 > have been addressed in SPEC.md (see §14 review-log appendix). This file
 > is kept for provenance — it documents the adversarial review the spec
@@ -108,3 +109,7 @@ This is cheap to fix now (pre-launch, draft status) and expensive after adoption
 - **Exclusivity/shared-lead selling** — already covered in §3 above, but worth restating here as a business-model gap rather than a field-level nit: this is core to how lead gen actually works commercially (exclusive vs. shared leads), and its absence from the spec is more surprising than most of the smaller field-level gaps.
 
 Everything else requested by the review brief (versioning cadence, conformance tiers, envelope/payload separation, Apache 2.0 + patent clause) held up under adversarial review — I'm not flagging them because they're genuinely sound as written, not because they were skipped.
+
+---
+
+**Previous:** [Deep research prompt](lcp-deep-research-prompt.md) · **Next:** [Publishing gap analysis](publishing-gap-analysis.md)

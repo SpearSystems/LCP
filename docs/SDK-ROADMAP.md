@@ -1,4 +1,5 @@
 # LCP SDK Program
+> **Developer page · Page 3 of 6**
 
 This document defines the official SDK contract and support policy for LCP
 implementations. It is separate from the wire protocol: an SDK is a developer
@@ -212,3 +213,7 @@ platforms, webhooks, and services in any language. The LCP MCP adapter should
 consume the Python SDK's signing and HTTP primitives rather than maintain a
 second implementation of them. Other language SDKs do not need to implement
 MCP unless an adopter has a concrete agent integration requirement.
+
+---
+
+**Previous:** [Platform integration](PLATFORM-INTEGRATION.md) · **Next:** [Tagged releases and artifact verification](RELEASE.md)

@@ -1,4 +1,5 @@
 # Publisher onboarding
+> **Publisher page · Page 2 of 6**
 
 This guide is for a publisher that captures leads from forms, calls, chat,
 marketplaces, ads, or an internal application and sends them to an LCP
@@ -205,3 +206,7 @@ For platform-specific source mappings, see the
 [platform integration guide](PLATFORM-INTEGRATION.md). For the transport
 contract, use the [OpenAPI definition](../api/lcp-openapi.yaml) and
 [canonical specification](../SPEC.md).
+
+---
+
+**Previous:** [Documentation home](README.md) · **Next:** [Publisher mapping and normalization](PUBLISHER-MAPPING.md)

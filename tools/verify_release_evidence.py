@@ -302,7 +302,7 @@ def main() -> int:
     parser.add_argument(
         "--identity",
         default="",
-        help="expected Sigstore certificate identity, e.g. https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v0.1.0",
+        help="expected Sigstore certificate identity, e.g. https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v1.0.0",
     )
     parser.add_argument(
         "--issuer",

@@ -1,4 +1,5 @@
 # LCP Operations Runbook
+> **Operations page · Page 4 of 6**
 
 ## Health and readiness
 
@@ -69,3 +70,7 @@ Do not put raw consumer payloads into incident tickets or chat systems.
 - Validate restored schema/version and delivery-queue continuity.
 - Verify retention and deletion obligations apply to backups.
 - Record measured RPO/RTO rather than relying on assumptions.
+
+---
+
+**Previous:** [Production deployment](DEPLOYMENT.md) · **Next:** [Security architecture](SECURITY-ARCHITECTURE.md)

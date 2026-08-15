@@ -1,6 +1,6 @@
 # GitHub branch protection and release-environment setup
 
-> **Maintainer page · Page 5A of 6**
+> **Maintainer page · Page 5 of 6**
 >
 > This page is the repository-side setup checklist for maintainers operating LCP
 > in an organization that handles regulated or high-scrutiny production data.
@@ -144,7 +144,7 @@ bumps.
    gh workflow run release.yml \
      --repo SpearSystems/LCP \
      --ref main \
-     -f tag=v0.1.0 \
+     -f tag=v1.0.0 \
      -f target_sha="$(git rev-parse HEAD)"
    ```
 
@@ -162,8 +162,8 @@ bumps.
    pass:
 
    ```bash
-   git tag -s v0.1.0 -m "LCP v0.1.0"
-   git push origin v0.1.0
+   git tag -s v1.0.0 -m "LCP v1.0.0"
+   git push origin v1.0.0
    ```
 
 7. Confirm all tag workflows pass. Approve only the package publication jobs

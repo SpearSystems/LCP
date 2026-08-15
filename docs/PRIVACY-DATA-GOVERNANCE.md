@@ -1,4 +1,5 @@
 # LCP Privacy and Data Governance
+> **Privacy page · Page 5 of 6**
 
 LCP carries consumer PII. Each platform, publisher, buyer, and downstream
 processor remains responsible for the laws and contracts applicable to its
@@ -76,3 +77,7 @@ consent are separate facts. The reference erasure operation preserves opaque
 routing/audit identifiers while redacting persisted payloads; it does not erase
 copies already delivered to a buyer or copies retained in backups, which must
 be handled through the operator's downstream and backup processes.
+
+---
+
+**Previous:** [Threat model](THREAT-MODEL.md) · **Next:** [Security profiles](SECURITY-PROFILES.md)

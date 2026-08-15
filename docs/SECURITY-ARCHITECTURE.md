@@ -1,5 +1,6 @@
 # LCP Security Architecture
-
+> **Security page · Page 5 of 6**
+>
 > **Security baseline:** OWASP ASVS Level 2 with a NIST SP 800-53 Moderate-style
 > control mapping. This document describes design intent; it is not a claim of
 > certification or legal compliance.
@@ -127,3 +128,7 @@ certification without an independent assessment.
 - No public credential or offer administration API.
 
 Operators must review every default before accepting live PII.
+
+---
+
+**Previous:** [Operations runbook](OPERATIONS.md) · **Next:** [Threat model](THREAT-MODEL.md)

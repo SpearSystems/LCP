@@ -5,7 +5,7 @@ themselves to this list. Pull requests updating this file are welcome.
 
 | Organization | Use Case | Since | Contact |
 |---|---|---|---|
-| _(empty — be the first adopter)_ | | | |
+| [SpearPointX](https://spearpointx.com) | Performance-weighted lead exchange — triaged, grade-scored lead handoffs between publishers and advertisers | 2026 | https://spearpointx.com |
 
 ## How to Add Your Organization
 

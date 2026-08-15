@@ -1,4 +1,5 @@
 # LCP Supply-Chain Security
+> **Supply-chain page · Page 5 of 6**
 
 This repository exchanges consumer PII, so dependency and build integrity are
 part of the security boundary. The repository's automated checks are defense
@@ -137,3 +138,7 @@ A self-hosted deployment should additionally:
   do not treat a nonblocking CI result as a security exception or certification.
 - Preserve release SBOMs and provenance records for the retention period.
 - Re-run scans after base-image, Python-runtime, or dependency changes.
+
+---
+
+**Previous:** [Security profiles](SECURITY-PROFILES.md) · **Next:** [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md)

@@ -1,4 +1,5 @@
 # LCP Production Deployment
+> **Operations page · Page 4 of 6**
 
 This guide describes the self-hosted deployment model for the reference LCP
 platform. It is cloud-neutral; Kubernetes is provided as an example, not a
@@ -164,3 +165,7 @@ production profile should plan for:
 
 These are planning targets, not guarantees. Test them with restore drills,
 worker termination, database failover, and region/network failure scenarios.
+
+---
+
+**Previous:** [Implementation decisions](IMPLEMENTATION-DECISIONS.md) · **Next:** [Operations runbook](OPERATIONS.md)

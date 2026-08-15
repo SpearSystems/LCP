@@ -1,6 +1,7 @@
 # LCP Implementation Decisions
-
-> **Status:** Approved implementation profile for the LCP v1.0 draft
+> **Developer page · Page 3 of 6**
+>
+> **Status:** Approved implementation profile for LCP v1.0
 >
 > This document records the decisions made for the reference SDK,
 > platform/router, and sandbox. It is intentionally separate from the
@@ -232,3 +233,7 @@ proposal before changing interoperable behavior:
 Any change to the wire format or a required interoperable behavior must also
 update the relevant schema, OpenAPI document, examples, test vectors, and
 changelog.
+
+---
+
+**Previous:** [Release ticket](RELEASE-TICKET.md) · **Next:** [Production deployment](DEPLOYMENT.md)

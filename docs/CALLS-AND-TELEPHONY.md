@@ -1,6 +1,6 @@
 # Calls and telephony
 
-> **Integration page · Page 2B**
+> **Integration page · Page 2 of 6**
 >
 > **Previous:** [Publisher mapping](PUBLISHER-MAPPING.md) · **Next:** [MVA and attachments](MVA-ATTACHMENTS.md)
 
@@ -123,4 +123,4 @@ the post.
 - Preserve the event and call-record audit trail without logging raw recordings
   or consumer PII.
 
-**Next:** [MVA and attachments](MVA-ATTACHMENTS.md)
+**Previous:** [Publisher mapping and normalization](PUBLISHER-MAPPING.md) · **Next:** [MVA and attachments](MVA-ATTACHMENTS.md)

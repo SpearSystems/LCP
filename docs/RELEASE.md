@@ -8,7 +8,7 @@
 
 ## What a version tag does
 
-A tag such as `v0.1.0` starts the coordinated release process. The tag is
+A tag such as `v1.0.0` starts the coordinated release process. The tag is
 accepted only when it matches `SDK_VERSION` and the package metadata checked by
 `tools/check_sdk_versions.py`.
 
@@ -55,8 +55,8 @@ immutable version rules and investigate before retrying.
 4. Push a tag whose name is exactly `v<SDK_VERSION>`:
 
    ```bash
-   git tag -a v0.1.0 -m "LCP v0.1.0"
-   git push origin v0.1.0
+   git tag -a v1.0.0 -m "LCP v1.0.0"
+   git push origin v1.0.0
    ```
 
    A signed Git tag is recommended for maintainer provenance, but the release
@@ -87,7 +87,7 @@ candidate commit:
 gh workflow run release.yml \
   --repo SpearSystems/LCP \
   --ref main \
-  -f tag=v0.1.0 \
+  -f tag=v1.0.0 \
   -f target_sha="$(git rev-parse HEAD)"
 ```
 
@@ -133,9 +133,9 @@ python3 tools/verify_release_evidence.py ./release-assets \
   --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/heads/main" \
   --issuer "https://token.actions.githubusercontent.com"
 
-# Tagged release evidence generated from refs/tags/v0.1.0:
+# Tagged release evidence generated from refs/tags/v1.0.0:
 python3 tools/verify_release_evidence.py ./release-assets \
-  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v0.1.0" \
+  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v1.0.0" \
   --issuer "https://token.actions.githubusercontent.com"
 ```
 
@@ -177,7 +177,7 @@ Download `release-manifest.json`, `release-notes.md`, and their corresponding
 official, verified distribution and set the expected release workflow identity:
 
 ```bash
-export VERSION='0.1.0'
+export VERSION='1.0.0'
 export REPOSITORY='SpearSystems/LCP'
 export TAG="v${VERSION}"
 export WORKFLOW_IDENTITY="https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
@@ -247,6 +247,6 @@ backup/recovery, and deployment approval. If a release must be withdrawn:
 
 ---
 
-**Previous:** [SDK index](../implementations/sdk/) · **Next:** [Publisher onboarding](PUBLISHER-ONBOARDING.md)
+**Previous:** [SDK program](SDK-ROADMAP.md) · **Next:** [Release ticket](RELEASE-TICKET.md)
 
 **Maintainer:** [Branch protection and release environment](MAINTAINER-RELEASE-SETUP.md)

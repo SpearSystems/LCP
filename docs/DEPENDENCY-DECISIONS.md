@@ -1,6 +1,6 @@
 # Dependency update decisions
 
-> **Maintainer page · Dependency review log**
+> **Maintainer page · Dependency review log · Page 5 of 6**
 
 This page records the decisions taken when working through the Dependabot
 update pull requests. It is a decision record, not a policy: every update is
@@ -46,3 +46,7 @@ vectors, and the security gate before it is merged.
 
 None currently. The networknt 3.x migration previously deferred here was
 completed in the Java and Kotlin SDKs (see Applied updates above).
+
+---
+
+**Previous:** [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) · **Next:** [Deep research prompt](lcp-deep-research-prompt.md)

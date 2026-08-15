@@ -1,4 +1,5 @@
 # LCP Platform Integration Guide
+> **Integration page · Page 2 of 6**
 
 LCP is a **wire format** for exchanging lead data between parties. It
 does not replace platform APIs — it sits between them. Each platform
@@ -152,3 +153,7 @@ TikTok Lead Gen captures leads in TikTok's UI. Map to LCP `lead`:
    [calls and telephony](CALLS-AND-TELEPHONY.md) and
    [MVA and attachments](MVA-ATTACHMENTS.md) for real-time transfer boundaries
    and secure out-of-band files.
+
+---
+
+**Previous:** [Buyer onboarding](BUYER-ONBOARDING.md) · **Next:** [SDK program](SDK-ROADMAP.md)

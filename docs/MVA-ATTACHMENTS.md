@@ -1,6 +1,6 @@
 # MVA and attachments
 
-> **Integration page · Page 2C**
+> **Integration page · Page 2 of 6**
 >
 > **Previous:** [Calls and telephony](CALLS-AND-TELEPHONY.md) · **Next:** [Monthly quotas](MONTHLY-QUOTAS.md)
 
@@ -150,4 +150,4 @@ attachment metadata redacted, cancels undelivered payloads, and records an
 audit event. Downstream buyers must honor the corresponding erasure event for
 copies they already received.
 
-**Next:** [Monthly quotas](MONTHLY-QUOTAS.md)
+**Previous:** [Calls and telephony](CALLS-AND-TELEPHONY.md) · **Next:** [Monthly payable quotas](MONTHLY-QUOTAS.md)

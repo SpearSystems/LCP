@@ -1,5 +1,6 @@
 # LCP — Deep Research Prompt (cross-LLM review)
-
+> **Research page · Page 6 of 6**
+>
 > **Status: historical artifact.** This prompt was used to stress-test the
 > LCP v1.0 design before implementation. The review it generated
 > (`lcp-deep-research-review.md`) is resolved — all 5 blockers and 15
@@ -229,3 +230,7 @@ conformance_level }`.
 Be specific. Cite the exact field, message type, or section you are
 criticizing. Prefer concrete fixes over general advice. If something is
 genuinely fine, say so — do not manufacture problems.
+
+---
+
+**Previous:** [Dependency update decisions](DEPENDENCY-DECISIONS.md) · **Next:** [Deep research review](lcp-deep-research-review.md)

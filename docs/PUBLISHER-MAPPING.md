@@ -1,6 +1,6 @@
 # Publisher mapping and normalization
 
-> **Integration page · Page 2A**
+> **Integration page · Page 2 of 6**
 >
 > **Previous:** [Publisher onboarding](PUBLISHER-ONBOARDING.md) · **Next:** [Call and telephony flow](CALLS-AND-TELEPHONY.md)
 
@@ -137,4 +137,4 @@ subject to its own retention and residency policy.
 - [ ] New vertical fields are reviewed for ping safety before release.
 - [ ] Each mapping is exercised in the sandbox before production activation.
 
-**Next:** [Call and telephony flow](CALLS-AND-TELEPHONY.md)
+**Previous:** [Publisher onboarding](PUBLISHER-ONBOARDING.md) · **Next:** [Calls and telephony](CALLS-AND-TELEPHONY.md)

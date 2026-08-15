@@ -1,4 +1,5 @@
 # Container Signing and Provenance Verification
+> **Supply-chain page · Page 5 of 6**
 
 The reference platform's container release workflow publishes a digest-addressed
 image, creates GitHub SLSA build-provenance and CycloneDX SBOM attestations,
@@ -155,3 +156,7 @@ In every case, bind the policy to the actual release workflow or signing key,
 not merely to the image repository. Rotate keys or workflow identities through
 a reviewed policy change, and keep old identities only for the documented
 migration window.
+
+---
+
+**Previous:** [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) · **Next:** [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md)

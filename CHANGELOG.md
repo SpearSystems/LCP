@@ -4,15 +4,18 @@ All notable changes to LCP (Lead Context Protocol) are documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] — 2026-08-16
 
 ### Added
+- Complete Previous/Next navigation and `Page N of 6` numbering across all documentation pages, forming one continuous reading path through the docs site
+- First adopter in [ADOPTERS.md](ADOPTERS.md): SpearPointX — performance-weighted lead exchange
 - Release-ticket approval checklist (`docs/RELEASE-TICKET.md`) that turns dry-run artifact verification into a gate before the real tag
 - Inline release-evidence review job that posts digest and conformance summaries on release pull requests
 - Scheduled weekly probe (`release-verify.yml`) that verifies the published release evidence against the signed manifest and registry presence
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Coordinated `SDK_VERSION` and all 12 package manifests to 1.0.0 and removed the remaining v0.1/draft status markers (README, SPEC, implementation decisions, changelog) ahead of the v1.0.0 release
 - Applied Dependabot updates across GitHub Actions (checkout v7.0.1, setup-node v7.0.0, setup-python v7.0.0, setup-java v5.7.0, cosign-installer v4.1.2, dependency-review v5.0.0, crates-io-auth v1.0.5, ruby/setup-ruby v1.321.0, github-script v7) and SDKs (Rust hmac/getrandom/jsonschema/sha2, Go module bumps, TypeScript devDependencies, Kotlin plugin 2.4.10, JUnit 6.1.3)
 - Resolved all known dependency vulnerabilities: pinned Jackson core/databind to 2.18.9 in the Java and Kotlin SDKs (nine CVEs on the transitive 2.18.3 pulled by networknt 1.5.9), bumped ajv to ^8.18.0 in the TypeScript SDK (GHSA-2g4f-4pwh-qvx6), and bumped golang.org/x/text to 0.39.0 in the Go SDK (GO-2026-5970); verified with `mvn test`, the Gradle test suite, `npm test`, `go test`, and osv-scanner reporting zero findings
 - Added a pinned, SHA-verified osv-scanner job to the security workflow that scans every SDK lockfile on push, pull request, and the weekly schedule, failing on high/critical (or unrated) vulnerabilities while uploading the full SARIF to code scanning
@@ -82,9 +85,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Country-scoping rule for vertical schemas (AGENTS.md rule 7, SPEC.md §3)
 - Spear Systems watermark added to all schemas, SPEC header, README, and MCP server
 
-## [1.0.0-draft] — 2026-08-15
+### Specification and initial build-out (2026-08-15)
 
-### Added
 - LCP specification (SPEC.md) — 14 sections + 2 appendices
   - Envelope/payload separation with transport-agnostic design
   - Canonical core: consumer (full_name, locale, no gender), location,

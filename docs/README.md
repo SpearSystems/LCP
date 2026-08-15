@@ -108,8 +108,8 @@
   protected release environment, OIDC trusted publishers, and break-glass
   controls.
 - [Dependency update decisions](DEPENDENCY-DECISIONS.md) — record of applied
-  and deferred Dependabot updates, including the networknt Jackson 3 migration
-  deferral.
+  and deferred Dependabot updates, including the completed networknt Jackson 3
+  migration and the SDK-wide osv-scanner security gate.
 
 ### Page 6 · Contribute
 

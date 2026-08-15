@@ -1,5 +1,6 @@
 # LCP Publishing Gap Analysis
-
+> **Research page · Page 6 of 6**
+>
 > **Status: resolved.** All high-priority and medium-priority gaps in this
 > analysis have been addressed (OpenAPI spec, CODE_OF_CONDUCT, CHANGELOG,
 > MAINTAINERS, ADOPTERS, GitHub templates, AI contribution policy, trust
@@ -211,3 +212,7 @@ These are things LCP already does well, confirmed by comparison:
 - **LCP is JSON-only** vs LEX's 4 wire formats. LCP's audience doesn't need X12/EDIFACT.
 - **LCP uses semver** vs MCP's date-based versioning. LCP's semver + N+2 deprecation is well-reasoned for a lead-exchange protocol.
 - **LCP's `consent_evidence[]` replaces vendor-specific core fields** — this is a deliberate design decision (review blocker B5). LEX puts `tcpa`, `gdpr`, `ccpa` etc. as top-level spec fields. LCP's generic approach is better for a universal protocol.
+
+---
+
+**Previous:** [Deep research review](lcp-deep-research-review.md) · **Next:** [Documentation home](README.md)

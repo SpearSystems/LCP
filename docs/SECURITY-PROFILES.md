@@ -1,4 +1,5 @@
 # LCP Deployment Security Profiles
+> **Security page · Page 5 of 6**
 
 LCP protocol conformance and deployment security are separate declarations.
 An implementation may be LCP-L3 without being suitable for regulated data.
@@ -61,3 +62,7 @@ For high-scrutiny, government-adjacent, or regulated deployments:
 These profiles are implementation guidance, not certifications. Operators must
 obtain qualified security, privacy, and legal review before making compliance
 claims.
+
+---
+
+**Previous:** [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) · **Next:** [Supply-chain security](SUPPLY-CHAIN-SECURITY.md)

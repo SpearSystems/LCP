@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Proposed release tag, for example v0.1.0"
+        description: "Proposed release tag, for example v1.0.0"
         required: true
         type: string
       target_sha:
@@ -61,7 +61,7 @@ jobs:
           release_tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           release_sha="$(git rev-parse HEAD)"
           if [[ ! "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag must be a SemVer tag such as v0.1.0: ${release_tag}" >&2
+            echo "Release tag must be a SemVer tag such as v1.0.0: ${release_tag}" >&2
             exit 1
           fi
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then

@@ -1,4 +1,5 @@
 # LCP Threat Model
+> **Security page · Page 5 of 6**
 
 This is a living threat model for the LCP protocol and reference platform.
 It should be reviewed before each major protocol or deployment change.
@@ -117,3 +118,7 @@ Re-review this model when adding:
 - Agent access to full posts.
 - Attachment storage, upload/download, malware scanning, or object-store changes.
 - New publisher mappings or buyer criteria that alter routing decisions.
+
+---
+
+**Previous:** [Security architecture](SECURITY-ARCHITECTURE.md) · **Next:** [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md)

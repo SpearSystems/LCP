@@ -3,10 +3,10 @@
 > **Created and maintained by Spear Systems** (a Spear company).
 > Open standard — Apache 2.0, free to implement.
 
-**Status:** DRAFT v1.0 — under active development. Not yet published.
+**Status:** v1.0 — published specification.
 **License:** Apache 2.0 (see [LICENSE](LICENSE)).
 
-> This is the working specification. The design is grounded in the
+> This is the canonical specification. The design is grounded in the
 > production ping/post wire contract (HMAC signing, idempotency,
 > nonce replay protection, PII-stripped pings) and the industry-standard
 > ping/post model. Findings from the deep-research review pass
@@ -880,8 +880,8 @@ core changes. Audit checklist:
 - [x] Add trademark/usage policy for "LCP compliant" claims.
 - [x] Fill extension registry format (namespace, registration, payload location).
 - [x] Write CLA full text (`governance/CLA.md`).
-- [ ] Spec site (LEX-style).
-- [ ] Publish decision (repo public, branding, announcement).
+- [x] Publish decision — repository is public under Apache 2.0 (see [RELEASE.md](docs/RELEASE.md) for the tagged release record).
+- [ ] Spec site (LEX-style) — deferred to v1.1 (see §14).
 
 ## 14. Review-log appendix
 

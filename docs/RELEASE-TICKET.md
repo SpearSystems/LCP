@@ -1,9 +1,9 @@
-# Release ticket — v0.1.0
+# Release ticket — v1.0.0
 
-> **Maintainer page · Release approval gate**
+> **Maintainer page · Release approval gate · Page 3 of 6**
 
 Copy this ticket into the release tracker (or an issue) and complete every
-item before creating the real `v0.1.0` tag. The ticket turns the non-publishing
+item before creating the real `v1.0.0` tag. The ticket turns the non-publishing
 dry run into an approvable gate: the tag must not be pushed until the dry-run
 evidence, package publication configuration, and release approvals all pass.
 
@@ -16,7 +16,7 @@ evidence, package publication configuration, and release approvals all pass.
 - [ ] Registry trusted publishers / protected credentials are configured and
       tested for PyPI, npm, NuGet, Maven Central, crates.io, RubyGems,
       Packagist, Go, and SwiftPM.
-- [ ] `SDK_VERSION` is `0.1.0` and every package's explicit version matches.
+- [ ] `SDK_VERSION` is `1.0.0` and every package's explicit version matches.
 
 ## 2. Dry-run release rehearsal
 
@@ -26,14 +26,14 @@ evidence, package publication configuration, and release approvals all pass.
       gh workflow run release.yml \
         --repo SpearSystems/LCP \
         --ref main \
-        -f tag=v0.1.0 \
+        -f tag=v1.0.0 \
         -f target_sha=<candidate-sha>
       ```
 
 - [ ] The run completed successfully (registry availability check, schema and
       conformance gates, source/package evidence generation, signing, and
       verification).
-- [ ] Downloaded the `lcp-release-dry-run-v0.1.0` workflow artifact and
+- [ ] Downloaded the `lcp-release-dry-run-v1.0.0` workflow artifact and
       extracted it.
 
 ## 3. Offline evidence verification
@@ -64,7 +64,7 @@ evidence, package publication configuration, and release approvals all pass.
 
 ## 4. Package publication readiness
 
-- [ ] Each published coordinate is absent from its registry for `0.1.0` (the
+- [ ] Each published coordinate is absent from its registry for `1.0.0` (the
       dry-run gate already fails otherwise):
       PyPI `lcp-sdk` / `lcp-mcp-server` / `lcp-reference-platform`,
       npm `@spearsystems/lcp-sdk`, NuGet `LcpSdk`,
@@ -74,7 +74,7 @@ evidence, package publication configuration, and release approvals all pass.
       SwiftPM `https://github.com/SpearSystems/LCP.git`.
 - [ ] The Kotlin Maven coordinate is distinct (`com.spearsystems:lcp-sdk-kotlin`)
       and the release manifest references it.
-- [ ] Container publication will target `ghcr.io/spearsystems/lcp-reference-platform:v0.1.0`
+- [ ] Container publication will target `ghcr.io/spearsystems/lcp-reference-platform:v1.0.0`
       with signature, provenance, and SBOM attestations.
 
 ## 5. Release approval
@@ -95,8 +95,8 @@ evidence, package publication configuration, and release approvals all pass.
 - [ ] Push the signed tag only after all items above are checked:
 
       ```bash
-      git tag -s v0.1.0 -m "LCP v0.1.0"
-      git push origin v0.1.0
+      git tag -s v1.0.0 -m "LCP v1.0.0"
+      git push origin v1.0.0
       ```
 
 - [ ] Confirm the tag runs Test, Security, SDK compatibility, package, and
@@ -109,11 +109,11 @@ evidence, package publication configuration, and release approvals all pass.
 
 - [ ] Ran the scheduled post-release probe
       ([release-verify.yml](../.github/workflows/release-verify.yml)) against
-      the published `v0.1.0` and it passed.
+      the published `v1.0.0` and it passed.
 - [ ] Recorded the signed manifest, SBOMs, provenance, scanner reports,
       reviewer identities, approvals, and deployment digest in the release
       record.
 
 ---
 
-**Previous:** [Release guide](RELEASE.md) · **Next:** [Dependency update decisions](DEPENDENCY-DECISIONS.md)
+**Previous:** [Release guide](RELEASE.md) · **Next:** [Implementation decisions](IMPLEMENTATION-DECISIONS.md)

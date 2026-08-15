@@ -1,8 +1,8 @@
 # Monthly payable quotas
 
-> **Operations page · Page 4A**
+> **Integration page · Page 2 of 6**
 >
-> **Previous:** [MVA and attachments](MVA-ATTACHMENTS.md) · **Next:** [Operations runbook](OPERATIONS.md)
+> **Previous:** [MVA and attachments](MVA-ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)
 
 A buyer can configure a monthly payable target on each offer. This is useful
 when one buyer has separate MVA-call, home-services-call, and mortgage-lead
@@ -102,4 +102,4 @@ controls, such as:
 It must not bypass consent, source allowlists, DNC rules, geography, or
 vertical eligibility merely to hit a number.
 
-**Next:** [Operations runbook](OPERATIONS.md)
+**Previous:** [MVA and attachments](MVA-ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)

@@ -1,4 +1,5 @@
 # Buyer onboarding
+> **Buyer page · Page 2 of 6**
 
 This guide is for an advertiser, network, CRM, call centre, or downstream
 platform that wants to receive LCP leads. A buyer may operate a receiving
@@ -234,3 +235,7 @@ python3 examples/sandbox/publisher.py
 
 For the exact HTTP contract, see the [OpenAPI definition](../api/lcp-openapi.yaml).
 For routing behavior, see [implementation decisions](IMPLEMENTATION-DECISIONS.md).
+
+---
+
+**Previous:** [Monthly payable quotas](MONTHLY-QUOTAS.md) · **Next:** [Platform integration](PLATFORM-INTEGRATION.md)
