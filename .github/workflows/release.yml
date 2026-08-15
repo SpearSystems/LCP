@@ -435,7 +435,7 @@ jobs:
           mkdir -p evidence-root
           cp release-notes.md release-notes.md.sigstore.json \
             release-manifest.json release-manifest.json.sigstore.json evidence-root/
-          cp lcp-source-sbom.cdx.json lcp-source-sbom.cdx.json.sigstore.json evidence-root/
+          cp release-assets/lcp-source-sbom.cdx.json release-assets/lcp-source-sbom.cdx.json.sigstore.json evidence-root/
           cp -r release-assets/. evidence-root/
           python3 tools/verify_release_evidence.py evidence-root
       - name: Upload signed dry-run evidence
