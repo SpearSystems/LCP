@@ -72,7 +72,7 @@ jobs:
           tar -xzf "${KYVERNO_ARCHIVE}" kyverno
           install -m 0755 kyverno "${HOME}/.kyverno/kyverno"
           echo "${HOME}/.kyverno" >> "${GITHUB_PATH}"
-          kyverno version
+          "${HOME}/.kyverno/kyverno" version
       - name: Test reviewed SARIF tooling
         run: python -m unittest discover -s tools/tests -v
       - name: Test image verification fixtures
