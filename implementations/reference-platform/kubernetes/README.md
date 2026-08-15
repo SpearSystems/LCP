@@ -71,6 +71,11 @@ kyverno test implementations/reference-platform/kubernetes/tests/verify-images \
   --registry --detailed-results
 ```
 
+The GitHub test workflow installs Kyverno CLI `v1.18.2`, verifies its pinned
+Linux archive with the release's Sigstore bundle, and then runs this fixture.
+Keep that version and verification identity under review when upgrading the
+policy engine or its CLI.
+
 The fixture is a policy-behavior test, not a substitute for a live admission
 test against the organization's registry, Kyverno version, credentials, and
 network policy.

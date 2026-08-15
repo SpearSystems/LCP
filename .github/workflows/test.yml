@@ -50,11 +50,29 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
-      - name: Install Kyverno CLI
-        uses: kyverno/action-install-cli@fcee92fca5c883169ef9927acf543e0b5fc58289 # v0.2.0
-        with:
-          release: v1.18.0
-          verify: true
+      - name: Install and verify Kyverno CLI
+        env:
+          KYVERNO_VERSION: v1.18.2
+          KYVERNO_ARCHIVE: kyverno-cli_v1.18.2_linux_x86_64.tar.gz
+          KYVERNO_ARCHIVE_SHA256: cb2feb8356149fd2fe774c894ccf0969f4a60a83867dd913af724f74ffbbc18b
+        run: |
+          set -euo pipefail
+          base_url="https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}"
+          curl --fail --silent --show-error --location --retry 3 \
+            "${base_url}/${KYVERNO_ARCHIVE}" --output "${KYVERNO_ARCHIVE}"
+          curl --fail --silent --show-error --location --retry 3 \
+            "${base_url}/${KYVERNO_ARCHIVE}.sigstore.json" --output "${KYVERNO_ARCHIVE}.sigstore.json"
+          echo "${KYVERNO_ARCHIVE_SHA256}  ${KYVERNO_ARCHIVE}" | sha256sum --check --strict
+          cosign verify-blob \
+            --bundle "${KYVERNO_ARCHIVE}.sigstore.json" \
+            --certificate-identity "https://github.com/kyverno/kyverno/.github/workflows/release.yaml@refs/tags/${KYVERNO_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${KYVERNO_ARCHIVE}"
+          mkdir -p "${HOME}/.kyverno"
+          tar -xzf "${KYVERNO_ARCHIVE}" kyverno
+          install -m 0755 kyverno "${HOME}/.kyverno/kyverno"
+          echo "${HOME}/.kyverno" >> "${GITHUB_PATH}"
+          kyverno version
       - name: Test reviewed SARIF tooling
         run: python -m unittest discover -s tools/tests -v
       - name: Test image verification fixtures
