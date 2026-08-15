@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/envelope.json",
+  "title": "LCP Envelope",
+  "description": "Top-level LCP wrapper. Transport-agnostic. Payload shape is determined by message.type. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "lcp"
+  ],
+  "properties": {
+    "lcp": {
+      "type": "object",
+      "required": [
+        "version",
+        "message",
+        "payload"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Protocol semver (e.g. 1.0.0)."
+        },
+        "message": {
+          "type": "object",
+          "title": "Message Header",
+          "required": [
+            "id",
+            "type",
+            "timestamp",
+            "sender_id",
+            "receiver_id",
+            "idempotency_key"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Unique message identifier (UUID v4)."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "lead",
+                "call",
+                "ping",
+                "post",
+                "ack",
+                "event",
+                "bid"
+              ],
+              "description": "Message type. Closed enumeration \u2014 unknown types trigger LCP-006."
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "sender_id": {
+              "type": "string",
+              "description": "Sender identifier (publisher/platform/buyer)."
+            },
+            "receiver_id": {
+              "type": "string",
+              "description": "Receiver identifier."
+            },
+            "correlation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Correlates this message with a prior message (e.g. ping \u2192 bid response)."
+            },
+            "idempotency_key": {
+              "type": "string",
+              "description": "Idempotency key \u2014 duplicate submissions with the same key return the original result."
+            },
+            "test": {
+              "type": "boolean",
+              "default": false,
+              "description": "Test message. Mirrored as X-LCP-Test header in the HTTP binding."
+            },
+            "security": {
+              "$ref": "core.json#/$defs/security",
+              "description": "Transport-neutral HMAC signature. Optional for HTTP (headers used instead); required for non-HTTP transports."
+            }
+          },
+          "additionalProperties": false
+        },
+        "payload": {
+          "description": "Message payload. Shape determined by message.type \u2014 see message-type schemas (lead.json, call.json, ping.json, post.json, ack.json, event.json)."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

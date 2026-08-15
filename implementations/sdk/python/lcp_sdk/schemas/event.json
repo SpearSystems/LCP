@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/event.json",
+  "title": "LCP Event Message",
+  "description": "Lifecycle notification. Events are open enumeration \u2014 receivers must store/pass through unknown values. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "lead_id",
+    "event",
+    "timestamp"
+  ],
+  "properties": {
+    "lead_id": {
+      "type": "string"
+    },
+    "event": {
+      "type": "string",
+      "description": "Lifecycle event. OPEN ENUMERATION \u2014 known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected. Adding new values is a MINOR version bump, not breaking.",
+      "$comment": "No enum constraint \u2014 this is an open enumeration per SPEC.md \u00a76. Receivers must accept any string value."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external_reference": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

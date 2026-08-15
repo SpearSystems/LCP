@@ -71,6 +71,14 @@ def write_outputs() -> None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         manifest_path(name).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # The Python SDK's runtime loader resolves schemas from loose
+    # lcp_sdk/schemas/ and lcp_sdk/verticals/ directories. Commit canonical
+    # copies inside the package so the wheel and sdist are self-contained and
+    # never depend on build-time ../ paths escaping the package directory.
+    for src in canonical_files():
+        dest = SDK_DIR / "python" / "lcp_sdk" / src.relative_to(ROOT)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(src.read_bytes())
 
 
 def check_outputs() -> int:

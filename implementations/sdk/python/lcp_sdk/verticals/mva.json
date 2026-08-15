@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/mva.json",
+  "title": "LCP Motor Vehicle Accident Vertical Schema",
+  "description": "Motor-vehicle-accident lead attributes. Exact medical, contractual, and evidentiary documents stay in the post and authenticated attachment store; pings expose only controlled bands and qualification flags.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "mva" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "accident_type": {
+      "type": "string",
+      "enum": ["car_collision", "motorcycle_collision", "truck_collision", "rideshare_collision", "pedestrian", "bicycle", "public_transport", "work_vehicle", "other"],
+      "ping_safe": true
+    },
+    "accident_date_band": {
+      "type": "string",
+      "enum": ["last_7_days", "8_30_days", "1_3_months", "3_12_months", "over_12_months"],
+      "description": "Age band of the accident; never expose an exact date in a ping.",
+      "ping_safe": true
+    },
+    "accident_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Exact accident date. Post-only; never include in a ping.",
+      "ping_safe": false
+    },
+    "jurisdiction": {
+      "type": "string",
+      "description": "State, province, or territory where the accident occurred. Prefer core location for the consumer's current location.",
+      "ping_safe": true
+    },
+    "injury_present": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "injury_severity_band": {
+      "type": "string",
+      "enum": ["none", "minor", "moderate", "serious", "fatality", "unknown"],
+      "ping_safe": true
+    },
+    "medical_treatment": {
+      "type": "string",
+      "enum": ["none", "self_treated", "emergency_room", "hospitalized", "ongoing", "unknown"],
+      "ping_safe": true
+    },
+    "emergency_services_called": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "police_report_available": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "fault_position": {
+      "type": "string",
+      "enum": ["not_at_fault", "partially_at_fault", "at_fault", "unclear", "unknown"],
+      "ping_safe": true
+    },
+    "other_driver_identified": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "other_driver_insured": {
+      "type": "string",
+      "enum": ["yes", "no", "unknown"],
+      "ping_safe": true
+    },
+    "consumer_insured": {
+      "type": "string",
+      "enum": ["yes", "no", "unknown"],
+      "ping_safe": true
+    },
+    "represented_by_attorney": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "prior_attorney_consultation": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "claim_filed": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "vehicle_count_band": {
+      "type": "string",
+      "enum": ["one", "two", "three_or_more", "unknown"],
+      "ping_safe": true
+    },
+    "commercial_vehicle_involved": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "passenger_count_band": {
+      "type": "string",
+      "enum": ["none", "one", "two", "three_or_more", "unknown"],
+      "ping_safe": true
+    },
+    "evidence_available": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["police_report", "medical_record", "insurance_policy", "photographs", "witness_details", "signed_contract", "other"]
+      },
+      "uniqueItems": true,
+      "description": "Presence indicators only. The actual records are represented by encrypted attachments.",
+      "ping_safe": true
+    },
+    "claim_stage": {
+      "type": "string",
+      "enum": ["initial_intake", "insurer_contacted", "claim_open", "claim_denied", "settlement_discussion", "unknown"],
+      "ping_safe": true
+    },
+    "additional_context": {
+      "type": "string",
+      "description": "Free text may contain sensitive information and is post-only.",
+      "ping_safe": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/insurance.json",
+  "title": "LCP Insurance Vertical Schema",
+  "description": "Insurance lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "insurance" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "insurance_type": {
+      "type": "string",
+      "enum": ["auto", "home", "life", "health", "business"],
+      "ping_safe": true
+    },
+    "coverage_type": {
+      "type": "string",
+      "enum": ["liability", "comprehensive", "collision", "full_coverage", "term_life", "whole_life", "health_basic", "health_major_medical", "business_general_liability", "business_property", "business_workers_comp", "other"],
+      "description": "Type of coverage sought.",
+      "ping_safe": true
+    },
+    "deductible_band": {
+      "type": "string",
+      "enum": ["under_250", "250_500", "500_1000", "1000_2500", "2500_5000", "over_5000"],
+      "description": "Banded deductible amount for ping use.",
+      "ping_safe": true
+    },
+    "coverage_amount_band": {
+      "type": "string",
+      "enum": ["under_25k", "25k_50k", "50k_100k", "100k_250k", "250k_500k", "500k_1m", "over_1m"],
+      "description": "Banded coverage amount for ping use.",
+      "ping_safe": true
+    },
+    "current_insurer": {
+      "type": "string",
+      "description": "Current insurance company name. Company name — not ping_safe.",
+      "ping_safe": false
+    },
+    "years_with_current_insurer_band": {
+      "type": "string",
+      "enum": ["under_1", "1_2", "3_5", "6_10", "over_10"],
+      "description": "Banded years with current insurer.",
+      "ping_safe": true
+    },
+    "has_claims_history": {
+      "type": "boolean",
+      "description": "Has the consumer filed any claims?",
+      "ping_safe": true
+    },
+    "claim_count_band": {
+      "type": "string",
+      "enum": ["none", "one", "two", "three_or_more"],
+      "description": "Banded number of claims filed.",
+      "ping_safe": true
+    },
+    "driver_age_band": {
+      "type": "string",
+      "enum": ["under_18", "18_21", "21_25", "25_35", "35_50", "50_65", "over_65"],
+      "description": "Banded driver age. Ping_safe for auto insurance underwriting.",
+      "ping_safe": true
+    },
+    "vehicle_type": {
+      "type": "string",
+      "enum": ["sedan", "coupe", "suv", "truck", "van", "motorcycle", "rv", "commercial", "other"],
+      "description": "Vehicle type for auto insurance. Ping_safe for auto.",
+      "ping_safe": true
+    },
+    "property_type": {
+      "type": "string",
+      "enum": ["single_family", "condo", "townhouse", "multi_family", "rental", "mobile_home", "other"],
+      "description": "Property type for home insurance.",
+      "ping_safe": true
+    },
+    "marital_status": {
+      "type": "string",
+      "enum": ["single", "married", "divorced", "widowed", "separated", "domestic_partnership"],
+      "ping_safe": true
+    },
+    "gender": {
+      "type": "string",
+      "enum": ["male", "female", "non_binary", "prefer_not_to_say"],
+      "description": "Gender — insurance requires this for underwriting rate classification.",
+      "ping_safe": true
+    },
+    "health_condition_band": {
+      "type": "string",
+      "enum": ["excellent", "good", "fair", "poor", "unknown"],
+      "description": "Self-reported health condition band for health insurance.",
+      "ping_safe": true
+    },
+    "smoker": {
+      "type": "boolean",
+      "description": "Smoking status for health/life insurance underwriting.",
+      "ping_safe": true
+    },
+    "height_band": {
+      "type": "string",
+      "enum": ["under_5ft", "5_5ft5", "5ft5_5ft9", "5ft9_6ft", "over_6ft"],
+      "description": "Banded height for health/life insurance underwriting.",
+      "ping_safe": true
+    },
+    "weight_band": {
+      "type": "string",
+      "enum": ["under_120", "120_150", "150_180", "180_210", "210_250", "over_250"],
+      "description": "Banded weight (lbs) for health/life insurance underwriting.",
+      "ping_safe": true
+    },
+    "occupation_class": {
+      "type": "string",
+      "enum": ["professional", "clerical", "skilled_trade", "manual_labor", "heavy_labor", "self_employed", "other"],
+      "description": "Occupation risk class for life/disability insurance underwriting.",
+      "ping_safe": true
+    }
+  },
+  "additionalProperties": false
+}

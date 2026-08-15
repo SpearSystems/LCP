@@ -84,6 +84,11 @@ def main() -> int:
                     errors.append(f"{name}: schema-bundle.json does not contain every canonical schema")
             except json.JSONDecodeError as error:
                 errors.append(f"{name}: invalid schema bundle: {error}")
+        if name == "python":
+            for src in sorted([*(ROOT / "schemas").glob("*.json"), *(ROOT / "verticals").glob("*.json")]):
+                loose = sdk / "lcp_sdk" / src.relative_to(ROOT)
+                if not loose.exists() or loose.read_bytes() != src.read_bytes():
+                    errors.append(f"python: loose schema copy {loose.relative_to(ROOT)} is stale; regenerate")
     if errors:
         print("SDK schema synchronization failed:")
         print("\n".join(f"- {error}" for error in errors))

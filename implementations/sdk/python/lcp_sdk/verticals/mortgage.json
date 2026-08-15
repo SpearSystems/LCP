@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/mortgage.json",
+  "title": "LCP Mortgage Vertical Schema",
+  "description": "Mortgage lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": ["vertical", "schema_version"],
+  "properties": {
+    "vertical": { "type": "string", "const": "mortgage" },
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "loan_type": {
+      "type": "string",
+      "enum": ["purchase", "refinance", "cash_out_refinance", "debt_consolidation", "first_home_buyer", "investment"],
+      "ping_safe": true
+    },
+    "loan_amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Exact loan amount in cents. PII-adjacent — not ping_safe.",
+      "ping_safe": false
+    },
+    "loan_amount_band": {
+      "type": "string",
+      "enum": ["under_100k", "100k_250k", "250k_500k", "500k_750k", "750k_1m", "over_1m"],
+      "description": "Banded loan amount for ping use.",
+      "ping_safe": true
+    },
+    "property_type": {
+      "type": "string",
+      "enum": ["single_family", "condo", "townhouse", "multi_family", "investment_property", "land"],
+      "ping_safe": true
+    },
+    "property_value_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Estimated property value. Not ping_safe — could narrow identity.",
+      "ping_safe": false
+    },
+    "property_value_band": {
+      "type": "string",
+      "enum": ["under_200k", "200k_400k", "400k_600k", "600k_800k", "800k_1m", "over_1m"],
+      "ping_safe": true
+    },
+    "property_address": {
+      "type": "string",
+      "description": "Full property address. PII — never in ping.",
+      "ping_safe": false
+    },
+    "existing_rate_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30,
+      "description": "Current interest rate. Not ping_safe — can narrow identity.",
+      "ping_safe": false
+    },
+    "credit_rating_band": {
+      "type": "string",
+      "enum": ["excellent", "good", "fair", "poor", "unknown"],
+      "ping_safe": true
+    },
+    "employment_status": {
+      "type": "string",
+      "enum": ["employed", "self_employed", "retired", "unemployed", "student"],
+      "ping_safe": true
+    },
+    "annual_income_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Annual income. PII-adjacent — not ping_safe.",
+      "ping_safe": false
+    },
+    "annual_income_band": {
+      "type": "string",
+      "enum": ["under_40k", "40k_60k", "60k_80k", "80k_100k", "100k_150k", "over_150k"],
+      "ping_safe": true
+    },
+    "ltv_ratio_band": {
+      "type": "string",
+      "enum": ["under_60", "60_70", "70_80", "80_90", "90_95", "over_95"],
+      "description": "Loan-to-value ratio band.",
+      "ping_safe": true
+    },
+    "mortgage_purpose": {
+      "type": "string",
+      "enum": ["new_mortgage", "remortgage", "equity_release", "debt_consolidation"],
+      "ping_safe": true
+    },
+    "is_first_home_buyer": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "has_existing_mortgage": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "veteran_status": {
+      "type": "string",
+      "enum": ["veteran", "active_duty", "reservist", "non_veteran"],
+      "ping_safe": true
+    },
+    "desired_rate_term": {
+      "type": "string",
+      "enum": ["15_year_fixed", "20_year_fixed", "30_year_fixed", "5_1_arm", "7_1_arm", "10_1_arm", "interest_only", "other"],
+      "description": "Desired mortgage rate term.",
+      "ping_safe": true
+    },
+    "loan_term_years": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 40,
+      "description": "Exact loan term in years. Not ping_safe.",
+      "ping_safe": false
+    },
+    "loan_term_band": {
+      "type": "string",
+      "enum": ["under_15", "15", "20", "30", "over_30"],
+      "description": "Banded loan term.",
+      "ping_safe": true
+    },
+    "cash_out_amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
+      "ping_safe": false
+    },
+    "cash_out_amount_band": {
+      "type": "string",
+      "enum": ["none", "under_25k", "25k_50k", "50k_100k", "over_100k"],
+      "ping_safe": true
+    },
+    "current_lender": {
+      "type": "string",
+      "description": "Current mortgage lender (refinance context). Company name — not ping_safe.",
+      "ping_safe": false
+    },
+    "bankruptcy_history": {
+      "type": "boolean",
+      "description": "Has the consumer filed for bankruptcy? Disqualifier for many loan products.",
+      "ping_safe": true
+    },
+    "foreclosure_history": {
+      "type": "boolean",
+      "description": "Has the consumer had a foreclosure? Disqualifier for many loan products.",
+      "ping_safe": true
+    },
+    "self_employed_income_verified": {
+      "type": "boolean",
+      "description": "For self-employed leads, whether income has been verified (bank statements, tax returns).",
+      "ping_safe": true
+    },
+    "mortgage_product": {
+      "type": "object",
+      "description": "Country-specific mortgage product. Include only fields relevant to your country; all others MAY be null or omitted. Follows the country-scoping rule in AGENTS.md §7.",
+      "properties": {
+        "country_code": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code (e.g. US, CA, GB, AU).",
+          "ping_safe": true
+        },
+        "us_product": {
+          "type": ["string", "null"],
+          "enum": ["conventional", "fha", "va", "heloc", "jumbo", "usda", null],
+          "description": "US mortgage product type. Null if not US.",
+          "ping_safe": true
+        },
+        "ca_product": {
+          "type": ["string", "null"],
+          "enum": ["insured", "insurable", "uninsured", null],
+          "description": "Canadian mortgage product type. Null if not CA.",
+          "ping_safe": true
+        },
+        "gb_product": {
+          "type": ["string", "null"],
+          "enum": ["standard_variable", "discount", "tracker", "offset", null],
+          "description": "UK mortgage product type. Null if not GB.",
+          "ping_safe": true
+        },
+        "au_product": {
+          "type": ["string", "null"],
+          "enum": ["principal_and_interest", "interest_only", "offset", null],
+          "description": "Australian mortgage product type. Null if not AU.",
+          "ping_safe": true
+        }
+      },
+      "required": ["country_code"],
+      "additionalProperties": false,
+      "ping_safe": true
+    }
+  },
+  "additionalProperties": false
+}
