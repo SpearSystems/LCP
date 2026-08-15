@@ -110,6 +110,9 @@
     "additionalProperties": false,
     "description": "Telephony lead message. Structurally distinct from form-based lead \u2014 carries call-specific blocks (IVR, durations, recording, disposition). Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
+      "attachments": {
+        "$ref": "core.json#/$defs/attachments"
+      },
       "attributes": {
         "$ref": "core.json#/$defs/attributes"
       },
@@ -325,15 +328,115 @@
   },
   "schemas/core.json": {
     "$defs": {
+      "attachments": {
+        "description": "Metadata for encrypted, out-of-band files. Binary content is never embedded in an LCP JSON envelope.",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "attachment_id": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            "content_type": {
+              "pattern": "^[^;\\s]+/[^;\\s]+$",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "encryption": {
+              "enum": [
+                "application_encrypted",
+                "provider_encrypted"
+              ],
+              "type": "string"
+            },
+            "expires_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "filename": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^/\\\\]+$",
+              "type": "string"
+            },
+            "malware_scan": {
+              "additionalProperties": false,
+              "description": "Non-sensitive malware scan evidence. A production attachment must have status clean before release.",
+              "properties": {
+                "engine": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "scanned_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "clean",
+                    "not_scanned"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "engine",
+                "scanned_at"
+              ],
+              "type": "object"
+            },
+            "purpose": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "residency": {
+              "description": "Country or deployment region where the attachment bytes are stored and scanned.",
+              "pattern": "^[A-Z0-9][A-Z0-9._-]{1,31}$",
+              "type": "string"
+            },
+            "sha256": {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            "size_bytes": {
+              "maximum": 104857600,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "storage_ref": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "attachment_id",
+            "purpose",
+            "filename",
+            "content_type",
+            "size_bytes",
+            "sha256",
+            "storage_ref",
+            "created_at"
+          ],
+          "type": "object"
+        },
+        "maxItems": 50,
+        "type": "array"
+      },
       "attributes": {
-        "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/. Every field MUST be tagged ping_safe: true/false.",
+        "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/.",
         "properties": {
           "schema_version": {
-            "description": "Version of the vertical schema.",
             "type": "string"
           },
           "vertical": {
-            "description": "Vertical identifier (e.g. mortgage, insurance, solar).",
             "type": "string"
           }
         },
@@ -345,8 +448,7 @@
         "type": "object"
       },
       "channel": {
-        "$comment": "No enum constraint \u2014 this is an open enumeration per SPEC.md \u00a76.",
-        "description": "OPEN ENUMERATION \u2014 known values: form, chat, click, api, agent, referral. Unknown values MUST be stored and passed through, not rejected.",
+        "description": "Open enumeration of lead channels.",
         "title": "Lead Channel",
         "type": "string"
       },
@@ -364,7 +466,6 @@
             "type": "array"
           },
           "consent_expires_at": {
-            "description": "When the consent validity expires. Optional \u2014 if absent, consent does not expire. Buyers should not contact after this timestamp.",
             "format": "date-time",
             "type": "string"
           },
@@ -387,20 +488,17 @@
             "type": "string"
           },
           "dnc_checked": {
-            "description": "Do-not-call list checked.",
             "type": "boolean"
           },
           "otp": {
             "additionalProperties": false,
-            "description": "OTP verification details. Optional \u2014 if present, otp_verified should be true. The actual OTP code MUST NOT be included \u2014 it is ephemeral and poses a replay risk if leaked.",
+            "description": "OTP verification details. The actual OTP code MUST NOT be included.",
             "properties": {
               "attempts": {
-                "description": "Number of OTP attempts before success. High counts may indicate fraud.",
                 "minimum": 1,
                 "type": "integer"
               },
               "channel": {
-                "description": "How the OTP was delivered.",
                 "enum": [
                   "sms",
                   "email",
@@ -413,7 +511,6 @@
                 "type": "string"
               },
               "verified_value_hash": {
-                "description": "Hash of the value that was verified (phone or email). Do not include the raw value.",
                 "type": "string"
               }
             },
@@ -424,7 +521,6 @@
             "type": "boolean"
           },
           "scrubs": {
-            "description": "Results of compliance scrubbing checks performed against the consumer's phone/email. Each entry is one scrub check.",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -433,15 +529,12 @@
                   "type": "string"
                 },
                 "details": {
-                  "description": "Optional human-readable detail (e.g. 'matched litigator list: 3 prior TCPA filings'). Do not include PII.",
                   "type": "string"
                 },
                 "provider": {
-                  "description": "Service that performed the scrub (e.g. ftc_dnc, au_dncregister, litigator_list, tcpa_scrub, first_orion, hiya, internal). Open enumeration.",
                   "type": "string"
                 },
                 "result": {
-                  "description": "clean = passed the check; flagged = on a list but not blocked (buyer decides); blocked = on a list and should not be contacted; not_checked = scrub was not run.",
                   "enum": [
                     "clean",
                     "flagged",
@@ -451,8 +544,6 @@
                   "type": "string"
                 },
                 "type": {
-                  "$comment": "Open enum \u2014 new scrub types are additive.",
-                  "description": "Scrub type. Known values: dnc_national, dnc_state, dnc_internal, litigator, blacklist, fraud_check, carrier_lookup, number_portability. Open enumeration.",
                   "type": "string"
                 }
               },
@@ -465,7 +556,6 @@
             "type": "array"
           },
           "session_capture_id": {
-            "description": "Session replay reference (e.g. rrweb).",
             "type": "string"
           }
         },
@@ -583,7 +673,6 @@
         "type": "object"
       },
       "currency": {
-        "description": "ISO 4217 currency code.",
         "pattern": "^[A-Z]{3}$",
         "type": "string"
       },
@@ -591,7 +680,6 @@
         "additionalProperties": false,
         "properties": {
           "code": {
-            "description": "Error code (e.g. LCP-003).",
             "pattern": "^LCP-\\d{3}$",
             "type": "string"
           },
@@ -600,15 +688,12 @@
             "type": "object"
           },
           "field": {
-            "description": "Field path that caused the error (e.g. consumer.phone).",
             "type": "string"
           },
           "message": {
-            "description": "Human-readable description.",
             "type": "string"
           },
           "name": {
-            "description": "Human-readable error name (e.g. MISSING_REQUIRED_FIELD).",
             "type": "string"
           }
         },
@@ -616,12 +701,10 @@
           "code",
           "message"
         ],
-        "title": "LCP Error",
         "type": "object"
       },
       "errors_array": {
         "additionalProperties": false,
-        "description": "Standard error response shape used in both HTTP error bodies and ack.errors[].",
         "properties": {
           "errors": {
             "items": {
@@ -634,7 +717,6 @@
         "required": [
           "errors"
         ],
-        "title": "Errors Array",
         "type": "object"
       },
       "exclusivity": {
@@ -649,12 +731,10 @@
             "type": "string"
           },
           "max_buyers": {
-            "description": "For shared leads, maximum buyers who may receive the lead.",
             "minimum": 1,
             "type": "integer"
           }
         },
-        "title": "Exclusivity",
         "type": "object"
       },
       "expiry": {
@@ -671,7 +751,6 @@
             ]
           }
         ],
-        "description": "Either expires_at or ttl_seconds. If the lead reaches expiry without acceptance, it transitions to EXPIRED.",
         "properties": {
           "expires_at": {
             "format": "date-time",
@@ -682,7 +761,6 @@
             "type": "integer"
           }
         },
-        "title": "Lead Expiry",
         "type": "object"
       },
       "location": {
@@ -732,22 +810,19 @@
         "description": "Non-PII origin metadata.",
         "properties": {
           "acquisition_method": {
-            "description": "How the lead was acquired. Known values: paid_ad, organic_search, marketplace, gmb (Google Business Profile), directory, cold_outbound, warm_transfer, scraped, unknown. Open enumeration.",
+            "description": "Open enumeration of acquisition methods.",
             "type": "string"
           },
           "agent": {
             "additionalProperties": false,
-            "description": "Present when source_type = agent.",
             "properties": {
               "acting_for": {
-                "description": "Party the agent acts on behalf of.",
                 "type": "string"
               },
               "agent_id": {
                 "type": "string"
               },
               "attestation": {
-                "description": "Signed JWT proving agent identity and authority.",
                 "type": "string"
               }
             },
@@ -756,8 +831,11 @@
               "acting_for",
               "attestation"
             ],
-            "title": "Agent Provenance",
             "type": "object"
+          },
+          "brand_id": {
+            "description": "Publisher-owned brand identifier.",
+            "type": "string"
           },
           "campaign_id": {
             "type": "string"
@@ -768,18 +846,20 @@
           "flow_key": {
             "type": "string"
           },
+          "form_id": {
+            "description": "Stable form or flow identifier.",
+            "type": "string"
+          },
           "funnel_key": {
             "type": "string"
           },
           "incentive_type": {
-            "description": "What incentive was offered (e.g. free_consultation, gift_card, discount_coupon, free_quote, cash_offer). Open enumeration.",
             "type": "string"
           },
           "ip_hash": {
             "type": "string"
           },
           "is_incentivized": {
-            "description": "True if the consumer was offered an incentive (free consultation, gift card, discount) to submit the lead. Buyers who don't want incentivized leads filter on this.",
             "type": "boolean"
           },
           "landing_page_url": {
@@ -787,7 +867,6 @@
             "type": "string"
           },
           "platform_source": {
-            "description": "Ad/marketing platform the lead originated from (e.g. google_ads, facebook, tiktok, bing_ads, organic, direct). Open enumeration.",
             "type": "string"
           },
           "received_at": {
@@ -798,8 +877,7 @@
             "type": "string"
           },
           "source_type": {
-            "$comment": "Was a closed enum. Opened per SPEC.md section 6 \u2014 new source types are additive.",
-            "description": "OPEN ENUMERATION \u2014 known values: publisher, direct, agent, api, referral, organic, marketplace, outbound, scraped. Unknown values must be stored and passed through.",
+            "description": "Open enumeration of source types.",
             "type": "string"
           },
           "source_url": {
@@ -815,7 +893,6 @@
       },
       "security": {
         "additionalProperties": false,
-        "description": "Transport-neutral HMAC signature. Mirrors X-LCP-Signature / X-LCP-Timestamp headers for non-HTTP transports.",
         "properties": {
           "algorithm": {
             "const": "HMAC-SHA256",
@@ -834,12 +911,10 @@
           "timestamp",
           "algorithm"
         ],
-        "title": "Security Block",
         "type": "object"
       },
       "status": {
-        "$comment": "No enum constraint \u2014 this is an open enumeration per SPEC.md \u00a76.",
-        "description": "OPEN ENUMERATION \u2014 known values: NEW, PINGED, POSTED, ACCEPTED, REJECTED, DUPLICATE, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected.",
+        "description": "Open enumeration of lifecycle statuses.",
         "title": "Lead Status",
         "type": "string"
       }
@@ -987,6 +1062,9 @@
     "additionalProperties": false,
     "description": "Intake message \u2014 form/chat/click/api/agent/referral channel. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
+      "attachments": {
+        "$ref": "core.json#/$defs/attachments"
+      },
       "attributes": {
         "$ref": "core.json#/$defs/attributes"
       },
@@ -1212,8 +1290,48 @@
         "default": true,
         "type": "boolean"
       },
+      "allowed_brand_ids": {
+        "description": "Optional publisher brand allowlist evaluated against provenance.brand_id.",
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array",
+        "uniqueItems": true
+      },
+      "allowed_publisher_ids": {
+        "description": "Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed.",
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array",
+        "uniqueItems": true
+      },
+      "attribute_equals": {
+        "additionalProperties": true,
+        "description": "Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.",
+        "type": "object"
+      },
+      "attribute_in": {
+        "additionalProperties": {
+          "minItems": 1,
+          "type": "array"
+        },
+        "description": "Safe declarative allowlists keyed by vertical attribute name.",
+        "type": "object"
+      },
       "buyer_id": {
         "minLength": 1,
+        "type": "string"
+      },
+      "call_routing_mode": {
+        "default": "post_call",
+        "description": "post_call delivers recorded call metadata; realtime_transfer requires a separate telephony binding for the live bridge.",
+        "enum": [
+          "post_call",
+          "realtime_transfer"
+        ],
         "type": "string"
       },
       "channels": {
@@ -1223,6 +1341,12 @@
         },
         "type": "array",
         "uniqueItems": true
+      },
+      "connect_timeout_seconds": {
+        "description": "Maximum time allowed for a real-time call transfer decision.",
+        "maximum": 60,
+        "minimum": 1,
+        "type": "integer"
       },
       "countries": {
         "items": {
@@ -1301,12 +1425,70 @@
         ],
         "type": "string"
       },
+      "monthly_maximum_payable": {
+        "description": "Optional hard maximum for payable outcomes in a calendar month.",
+        "minimum": 1,
+        "type": "integer"
+      },
+      "monthly_minimum_payable": {
+        "description": "Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "monthly_quota_policy": {
+        "default": "monitor",
+        "description": "monitor reports progress, pace prioritizes under-target offers, hard_cap stops payable routing at the maximum.",
+        "enum": [
+          "monitor",
+          "pace",
+          "hard_cap"
+        ],
+        "type": "string"
+      },
+      "monthly_quota_timezone": {
+        "description": "IANA timezone used to determine the monthly quota period.",
+        "minLength": 1,
+        "type": "string"
+      },
       "offer_id": {
         "minLength": 1,
         "type": "string"
       },
       "payable_definition": {
         "type": "string"
+      },
+      "payable_rules": {
+        "additionalProperties": false,
+        "description": "Structured, explainable payable evaluation rules.",
+        "properties": {
+          "allowed_call_dispositions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "exclude_duplicate_resubmissions": {
+            "default": true,
+            "type": "boolean"
+          },
+          "minimum_call_seconds": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mode": {
+            "default": "post_delivery",
+            "enum": [
+              "post_delivery",
+              "call_outcome"
+            ],
+            "type": "string"
+          },
+          "require_call_answered": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
       },
       "ping_timeout_seconds": {
         "default": 30,
@@ -1575,6 +1757,9 @@
     "additionalProperties": false,
     "description": "Full lead delivery to the winning buyer. Contains full PII. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
+      "attachments": {
+        "$ref": "core.json#/$defs/attachments"
+      },
       "attributes": {
         "$ref": "core.json#/$defs/attributes"
       },
@@ -1584,6 +1769,96 @@
       "buyer_reference": {
         "description": "Buyer's internal reference.",
         "type": "string"
+      },
+      "call": {
+        "additionalProperties": false,
+        "description": "Call detail block copied from a call intake when the post represents a call.",
+        "properties": {
+          "agent": {
+            "additionalProperties": false,
+            "type": "object"
+          },
+          "call_id": {
+            "type": "string"
+          },
+          "caller_phone_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "did": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string"
+          },
+          "durations": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_seconds": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "hold_seconds": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "ivr_seconds": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "total_seconds": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "forwarded_to": {
+            "type": "string"
+          },
+          "hangup_cause": {
+            "type": "string"
+          },
+          "ivr": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "queue": {
+            "additionalProperties": false,
+            "type": "object"
+          },
+          "recording": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tracking_number": {
+            "type": "string"
+          },
+          "transferred_from": {
+            "additionalProperties": false,
+            "type": "object"
+          }
+        },
+        "required": [
+          "call_id",
+          "status",
+          "started_at"
+        ],
+        "type": "object"
       },
       "compliance": {
         "$ref": "core.json#/$defs/compliance"
@@ -1704,23 +1979,22 @@
     "$id": "https://lcp.dev/verticals/home_services.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "description": "Home services lead attributes. Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "description": "Home services lead attributes. Every field is tagged ping_safe: true|false. Publishers normalize brand-specific form questions into this controlled taxonomy; unsupported source questions remain in an approved post-only extension or source archive.",
     "properties": {
       "budget_band": {
-        "description": "Banded budget for the project.",
         "enum": [
           "under_500",
           "500_1000",
           "1000_5000",
           "5000_10000",
           "10000_25000",
-          "over_25000"
+          "over_25000",
+          "unknown"
         ],
         "ping_safe": true,
         "type": "string"
       },
       "damage_type": {
-        "description": "Type of damage if present.",
         "enum": [
           "water",
           "fire",
@@ -1735,25 +2009,66 @@
         "ping_safe": true,
         "type": "string"
       },
+      "exact_budget": {
+        "description": "Exact budget is post-only; use budget_band in a ping.",
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "number"
+      },
+      "free_text": {
+        "description": "Free text is post-only because it may contain names, addresses, or sensitive details.",
+        "ping_safe": false,
+        "type": "string"
+      },
       "has_existing_damage": {
-        "description": "Is there existing damage requiring repair?",
         "ping_safe": true,
         "type": "boolean"
       },
+      "has_insurance_claim": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "material": {
+        "enum": [
+          "aluminum",
+          "copper",
+          "steel",
+          "vinyl",
+          "tile",
+          "metal",
+          "asphalt_shingle",
+          "wood",
+          "concrete",
+          "other",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
       "number_of_rooms_band": {
-        "description": "Banded number of rooms.",
         "enum": [
           "under_3",
           "3_5",
           "5_7",
           "7_10",
-          "over_10"
+          "over_10",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "occupancy": {
+        "enum": [
+          "owner_occupied",
+          "tenant_occupied",
+          "vacant",
+          "commercial",
+          "unknown"
         ],
         "ping_safe": true,
         "type": "string"
       },
       "preferred_schedule": {
-        "description": "Preferred scheduling timeframe.",
         "enum": [
           "asap",
           "within_week",
@@ -1765,17 +2080,21 @@
         "type": "string"
       },
       "project_type": {
-        "description": "Type of project requested.",
+        "description": "Legacy-compatible project classification.",
         "enum": [
           "repair",
           "install",
-          "maintenance"
+          "maintenance",
+          "replacement",
+          "inspection",
+          "cleaning",
+          "removal",
+          "other"
         ],
         "ping_safe": true,
         "type": "string"
       },
       "property_age_band": {
-        "description": "Banded property age in years.",
         "enum": [
           "under_5",
           "5_15",
@@ -1799,38 +2118,91 @@
         "ping_safe": true,
         "type": "string"
       },
+      "roof_type": {
+        "enum": [
+          "asphalt_shingle",
+          "metal",
+          "tile",
+          "flat",
+          "slate",
+          "wood",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
       "schema_version": {
         "const": "1.0.0",
         "type": "string"
       },
+      "service_subtype": {
+        "description": "Controlled service operation. A more specific taxonomy can be introduced by a future vertical schema version without changing the core.",
+        "enum": [
+          "inspection",
+          "repair",
+          "replacement",
+          "new_installation",
+          "cleaning",
+          "maintenance",
+          "installation_and_repair",
+          "emergency_response",
+          "quote_only",
+          "other"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
       "service_type": {
+        "description": "Controlled top-level service category.",
         "enum": [
           "roofing",
+          "gutters",
+          "downspouts",
           "plumbing",
           "hvac",
           "electrical",
           "landscaping",
           "painting",
-          "general_repair"
+          "windows",
+          "doors",
+          "flooring",
+          "fencing",
+          "concrete",
+          "tree_service",
+          "pest_control",
+          "water_damage",
+          "solar",
+          "pool",
+          "general_repair",
+          "other"
         ],
         "ping_safe": true,
         "type": "string"
       },
       "square_footage_band": {
-        "description": "Banded property square footage.",
         "enum": [
           "under_1000",
           "1000_1500",
           "1500_2000",
           "2000_3000",
           "3000_5000",
-          "over_5000"
+          "over_5000",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "stories_band": {
+        "enum": [
+          "one",
+          "two",
+          "three_or_more",
+          "unknown"
         ],
         "ping_safe": true,
         "type": "string"
       },
       "urgency": {
-        "description": "How urgently service is needed.",
         "enum": [
           "emergency",
           "within_week",
@@ -2513,6 +2885,207 @@
       "schema_version"
     ],
     "title": "LCP Mortgage Vertical Schema",
+    "type": "object"
+  },
+  "verticals/mva.json": {
+    "$id": "https://lcp.dev/verticals/mva.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Motor-vehicle-accident lead attributes. Exact medical, contractual, and evidentiary documents stay in the post and authenticated attachment store; pings expose only controlled bands and qualification flags.",
+    "properties": {
+      "accident_date": {
+        "description": "Exact accident date. Post-only; never include in a ping.",
+        "format": "date",
+        "ping_safe": false,
+        "type": "string"
+      },
+      "accident_date_band": {
+        "description": "Age band of the accident; never expose an exact date in a ping.",
+        "enum": [
+          "last_7_days",
+          "8_30_days",
+          "1_3_months",
+          "3_12_months",
+          "over_12_months"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "accident_type": {
+        "enum": [
+          "car_collision",
+          "motorcycle_collision",
+          "truck_collision",
+          "rideshare_collision",
+          "pedestrian",
+          "bicycle",
+          "public_transport",
+          "work_vehicle",
+          "other"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "additional_context": {
+        "description": "Free text may contain sensitive information and is post-only.",
+        "ping_safe": false,
+        "type": "string"
+      },
+      "claim_filed": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "claim_stage": {
+        "enum": [
+          "initial_intake",
+          "insurer_contacted",
+          "claim_open",
+          "claim_denied",
+          "settlement_discussion",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "commercial_vehicle_involved": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "consumer_insured": {
+        "enum": [
+          "yes",
+          "no",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "emergency_services_called": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "evidence_available": {
+        "description": "Presence indicators only. The actual records are represented by encrypted attachments.",
+        "items": {
+          "enum": [
+            "police_report",
+            "medical_record",
+            "insurance_policy",
+            "photographs",
+            "witness_details",
+            "signed_contract",
+            "other"
+          ],
+          "type": "string"
+        },
+        "ping_safe": true,
+        "type": "array",
+        "uniqueItems": true
+      },
+      "fault_position": {
+        "enum": [
+          "not_at_fault",
+          "partially_at_fault",
+          "at_fault",
+          "unclear",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "injury_present": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "injury_severity_band": {
+        "enum": [
+          "none",
+          "minor",
+          "moderate",
+          "serious",
+          "fatality",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "jurisdiction": {
+        "description": "State, province, or territory where the accident occurred. Prefer core location for the consumer's current location.",
+        "ping_safe": true,
+        "type": "string"
+      },
+      "medical_treatment": {
+        "enum": [
+          "none",
+          "self_treated",
+          "emergency_room",
+          "hospitalized",
+          "ongoing",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "other_driver_identified": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "other_driver_insured": {
+        "enum": [
+          "yes",
+          "no",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "passenger_count_band": {
+        "enum": [
+          "none",
+          "one",
+          "two",
+          "three_or_more",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "police_report_available": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "prior_attorney_consultation": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "represented_by_attorney": {
+        "ping_safe": true,
+        "type": "boolean"
+      },
+      "schema_version": {
+        "const": "1.0.0",
+        "type": "string"
+      },
+      "vehicle_count_band": {
+        "enum": [
+          "one",
+          "two",
+          "three_or_more",
+          "unknown"
+        ],
+        "ping_safe": true,
+        "type": "string"
+      },
+      "vertical": {
+        "const": "mva",
+        "type": "string"
+      }
+    },
+    "required": [
+      "vertical",
+      "schema_version"
+    ],
+    "title": "LCP Motor Vehicle Accident Vertical Schema",
     "type": "object"
   },
   "verticals/solar.json": {

@@ -12,7 +12,10 @@ hardening.
 ## Components
 
 - SQLite persistence for local/single-node use and a Postgres backend for multi-node production; replaceable through the `Store` boundary.
-- HTTP intake for `lead`, `call`, and `bid` messages.
+- HTTP intake for `lead`, `call`, `bid`, and lifecycle `event` messages.
+- Declarative publisher form mapping with versioned brand/flow normalization and audit digests.
+- Encrypted out-of-band attachment upload/download for contracts, evidence, and call records, with a local AES-GCM backend and production S3-compatible/SSE-KMS adapter, residency controls, and fail-closed ClamAV scanning.
+- Structured call payable evaluation and per-offer monthly quota reporting.
 - JSON Schema and strict ping-safe validation.
 - Bearer API-key and HMAC authentication.
 - Deterministic offer matching and auction selection.
@@ -46,8 +49,13 @@ export LCP_DATABASE_URL='postgresql://lcp_app:<password>@postgres.internal:5432/
 export LCP_PII_ENCRYPTION_KEY='<urlsafe-base64-32-byte-key>'
 ```
 
-The package targets Python 3.10+. The `[production]` extra adds Gunicorn and
-Psycopg for the Postgres/WSGI deployment profile.
+The package targets Python 3.10+. The `[production]` extra adds Gunicorn, Psycopg, boto3, and the ClamAV client
+for the Postgres/WSGI/object-storage deployment profile. Configure
+`LCP_ATTACHMENT_DIRECTORY`, `LCP_MAX_ATTACHMENT_BYTES`, and
+`LCP_ALLOWED_ATTACHMENT_CONTENT_TYPES` for the reference file backend. For
+multi-node production, use `LCP_ATTACHMENT_BACKEND=s3` with an SSE-KMS key,
+explicit residency, and a private ClamAV service; see
+[the attachment deployment guide](../../docs/MVA-ATTACHMENTS.md).
 
 ## Validate a real Postgres deployment
 
@@ -174,6 +182,10 @@ multiple nodes or high throughput.
 | `POST` | `/v1/lcp/leads` | Publisher lead intake (direct or offer-routed) |
 | `POST` | `/v1/lcp/calls` | Publisher call intake |
 | `POST` | `/v1/lcp/bids` | Buyer bid submission |
+| `POST` | `/v1/lcp/events` | Call outcomes and lifecycle/payable updates |
+| `POST` | `/v1/lcp/attachments` | Authenticated scanned/encrypted binary upload |
+| `GET` | `/v1/lcp/attachments/{attachment_id}` | Authenticated attachment download |
+| `GET` | `/v1/lcp/offers/{offer_id}/quota` | Monthly payable quota and pacing report |
 | `GET` | `/v1/lcp/leads/{lead_id}` | Lead status and lifecycle |
 | `GET` | `/health/live` | Unauthenticated process liveness |
 | `GET` | `/health/ready` | Database-backed readiness |
@@ -186,7 +198,8 @@ The complete transport contract is [api/lcp-openapi.yaml](../../api/lcp-openapi.
 ## Tenant and credential model
 
 Every sender has a tenant ID and scopes. Examples include `lead:submit`,
-`lead:read`, `bid:submit`, `offer:read`, and `platform:admin`. Lead status is
+`lead:read`, `bid:submit`, `event:submit`, `attachment:write`, `offer:read`,
+and `platform:admin`. Lead status is
 only visible to the submitting sender, an authorized buyer that received the
 lead, or a platform administrator. Offers are routed within the configured
 `LCP_ROUTING_TENANT_ID` and are not writable through participant endpoints.

@@ -54,6 +54,26 @@ class EnvelopeCipher:
         ciphertext = AESGCM(self._key).encrypt(nonce, plaintext, self._aad)
         return self._prefix + base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
 
+    def encrypt_bytes(self, value: bytes, *, aad: bytes = b"lcp-persisted-attachment:v1") -> bytes:
+        """Encrypt binary PII such as an uploaded contract or call record."""
+        if not self._key:
+            return value
+        nonce = secrets.token_bytes(12)
+        return b"encb:v1:" + nonce + AESGCM(self._key).encrypt(nonce, value, aad)
+
+    def decrypt_bytes(self, value: bytes, *, aad: bytes = b"lcp-persisted-attachment:v1") -> bytes:
+        if not value.startswith(b"encb:v1:"):
+            if self._key:
+                raise EnvelopeCryptoError("Unencrypted attachment encountered while encryption is required")
+            return value
+        if not self._key:
+            raise EnvelopeCryptoError("Encrypted attachment requires LCP_PII_ENCRYPTION_KEY")
+        packed = value[len(b"encb:v1:"):]
+        try:
+            return AESGCM(self._key).decrypt(packed[:12], packed[12:], aad)
+        except Exception as exc:
+            raise EnvelopeCryptoError("Persisted attachment authentication failed") from exc
+
     def decode(self, value: str) -> dict[str, Any]:
         if not value.startswith(self._prefix):
             if self._key:

@@ -1,0 +1,60 @@
+{
+  "mapping_id": "brand-01-gutters-v3",
+  "publisher_id": "publisher_brand_01",
+  "brand_id": "brand_01",
+  "form_key": "gutters-form-v3",
+  "version": "3.0.0",
+  "active": true,
+  "vertical": "home_services",
+  "schema_version": "1.0.0",
+  "channel": "form",
+  "country_code": "AU",
+  "field_map": {
+    "lead_id": "submission.id",
+    "consumer.full_name": "contact.name",
+    "consumer.phone": "contact.phone",
+    "consumer.email": "contact.email",
+    "location.country_code": "address.country",
+    "location.state_region": "address.state",
+    "location.postal_code": "address.postcode",
+    "location.city": "address.city",
+    "attributes.service_type": "answers.primary_service",
+    "attributes.service_subtype": "answers.job_type",
+    "attributes.project_type": "answers.project_type",
+    "attributes.urgency": "answers.urgency",
+    "attributes.property_type": "answers.property_type",
+    "attributes.budget_band": "answers.budget_band",
+    "compliance.consent_timestamp": "consent.captured_at",
+    "compliance.consent_purposes": "consent.purposes",
+    "compliance.consent_evidence": "consent.evidence",
+    "provenance.campaign_id": "marketing.campaign_id",
+    "provenance.creative_id": "marketing.creative_id"
+  },
+  "transforms": {
+    "consumer.phone": "e164",
+    "consumer.email": "lower",
+    "location.country_code": "upper",
+    "location.postal_code": "trim",
+    "compliance.consent_timestamp": "date_time"
+  },
+  "value_maps": {
+    "attributes.service_type": {
+      "gutters_and_downpipes": "gutters",
+      "roof_guttering": "gutters",
+      "downpipes": "downspouts"
+    },
+    "attributes.project_type": {
+      "replace": "replacement",
+      "new": "install"
+    }
+  },
+  "otp": {
+    "verified_path": "verification.otp_verified",
+    "channel_path": "verification.channel",
+    "verified_at_path": "verification.verified_at",
+    "value_hash_path": "verification.value_hash",
+    "attempts_path": "verification.attempts",
+    "method": "otp",
+    "verified_field": "phone"
+  }
+}

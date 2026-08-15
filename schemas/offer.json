@@ -160,6 +160,76 @@
       "type": "integer",
       "minimum": 1
     },
+    "allowed_publisher_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed."
+    },
+    "allowed_brand_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Optional publisher brand allowlist evaluated against provenance.brand_id."
+    },
+    "attribute_equals": {
+      "type": "object",
+      "description": "Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.",
+      "additionalProperties": true
+    },
+    "attribute_in": {
+      "type": "object",
+      "description": "Safe declarative allowlists keyed by vertical attribute name.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1
+      }
+    },
+    "monthly_minimum_payable": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply."
+    },
+    "monthly_maximum_payable": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional hard maximum for payable outcomes in a calendar month."
+    },
+    "monthly_quota_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "IANA timezone used to determine the monthly quota period."
+    },
+    "monthly_quota_policy": {
+      "type": "string",
+      "enum": ["monitor", "pace", "hard_cap"],
+      "default": "monitor",
+      "description": "monitor reports progress, pace prioritizes under-target offers, hard_cap stops payable routing at the maximum."
+    },
+    "payable_rules": {
+      "type": "object",
+      "description": "Structured, explainable payable evaluation rules."
+      ,"properties": {
+        "mode": { "type": "string", "enum": ["post_delivery", "call_outcome"], "default": "post_delivery" },
+        "require_call_answered": { "type": "boolean" },
+        "minimum_call_seconds": { "type": "integer", "minimum": 0 },
+        "allowed_call_dispositions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "exclude_duplicate_resubmissions": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    },
+    "call_routing_mode": {
+      "type": "string",
+      "enum": ["post_call", "realtime_transfer"],
+      "default": "post_call",
+      "description": "post_call delivers recorded call metadata; realtime_transfer requires a separate telephony binding for the live bridge."
+    },
+    "connect_timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Maximum time allowed for a real-time call transfer decision."
+    },
     "delivery_windows": {
       "type": "array",
       "items": {

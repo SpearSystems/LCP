@@ -40,7 +40,9 @@ Request or create a dedicated credential for each buyer, platform, and
 environment. At minimum, an auction buyer commonly needs:
 
 - `bid:submit` to send bids;
-- `lead:read` to query the status of leads delivered to that buyer; and
+- `event:submit` to send call outcomes and lifecycle updates;
+- `lead:read` to query the status of leads delivered to that buyer;
+- authenticated attachment access for documents included in a winning post; and
 - `offer:read` if the operator exposes offer discovery.
 
 Use a separate HMAC secret for each bilateral integration. The platform signs
@@ -74,7 +76,9 @@ platform operator. Criteria can include:
 - spam-risk, completeness, DNC, litigator, and blacklist rules;
 - delivery windows and time zone;
 - daily/hourly capacity;
-- floor price, currency, and payable definition; and
+- floor price, currency, and payable definition;
+- structured call payable rules and real-time/post-call mode;
+- monthly minimum/maximum payable targets and pacing policy; and
 - direct delivery or auction routing.
 
 A reusable offer template is
@@ -158,7 +162,7 @@ The bid must be an LCP envelope with:
 Submit the bid before the `expires_at`/ping timeout. A late bid may be
 rejected even when the HTTP request itself succeeds.
 
-## 6. Handle posts and lifecycle events
+## 6. Handle posts, attachments, and lifecycle events
 
 Treat `post` delivery as at-least-once. Use the LCP `message.id` or
 `idempotency_key` as a durable unique key, and make CRM/dialler writes
@@ -179,6 +183,16 @@ an auditable mapping between `lead_id`, `offer_id`, buyer reference, CRM ID,
 and any billing or dispute record. Do not treat delivery alone as consumer
 consent or conversion.
 
+If a post contains `attachments[]`, fetch the bytes through the authenticated
+attachment endpoint only after verifying the metadata hash and applying your
+own malware, residency, retention, and authorization controls. Never treat
+`storage_ref` as a public URL.
+
+For call offers, send a signed `CALL_OUTCOME` event with the offer ID, answer
+state, duration, disposition, and transfer status. The platform evaluates the
+offer's `payable_rules` and updates the monthly quota. See [calls and
+telephony](CALLS-AND-TELEPHONY.md) and [monthly quotas](MONTHLY-QUOTAS.md).
+
 ## 7. Test before production
 
 Use a separate buyer credential, webhook URL, database, and CRM sandbox. Test:
@@ -191,7 +205,8 @@ Use a separate buyer credential, webhook URL, database, and CRM sandbox. Test:
 6. a post that fails local compliance checks;
 7. an expired ping and a late bid;
 8. a buyer at capacity; and
-9. test-marker rejection on the production endpoint.
+9. test-marker rejection on the production endpoint;
+10. call outcome rules, attachment retrieval, and monthly quota reporting.
 
 The repository sandbox demonstrates the complete synthetic publisher → ping →
 bid → post → delivery-event path:

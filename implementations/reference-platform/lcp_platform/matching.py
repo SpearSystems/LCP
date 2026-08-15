@@ -66,6 +66,7 @@ def match_offer(
     payload: dict[str, Any],
     *,
     now: datetime | None = None,
+    sender_id: str | None = None,
 ) -> MatchResult:
     """Evaluate all standard offer predicates against a lead payload."""
     reasons: list[str] = []
@@ -80,6 +81,12 @@ def match_offer(
 
     if attributes.get("vertical") != offer.get("vertical"):
         reasons.append("vertical_mismatch")
+    allowed_publishers = offer.get("allowed_publisher_ids", [])
+    if allowed_publishers and sender_id not in allowed_publishers:
+        reasons.append("publisher_not_allowed")
+    allowed_brands = offer.get("allowed_brand_ids", [])
+    if allowed_brands and provenance.get("brand_id") not in allowed_brands:
+        reasons.append("brand_not_allowed")
     if location.get("country_code") not in offer.get("countries", []):
         reasons.append("country_not_supported")
     if offer.get("state_regions") and location.get("state_region") not in offer["state_regions"]:
@@ -113,6 +120,13 @@ def match_offer(
         completeness = quality.get("data_completeness")
         if _COMPLETENESS.get(completeness, 0) < _COMPLETENESS[offer["min_data_completeness"]]:
             reasons.append("data_completeness_too_low")
+
+    for field, expected in offer.get("attribute_equals", {}).items():
+        if attributes.get(field) != expected:
+            reasons.append(f"attribute_{field}_mismatch")
+    for field, allowed in offer.get("attribute_in", {}).items():
+        if attributes.get(field) not in allowed:
+            reasons.append(f"attribute_{field}_not_allowed")
 
     if offer.get("require_consent_evidence") and not compliance.get("consent_evidence"):
         reasons.append("consent_evidence_missing")

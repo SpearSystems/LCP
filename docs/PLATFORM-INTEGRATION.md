@@ -145,3 +145,10 @@ TikTok Lead Gen captures leads in TikTok's UI. Map to LCP `lead`:
    Richer ad data goes in extensions.
 5. **Adapters are thin.** Each adapter is ~50-100 lines of mapping code.
    No SDK is required — LCP is JSON over HTTP.
+6. **Messy multi-brand sources use the mapping registry.** See
+   [publisher mapping](PUBLISHER-MAPPING.md) for versioned normalization,
+   OTP variation, and audit behavior.
+7. **Calls and evidence have dedicated paths.** See
+   [calls and telephony](CALLS-AND-TELEPHONY.md) and
+   [MVA and attachments](MVA-ATTACHMENTS.md) for real-time transfer boundaries
+   and secure out-of-band files.

@@ -120,6 +120,42 @@
     "attributes": {
       "$ref": "core.json#/$defs/attributes"
     },
+    "call": {
+      "type": "object",
+      "description": "Call detail block copied from a call intake when the post represents a call.",
+      "required": ["call_id", "status", "started_at"],
+      "properties": {
+        "call_id": { "type": "string" },
+        "status": { "type": "string" },
+        "hangup_cause": { "type": "string" },
+        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+        "did": { "type": "string" },
+        "forwarded_to": { "type": "string" },
+        "tracking_number": { "type": "string" },
+        "caller_phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "durations": {
+          "type": "object",
+          "properties": {
+            "total_seconds": { "type": "integer", "minimum": 0 },
+            "ivr_seconds": { "type": "integer", "minimum": 0 },
+            "hold_seconds": { "type": "integer", "minimum": 0 },
+            "agent_seconds": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "recording": { "type": "object", "additionalProperties": true },
+        "ivr": { "type": "object", "additionalProperties": true },
+        "disposition": { "type": "string" },
+        "transferred_from": { "type": "object", "additionalProperties": false },
+        "queue": { "type": "object", "additionalProperties": false },
+        "agent": { "type": "object", "additionalProperties": false }
+      },
+      "additionalProperties": false
+    },
+    "attachments": {
+      "$ref": "core.json#/$defs/attachments"
+    },
     "provenance": {
       "$ref": "core.json#/$defs/provenance"
     },

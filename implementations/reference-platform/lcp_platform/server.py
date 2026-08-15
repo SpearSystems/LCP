@@ -15,6 +15,7 @@ from .service import PlatformService
 class LCPRequestHandler(BaseHTTPRequestHandler):
     service: PlatformService
     max_body_bytes: int = 2_000_000
+    max_attachment_bytes: int = 100 * 1024 * 1024
 
     def do_GET(self) -> None:  # noqa: N802
         self._dispatch("GET", b"")
@@ -24,7 +25,8 @@ class LCPRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = -1
-        if length < 0 or length > self.max_body_bytes:
+        max_body_bytes = self.max_attachment_bytes if self.path.rstrip("/") == "/v1/lcp/attachments" else self.max_body_bytes
+        if length < 0 or length > max_body_bytes:
             self.send_error(413, "Request body is too large")
             return
         self._dispatch("POST", self.rfile.read(length))
@@ -37,7 +39,9 @@ class LCPRequestHandler(BaseHTTPRequestHandler):
             headers=headers,
             body=body,
         )
-        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        encoded = payload if isinstance(payload, bytes) else json.dumps(
+            payload, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
         self.send_response(status)
         for key, value in response_headers.items():
             self.send_header(key, value)
@@ -57,6 +61,7 @@ def run(config: PlatformConfig | None = None) -> None:
     handler = type("ConfiguredLCPRequestHandler", (LCPRequestHandler,), {})
     handler.service = service
     handler.max_body_bytes = config.max_body_bytes
+    handler.max_attachment_bytes = config.max_attachment_bytes
     server = ThreadingHTTPServer((config.host, config.port), handler)
     worker = threading.Thread(
         target=_worker_loop,

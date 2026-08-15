@@ -1,0 +1,82 @@
+{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "770e8400-e29b-41d4-a716-446655440007",
+      "type": "call",
+      "timestamp": "2026-08-15T10:05:00Z",
+      "sender_id": "publisher_mva",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "publisher-mva-call-001",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "mva-call-001",
+      "external_id": "mva-source-001",
+      "status": "NEW",
+      "channel": "call",
+      "consumer": {
+        "full_name": "Synthetic MVA Consumer",
+        "phone": "+61412345678"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000"
+      },
+      "compliance": {
+        "consent_purposes": ["calls", "share_with_partners"],
+        "consent_evidence": [
+          {"type": "verified_consent", "provider": "internal", "token_or_url": "synthetic-consent-001"}
+        ],
+        "dnc_checked": true
+      },
+      "provenance": {
+        "source_type": "publisher",
+        "source_id": "publisher_mva",
+        "brand_id": "mva_brand_01",
+        "form_id": "mva-call-flow-v1",
+        "flow_key": "mva-call-flow-v1"
+      },
+      "attributes": {
+        "vertical": "mva",
+        "schema_version": "1.0.0",
+        "accident_type": "car_collision",
+        "accident_date_band": "last_7_days",
+        "injury_present": true,
+        "injury_severity_band": "moderate",
+        "medical_treatment": "emergency_room",
+        "police_report_available": true,
+        "fault_position": "not_at_fault",
+        "other_driver_identified": true,
+        "other_driver_insured": "yes",
+        "consumer_insured": "yes",
+        "represented_by_attorney": false,
+        "evidence_available": ["signed_contract", "police_report"]
+      },
+      "attachments": [
+        {
+          "attachment_id": "att_mva_contract_001",
+          "purpose": "signed_contract",
+          "filename": "synthetic-contract.pdf",
+          "content_type": "application/pdf",
+          "size_bytes": 24576,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "storage_ref": "lcp://attachments/att_mva_contract_001",
+          "created_at": "2026-08-15T10:00:00Z",
+          "encryption": "application_encrypted"
+        }
+      ],
+      "call": {
+        "call_id": "call-mva-001",
+        "status": "answered",
+        "direction": "inbound",
+        "caller_phone_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "started_at": "2026-08-15T10:00:00Z",
+        "durations": {"total_seconds": 65, "agent_seconds": 55},
+        "disposition": "qualified_lead"
+      }
+    }
+  }
+}

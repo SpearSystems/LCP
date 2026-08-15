@@ -25,8 +25,12 @@ usable foundation for a real deployment. It provides:
   the live deployment.
 - Durable routing jobs, worker leases, audit records, and a controlled lead
   erasure operation.
-- AES-GCM application-level encryption for persisted envelopes outside test
-  mode.
+- Versioned declarative publisher mapping and normalization with source-record
+  digests rather than source-body audit retention.
+- AES-GCM application-level encryption for persisted envelopes and reference
+  attachment bytes outside test mode.
+- Call post delivery, signed call-outcome events, structured payable rules, and
+  per-offer monthly quota/pacing reports.
 
 It remains an implementation rather than a hosted LCP service. Operators are
 responsible for TLS termination, secret management, database backups,
@@ -53,7 +57,10 @@ The v1.0 implementation standardizes common, explainable predicates:
 - Spam-risk and data-completeness thresholds.
 - Consent, DNC, litigator, and blacklist requirements.
 - Delivery windows and capacity limits.
+- Publisher and brand allowlists plus safe vertical attribute equality/allowlist predicates.
 - Direct or auction routing mode.
+- Call routing mode and structured call payable rules.
+- Monthly minimum/maximum payable targets and pacing policy.
 - Floor price, currency, and payable definition.
 
 Offer creation, updates, credentials, and buyer administration remain
@@ -88,6 +95,7 @@ Standard behavior:
 8. PII-bearing values are never copied into a ping merely to evaluate an
    offer. Only ping-safe fields may be included in the ping.
 9. Capacity and delivery-window checks happen immediately before routing.
+10. Publisher/brand allowlists and declarative vertical attribute predicates are evaluated before a ping; unknown data fails closed when a required predicate is configured.
 
 ## 4. Auction selection
 
@@ -212,12 +220,14 @@ proposal before changing interoperable behavior:
 - Multi-currency auction rules.
 - Shared-lead routing and fallback buyers.
 - Webhook subscription management.
+- Carrier-specific real-time call adapters and transfer orchestration.
 - Delivery receipts beyond transport acknowledgement.
 - Deeper key-management service/HSM integration and mandatory mTLS profiles.
 - Additional production database migration tooling and queue backends.
 - Fully managed DSAR/consent-withdrawal propagation across downstream buyers.
 - Hosted conformance sandbox and certification workflow.
-- Formal namespaced buyer criteria in `extensions`.
+- Richer namespaced buyer criteria beyond the safe equality/allowlist predicates.
+- Managed object-store adapters, malware scanning, and KMS/HSM-backed attachment lifecycle.
 
 Any change to the wire format or a required interoperable behavior must also
 update the relevant schema, OpenAPI document, examples, test vectors, and

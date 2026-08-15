@@ -59,13 +59,16 @@ class PlatformService:
         headers: dict[str, str],
         body: bytes,
     ) -> tuple[int, dict[str, str], dict[str, Any]]:
-        if len(body) > self.platform.config.max_body_bytes:
+        max_body_bytes = self.platform.config.max_attachment_bytes if route == "/v1/lcp/attachments" else self.platform.config.max_body_bytes
+        if len(body) > max_body_bytes:
             raise RequestError("Request body is too large", "LCP-001", 413)
+        if route == "/v1/lcp/attachments":
+            return self._response(201, self.platform.upload_attachment(headers=headers, body=body))
         content_type = header(headers, "Content-Type") or ""
         if not content_type.lower().split(";", 1)[0].strip() == "application/json":
             raise RequestError("Content-Type must be application/json", "LCP-001", 415)
         envelope = json.loads(body)
-        if route in {"/v1/lcp/leads", "/v1/lcp/calls", "/v1/lcp/bids"}:
+        if route in {"/v1/lcp/leads", "/v1/lcp/calls", "/v1/lcp/bids", "/v1/lcp/events"}:
             message = envelope.get("lcp", {}).get("message", {})
             header_key = header(headers, "X-LCP-Idempotency-Key")
             if not header_key or header_key != message.get("idempotency_key"):
@@ -80,6 +83,8 @@ class PlatformService:
             result = self.platform.ingest(envelope, headers=headers, raw_body=body)
         elif route == "/v1/lcp/bids":
             result = self.platform.submit_bid(envelope, headers=headers, raw_body=body)
+        elif route == "/v1/lcp/events":
+            result = self.platform.submit_event(envelope, headers=headers, raw_body=body)
         else:
             raise RequestError("Endpoint not found", "LCP-001", 404)
         return self._response(200, result)
@@ -100,12 +105,21 @@ class PlatformService:
             return self._response(200, {"status": "ready"})
         if route == "/v1/lcp/capabilities":
             return self._response(200, self.platform.capabilities())
+        if route.startswith("/v1/lcp/attachments/"):
+            attachment_id = route.removeprefix("/v1/lcp/attachments/")
+            content, attachment_headers = self.platform.download_attachment(attachment_id, headers=headers)
+            attachment_headers["Content-Length"] = str(len(content))
+            return 200, attachment_headers, content
         if route.startswith("/v1/lcp/schemas/"):
             return self._response(200, self.platform.schema(route.removeprefix("/v1/lcp/schemas/")))
         if route == "/v1/lcp/offers":
             self._authenticate_read(headers, required_scope="offer:read")
             vertical = parse_qs(query).get("vertical", [None])[0]
             return self._response(200, self.platform.public_offers(vertical))
+        if route.startswith("/v1/lcp/offers/") and route.endswith("/quota"):
+            self._authenticate_read(headers, required_scope="offer:read")
+            offer_id = route.removeprefix("/v1/lcp/offers/").removesuffix("/quota").strip("/")
+            return self._response(200, self.platform.quota_status(offer_id))
         if route.startswith("/v1/lcp/leads/"):
             sender_id = self._authenticate_read(headers, required_scope="lead:read")
             lead_id = route.removeprefix("/v1/lcp/leads/")
@@ -125,9 +139,9 @@ class PlatformService:
     @staticmethod
     def _response(
         status: int,
-        payload: dict[str, Any],
+        payload: Any,
         extra_headers: dict[str, str] | None = None,
-    ) -> tuple[int, dict[str, str], dict[str, Any]]:
+    ) -> tuple[int, dict[str, str], Any]:
         response_headers = {"Content-Type": "application/json; charset=utf-8"}
         response_headers.update(extra_headers or {})
         return status, response_headers, payload

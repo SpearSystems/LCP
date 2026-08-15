@@ -100,6 +100,65 @@ class Store:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS publisher_mappings (
+                    mapping_id TEXT NOT NULL,
+                    publisher_id TEXT NOT NULL,
+                    form_key TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    mapping_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (publisher_id, form_key, version)
+                );
+                CREATE TABLE IF NOT EXISTS mapping_applications (
+                    application_id TEXT PRIMARY KEY,
+                    mapping_id TEXT NOT NULL,
+                    publisher_id TEXT NOT NULL,
+                    form_key TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    source_record_id_hash TEXT,
+                    lead_id TEXT NOT NULL,
+                    source_digest TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS attachments (
+                    attachment_id TEXT PRIMARY KEY,
+                    lead_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    storage_ref TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'AVAILABLE',
+                    residency TEXT NOT NULL DEFAULT 'TEST',
+                    scan_status TEXT NOT NULL DEFAULT 'not_scanned',
+                    scan_engine TEXT NOT NULL DEFAULT 'unknown',
+                    scanned_at TEXT NOT NULL DEFAULT '',
+                    encryption TEXT NOT NULL DEFAULT 'application_encrypted',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(owner_id, idempotency_key)
+                );
+                CREATE TABLE IF NOT EXISTS payable_records (
+                    payable_id TEXT PRIMARY KEY,
+                    offer_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
+                    buyer_id TEXT NOT NULL,
+                    month_key TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    price_cents INTEGER NOT NULL DEFAULT 0,
+                    currency TEXT NOT NULL DEFAULT '',
+                    reason TEXT,
+                    call_seconds INTEGER,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(offer_id, lead_id)
+                );
                 CREATE TABLE IF NOT EXISTS match_decisions (
                     decision_id TEXT PRIMARY KEY,
                     lead_id TEXT NOT NULL,
@@ -199,6 +258,12 @@ class Store:
                     ON pings(status, expires_at);
                 CREATE INDEX IF NOT EXISTS idx_events_lead
                     ON lifecycle_events(lead_id, timestamp);
+                CREATE INDEX IF NOT EXISTS idx_mapping_applications_lead
+                    ON mapping_applications(lead_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_attachments_lead
+                    ON attachments(lead_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_payable_offer_month
+                    ON payable_records(offer_id, month_key, status);
                 """
             )
             self._migrate_sqlite_columns(db)
@@ -223,6 +288,19 @@ class Store:
             db.execute("ALTER TABLE deliveries ADD COLUMN lease_owner TEXT")
         if "lease_until" not in delivery_columns:
             db.execute("ALTER TABLE deliveries ADD COLUMN lease_until TEXT")
+        attachment_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(attachments)").fetchall()
+        }
+        if "residency" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN residency TEXT NOT NULL DEFAULT 'TEST'")
+        if "scan_status" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'not_scanned'")
+        if "scan_engine" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN scan_engine TEXT NOT NULL DEFAULT 'unknown'")
+        if "scanned_at" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN scanned_at TEXT NOT NULL DEFAULT ''")
+        if "encryption" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
 
     # ─── Credentials ──────────────────────────────────────────────────────
 
@@ -340,6 +418,77 @@ class Store:
             for row in rows
         ]
 
+    # ─── Publisher mappings ────────────────────────────────────────────────
+
+    def upsert_mapping(self, mapping: dict[str, Any]) -> None:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO publisher_mappings
+                    (mapping_id, publisher_id, form_key, version, active, mapping_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(publisher_id, form_key, version) DO UPDATE SET
+                    mapping_id=excluded.mapping_id,
+                    active=excluded.active,
+                    mapping_json=excluded.mapping_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    mapping["mapping_id"], mapping["publisher_id"], mapping["form_key"],
+                    mapping["version"], int(mapping.get("active", True)),
+                    json.dumps(mapping, separators=(",", ":"), ensure_ascii=False), timestamp, timestamp,
+                ),
+            )
+
+    def list_mappings(self, publisher_id: str | None = None, *, active_only: bool = False) -> list[dict[str, Any]]:
+        query = "SELECT mapping_json FROM publisher_mappings"
+        clauses: list[str] = []
+        values: list[Any] = []
+        if publisher_id:
+            clauses.append("publisher_id = ?")
+            values.append(publisher_id)
+        if active_only:
+            clauses.append("active = 1")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY publisher_id, form_key, version DESC"
+        with self._lock:
+            rows = self._connection.execute(query, values).fetchall()
+        return [json.loads(row["mapping_json"]) for row in rows]
+
+    def insert_mapping_application(
+        self,
+        *,
+        mapping: dict[str, Any],
+        source_record_id: str | None,
+        lead_id: str,
+        source_digest: str,
+    ) -> None:
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO mapping_applications
+                    (application_id, mapping_id, publisher_id, form_key, version,
+                     source_record_id_hash, lead_id, source_digest, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"mapapp_{uuid4().hex}", mapping["mapping_id"], mapping["publisher_id"],
+                    mapping["form_key"], mapping["version"],
+                    hashlib.sha256(source_record_id.encode("utf-8")).hexdigest() if source_record_id else None,
+                    lead_id, source_digest, now_iso(),
+                ),
+            )
+
+    def list_mapping_applications(self, lead_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM mapping_applications WHERE lead_id = ? ORDER BY created_at",
+                (lead_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     # ─── Rate limiting ─────────────────────────────────────────────────────
 
     def consume_rate_limit(self, sender_id: str, *, limit: int, now: datetime | None = None) -> bool:
@@ -364,6 +513,62 @@ class Store:
                     (sender_id, window_start),
                 )
         return True
+
+    # ─── Attachments ──────────────────────────────────────────────────────
+
+    def get_attachment(self, attachment_id: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM attachments WHERE attachment_id = ?", (attachment_id,)
+            ).fetchone()
+
+    def get_attachment_by_idempotency(self, owner_id: str, idempotency_key: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM attachments WHERE owner_id = ? AND idempotency_key = ?",
+                (owner_id, idempotency_key),
+            ).fetchone()
+
+    def insert_attachment(self, metadata: dict[str, Any]) -> bool:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO attachments
+                        (attachment_id, lead_id, owner_id, idempotency_key, purpose,
+                         filename, content_type, size_bytes, sha256, storage_ref,
+                         status, residency, scan_status, scan_engine, scanned_at, encryption,
+                         created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        metadata["attachment_id"], metadata["lead_id"], metadata["owner_id"],
+                        metadata["idempotency_key"], metadata["purpose"], metadata["filename"],
+                        metadata["content_type"], metadata["size_bytes"], metadata["sha256"],
+                        metadata["storage_ref"], metadata.get("residency", "TEST"),
+                        metadata.get("scan_status", "not_scanned"), metadata.get("scan_engine", "unknown"),
+                        metadata.get("scanned_at", timestamp), metadata.get("encryption", "application_encrypted"),
+                        timestamp, timestamp,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def list_attachments(self, lead_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM attachments WHERE lead_id = ? ORDER BY created_at, attachment_id",
+                (lead_id,),
+            ).fetchall()
+
+    def mark_attachment_redacted(self, attachment_id: str) -> None:
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE attachments SET status = 'REDACTED', updated_at = ? WHERE attachment_id = ?",
+                (now_iso(), attachment_id),
+            )
 
     # ─── Leads ─────────────────────────────────────────────────────────────
 
@@ -731,6 +936,72 @@ class Store:
         with self._lock:
             return self._connection.execute(
                 "SELECT * FROM bids WHERE lead_id = ? ORDER BY received_at, buyer_id",
+                (lead_id,),
+            ).fetchall()
+
+    # ─── Payable outcomes and quota ───────────────────────────────────────
+
+    def record_payable(
+        self,
+        *,
+        offer_id: str,
+        lead_id: str,
+        buyer_id: str,
+        month_key: str,
+        channel: str,
+        status: str,
+        price_cents: int = 0,
+        currency: str = "",
+        reason: str | None = None,
+        call_seconds: int | None = None,
+    ) -> None:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO payable_records
+                    (payable_id, offer_id, lead_id, buyer_id, month_key, channel,
+                     status, price_cents, currency, reason, call_seconds, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(offer_id, lead_id) DO UPDATE SET
+                    month_key=excluded.month_key,
+                    status=excluded.status,
+                    price_cents=excluded.price_cents,
+                    currency=excluded.currency,
+                    reason=excluded.reason,
+                    call_seconds=excluded.call_seconds,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    f"pay_{offer_id}_{lead_id}", offer_id, lead_id, buyer_id, month_key, channel,
+                    status, price_cents, currency, reason, call_seconds, timestamp, timestamp,
+                ),
+            )
+
+    def payable_for_lead(self, lead_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM payable_records WHERE lead_id = ? ORDER BY offer_id",
+                (lead_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def payable_summary(self, offer_id: str, month_key: str) -> dict[str, int]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT status, COUNT(*) AS count FROM payable_records WHERE offer_id = ? AND month_key = ? GROUP BY status",
+                (offer_id, month_key),
+            ).fetchall()
+        summary = {"pending": 0, "payable": 0, "not_payable": 0, "disputed": 0, "refunded": 0}
+        for row in rows:
+            summary[str(row["status"])] = int(row["count"])
+        summary["total"] = sum(summary.values())
+        return summary
+
+    def deliveries_for_lead(self, lead_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM deliveries WHERE lead_id = ? ORDER BY created_at, delivery_id",
                 (lead_id,),
             ).fetchall()
 

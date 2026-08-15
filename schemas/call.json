@@ -53,6 +53,9 @@
     "exclusivity": {
       "$ref": "core.json#/$defs/exclusivity"
     },
+    "attachments": {
+      "$ref": "core.json#/$defs/attachments"
+    },
     "call": {
       "type": "object",
       "title": "Call Detail Block",

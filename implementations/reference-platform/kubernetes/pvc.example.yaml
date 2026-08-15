@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lcp-attachments
+spec:
+  # The API and worker replicas must be able to access the same bytes.
+  # Replace with the storage class and residency controls approved by the operator.
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 100Gi

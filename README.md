@@ -302,6 +302,9 @@ The [reference platform](implementations/reference-platform/) includes a persist
 A platform operator typically needs to provide:
 
 - `POST /v1/lcp/leads` and `POST /v1/lcp/calls` intake endpoints
+- `POST /v1/lcp/attachments` and authenticated `GET /v1/lcp/attachments/{id}`; the reference platform supports local encrypted files and production S3-compatible SSE-KMS storage with residency policy and fail-closed malware scanning
+- `POST /v1/lcp/events` for call outcomes, payable status, and lifecycle updates
+- `GET /v1/lcp/offers/{offer_id}/quota` for monthly payable pacing
 - Authentication, HMAC verification, timestamp freshness, and idempotency
 - Schema and ping-safe validation
 - Lead storage, deduplication, and lifecycle state management
@@ -342,7 +345,7 @@ Schemas are available directly in [`schemas/`](schemas/) and [`verticals/`](vert
 
 ```
 schemas/         ── Envelope, core, and message JSON Schemas
-verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services)
+verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services, mva)
 examples/        ── Sample payloads, onboarding templates, integrations, and the synthetic sandbox
 test-vectors/    ── 27 conformance vectors across L1/L2/L3
 implementations/ ── Multi-language SDKs, reference platform/router, and MCP adapter
@@ -357,7 +360,11 @@ SPEC.md          ── Canonical protocol specification
 - [Canonical specification](SPEC.md)
 - [HTTP API definition](api/lcp-openapi.yaml)
 - [Publisher onboarding](docs/PUBLISHER-ONBOARDING.md)
+- [Publisher mapping and normalization](docs/PUBLISHER-MAPPING.md)
 - [Buyer onboarding](docs/BUYER-ONBOARDING.md)
+- [Calls and telephony](docs/CALLS-AND-TELEPHONY.md)
+- [MVA and secure attachments](docs/MVA-ATTACHMENTS.md)
+- [Monthly payable quotas](docs/MONTHLY-QUOTAS.md)
 - [Platform integration guide](docs/PLATFORM-INTEGRATION.md)
 - [Integration examples and templates](examples/integrations/)
 - [JSON Schemas](schemas/)

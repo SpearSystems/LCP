@@ -7,6 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Declarative publisher mapping registry with versioned brand/form normalization, allowlisted transforms, OTP-aware quality signals, and PII-free source digests
+- Controlled home-services service/subcategory taxonomy and a dedicated motor-vehicle-accident (`mva`) vertical
+- Authenticated attachment upload/download with local AES-GCM storage and a production S3-compatible SSE-KMS adapter, fail-closed ClamAV scanning, immutable residency policy, and opaque storage references
+- Call post delivery with call blocks, signed call outcome events, structured duration/disposition payable rules, and per-offer monthly quota/pacing reports
 - Full Draft 2020-12 runtime validation APIs and generated typed models across all ten SDKs, with deterministic schema bundles and SHA-256 synchronization manifests
 - Coordinated SDK version gate and protected trusted-registry publication workflow for PyPI, npm, NuGet, Maven Central, crates.io, RubyGems, Packagist, Go modules, and Swift Package Manager
 - Repository-native paginated documentation navigation for publishers, buyers, developers, platform operators, security reviewers, and contributors

@@ -13,7 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
-production = ["gunicorn>=23.0", "psycopg[binary]>=3.2"]
+object-storage = ["boto3>=1.35.0", "clamd>=1.0.2"]
+production = ["gunicorn>=23.0", "psycopg[binary]>=3.2", "boto3>=1.35.0", "clamd>=1.0.2"]
 
 [project.scripts]
 lcp-platform = "lcp_platform.server:main"

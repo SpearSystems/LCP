@@ -41,6 +41,7 @@ class LeadPayload(TypedDict, total=False):
     contact_window: NotRequired[JsonObject]
     lead_quality: NotRequired[JsonObject]
     expiry: NotRequired[JsonObject]
+    attachments: NotRequired[list[JsonObject]]
 
 
 class CallPayload(TypedDict, total=False):
@@ -57,6 +58,7 @@ class CallPayload(TypedDict, total=False):
     attributes: NotRequired[JsonObject]
     expiry: NotRequired[JsonObject]
     exclusivity: NotRequired[JsonObject]
+    attachments: NotRequired[list[JsonObject]]
 
 
 class PingPayload(TypedDict, total=False):
@@ -98,6 +100,8 @@ class PostPayload(TypedDict, total=False):
     attributes: JsonObject
     provenance: NotRequired[JsonObject]
     exclusivity: NotRequired[JsonObject]
+    call: NotRequired[JsonObject]
+    attachments: NotRequired[list[JsonObject]]
 
 
 class BidPayload(TypedDict, total=False):
@@ -143,3 +147,14 @@ class OfferModel(TypedDict, total=False):
     floor_price_cents: int
     currency: str
     extensions: NotRequired[JsonObject]
+    allowed_publisher_ids: NotRequired[list[str]]
+    allowed_brand_ids: NotRequired[list[str]]
+    attribute_equals: NotRequired[JsonObject]
+    attribute_in: NotRequired[JsonObject]
+    monthly_minimum_payable: NotRequired[int]
+    monthly_maximum_payable: NotRequired[int]
+    monthly_quota_timezone: NotRequired[str]
+    monthly_quota_policy: NotRequired[str]
+    payable_rules: NotRequired[JsonObject]
+    call_routing_mode: NotRequired[str]
+    connect_timeout_seconds: NotRequired[int]

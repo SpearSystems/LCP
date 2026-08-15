@@ -22,6 +22,9 @@
   "payable_definition": "valid_contactable_form_lead",
   "daily_cap": 100,
   "hourly_cap": 20,
+  "monthly_minimum_payable": 300,
+  "monthly_quota_timezone": "Australia/Sydney",
+  "monthly_quota_policy": "pace",
   "ping_timeout_seconds": 30,
   "webhook_url": "https://buyer.example/lcp/webhook"
 }

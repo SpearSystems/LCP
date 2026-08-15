@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import uuid4
+import hashlib
+import re
 import httpx
 
-from .auth import Authenticator
+from .attachments import (
+    AttachmentError,
+    FileAttachmentStore,
+    build_attachment_store,
+    build_malware_scanner,
+    validate_residency,
+)
+from .auth import Authenticator, header
+from .crypto import EnvelopeCipher
+from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
 from .config import PlatformConfig
 from .database import create_store
 from .matching import MatchResult, match_offer
@@ -50,6 +62,13 @@ class Platform:
         self.store = store or create_store(config)
         self.validator = SchemaValidator(config.schema_root)
         self.auth = Authenticator(self.store, config)
+        self.attachments = build_attachment_store(
+            config,
+            cipher=EnvelopeCipher(config.pii_encryption_key),
+        )
+        self.attachment_scanner = build_malware_scanner(config)
+        self.mapping_registry = MappingRegistry(self.store.list_mappings(active_only=False))
+        self.normalizer = PublisherNormalizer()
         self.worker_id = f"worker-{uuid4().hex}"
         self._retry_delays = (1, 5, 30, 120, 600)
 
@@ -68,6 +87,63 @@ class Platform:
             resource_id=sender_id,
             metadata={"scopes": kwargs.get("scopes") if kwargs.get("scopes") is not None else ["*"]},
         )
+
+    def upsert_mapping(self, mapping: dict[str, Any]) -> None:
+        try:
+            self.mapping_registry.register(mapping)
+        except MappingError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        self.store.upsert_mapping(mapping)
+        self.store.insert_audit(
+            tenant_id=str(mapping.get("tenant_id", self.config.routing_tenant_id)),
+            actor_id="operator",
+            action="mapping.upsert",
+            resource_type="publisher_mapping",
+            resource_id=str(mapping["mapping_id"]),
+            metadata={
+                "publisher_id": mapping["publisher_id"],
+                "form_key": mapping["form_key"],
+                "version": mapping["version"],
+            },
+        )
+
+    def normalize_publisher_record(
+        self,
+        source_record: dict[str, Any],
+        *,
+        publisher_id: str,
+        form_key: str,
+        version: str | None = None,
+        receiver_id: str | None = None,
+        test: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            mapping = self.mapping_registry.resolve(publisher_id, form_key, version)
+            envelope = self.normalizer.normalize(
+                source_record,
+                mapping,
+                receiver_id=receiver_id or self.config.platform_id,
+                test=test,
+            )
+        except MappingError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        payload = envelope["lcp"]["payload"]
+        self.validator.require_valid_envelope(envelope)
+        self.store.insert_mapping_application(
+            mapping=mapping,
+            source_record_id=str(payload.get("external_id")) if payload.get("external_id") else None,
+            lead_id=str(payload["lead_id"]),
+            source_digest=source_digest(source_record),
+        )
+        self.store.insert_audit(
+            tenant_id=self.auth.tenant_for(publisher_id) or self.config.routing_tenant_id,
+            actor_id=publisher_id,
+            action="mapping.applied",
+            resource_type="lead",
+            resource_id=str(payload["lead_id"]),
+            metadata={"mapping_id": mapping["mapping_id"], "version": mapping["version"]},
+        )
+        return envelope
 
     def upsert_offer(self, offer: dict[str, Any]) -> None:
         offer = dict(offer)
@@ -150,8 +226,9 @@ class Platform:
             tenant_id=self.config.routing_tenant_id,
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
+        self._validate_attachment_references(payload, sender_id)
         for offer in offers:
-            result = match_offer(offer, payload)
+            result = match_offer(offer, payload, sender_id=message["sender_id"])
             if result.matched and not self._capacity_available(offer):
                 result = MatchResult(False, result.reasons + ("capacity_exceeded",))
             matches.append((offer, result))
@@ -160,6 +237,7 @@ class Platform:
             offer for offer in matching_offers if offer.get("routing_mode", "auction") == "direct"
         ]
         if direct_offers:
+            direct_offers.sort(key=self._pacing_priority)
             lead_exclusivity = payload.get("exclusivity", {})
             if lead_exclusivity.get("exclusivity", "shared") == "exclusive":
                 matching_offers = direct_offers[:1]
@@ -288,7 +366,7 @@ class Platform:
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         for offer in offers:
-            result = match_offer(offer, payload)
+            result = match_offer(offer, payload, sender_id=row["sender_id"])
             if result.matched and not self._capacity_available(offer):
                 result = MatchResult(False, result.reasons + ("capacity_exceeded",))
             matches.append((offer, result))
@@ -304,6 +382,7 @@ class Platform:
             offer for offer in matching_offers if offer.get("routing_mode", "auction") == "direct"
         ]
         if direct_offers:
+            direct_offers.sort(key=self._pacing_priority)
             exclusivity = payload.get("exclusivity", {})
             if exclusivity.get("exclusivity", "shared") == "exclusive":
                 matching_offers = direct_offers[:1]
@@ -350,7 +429,7 @@ class Platform:
             correlation_id=lead_envelope["lcp"]["message"]["id"],
         )
         self.validator.require_valid_envelope(post)
-        return self.store.insert_delivery(
+        inserted = self.store.insert_delivery(
             lead_id=lead_envelope["lcp"]["payload"]["lead_id"],
             ping_id=None,
             offer_id=offer["offer_id"],
@@ -358,6 +437,75 @@ class Platform:
             kind="post",
             envelope=post,
             webhook_url=webhook_url,
+        )
+        if inserted:
+            self._record_pending_payable(lead_envelope, offer, offer["floor_price_cents"])
+        return inserted
+
+    @staticmethod
+    def _month_key(offer: dict[str, Any], at: datetime | None = None) -> str:
+        current = at or datetime.now(timezone.utc)
+        timezone_name = offer.get("monthly_quota_timezone", "UTC")
+        try:
+            current = current.astimezone(ZoneInfo(timezone_name))
+        except (KeyError, ValueError):
+            current = current.astimezone(timezone.utc)
+        return current.strftime("%Y-%m")
+
+    def quota_status(self, offer_id: str, at: datetime | None = None) -> dict[str, Any]:
+        offer = self.store.get_offer(offer_id)
+        if not offer:
+            raise RequestError("Offer not found", "LCP-003", 404)
+        month_key = self._month_key(offer, at)
+        summary = self.store.payable_summary(offer_id, month_key)
+        minimum = int(offer.get("monthly_minimum_payable", 0))
+        maximum = offer.get("monthly_maximum_payable")
+        payable = summary["payable"]
+        remaining = max(0, minimum - payable)
+        now = at or datetime.now(timezone.utc)
+        try:
+            local = now.astimezone(ZoneInfo(offer.get("monthly_quota_timezone", "UTC")))
+        except (KeyError, ValueError):
+            local = now.astimezone(timezone.utc)
+        last_day = ((local.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)).day
+        days_remaining = max(1, last_day - local.day + 1)
+        return {
+            "offer_id": offer_id,
+            "month": month_key,
+            "minimum_payable": minimum,
+            "maximum_payable": maximum,
+            "payable_remaining_to_minimum": remaining,
+            "required_daily_pace": (remaining + days_remaining - 1) // days_remaining,
+            "under_paced": payable < minimum and local.day > 1,
+            "policy": offer.get("monthly_quota_policy", "monitor"),
+            "summary": summary,
+        }
+
+    def _pacing_priority(self, offer: dict[str, Any]) -> tuple[int, int, str]:
+        minimum = int(offer.get("monthly_minimum_payable", 0))
+        if minimum <= 0:
+            return (1, 0, str(offer.get("offer_id", "")))
+        summary = self.store.payable_summary(offer["offer_id"], self._month_key(offer))
+        remaining = max(0, minimum - summary["payable"])
+        return (0 if remaining else 1, -remaining, str(offer.get("offer_id", "")))
+
+    def _record_pending_payable(
+        self,
+        lead_envelope: dict[str, Any],
+        offer: dict[str, Any],
+        price_cents: int,
+    ) -> None:
+        payload = lead_envelope["lcp"]["payload"]
+        self.store.record_payable(
+            offer_id=offer["offer_id"],
+            lead_id=payload["lead_id"],
+            buyer_id=offer["buyer_id"],
+            month_key=self._month_key(offer),
+            channel=payload.get("channel", "unknown"),
+            status="pending",
+            price_cents=price_cents,
+            currency=offer["currency"],
+            reason="awaiting_delivery_or_call_outcome",
         )
 
     def _capacity_available(self, offer: dict[str, Any]) -> bool:
@@ -369,6 +517,10 @@ class Platform:
         if offer.get("hourly_cap"):
             hour_start = now.strftime("%Y-%m-%dT%H:00:00Z")
             if self.store.count_offer_deliveries(offer["offer_id"], since=hour_start) >= offer["hourly_cap"]:
+                return False
+        if offer.get("monthly_maximum_payable") and offer.get("monthly_quota_policy") == "hard_cap":
+            summary = self.store.payable_summary(offer["offer_id"], self._month_key(offer, now))
+            if summary["payable"] + summary["pending"] >= int(offer["monthly_maximum_payable"]):
                 return False
         return True
 
@@ -477,6 +629,7 @@ class Platform:
                 envelope=post,
                 webhook_url=offer["webhook_url"],
             ):
+                self._record_pending_payable(lead_envelope, offer, bid["bid_price_cents"])
                 self.store.mark_ping_won(ping["ping_id"])
                 delivered += 1
         self.store.update_lead_status(lead_id, "POSTED" if delivered else "EXPIRED")
@@ -529,6 +682,7 @@ class Platform:
                     worker_id=self.worker_id,
                 )
                 if delivery["kind"] == "post":
+                    self._mark_post_delivered(delivery, envelope)
                     self._queue_delivery_event(delivery, envelope)
                 return
             # Do not persist arbitrary buyer response bodies; they may contain PII.
@@ -561,7 +715,7 @@ class Platform:
             platform_id=self.config.platform_id,
             receiver_id=delivery["buyer_id"],
             correlation_id=post["lcp"]["message"]["id"],
-            details={"delivery_id": delivery["delivery_id"]},
+            details={"delivery_id": delivery["delivery_id"], "offer_id": delivery["offer_id"]},
             test=post["lcp"]["message"].get("test", False),
         )
         self.validator.require_valid_envelope(event)
@@ -576,11 +730,276 @@ class Platform:
             webhook_url=delivery["webhook_url"],
         )
 
+    def _mark_post_delivered(self, delivery: Any, post: dict[str, Any]) -> None:
+        offer = self.store.get_offer(delivery["offer_id"])
+        if not offer:
+            return
+        payload = post["lcp"]["payload"]
+        rules = offer.get("payable_rules", {})
+        if rules.get("mode", "post_delivery") == "call_outcome":
+            status, reason, seconds = "pending", "awaiting_call_outcome", None
+        else:
+            status, reason, seconds = "payable", "post_delivery_acknowledged", None
+        self.store.record_payable(
+            offer_id=offer["offer_id"],
+            lead_id=delivery["lead_id"],
+            buyer_id=delivery["buyer_id"],
+            month_key=self._month_key(offer),
+            channel=payload.get("channel", "call" if "call" in payload else "lead"),
+            status=status,
+            price_cents=int(payload.get("price_cents", 0)),
+            currency=str(payload.get("currency", offer.get("currency", ""))),
+            reason=reason,
+            call_seconds=seconds,
+        )
+
+    def _evaluate_call_outcome(
+        self,
+        offer: dict[str, Any],
+        details: dict[str, Any],
+    ) -> tuple[str, str, int | None]:
+        rules = offer.get("payable_rules", {})
+        seconds_value = details.get("total_seconds", details.get("call_seconds"))
+        seconds = int(seconds_value) if isinstance(seconds_value, (int, float)) else None
+        call_status = details.get("call_status", details.get("status"))
+        if rules.get("require_call_answered") and call_status not in {"answered", "connected"}:
+            return "not_payable", "call_not_answered", seconds
+        minimum = int(rules.get("minimum_call_seconds", 0))
+        if seconds is None and minimum > 0:
+            return "not_payable", "call_duration_missing", None
+        if seconds is not None and seconds < minimum:
+            return "not_payable", "call_below_minimum_duration", seconds
+        allowed = rules.get("allowed_call_dispositions", [])
+        if allowed and details.get("disposition") not in allowed:
+            return "not_payable", "call_disposition_not_payable", seconds
+        return "payable", "call_outcome_met_rules", seconds
+
+    def submit_event(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        headers = headers or {}
+        self._validate_envelope(envelope)
+        message = envelope["lcp"]["message"]
+        if message["type"] != "event":
+            raise RequestError("Event endpoint requires an event message", "LCP-006")
+        self._validate_transport(message, headers)
+        if message["receiver_id"] != self.config.platform_id:
+            raise RequestError("Message receiver is not this platform", "LCP-002", 401)
+        payload = envelope["lcp"]["payload"]
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+            required_scope="event:submit",
+        )
+        row = self.store.get_lead(payload["lead_id"])
+        if not row:
+            raise RequestError("Lead not found", "LCP-003", 404)
+        deliveries = self.store.deliveries_for_lead(payload["lead_id"])
+        authorized = sender_id == row["sender_id"] or self.auth.has_scope(sender_id, "platform:admin")
+        if not authorized:
+            authorized = any(
+                delivery["buyer_id"] == sender_id and delivery["kind"] == "post"
+                for delivery in deliveries
+            )
+        if not authorized:
+            raise RequestError("Sender is not authorized for this lead event", "LCP-002", 401)
+        self.store.insert_event(payload["lead_id"], payload["event"], envelope)
+
+        details = payload.get("details", {})
+        offer_id = details.get("offer_id") if isinstance(details, dict) else None
+        post_delivery = next(
+            (delivery for delivery in deliveries
+             if delivery["kind"] == "post" and (not offer_id or delivery["offer_id"] == offer_id)
+             and (sender_id == delivery["buyer_id"] or sender_id == row["sender_id"])),
+            None,
+        )
+        if post_delivery:
+            offer = self.store.get_offer(post_delivery["offer_id"])
+            if offer:
+                post = self.store.decode_envelope(post_delivery["envelope_json"])
+                status = None
+                reason = None
+                seconds = None
+                event_name = payload["event"]
+                if event_name in {"DISPUTED", "REFUNDED"}:
+                    status, reason = event_name.lower(), f"lifecycle_{event_name.lower()}"
+                elif event_name in {"CALL_OUTCOME", "CALL_ENDED", "CALL_CONNECTED"}:
+                    status, reason, seconds = self._evaluate_call_outcome(offer, details)
+                elif event_name in {"DELIVERED", "ACCEPTED"}:
+                    status, reason = "payable", "buyer_acceptance"
+                if status:
+                    post_payload = post["lcp"]["payload"]
+                    self.store.record_payable(
+                        offer_id=offer["offer_id"],
+                        lead_id=payload["lead_id"],
+                        buyer_id=offer["buyer_id"],
+                        month_key=self._month_key(offer),
+                        channel=post_payload.get("channel", "call" if "call" in post_payload else "lead"),
+                        status=status,
+                        price_cents=int(post_payload.get("price_cents", 0)),
+                        currency=str(post_payload.get("currency", offer.get("currency", ""))),
+                        reason=reason,
+                        call_seconds=seconds,
+                    )
+        return build_ack(envelope, sender_id=self.config.platform_id, status="RECEIVED", lead_id=payload["lead_id"])
+
+    def upload_attachment(self, *, headers: dict[str, str], body: bytes) -> dict[str, Any]:
+        self._validate_test_header(headers)
+        owner_id = header(headers, "X-LCP-Sender-Id")
+        idempotency_key = header(headers, "X-LCP-Idempotency-Key")
+        lead_id = header(headers, "X-LCP-Lead-Id")
+        attachment_id = header(headers, "X-LCP-Attachment-Id") or f"att_{uuid4().hex}"
+        purpose = header(headers, "X-LCP-Attachment-Purpose") or "supporting_document"
+        filename = header(headers, "X-LCP-Filename") or "attachment.bin"
+        content_type = (header(headers, "Content-Type") or "").split(";", 1)[0].strip().lower()
+        digest = (header(headers, "X-LCP-Content-SHA256") or "").lower()
+        if not owner_id or not idempotency_key or not lead_id or not digest:
+            raise RequestError("Attachment identity, lead, idempotency, and content hash headers are required", "LCP-003")
+        self.auth.authenticate(
+            sender_id=owner_id,
+            headers=headers,
+            body=body,
+            idempotency_key=idempotency_key,
+            mutating=True,
+            required_scope="attachment:write",
+        )
+        if len(body) == 0 or len(body) > self.config.max_attachment_bytes:
+            raise RequestError("Attachment size is outside the configured limit", "LCP-001", 413)
+        if content_type not in self.config.allowed_attachment_content_types:
+            raise RequestError("Attachment content type is not allowed", "LCP-100", 415)
+        try:
+            FileAttachmentStore.validate_metadata(
+                attachment_id=attachment_id, filename=filename, content_type=content_type, size_bytes=len(body)
+            )
+        except AttachmentError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        if not re.fullmatch(r"[a-f0-9]{64}", digest) or hashlib.sha256(body).hexdigest() != digest:
+            raise RequestError("Attachment content hash is invalid", "LCP-100")
+        residency_header = header(headers, "X-LCP-Data-Residency")
+        residency_value = residency_header or self.config.attachment_residency
+        if not residency_value:
+            if self.config.test_mode:
+                residency_value = "TEST"
+            else:
+                raise RequestError("Attachment data residency is required", "LCP-100")
+        try:
+            residency = validate_residency(residency_value)
+        except AttachmentError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        if self.config.attachment_allowed_residencies and residency not in {
+            validate_residency(value) for value in self.config.attachment_allowed_residencies
+        }:
+            raise RequestError("Attachment residency is not permitted by this deployment", "LCP-100")
+        try:
+            scan = self.attachment_scanner.scan(
+                body,
+                filename=filename,
+                content_type=content_type,
+            )
+        except AttachmentError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        if self.config.attachment_scan_required and scan.status != "clean":
+            raise RequestError("Attachment did not pass the required malware scan", "LCP-100")
+        existing = self.store.get_attachment_by_idempotency(owner_id, idempotency_key)
+        if existing:
+            if existing["sha256"] != digest or existing["lead_id"] != lead_id:
+                raise RequestError("Attachment idempotency key was reused with different content", "LCP-005", 409)
+            return self._attachment_metadata(existing)
+        existing_id = self.store.get_attachment(attachment_id)
+        if existing_id:
+            if existing_id["owner_id"] == owner_id and existing_id["sha256"] == digest and existing_id["lead_id"] == lead_id:
+                return self._attachment_metadata(existing_id)
+            raise RequestError("Attachment ID is already assigned to another file", "LCP-005", 409)
+        try:
+            storage_ref = self.attachments.put(
+                attachment_id,
+                body,
+                sha256_hex=digest,
+                content_type=content_type,
+                filename=filename,
+                residency=residency,
+            )
+        except AttachmentError as exc:
+            raise RequestError(str(exc), "LCP-500", 500) from exc
+        metadata = {
+            "attachment_id": attachment_id, "lead_id": lead_id, "owner_id": owner_id,
+            "idempotency_key": idempotency_key, "purpose": purpose, "filename": filename,
+            "content_type": content_type, "size_bytes": len(body), "sha256": digest,
+            "storage_ref": storage_ref, "residency": residency,
+            "scan_status": scan.status, "scan_engine": scan.engine, "scanned_at": scan.scanned_at,
+            "encryption": self.attachments.encryption,
+        }
+        if not self.store.insert_attachment(metadata):
+            existing = self.store.get_attachment_by_idempotency(owner_id, idempotency_key)
+            self.attachments.delete(storage_ref)
+            if existing:
+                return self._attachment_metadata(existing)
+            raise RequestError("Attachment could not be stored", "LCP-500", 500)
+        self.store.insert_audit(
+            tenant_id=self.auth.tenant_for(owner_id) or self.config.routing_tenant_id,
+            actor_id=owner_id,
+            action="attachment.uploaded",
+            resource_type="attachment",
+            resource_id=attachment_id,
+            metadata={"lead_id": lead_id, "purpose": purpose, "size_bytes": len(body), "sha256": digest},
+        )
+        row = self.store.get_attachment(attachment_id)
+        assert row is not None
+        return self._attachment_metadata(row)
+
+    @staticmethod
+    def _attachment_metadata(row: Any) -> dict[str, Any]:
+        return {
+            "attachment_id": row["attachment_id"],
+            "purpose": row["purpose"], "filename": row["filename"],
+            "content_type": row["content_type"], "size_bytes": row["size_bytes"],
+            "sha256": row["sha256"], "storage_ref": row["storage_ref"], "created_at": row["created_at"],
+            "residency": row["residency"],
+            "malware_scan": {
+                "status": row["scan_status"],
+                "engine": row["scan_engine"],
+                "scanned_at": row["scanned_at"],
+            },
+            "encryption": row["encryption"],
+        }
+
+    def download_attachment(self, attachment_id: str, *, headers: dict[str, str]) -> tuple[bytes, dict[str, str]]:
+        row = self.store.get_attachment(attachment_id)
+        if not row or row["status"] != "AVAILABLE":
+            raise RequestError("Attachment not found", "LCP-003", 404)
+        sender_id = self.auth.authenticate(sender_id=header(headers, "X-LCP-Sender-Id"), headers=headers, body=b"", mutating=False)
+        if not (sender_id == row["owner_id"] or self.auth.has_scope(sender_id, "platform:admin") or self.store.has_delivery_for_buyer(row["lead_id"], sender_id)):
+            raise RequestError("Attachment not found", "LCP-003", 404)
+        try:
+            content = self.attachments.read(row["storage_ref"], expected_sha256=row["sha256"])
+        except AttachmentError as exc:
+            raise RequestError(str(exc), "LCP-500", 500) from exc
+        return content, {"Content-Type": row["content_type"], "Content-Disposition": f'attachment; filename="{row["filename"]}"'}
+
+    def _validate_test_header(self, headers: dict[str, str]) -> None:
+        marker = header(headers, "X-LCP-Test")
+        is_test = marker is not None and marker.lower() == "true"
+        if self.config.test_mode and not is_test:
+            raise RequestError("Sandbox requests require X-LCP-Test: true", "LCP-013")
+        if not self.config.test_mode and is_test:
+            raise RequestError("Test messages must use a sandbox endpoint", "LCP-013")
+
     # ─── Read APIs ─────────────────────────────────────────────────────────
 
     def erase_lead(self, lead_id: str, *, actor_id: str = "operator") -> None:
+        attachments = self.store.list_attachments(lead_id)
         if not self.store.erase_lead(lead_id, actor_id=actor_id):
             raise RequestError("Lead not found", "LCP-003", 404)
+        for attachment in attachments:
+            self.attachments.delete(attachment["storage_ref"])
+            self.store.mark_attachment_redacted(attachment["attachment_id"])
 
     def authorize_lead_read(self, lead_id: str, sender_id: str) -> None:
         row = self.store.get_lead(lead_id)
@@ -605,6 +1024,8 @@ class Platform:
             "channel": envelope["lcp"]["payload"].get("channel"),
             "events": [event["lcp"]["payload"] for event in self.store.list_events(lead_id)],
             "match_decisions": self.store.list_match_decisions(lead_id),
+            "payable_records": self.store.payable_for_lead(lead_id),
+            "attachments": [self._attachment_metadata(attachment) for attachment in self.store.list_attachments(lead_id)],
         }
 
     def capabilities(self) -> dict[str, Any]:
@@ -617,7 +1038,8 @@ class Platform:
             ],
             "countries": [],
             "auth_methods": ["bearer", "hmac"],
-            "events": ["DELIVERED", "ACCEPTED", "REJECTED", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED"],
+            "events": ["DELIVERED", "ACCEPTED", "REJECTED", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED", "CALL_OFFERED", "CALL_CONNECTED", "CALL_ENDED", "CALL_OUTCOME"],
+            "attachments": {"upload": True, "authenticated_download": True, "max_bytes": self.config.max_attachment_bytes},
             "conformance_level": "L3",
         }
 
@@ -665,6 +1087,18 @@ class Platform:
             raise RequestError("Test messages must use a sandbox endpoint", "LCP-013", 400)
         if self.config.test_mode and not header_is_test:
             raise RequestError("Sandbox requests require X-LCP-Test: true", "LCP-013", 400)
+
+    def _validate_attachment_references(self, payload: dict[str, Any], owner_id: str) -> None:
+        for attachment in payload.get("attachments", []):
+            attachment_id = attachment.get("attachment_id")
+            row = self.store.get_attachment(str(attachment_id)) if attachment_id else None
+            if not row or row["status"] != "AVAILABLE":
+                raise RequestError("Referenced attachment is not available", "LCP-003")
+            if row["owner_id"] != owner_id or row["lead_id"] != payload.get("lead_id"):
+                raise RequestError("Referenced attachment is not owned by this publisher lead", "LCP-002", 401)
+            for field in ("filename", "content_type", "size_bytes", "sha256", "storage_ref", "residency", "encryption"):
+                if field in attachment and str(attachment[field]) != str(row[field]):
+                    raise RequestError("Referenced attachment metadata does not match stored content", "LCP-100")
 
     def _validate_envelope(self, envelope: dict[str, Any]) -> None:
         try:

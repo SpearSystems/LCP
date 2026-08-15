@@ -52,8 +52,11 @@ The copy-paste examples are in [`examples/integrations/`](../examples/integratio
 - `buyer_webhook.py` — buyer receiver template for the other side of the
   connection.
 
-`examples/templates/` contains sanitized offer and lead templates. Synthetic
-fixtures must not be used with real consumer data.
+`examples/templates/` contains sanitized offer, lead, and publisher mapping
+templates. For multi-brand publishers, use the
+[publisher mapping guide](PUBLISHER-MAPPING.md) and keep one sender credential
+and versioned mapping per brand/form flow. Synthetic fixtures must not be used
+with real consumer data.
 
 ## 3. Map source data to LCP
 
@@ -71,6 +74,8 @@ Build a deterministic mapping from the source platform into the canonical
 | Consent | `payload.compliance` | Preserve timestamp, source URL, text version, purposes, and evidence reference. Never send an OTP code. |
 | Contact preference | `payload.contact_window` and consumer fields | Carry a consumer's stated availability and preferred contact method. |
 | Duplicate policy | `message.idempotency_key` | Generate once per logical submission and persist it in an outbox. |
+| Brand/form attribution | `provenance.brand_id`, `form_id`, `flow_key` | Keep these stable across mapping versions so reporting and disputes remain explainable. |
+| MVA evidence | `attachments[]` | Upload documents through the authenticated attachment endpoint; send metadata, not binary content, in the lead/call envelope. |
 
 A publisher-provided quality signal is a declaration, not an LCP-certified
 fact. Buyers should be able to distinguish `lead_quality` and provenance
@@ -132,7 +137,16 @@ adapt. Configure a separate `test: true` credential and endpoint for the
 sandbox. Test requests must carry both envelope `test: true` and
 `X-LCP-Test: true`; never mix test and production credentials.
 
-## 5. Handle acknowledgements and failures
+## 5. Upload evidence and submit attachments
+
+For MVA contracts, medical records, insurance documents, or call evidence, upload
+the bytes first with `POST /v1/lcp/attachments`, signed over the raw bytes and
+including `X-LCP-Lead-Id`, `X-LCP-Content-SHA256`, `X-LCP-Filename`, and
+`X-LCP-Attachment-Purpose`. Add the returned metadata to the lead or call
+payload. The platform verifies ownership and hash integrity before accepting
+the message. See [MVA and attachments](MVA-ATTACHMENTS.md).
+
+## 6. Handle acknowledgements and failures
 
 Treat the HTTP status and the LCP acknowledgement together:
 
@@ -151,7 +165,7 @@ idempotency key after backoff; never generate a new lead ID merely because the
 first response was lost. Keep a durable outbox and a dead-letter path for
 messages that exceed the retry policy.
 
-## 6. Test before production
+## 7. Test before production
 
 1. Validate all envelopes locally against the published schemas.
 2. Submit a synthetic lead to the operator's sandbox.
@@ -169,7 +183,7 @@ docker compose -f implementations/reference-platform/docker-compose.yml up --bui
 python3 examples/sandbox/publisher.py
 ```
 
-## 7. Go-live checklist
+## 8. Go-live checklist
 
 - [ ] A written data-processing and delivery agreement exists with the
       platform/buyer.

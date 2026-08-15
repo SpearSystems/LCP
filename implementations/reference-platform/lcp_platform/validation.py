@@ -50,6 +50,12 @@ class SchemaValidator:
         self._offer = Draft202012Validator(
             self._load("offer"), registry=registry, format_checker=format_checker
         )
+        self._vertical_validators: dict[str, Draft202012Validator] = {}
+        for path in sorted(self.vertical_root.glob("*.json")):
+            with path.open(encoding="utf-8") as handle:
+                self._vertical_validators[path.stem] = Draft202012Validator(
+                    json.load(handle), format_checker=format_checker
+                )
 
     def _load(self, name: str) -> dict[str, Any]:
         with (self.schema_root / f"{name}.json").open(encoding="utf-8") as handle:
@@ -71,6 +77,8 @@ class SchemaValidator:
         )
         if message["type"] == "ping":
             errors.extend(self._ping_safe_errors(envelope["lcp"]["payload"]))
+        elif message["type"] in {"lead", "call", "post"}:
+            errors.extend(self._vertical_errors(envelope["lcp"]["payload"]))
         return errors
 
     def require_valid_envelope(self, envelope: dict[str, Any]) -> None:
@@ -82,6 +90,16 @@ class SchemaValidator:
         errors = [self._format(error) for error in self._offer.iter_errors(offer)]
         if errors:
             raise ValidationError(errors)
+
+    def _vertical_errors(self, payload: dict[str, Any]) -> list[str]:
+        attributes = payload.get("attributes", {})
+        vertical = attributes.get("vertical") if isinstance(attributes, dict) else None
+        if not vertical:
+            return ["attributes.vertical is required for vertical validation"]
+        validator = self._vertical_validators.get(str(vertical))
+        if not validator:
+            return [f"vertical schema '{vertical}' was not found"]
+        return [self._format(error) for error in validator.iter_errors(attributes)]
 
     def _ping_safe_errors(self, payload: dict[str, Any]) -> list[str]:
         vertical = payload.get("vertical")

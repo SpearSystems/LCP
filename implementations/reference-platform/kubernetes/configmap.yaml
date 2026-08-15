@@ -16,3 +16,6 @@ data:
   LCP_WEBHOOK_TIMEOUT_SECONDS: "10"
   LCP_MAX_DELIVERY_ATTEMPTS: "5"
   LCP_WORKER_INTERVAL_SECONDS: "1"
+  LCP_ATTACHMENT_DIRECTORY: /var/lib/lcp/attachments
+  LCP_MAX_ATTACHMENT_BYTES: "104857600"
+  LCP_ALLOWED_ATTACHMENT_CONTENT_TYPES: application/pdf,image/jpeg,image/png,image/webp,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document

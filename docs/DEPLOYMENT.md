@@ -96,6 +96,17 @@ Important settings include:
 | `LCP_RATE_LIMIT_PER_MINUTE` | Set per traffic class and enforce edge quotas too. |
 | `LCP_MAX_BODY_BYTES` | Keep bounded and review against vertical payload sizes. |
 | `LCP_REPLAY_WINDOW_SECONDS` | Five minutes or shorter. |
+| `LCP_ATTACHMENT_BACKEND` | `file` for a sandbox/single node; use `s3` for the production S3-compatible object-storage adapter. |
+| `LCP_ATTACHMENT_DIRECTORY` | Used by the reference file backend only; keep it on residency-controlled encrypted storage. |
+| `LCP_MAX_ATTACHMENT_BYTES` | Bound according to malware scanning, storage, and buyer requirements. |
+| `LCP_ALLOWED_ATTACHMENT_CONTENT_TYPES` | Narrow to approved document/image types; scan before downstream release. |
+| `LCP_ATTACHMENT_SCANNER` / `LCP_ATTACHMENT_SCAN_REQUIRED` | Use `clamav` and `true` in production; `none` is sandbox-only. |
+| `LCP_ATTACHMENT_RESIDENCY` / `LCP_ATTACHMENT_ALLOWED_RESIDENCIES` | Declare and allow only the country/region policy for this deployment. |
+| `LCP_ATTACHMENT_OBJECT_BUCKET` / `LCP_ATTACHMENT_OBJECT_PREFIX` | S3-compatible bucket and isolated key prefix for attachments. |
+| `LCP_ATTACHMENT_OBJECT_REGION` / `LCP_ATTACHMENT_OBJECT_ENDPOINT_URL` | Provider region and optional private/S3-compatible endpoint. |
+| `LCP_ATTACHMENT_OBJECT_KMS_KEY_ID` | Required for the S3 adapter; use a dedicated KMS key/grant with least privilege. |
+| `LCP_ATTACHMENT_OBJECT_RESIDENCY` | Immutable residency of the selected object-store adapter; must be allowed by policy. |
+| `LCP_ATTACHMENT_CLAMAV_HOST` / `LCP_ATTACHMENT_CLAMAV_PORT` | Private `clamd` service used for fail-closed malware scanning. |
 
 ## Kubernetes example
 
@@ -105,6 +116,8 @@ They demonstrate:
 
 - Separate API and worker deployments.
 - A Postgres connection supplied through a Secret.
+- A shared attachment volume for the reference encrypted file backend; use an
+  object-store adapter for multi-zone production.
 - A mounted LCP credential Secret.
 - `/health/ready` readiness and `/health/live` liveness probes.
 - Non-root containers and a read-only root filesystem where supported.
@@ -112,10 +125,14 @@ They demonstrate:
 - A ClusterIP service for an external ingress/controller.
 
 The example intentionally does not include a public Ingress, cloud load
-balancer, or managed-Postgres resource. Add those according to the chosen
-cloud, network, residency, and organization policies. Before applying a
-production image, follow the [container signing and provenance guide](CONTAINER-SUPPLY-CHAIN.md)
-and enforce the verified digest with the selected admission controller.
+balancer, managed-Postgres resource, object-storage bucket, KMS key, or ClamAV
+service. For production attachments, configure the S3-compatible adapter and
+private scanner described in [MVA and attachments](MVA-ATTACHMENTS.md), then
+bind the pod identity to only the bucket prefix and KMS key it needs. Add
+those resources according to the chosen cloud, network, residency, and
+organization policies. Before applying a production image, follow the
+[container signing and provenance guide](CONTAINER-SUPPLY-CHAIN.md) and enforce
+the verified digest with the selected admission controller.
 
 ## Scaling
 

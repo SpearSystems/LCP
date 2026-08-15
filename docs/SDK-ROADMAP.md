@@ -16,13 +16,16 @@ language's normal naming and async/concurrency conventions:
 - Canonical HMAC-SHA256 signing and verification.
 - Timestamp freshness and replay-window checks.
 - Idempotency-key helpers.
-- HTTP client operations for leads, calls, bids, status, schemas,
-  capabilities, and offers.
+- HTTP client operations for leads, calls, bids, lifecycle events, status,
+  schemas, capabilities, offers, attachment uploads/downloads, and quota
+  reports.
 - Webhook/request verification against the raw request body.
 - Typed acknowledgement, error, and transport responses.
 - Safe retry behavior for retryable responses; mutating retries require a
   stable idempotency key.
 - Explicit test-mode support (`test: true` and `X-LCP-Test: true`).
+- Typed call, attachment, payable-outcome, and monthly-quota models where the
+  language SDK supports them.
 
 An SDK does **not** implement offer matching, auction selection, persistence,
 webhook queues, CRM integration, or a complete LCP exchange. Those belong to a

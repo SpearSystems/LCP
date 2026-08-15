@@ -46,6 +46,8 @@ spec:
             - name: lcp-credentials
               mountPath: /run/secrets/lcp
               readOnly: true
+            - name: lcp-attachments
+              mountPath: /var/lib/lcp/attachments
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -78,6 +80,9 @@ spec:
             items:
               - key: LCP_CREDENTIALS_JSON
                 path: credentials.json
+        - name: lcp-attachments
+          persistentVolumeClaim:
+            claimName: lcp-attachments
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -124,6 +129,8 @@ spec:
             - name: lcp-credentials
               mountPath: /run/secrets/lcp
               readOnly: true
+            - name: lcp-attachments
+              mountPath: /var/lib/lcp/attachments
           resources:
             requests:
               cpu: 250m
@@ -144,6 +151,9 @@ spec:
             items:
               - key: LCP_CREDENTIALS_JSON
                 path: credentials.json
+        - name: lcp-attachments
+          persistentVolumeClaim:
+            claimName: lcp-attachments
 ---
 apiVersion: v1
 kind: ServiceAccount

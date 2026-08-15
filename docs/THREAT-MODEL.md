@@ -12,6 +12,8 @@ It should be reviewed before each major protocol or deployment change.
 - Offer definitions, floor prices, capacity, and routing policy.
 - Bid history, winner selection, pricing, disputes, and conversion events.
 - Audit records and backups.
+- Uploaded contracts, medical records, call recordings, and attachment metadata.
+- Publisher mapping definitions and normalization decisions.
 - Platform availability and message integrity.
 
 ## Threat actors
@@ -63,6 +65,22 @@ records, capacity enforcement.
 stable message IDs, idempotency, retry schedule, dead-letter alerts, restore
 and replay runbooks.
 
+### Malicious or oversized attachments
+
+**Controls:** authenticated upload, sender/lead ownership checks, strict size
+and MIME allowlists, filename/path validation, SHA-256 integrity checks,
+application encryption, malware scanning before downstream release, private
+object storage, authenticated downloads, retention expiry, and erasure handling. The production S3-compatible adapter additionally
+requires SSE-KMS, an immutable residency prefix, least-privilege object/KMS
+permissions, and a fail-closed ClamAV scan before release. Binary content is
+never accepted in a ping.
+
+### Mapping injection or normalization drift
+
+**Controls:** versioned mapping documents, allowlisted transforms, no executable
+expressions, schema validation after normalization, source-record digests,
+synthetic fixtures for each form version, staged activation, and rollback.
+
 ### Credential compromise
 
 **Controls:** external secret manager, KMS/HSM, least-privilege scopes,
@@ -97,3 +115,5 @@ Re-review this model when adding:
 - Public admin APIs.
 - Hosted/multi-region operation.
 - Agent access to full posts.
+- Attachment storage, upload/download, malware scanning, or object-store changes.
+- New publisher mappings or buyer criteria that alter routing decisions.

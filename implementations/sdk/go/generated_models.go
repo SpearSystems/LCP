@@ -36,6 +36,7 @@ type LeadPayload struct {
 	ContactWindow json.RawMessage `json:"contact_window,omitempty"`
 	LeadQuality   json.RawMessage `json:"lead_quality,omitempty"`
 	Expiry        json.RawMessage `json:"expiry,omitempty"`
+	Attachments   []map[string]any `json:"attachments,omitempty"`
 }
 type CallPayload struct {
 	LeadID      string          `json:"lead_id"`
@@ -49,6 +50,7 @@ type CallPayload struct {
 	Compliance  json.RawMessage `json:"compliance,omitempty"`
 	Provenance  json.RawMessage `json:"provenance,omitempty"`
 	Attributes  map[string]any  `json:"attributes,omitempty"`
+	Attachments []map[string]any `json:"attachments,omitempty"`
 }
 type PingPayload struct {
 	PingID          string         `json:"ping_id"`
@@ -78,6 +80,8 @@ type PostPayload struct {
 	Compliance     json.RawMessage `json:"compliance,omitempty"`
 	Attributes     map[string]any  `json:"attributes"`
 	Provenance     json.RawMessage `json:"provenance,omitempty"`
+	Call           json.RawMessage `json:"call,omitempty"`
+	Attachments    []map[string]any `json:"attachments,omitempty"`
 }
 type BidPayload struct {
 	PingID                  string `json:"ping_id"`
@@ -119,4 +123,15 @@ type OfferModel struct {
 	FloorPriceCents int            `json:"floor_price_cents"`
 	Currency        string         `json:"currency"`
 	Extensions      map[string]any `json:"extensions,omitempty"`
+	AllowedPublisherIDs []string `json:"allowed_publisher_ids,omitempty"`
+	AllowedBrandIDs []string `json:"allowed_brand_ids,omitempty"`
+	AttributeEquals map[string]any `json:"attribute_equals,omitempty"`
+	AttributeIn map[string]any `json:"attribute_in,omitempty"`
+	MonthlyMinimumPayable int `json:"monthly_minimum_payable,omitempty"`
+	MonthlyMaximumPayable int `json:"monthly_maximum_payable,omitempty"`
+	MonthlyQuotaTimezone string `json:"monthly_quota_timezone,omitempty"`
+	MonthlyQuotaPolicy string `json:"monthly_quota_policy,omitempty"`
+	PayableRules map[string]any `json:"payable_rules,omitempty"`
+	CallRoutingMode string `json:"call_routing_mode,omitempty"`
+	ConnectTimeoutSeconds int `json:"connect_timeout_seconds,omitempty"`
 }

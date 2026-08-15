@@ -17,6 +17,29 @@ from .crypto import EnvelopeCipher
 from .storage import Store, now_iso
 
 
+def _decode_text(value: Any) -> Any:
+    """Normalize psycopg binary text results across psycopg/libpq builds."""
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value
+    return value
+
+
+def _decoded_dict_row(cursor: Any):
+    if cursor.description is None:
+        return lambda values: values
+    names = [column.name for column in cursor.description]
+
+    def make_row(values: Any) -> dict[str, Any]:
+        return {name: _decode_text(value) for name, value in zip(names, values)}
+
+    return make_row
+
+
 class _PostgresConnection:
     def __init__(self, connection: Any):
         self.raw = connection
@@ -72,7 +95,6 @@ class PostgresStore(Store):
     def __init__(self, dsn: str, *, pii_encryption_key: str | bytes | None = None):
         try:
             import psycopg
-            from psycopg.rows import dict_row
         except ImportError as exc:
             raise RuntimeError(
                 "Postgres support requires the lcp-reference-platform[postgres] extra"
@@ -80,7 +102,7 @@ class PostgresStore(Store):
         self.path = dsn
         self._cipher = EnvelopeCipher(pii_encryption_key)
         self._lock = RLock()
-        self._raw = psycopg.connect(dsn, row_factory=dict_row)
+        self._raw = psycopg.connect(dsn, row_factory=_decoded_dict_row)
         # Store read methods use short implicit statements while write methods
         # open explicit transactions. Autocommit prevents a standalone SELECT
         # from poisoning the next explicit BEGIN on this shared connection.
@@ -110,6 +132,11 @@ class PostgresStore(Store):
         )
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_owner TEXT")
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_until TEXT")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'not_scanned'")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
 
     def close(self) -> None:
         with self._lock:

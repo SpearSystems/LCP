@@ -189,7 +189,7 @@ def build_post(
         "location": lead["location"],
         "attributes": lead["attributes"],
     }
-    for field in ("compliance", "provenance", "exclusivity"):
+    for field in ("compliance", "provenance", "exclusivity", "attachments", "call"):
         if field in lead:
             payload[field] = lead[field]
     if buyer_reference:

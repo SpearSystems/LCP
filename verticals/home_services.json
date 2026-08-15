@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/verticals/home_services.json",
   "title": "LCP Home Services Vertical Schema",
-  "description": "Home services lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "description": "Home services lead attributes. Every field is tagged ping_safe: true|false. Publishers normalize brand-specific form questions into this controlled taxonomy; unsupported source questions remain in an approved post-only extension or source archive.",
   "type": "object",
   "required": ["vertical", "schema_version"],
   "properties": {
@@ -10,19 +10,25 @@
     "schema_version": { "type": "string", "const": "1.0.0" },
     "service_type": {
       "type": "string",
-      "enum": ["roofing", "plumbing", "hvac", "electrical", "landscaping", "painting", "general_repair"],
+      "enum": ["roofing", "gutters", "downspouts", "plumbing", "hvac", "electrical", "landscaping", "painting", "windows", "doors", "flooring", "fencing", "concrete", "tree_service", "pest_control", "water_damage", "solar", "pool", "general_repair", "other"],
+      "description": "Controlled top-level service category.",
+      "ping_safe": true
+    },
+    "service_subtype": {
+      "type": "string",
+      "enum": ["inspection", "repair", "replacement", "new_installation", "cleaning", "maintenance", "installation_and_repair", "emergency_response", "quote_only", "other"],
+      "description": "Controlled service operation. A more specific taxonomy can be introduced by a future vertical schema version without changing the core.",
       "ping_safe": true
     },
     "project_type": {
       "type": "string",
-      "enum": ["repair", "install", "maintenance"],
-      "description": "Type of project requested.",
+      "enum": ["repair", "install", "maintenance", "replacement", "inspection", "cleaning", "removal", "other"],
+      "description": "Legacy-compatible project classification.",
       "ping_safe": true
     },
     "urgency": {
       "type": "string",
       "enum": ["emergency", "within_week", "within_month", "flexible"],
-      "description": "How urgently service is needed.",
       "ping_safe": true
     },
     "property_type": {
@@ -33,43 +39,71 @@
     "property_age_band": {
       "type": "string",
       "enum": ["under_5", "5_15", "15_30", "30_50", "over_50", "unknown"],
-      "description": "Banded property age in years.",
       "ping_safe": true
     },
     "budget_band": {
       "type": "string",
-      "enum": ["under_500", "500_1000", "1000_5000", "5000_10000", "10000_25000", "over_25000"],
-      "description": "Banded budget for the project.",
+      "enum": ["under_500", "500_1000", "1000_5000", "5000_10000", "10000_25000", "over_25000", "unknown"],
       "ping_safe": true
     },
     "preferred_schedule": {
       "type": "string",
       "enum": ["asap", "within_week", "within_month", "flexible", "specific_date"],
-      "description": "Preferred scheduling timeframe.",
       "ping_safe": true
     },
     "has_existing_damage": {
       "type": "boolean",
-      "description": "Is there existing damage requiring repair?",
       "ping_safe": true
     },
     "damage_type": {
       "type": "string",
       "enum": ["water", "fire", "storm", "mold", "structural", "pest", "wear_tear", "other", "none"],
-      "description": "Type of damage if present.",
       "ping_safe": true
     },
     "square_footage_band": {
       "type": "string",
-      "enum": ["under_1000", "1000_1500", "1500_2000", "2000_3000", "3000_5000", "over_5000"],
-      "description": "Banded property square footage.",
+      "enum": ["under_1000", "1000_1500", "1500_2000", "2000_3000", "3000_5000", "over_5000", "unknown"],
       "ping_safe": true
     },
     "number_of_rooms_band": {
       "type": "string",
-      "enum": ["under_3", "3_5", "5_7", "7_10", "over_10"],
-      "description": "Banded number of rooms.",
+      "enum": ["under_3", "3_5", "5_7", "7_10", "over_10", "unknown"],
       "ping_safe": true
+    },
+    "material": {
+      "type": "string",
+      "enum": ["aluminum", "copper", "steel", "vinyl", "tile", "metal", "asphalt_shingle", "wood", "concrete", "other", "unknown"],
+      "ping_safe": true
+    },
+    "roof_type": {
+      "type": "string",
+      "enum": ["asphalt_shingle", "metal", "tile", "flat", "slate", "wood", "unknown"],
+      "ping_safe": true
+    },
+    "stories_band": {
+      "type": "string",
+      "enum": ["one", "two", "three_or_more", "unknown"],
+      "ping_safe": true
+    },
+    "has_insurance_claim": {
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "occupancy": {
+      "type": "string",
+      "enum": ["owner_occupied", "tenant_occupied", "vacant", "commercial", "unknown"],
+      "ping_safe": true
+    },
+    "exact_budget": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Exact budget is post-only; use budget_band in a ping.",
+      "ping_safe": false
+    },
+    "free_text": {
+      "type": "string",
+      "description": "Free text is post-only because it may contain names, addresses, or sensitive details.",
+      "ping_safe": false
     }
   },
   "additionalProperties": false

@@ -158,6 +158,9 @@
     },
     "expiry": {
       "$ref": "core.json#/$defs/expiry"
+    },
+    "attachments": {
+      "$ref": "core.json#/$defs/attachments"
     }
   },
   "additionalProperties": false

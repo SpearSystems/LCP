@@ -33,12 +33,20 @@ For every field and message type, define:
 - Deletion/erasure behavior.
 - Audit requirements.
 
-Full PII posts should have a shorter and more tightly controlled retention
-policy than non-PII pings, hashes, or aggregate operational metrics.
+Full PII posts and attachments should have a shorter and more tightly
+controlled retention policy than non-PII pings, hashes, or aggregate
+operational metrics. Attachment storage, replicas, malware-scanning queues,
+and download logs must follow the same country/state residency decision as the
+lead they support.
 
 ## Required operational controls
 
-- Encrypt database, queue, object storage, and backups.
+- Encrypt database, queue, object storage, attachments, and backups. The
+  production S3-compatible attachment adapter requires SSE-KMS and an explicit
+  residency-bound object prefix.
+- Scan uploaded files before releasing them to a buyer; keep the scan result
+  and file hash as audit metadata without logging file contents.
+- Treat `storage_ref` as an opaque capability identifier, never a public URL.
 - Do not place raw PII in logs, URLs, metrics, traces, exception messages, or
   support tickets.
 - Restrict production PII access to named roles and record every access.
@@ -47,8 +55,9 @@ policy than non-PII pings, hashes, or aggregate operational metrics.
   to redact persisted envelopes and cancel pending deliveries, then propagate
   erasure to downstream buyers and backups.
 - Test backup deletion and restore behavior against retention requirements.
-- Ensure failed webhook payloads and dead-letter queues follow the same PII
-  retention policy as successful deliveries.
+- Ensure failed webhook payloads, object-storage replicas, malware-scanning
+  queues, and dead-letter queues follow the same PII retention and residency
+  policy as successful deliveries.
 - Use synthetic data in development and the sandbox.
 - Keep production credentials and encryption keys outside the repository.
 

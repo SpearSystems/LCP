@@ -30,7 +30,6 @@
       ],
       "additionalProperties": false
     },
-
     "location": {
       "type": "object",
       "title": "Location",
@@ -48,7 +47,6 @@
       ],
       "additionalProperties": false
     },
-
     "consent_evidence_entry": {
       "type": "object",
       "title": "Consent Evidence Entry",
@@ -61,7 +59,6 @@
       "required": ["type", "provider", "token_or_url"],
       "additionalProperties": false
     },
-
     "compliance": {
       "type": "object",
       "title": "Compliance",
@@ -70,53 +67,34 @@
         "consent_timestamp": { "type": "string", "format": "date-time" },
         "consent_source_url": { "type": "string", "format": "uri" },
         "consent_text_version": { "type": "string" },
-        "consent_purposes": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "What was consented to (e.g. calls, sms, email, share_with_partners)."
-        },
-        "consent_evidence": {
-          "type": "array",
-          "items": { "$ref": "core.json#/$defs/consent_evidence_entry" }
-        },
+        "consent_purposes": { "type": "array", "items": { "type": "string" }, "description": "What was consented to (e.g. calls, sms, email, share_with_partners)." },
+        "consent_evidence": { "type": "array", "items": { "$ref": "core.json#/$defs/consent_evidence_entry" } },
         "otp_verified": { "type": "boolean", "description": "One-time-passcode verified." },
         "otp": {
           "type": "object",
-          "description": "OTP verification details. Optional — if present, otp_verified should be true. The actual OTP code MUST NOT be included — it is ephemeral and poses a replay risk if leaked.",
+          "description": "OTP verification details. The actual OTP code MUST NOT be included.",
           "properties": {
-            "channel": { "type": "string", "enum": ["sms", "email", "voice"], "description": "How the OTP was delivered." },
+            "channel": { "type": "string", "enum": ["sms", "email", "voice"] },
             "verified_at": { "type": "string", "format": "date-time" },
-            "verified_value_hash": { "type": "string", "description": "Hash of the value that was verified (phone or email). Do not include the raw value." },
-            "attempts": { "type": "integer", "minimum": 1, "description": "Number of OTP attempts before success. High counts may indicate fraud." }
+            "verified_value_hash": { "type": "string" },
+            "attempts": { "type": "integer", "minimum": 1 }
           },
           "additionalProperties": false
         },
-        "session_capture_id": { "type": "string", "description": "Session replay reference (e.g. rrweb)." },
+        "session_capture_id": { "type": "string" },
         "call_recording_id": { "type": "string" },
-        "dnc_checked": { "type": "boolean", "description": "Do-not-call list checked." },
-        "consent_expires_at": { "type": "string", "format": "date-time", "description": "When the consent validity expires. Optional — if absent, consent does not expire. Buyers should not contact after this timestamp." },
+        "dnc_checked": { "type": "boolean" },
+        "consent_expires_at": { "type": "string", "format": "date-time" },
         "scrubs": {
           "type": "array",
-          "description": "Results of compliance scrubbing checks performed against the consumer's phone/email. Each entry is one scrub check.",
           "items": {
             "type": "object",
             "properties": {
-              "type": {
-                "type": "string",
-                "description": "Scrub type. Known values: dnc_national, dnc_state, dnc_internal, litigator, blacklist, fraud_check, carrier_lookup, number_portability. Open enumeration.",
-                "$comment": "Open enum — new scrub types are additive."
-              },
-              "provider": {
-                "type": "string",
-                "description": "Service that performed the scrub (e.g. ftc_dnc, au_dncregister, litigator_list, tcpa_scrub, first_orion, hiya, internal). Open enumeration."
-              },
-              "result": {
-                "type": "string",
-                "enum": ["clean", "flagged", "blocked", "not_checked"],
-                "description": "clean = passed the check; flagged = on a list but not blocked (buyer decides); blocked = on a list and should not be contacted; not_checked = scrub was not run."
-              },
+              "type": { "type": "string" },
+              "provider": { "type": "string" },
+              "result": { "type": "string", "enum": ["clean", "flagged", "blocked", "not_checked"] },
               "checked_at": { "type": "string", "format": "date-time" },
-              "details": { "type": "string", "description": "Optional human-readable detail (e.g. 'matched litigator list: 3 prior TCPA filings'). Do not include PII." }
+              "details": { "type": "string" }
             },
             "required": ["type", "result"],
             "additionalProperties": false
@@ -125,30 +103,16 @@
       },
       "additionalProperties": false
     },
-
     "provenance": {
       "type": "object",
       "title": "Provenance",
       "description": "Non-PII origin metadata.",
       "properties": {
         "received_at": { "type": "string", "format": "date-time" },
-        "source_type": {
-          "type": "string",
-          "description": "OPEN ENUMERATION — known values: publisher, direct, agent, api, referral, organic, marketplace, outbound, scraped. Unknown values must be stored and passed through.",
-          "$comment": "Was a closed enum. Opened per SPEC.md section 6 — new source types are additive."
-        },
-        "acquisition_method": {
-          "type": "string",
-          "description": "How the lead was acquired. Known values: paid_ad, organic_search, marketplace, gmb (Google Business Profile), directory, cold_outbound, warm_transfer, scraped, unknown. Open enumeration."
-        },
-        "is_incentivized": {
-          "type": "boolean",
-          "description": "True if the consumer was offered an incentive (free consultation, gift card, discount) to submit the lead. Buyers who don't want incentivized leads filter on this."
-        },
-        "incentive_type": {
-          "type": "string",
-          "description": "What incentive was offered (e.g. free_consultation, gift_card, discount_coupon, free_quote, cash_offer). Open enumeration."
-        },
+        "source_type": { "type": "string", "description": "Open enumeration of source types." },
+        "acquisition_method": { "type": "string", "description": "Open enumeration of acquisition methods." },
+        "is_incentivized": { "type": "boolean" },
+        "incentive_type": { "type": "string" },
         "source_id": { "type": "string" },
         "source_url": { "type": "string", "format": "uri" },
         "ip_hash": { "type": "string" },
@@ -158,15 +122,15 @@
         "campaign_id": { "type": "string" },
         "creative_id": { "type": "string" },
         "landing_page_url": { "type": "string", "format": "uri" },
-        "platform_source": { "type": "string", "description": "Ad/marketing platform the lead originated from (e.g. google_ads, facebook, tiktok, bing_ads, organic, direct). Open enumeration." },
+        "platform_source": { "type": "string" },
+        "brand_id": { "type": "string", "description": "Publisher-owned brand identifier." },
+        "form_id": { "type": "string", "description": "Stable form or flow identifier." },
         "agent": {
           "type": "object",
-          "title": "Agent Provenance",
-          "description": "Present when source_type = agent.",
           "properties": {
             "agent_id": { "type": "string" },
-            "acting_for": { "type": "string", "description": "Party the agent acts on behalf of." },
-            "attestation": { "type": "string", "description": "Signed JWT proving agent identity and authority." }
+            "acting_for": { "type": "string" },
+            "attestation": { "type": "string" }
           },
           "required": ["agent_id", "acting_for", "attestation"],
           "additionalProperties": false
@@ -174,96 +138,103 @@
       },
       "additionalProperties": false
     },
-
     "attributes": {
       "type": "object",
       "title": "Attributes",
-      "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/. Every field MUST be tagged ping_safe: true/false.",
+      "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/.",
       "properties": {
-        "vertical": { "type": "string", "description": "Vertical identifier (e.g. mortgage, insurance, solar)." },
-        "schema_version": { "type": "string", "description": "Version of the vertical schema." }
+        "vertical": { "type": "string" },
+        "schema_version": { "type": "string" }
       },
       "required": ["vertical", "schema_version"]
     },
-
+    "attachments": {
+      "type": "array",
+      "description": "Metadata for encrypted, out-of-band files. Binary content is never embedded in an LCP JSON envelope.",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["attachment_id", "purpose", "filename", "content_type", "size_bytes", "sha256", "storage_ref", "created_at"],
+        "properties": {
+          "attachment_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+          "purpose": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "filename": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$" },
+          "content_type": { "type": "string", "pattern": "^[^;\\s]+/[^;\\s]+$" },
+          "size_bytes": { "type": "integer", "minimum": 1, "maximum": 104857600 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "storage_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "encryption": { "type": "string", "enum": ["application_encrypted", "provider_encrypted"] },
+          "residency": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{1,31}$", "description": "Country or deployment region where the attachment bytes are stored and scanned." },
+          "malware_scan": {
+            "type": "object",
+            "description": "Non-sensitive malware scan evidence. A production attachment must have status clean before release.",
+            "properties": {
+              "status": { "type": "string", "enum": ["clean", "not_scanned"] },
+              "engine": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "scanned_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["status", "engine", "scanned_at"],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "status": {
       "type": "string",
       "title": "Lead Status",
-      "description": "OPEN ENUMERATION — known values: NEW, PINGED, POSTED, ACCEPTED, REJECTED, DUPLICATE, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected.",
-      "$comment": "No enum constraint — this is an open enumeration per SPEC.md §6."
+      "description": "Open enumeration of lifecycle statuses."
     },
-
     "channel": {
       "type": "string",
       "title": "Lead Channel",
-      "description": "OPEN ENUMERATION — known values: form, chat, click, api, agent, referral. Unknown values MUST be stored and passed through, not rejected.",
-      "$comment": "No enum constraint — this is an open enumeration per SPEC.md §6."
+      "description": "Open enumeration of lead channels."
     },
-
     "currency": {
       "type": "string",
-      "pattern": "^[A-Z]{3}$",
-      "description": "ISO 4217 currency code."
+      "pattern": "^[A-Z]{3}$"
     },
-
     "error": {
       "type": "object",
-      "title": "LCP Error",
       "properties": {
-        "code": { "type": "string", "pattern": "^LCP-\\d{3}$", "description": "Error code (e.g. LCP-003)." },
-        "name": { "type": "string", "description": "Human-readable error name (e.g. MISSING_REQUIRED_FIELD)." },
-        "message": { "type": "string", "description": "Human-readable description." },
-        "field": { "type": "string", "description": "Field path that caused the error (e.g. consumer.phone)." },
+        "code": { "type": "string", "pattern": "^LCP-\\d{3}$" },
+        "name": { "type": "string" },
+        "message": { "type": "string" },
+        "field": { "type": "string" },
         "details": { "type": "object", "additionalProperties": true }
       },
       "required": ["code", "message"],
       "additionalProperties": false
     },
-
     "errors_array": {
       "type": "object",
-      "title": "Errors Array",
-      "description": "Standard error response shape used in both HTTP error bodies and ack.errors[].",
       "properties": {
-        "errors": {
-          "type": "array",
-          "items": { "$ref": "core.json#/$defs/error" },
-          "minItems": 1
-        }
+        "errors": { "type": "array", "items": { "$ref": "core.json#/$defs/error" }, "minItems": 1 }
       },
       "required": ["errors"],
       "additionalProperties": false
     },
-
     "exclusivity": {
       "type": "object",
-      "title": "Exclusivity",
       "properties": {
         "exclusivity": { "type": "string", "enum": ["exclusive", "shared"], "default": "shared" },
-        "max_buyers": { "type": "integer", "minimum": 1, "description": "For shared leads, maximum buyers who may receive the lead." }
+        "max_buyers": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },
-
     "expiry": {
       "type": "object",
-      "title": "Lead Expiry",
-      "description": "Either expires_at or ttl_seconds. If the lead reaches expiry without acceptance, it transitions to EXPIRED.",
       "properties": {
         "expires_at": { "type": "string", "format": "date-time" },
         "ttl_seconds": { "type": "integer", "minimum": 1 }
       },
-      "anyOf": [
-        { "required": ["expires_at"] },
-        { "required": ["ttl_seconds"] }
-      ],
+      "anyOf": [{ "required": ["expires_at"] }, { "required": ["ttl_seconds"] }],
       "additionalProperties": false
     },
-
     "security": {
       "type": "object",
-      "title": "Security Block",
-      "description": "Transport-neutral HMAC signature. Mirrors X-LCP-Signature / X-LCP-Timestamp headers for non-HTTP transports.",
       "properties": {
         "signature": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },

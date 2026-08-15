@@ -40,6 +40,12 @@ tags:
   description: Offer listing
 - name: Bids
   description: Bid submission in response to pings
+- name: Events
+  description: Lifecycle and call outcome events
+- name: Attachments
+  description: Authenticated out-of-band evidence files
+- name: Quotas
+  description: Monthly payable pacing reports
 paths:
   /health/live:
     get:
@@ -166,6 +172,129 @@ paths:
         '400': *id001
         '401': *id002
         '429': *id003
+  /events:
+    post:
+      tags:
+      - Events
+      summary: Submit a lifecycle or call outcome event
+      operationId: submitEvent
+      description: Submit an event envelope such as CALL_OUTCOME, DISPUTED, or REFUNDED. The platform evaluates payable rules and updates offer quota records.
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lcp]
+              properties:
+                lcp:
+                  type: object
+                  description: Full LCP event envelope; see schemas/envelope.json and schemas/event.json.
+      responses:
+        '200':
+          description: Event received
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ack'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthError'
+  /attachments:
+    post:
+      tags:
+      - Attachments
+      summary: Upload scanned and encrypted out-of-band evidence
+      operationId: uploadAttachment
+      description: Upload raw bytes. Sign the exact bytes with the normal HMAC canonical input and provide the lead, filename, purpose, content hash, and idempotency headers.
+      parameters:
+      - name: X-LCP-Sender-Id
+        in: header
+        required: true
+        schema: { type: string }
+      - name: X-LCP-Lead-Id
+        in: header
+        required: true
+        schema: { type: string }
+      - name: X-LCP-Attachment-Id
+        in: header
+        required: false
+        schema: { type: string }
+      - name: X-LCP-Attachment-Purpose
+        in: header
+        required: true
+        schema: { type: string }
+      - name: X-LCP-Filename
+        in: header
+        required: true
+        schema: { type: string }
+      - name: X-LCP-Content-SHA256
+        in: header
+        required: true
+        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+      - $ref: '#/components/parameters/DataResidency'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Attachment metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentMetadata'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthError'
+  /attachments/{attachmentId}:
+    get:
+      tags:
+      - Attachments
+      summary: Download an authorized attachment
+      operationId: downloadAttachment
+      parameters:
+      - name: attachmentId
+        in: path
+        required: true
+        schema: { type: string }
+      responses:
+        '200':
+          description: Attachment bytes
+          content:
+            application/octet-stream: {}
+        '404':
+          description: Attachment not found or not authorized
+  /offers/{offerId}/quota:
+    get:
+      tags:
+      - Quotas
+      summary: Get monthly payable quota status
+      operationId: getOfferQuota
+      parameters:
+      - name: offerId
+        in: path
+        required: true
+        schema: { type: string }
+      responses:
+        '200':
+          description: Monthly payable quota report
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Offer not found
   /leads/{leadId}:
     get:
       tags:
@@ -392,6 +521,14 @@ components:
         type: boolean
         default: false
       description: Test mode - infrastructure can filter test traffic without parsing the JSON body.
+    DataResidency:
+      name: X-LCP-Data-Residency
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{1,31}$'
+      description: Country or deployment region policy for the attachment bytes. Required in production unless configured as a deployment default.
   responses:
     ValidationError: *id001
     AuthError: *id002
@@ -430,6 +567,38 @@ components:
               details:
                 type: object
                 additionalProperties: true
+    AttachmentMetadata:
+      type: object
+      required:
+      - attachment_id
+      - purpose
+      - filename
+      - content_type
+      - size_bytes
+      - sha256
+      - storage_ref
+      - created_at
+      properties:
+        attachment_id: { type: string }
+        purpose: { type: string }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        storage_ref: { type: string, description: Opaque authenticated reference; never a public URL. }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        residency: { type: string }
+        encryption: { type: string, enum: [application_encrypted, provider_encrypted] }
+        malware_scan:
+          type: object
+          required: [status, engine, scanned_at]
+          properties:
+            status: { type: string, enum: [clean, not_scanned] }
+            engine: { type: string }
+            scanned_at: { type: string, format: date-time }
+          additionalProperties: false
+      additionalProperties: false
     AckPayload:
       type: object
       required:
@@ -591,6 +760,39 @@ components:
             type: object
             additionalProperties: true
         ping_timeout_seconds:
+          type: integer
+          minimum: 1
+        allowed_publisher_ids:
+          type: array
+          items: { type: string }
+        allowed_brand_ids:
+          type: array
+          items: { type: string }
+        attribute_equals:
+          type: object
+          additionalProperties: true
+        attribute_in:
+          type: object
+          additionalProperties:
+            type: array
+        monthly_minimum_payable:
+          type: integer
+          minimum: 0
+        monthly_maximum_payable:
+          type: integer
+          minimum: 1
+        monthly_quota_timezone:
+          type: string
+        monthly_quota_policy:
+          type: string
+          enum: [monitor, pace, hard_cap]
+        payable_rules:
+          type: object
+          additionalProperties: true
+        call_routing_mode:
+          type: string
+          enum: [post_call, realtime_transfer]
+        connect_timeout_seconds:
           type: integer
           minimum: 1
     Capabilities:

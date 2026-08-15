@@ -9,21 +9,24 @@ cluster configuration.
 1. Build and publish the reference-platform image to your registry.
 2. Provide a supported Postgres service; do not run the database in this
    example for production.
-3. Copy `secret.example.yaml` to a private, access-controlled Secret manifest
+3. Provide an approved RWX attachment volume or replace the reference file
+   backend with a residency-controlled object-store adapter.
+4. Copy `secret.example.yaml` to a private, access-controlled Secret manifest
    or use External Secrets/KMS integration.
-4. Replace the example image, database URL, tenant ID, resource limits,
+5. Replace the example image, database URL, tenant ID, resource limits,
    namespaces, network policies, ingress, and residency controls.
-5. Configure a production WSGI server or adapt the image entry point to the
+6. Configure a production WSGI server or adapt the image entry point to the
    organization's process manager.
-6. Publish the image through the signed container workflow, resolve its digest,
+7. Publish the image through the signed container workflow, resolve its digest,
    and replace the example image reference with that digest.
-7. Add a TLS ingress/WAF and private egress policy.
+8. Add a TLS ingress/WAF and private egress policy.
 
 ## Apply
 
 ```bash
 kubectl create namespace lcp
 kubectl apply -n lcp -f secret.example.yaml   # replace with a real secret workflow
+kubectl apply -n lcp -f pvc.example.yaml       # use approved RWX storage or an object-store adapter
 kubectl apply -n lcp -f configmap.yaml
 kubectl apply -n lcp -f deployment.yaml
 kubectl apply -n lcp -f service.yaml
@@ -38,6 +41,9 @@ same Postgres database but does not need a public Service.
 
 ## Production additions
 
+- `pvc.example.yaml` for the reference encrypted attachment directory. A
+  multi-zone production deployment should prefer an object-store adapter with
+  customer-managed encryption and explicit residency controls.
 - `network-policy.example.yaml` restricting database and buyer egress.
 - `pod-disruption-budget.yaml` and multi-zone scheduling.
 - `hpa.example.yaml`, extended with queue-age and database-capacity signals.

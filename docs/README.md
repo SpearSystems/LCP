@@ -40,6 +40,14 @@
 
 - [Publisher onboarding](PUBLISHER-ONBOARDING.md) — publisher setup,
   source mapping, authentication, retries, sandbox testing, and go-live checks.
+- [Publisher mapping](PUBLISHER-MAPPING.md) — versioned multi-brand form
+  normalization, OTP variation, taxonomy mapping, and audit records.
+- [Calls and telephony](CALLS-AND-TELEPHONY.md) — post-call and real-time
+  transfer boundaries, call posts, outcome events, and payable duration rules.
+- [MVA and attachments](MVA-ATTACHMENTS.md) — MVA schema, encrypted file
+  uploads, authenticated downloads, and retention/erasure controls.
+- [Monthly quotas](MONTHLY-QUOTAS.md) — payable pacing and per-offer target
+  reporting for buyer minimums.
 - [Buyer onboarding](BUYER-ONBOARDING.md) — buyer offers, auction bids,
   webhook verification, idempotency, and production controls.
 - [Platform integration](PLATFORM-INTEGRATION.md) — mappings for Facebook Lead
@@ -64,7 +72,8 @@
 ### Page 4 · Operate
 
 - [Reference platform](../implementations/reference-platform/README.md) —
-  persistent HTTP/router implementation.
+  persistent HTTP/router implementation, mappings, attachments, call outcomes,
+  and quota reporting.
 - [Production deployment](DEPLOYMENT.md) — Postgres, Kubernetes, scaling,
   residency, and recovery targets.
 - [Kubernetes example](../implementations/reference-platform/kubernetes/README.md)

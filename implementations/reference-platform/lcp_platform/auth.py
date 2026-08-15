@@ -32,9 +32,23 @@ def canonical_bytes(timestamp: str, idempotency_key: str | None, body: bytes) ->
     return f"{timestamp}\n{idempotency_key or ''}\n".encode("utf-8") + body
 
 
-def signature_for(secret: str, timestamp: str, idempotency_key: str | None, body: bytes) -> str:
+def signature_for(
+    secret: str | bytes | bytearray | memoryview,
+    timestamp: str,
+    idempotency_key: str | None,
+    body: bytes,
+) -> str:
+    secret_bytes = (
+        secret
+        if isinstance(secret, bytes)
+        else secret.tobytes()
+        if isinstance(secret, memoryview)
+        else bytes(secret)
+        if isinstance(secret, bytearray)
+        else secret.encode("utf-8")
+    )
     return hmac.new(
-        secret.encode("utf-8"),
+        secret_bytes,
         canonical_bytes(timestamp, idempotency_key, body),
         hashlib.sha256,
     ).hexdigest()
@@ -154,7 +168,14 @@ class Authenticator:
 
     def secret_for(self, sender_id: str) -> str | None:
         credential = self.principal(sender_id)
-        return str(credential["hmac_secret"]) if credential and credential.get("hmac_secret") else None
+        if not credential or not credential.get("hmac_secret"):
+            return None
+        value = credential["hmac_secret"]
+        if isinstance(value, memoryview):
+            return value.tobytes().decode("utf-8")
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return str(value)
 
     def tenant_for(self, sender_id: str) -> str | None:
         principal = self.principal(sender_id)
@@ -164,8 +185,13 @@ class Authenticator:
         principal = self.principal(sender_id)
         if not principal:
             return set()
+        raw_scopes = principal.get("scopes_json", "[]")
+        if isinstance(raw_scopes, memoryview):
+            raw_scopes = raw_scopes.tobytes().decode("utf-8")
+        elif isinstance(raw_scopes, bytes):
+            raw_scopes = raw_scopes.decode("utf-8")
         try:
-            decoded = json.loads(str(principal.get("scopes_json", "[]")))
+            decoded = json.loads(str(raw_scopes))
         except (TypeError, ValueError):
             return set()
         if not isinstance(decoded, list) or not all(isinstance(scope, str) for scope in decoded):

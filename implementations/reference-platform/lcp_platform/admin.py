@@ -35,6 +35,11 @@ def main() -> None:
     erase_lead.add_argument("--lead-id", required=True)
     erase_lead.add_argument("--actor-id", default="operator")
 
+    mapping = commands.add_parser("mapping", help="Manage publisher form mappings")
+    mapping_sub = mapping.add_subparsers(dest="mapping_command", required=True)
+    upsert_mapping = mapping_sub.add_parser("upsert")
+    upsert_mapping.add_argument("--file", required=True, type=Path)
+
     offer = commands.add_parser("offer", help="Manage buyer offers")
     offer_sub = offer.add_subparsers(dest="offer_command", required=True)
     upsert_offer = offer_sub.add_parser("upsert")
@@ -65,6 +70,13 @@ def main() -> None:
             if args.privacy_command == "erase-lead":
                 platform.erase_lead(args.lead_id, actor_id=args.actor_id)
                 print(f"Erased lead {args.lead_id}")
+        elif args.command == "mapping":
+            with args.file.open(encoding="utf-8") as handle:
+                mapping_data = json.load(handle)
+            mappings = mapping_data.get("mappings", []) if isinstance(mapping_data, dict) and "mappings" in mapping_data else [mapping_data]
+            for item in mappings:
+                platform.upsert_mapping(item)
+                print(f"Upserted mapping {item['mapping_id']} v{item['version']}")
         elif args.command == "offer":
             with args.file.open(encoding="utf-8") as handle:
                 offer_data = json.load(handle)

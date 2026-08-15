@@ -237,6 +237,21 @@ The `CONVERTED` event's `details.conversion_value_cents` is the one
 exception — close value on conversion is structured in the event
 (see §4 event) because it's a lifecycle fact, not a calculated metric.
 
+### attachments
+
+Lead, call, and post payloads MAY include `attachments[]` metadata for
+contracts, medical records, insurance documents, call recordings, or other
+agreed evidence. Each entry contains `attachment_id`, `purpose`, `filename`,
+`content_type`, `size_bytes`, `sha256`, `storage_ref`, and `created_at`, with
+optional expiry, residency, encryption, and malware-scan markers. A production
+attachment MUST have a clean malware-scan result before downstream release. A
+deployment MUST enforce sender ownership, hash integrity, content limits,
+authorization, retention, and country/region residency. The HTTP reference
+profile uploads bytes through an authenticated attachment endpoint; the
+protocol does not mandate a particular object-store provider. The reference
+platform's production adapter uses an S3-compatible API with provider-side
+SSE-KMS and an opaque storage reference.
+
 ### status
 
 `NEW`, `PINGED`, `POSTED`, `ACCEPTED`, `REJECTED`, `DUPLICATE`,
@@ -411,7 +426,8 @@ the winner. Losers receive no further messages (no PII was shared).
 ### post
 
 `lead_id`, `delivered_at`, `submitted_at`, `offer_id`, `price_cents`,
-`currency`, `buyer_id`, `buyer_reference`, `pricing{floor_price_cents,
+`currency`, `buyer_id`, `buyer_reference`, optional `call` detail block,
+optional `attachments[]`, `pricing{floor_price_cents,
 premium_cents, final_price_cents, uncapped_price_cents,
 max_allowed_price_cents, price_guardrails, is_duplicate_resub,
 payable_definition, payable_status, dispute_window_hours,
@@ -447,6 +463,12 @@ For `CONVERTED` events, `details` SHOULD include:
 | `conversion_currency` | string | ISO 4217. |
 | `converted_at` | string (datetime) | When the conversion occurred. |
 | `buyer_reference` | string | Buyer's CRM deal/opp ID. |
+
+For call lifecycle events such as `CALL_OFFERED`, `CALL_CONNECTED`,
+`CALL_ENDED`, and `CALL_OUTCOME`, `details` SHOULD include `offer_id`,
+`call_status`, `total_seconds`, `disposition`, and `transfer_status` where
+available. A platform uses the buyer offer's `payable_rules` to classify the
+outcome and update the monthly payable quota.
 
 For `DISPUTED` events, `details` SHOULD include:
 
@@ -541,6 +563,9 @@ endpoint receives test traffic.
 - Deprecation: N+2, 2-year grace, migration guidance.
 - Extensions: `extensions` object, namespaced `{org}.{division}.{purpose}`,
   registered in [governance/EXTENSION-REGISTRY.md](governance/EXTENSION-REGISTRY.md).
+- Binary evidence is out-of-band. `attachments[]` carries validated metadata
+  and an opaque, authenticated `storage_ref`; raw file bytes MUST NOT be put
+  in an LCP JSON envelope or ping.
 - Unknown optional fields ignored; unknown message types → structured error.
 
 ### Open vs. closed enumerations
@@ -619,6 +644,14 @@ The platform filters against offer restrictions before pinging:
 | `reject_litigator_flagged` | boolean | If true, buyer will not accept leads with `litigator_status != clean`. |
 | `reject_blacklist_flagged` | boolean | If true, buyer will not accept leads with `blacklist_status != clean`. |
 | `min_data_completeness` | string | Buyer requires at least this completeness level (`minimal`, `standard`, `rich`). |
+| `allowed_publisher_ids` | array<string> | Optional publisher sender-ID allowlist. |
+| `allowed_brand_ids` | array<string> | Optional `provenance.brand_id` allowlist. |
+| `attribute_equals` / `attribute_in` | object | Safe declarative vertical criteria; values are data, never executable expressions. |
+| `monthly_minimum_payable` | integer | Operational monthly payable target; not a supply guarantee. |
+| `monthly_maximum_payable` | integer | Optional hard ceiling for payable outcomes. |
+| `monthly_quota_policy` | string | `monitor`, `pace`, or `hard_cap`. |
+| `payable_rules` | object | Structured call answer, duration, and disposition rules. |
+| `call_routing_mode` | string | `post_call` or `realtime_transfer`; live transfer remains telephony-binding work. |
 
 These are **contractual preferences**, not protocol enforcement. The
 platform uses them to filter before pinging. A buyer receiving a lead
@@ -725,6 +758,8 @@ Per-sender rate limits are enforced. Exceeding the limit returns
 
 - Ping: stripped (strict allowlist, no PII).
 - Post: TLS + per-contract retention policies.
+- Attachments: authenticated out-of-band bytes, encrypted storage, hash
+  verification, access control, retention, and jurisdiction-specific deletion.
 - Hashes for dedup (HMAC-SHA256, per-pair).
 - PII retention policies are deployment-defined.
 

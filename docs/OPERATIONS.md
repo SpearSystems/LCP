@@ -25,10 +25,16 @@ Collect labels that do not contain PII:
 - Webhook latency and response classes.
 - Database latency/connection pool usage.
 - Worker lease expiry and crash/restart counts.
+- Attachment upload counts, hash/MIME rejection counts, malware-scan queue age,
+  download authorization failures, and storage capacity.
+- Payable outcomes by offer, pending validation age, monthly target progress,
+  remaining pace, disputes, and refunds.
+- Publisher mapping failures and active mapping version by brand/form.
 
 Alert on sustained auth failures, PII validation failures, queue growth,
-failed deliveries, database saturation, backup failures, and unusual volume
-from a tenant.
+failed deliveries, database saturation, backup failures, unusual volume from a
+tenant, attachment capacity/malware backlog, mapping dead letters, and any
+offer that is materially under-paced toward its monthly payable minimum.
 
 ## Deployment procedure
 
