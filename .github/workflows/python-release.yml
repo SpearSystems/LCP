@@ -87,7 +87,7 @@ jobs:
           output-file: lcp-release-container-sbom.cdx.json
           artifact-name: lcp-release-container-sbom.cdx.json
       - name: Scan release image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: lcp-reference-platform:release-check
           format: sarif
