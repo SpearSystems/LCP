@@ -14,42 +14,21 @@ The server is stateless — it creates a fresh HTTP client per tool call.
 from __future__ import annotations
 
 import json
-import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from lcp_sdk import build_envelope
 
 from .client import LCPClient
 from .schema_loader import list_schemas, load_schema
 
 app = Server("lcp-mcp-server")
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _make_envelope(msg_type: str, sender_id: str, receiver_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Wrap a payload in a standard LCP envelope."""
-    return {
-        "lcp": {
-            "version": "1.0.0",
-            "message": {
-                "id": str(uuid.uuid4()),
-                "type": msg_type,
-                "timestamp": _now_iso(),
-                "sender_id": sender_id,
-                "receiver_id": receiver_id,
-                "correlation_id": None,
-                "idempotency_key": f"{sender_id}-{msg_type}-{uuid.uuid4().hex[:8]}",
-                "test": False,
-            },
-            "payload": payload,
-        }
-    }
+    """Wrap a payload using the shared Python SDK envelope builder."""
+    return build_envelope(msg_type, sender_id, receiver_id, payload)
 
 
 def _tool_result(data: dict[str, Any]) -> list[types.TextContent]:

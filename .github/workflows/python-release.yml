@@ -165,6 +165,8 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
+      - name: Generate canonical SDK schema bundle
+        run: python tools/generate_sdk_models.py --write
       - name: Build package
         working-directory: ${{ matrix.path }}
         run: |

@@ -25,9 +25,16 @@ host an LCP platform, persist leads, receive webhooks, or run auctions.
 ## Setup
 
 ```bash
-cd implementations/mcp-server
-pip install -e .
+# From the repository root while packages are unreleased.
+python3 -m pip install -e implementations/sdk/python -e implementations/mcp-server
+
+# After the packages are published, install the adapter and its shared SDK.
+python3 -m pip install lcp-mcp-server lcp-sdk
 ```
+
+The adapter delegates HTTP, HMAC signing, retries, and raw-body security
+primitives to `lcp-sdk`; it only provides the MCP tool binding and local schema
+fallback.
 
 ## Configuration
 
@@ -81,6 +88,4 @@ Add to your MCP client config (e.g. Claude Desktop `claude_desktop_config.json`)
 }
 ```
 
-## License
-
-Apache 2.0 — same as the LCP specification.
+## LicenseApache 2.0 — same as the LCP specification. See the [SDK support policy](../../docs/SDK-ROADMAP.md) for the MCP relationship and package compatibility.

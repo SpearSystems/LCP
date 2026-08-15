@@ -10,6 +10,7 @@ from lcp_sdk import (
     build_envelope,
     sign_hmac,
     verify_hmac,
+    verify_http_request,
 )
 
 
@@ -45,6 +46,22 @@ class SDKTests(unittest.TestCase):
             signature,
             timestamp,
             "key-001",
+            body,
+            now=datetime(2026, 8, 15, 10, 20, 1, tzinfo=timezone.utc),
+        )
+
+    def test_webhook_verification_uses_raw_body_and_case_insensitive_headers(self) -> None:
+        body = b'{"hello":"world"}'
+        timestamp = "2026-08-15T10:20:00Z"
+        key = "sdk-vector-001"
+        signature = sign_hmac("sdk-shared-secret", timestamp, key, body)
+        verify_http_request(
+            "sdk-shared-secret",
+            {
+                "x-lcp-signature": signature,
+                "x-lcp-timestamp": timestamp,
+                "x-lcp-idempotency-key": key,
+            },
             body,
             now=datetime(2026, 8, 15, 10, 20, 1, tzinfo=timezone.utc),
         )

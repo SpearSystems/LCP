@@ -1,24 +1,22 @@
-"""LCP HTTP client — thin wrapper around the LCP REST API.
+"""LCP HTTP client compatibility wrapper for the MCP adapter.
 
-Stateless: each call makes one HTTP request. No sessions, no state.
-Supports both Bearer (API key) and HMAC authentication.
+The MCP package intentionally delegates authentication, retries, and HTTP
+transport to the standalone lcp-sdk package. This wrapper preserves the MCP
+adapter's historical ``post``/``get`` response shape, including ``_ok`` and
+``_status_code`` metadata.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
 import os
-import time
 from typing import Any
-from urllib.parse import quote
 
-import httpx
+from lcp_sdk import LCPClient as SDKLCPClient
+from lcp_sdk import LCPHTTPError
 
 
 class LCPClient:
-    """Minimal HTTP client for an LCP-compliant REST endpoint."""
+    """MCP-facing compatibility wrapper around :class:`lcp_sdk.LCPClient`."""
 
     def __init__(
         self,
@@ -28,56 +26,39 @@ class LCPClient:
         sender_id: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self.endpoint = (endpoint or os.environ.get("LCP_ENDPOINT", "http://localhost:8000")).rstrip("/")
-        self.api_key = api_key or os.environ.get("LCP_API_KEY")
-        self.hmac_secret = hmac_secret or os.environ.get("LCP_HMAC_SECRET")
-        self.sender_id = sender_id or os.environ.get("LCP_SENDER_ID", "")
-        self.timeout = timeout
+        self._client = SDKLCPClient(
+            endpoint or os.environ.get("LCP_ENDPOINT", "http://localhost:8000"),
+            sender_id=sender_id or os.environ.get("LCP_SENDER_ID", ""),
+            api_key=api_key or os.environ.get("LCP_API_KEY"),
+            hmac_secret=hmac_secret or os.environ.get("LCP_HMAC_SECRET"),
+            timeout=timeout,
+        )
 
-    def _auth_headers(
-        self,
-        body: bytes | None = None,
-        idempotency_key: str | None = None,
-    ) -> dict[str, str]:
-        """Build Bearer or canonical LCP HMAC authentication headers."""
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self.sender_id:
-            headers["X-LCP-Sender-Id"] = self.sender_id
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        elif self.hmac_secret:
-            body = body or b""
-            timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            key = idempotency_key or ""
-            signing_input = f"{timestamp}\n{key}\n".encode() + body
-            sig = hmac.new(
-                self.hmac_secret.encode(), signing_input, hashlib.sha256
-            ).hexdigest()
-            headers["X-LCP-Signature"] = sig
-            headers["X-LCP-Timestamp"] = timestamp
-            if idempotency_key:
-                headers["X-LCP-Idempotency-Key"] = idempotency_key
-        elif idempotency_key:
-            headers["X-LCP-Idempotency-Key"] = idempotency_key
-        return headers
+    @property
+    def endpoint(self) -> str:
+        return self._client.endpoint
+
+    @property
+    def sender_id(self) -> str | None:
+        return self._client.sender_id
 
     def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST an LCP envelope to the endpoint."""
-        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
-        idempotency_key = payload.get("lcp", {}).get("message", {}).get("idempotency_key")
-        headers = self._auth_headers(body, idempotency_key)
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(f"{self.endpoint}{path}", content=body, headers=headers)
-            return _parse_response(resp)
+        """POST an LCP envelope, preserving the legacy MCP response shape."""
+        try:
+            data = self._client.request("POST", path, payload=payload)
+            return _with_metadata(data, 200, True)
+        except LCPHTTPError as exc:
+            body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}
+            return _with_metadata(body, exc.status_code, False)
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """GET from the endpoint."""
-        headers = self._auth_headers()
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.get(f"{self.endpoint}{path}", params=params, headers=headers)
-            return _parse_response(resp)
-
-    # ─── LCP endpoint wrappers ────────────────────────────────────────────
+        """GET from the LCP endpoint, preserving the legacy response shape."""
+        try:
+            data = self._client.request("GET", path, params=params)
+            return _with_metadata(data, 200, True)
+        except LCPHTTPError as exc:
+            body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}
+            return _with_metadata(body, exc.status_code, False)
 
     def submit_lead(self, envelope: dict[str, Any]) -> dict[str, Any]:
         return self.post("/v1/lcp/leads", envelope)
@@ -86,10 +67,10 @@ class LCPClient:
         return self.post("/v1/lcp/calls", envelope)
 
     def query_lead_status(self, lead_id: str) -> dict[str, Any]:
-        return self.get(f"/v1/lcp/leads/{quote(lead_id, safe='')}")
+        return self.get(f"/v1/lcp/leads/{lead_id}")
 
     def get_schema(self, name: str) -> dict[str, Any]:
-        return self.get(f"/v1/lcp/schemas/{quote(name, safe='')}")
+        return self.get(f"/v1/lcp/schemas/{name}")
 
     def get_capabilities(self) -> dict[str, Any]:
         return self.get("/v1/lcp/capabilities")
@@ -99,13 +80,8 @@ class LCPClient:
         return self.get("/v1/lcp/offers", params=params)
 
 
-def _parse_response(resp: httpx.Response) -> dict[str, Any]:
-    """Parse an HTTP response into a dict. Raises on transport errors."""
-    try:
-        data = resp.json()
-    except Exception:
-        data = {"raw": resp.text}
-
-    data["_status_code"] = resp.status_code
-    data["_ok"] = resp.is_success
-    return data
+def _with_metadata(data: dict[str, Any], status_code: int, ok: bool) -> dict[str, Any]:
+    result = dict(data)
+    result["_status_code"] = status_code
+    result["_ok"] = ok
+    return result

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LcpSdk</RootNamespace>
+    <AssemblyName>LcpSdk</AssemblyName>
+    <PackageId>LcpSdk</PackageId>
+    <Version>0.1.0</Version>
+    <Description>LCP Lead Context Protocol SDK for .NET</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+    <None Include="../README.md" Pack="true" PackagePath="README.md" />
+    <None Include="../schema-bundle.json" Pack="true" PackagePath="schema-bundle.json" Condition="Exists('../schema-bundle.json')" />
+  </ItemGroup>
+</Project>

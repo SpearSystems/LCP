@@ -180,13 +180,16 @@ retry behavior, and idempotency.
 
 ## 8. SDK boundary
 
-The Python SDK is deliberately independent of the MCP binding and platform
-storage. It provides message construction, validation, signing, verification,
-idempotency, and HTTP operations. It does not contain offer-matching or
-routing logic.
+The official SDK program is deliberately independent of the MCP binding and
+platform storage. The Tier 1 Python, TypeScript, Go, and C# SDKs provide
+message construction, validation hooks, signing, verification, idempotency,
+webhook helpers, and HTTP operations. The Tier 2/3 reference SDKs provide the
+same core contract using each language's standard HTTP and crypto facilities.
+No SDK contains offer-matching or routing logic.
 
-MCP remains a thin adapter and should use the same signing profile as the SDK
-and reference platform.
+MCP remains a thin adapter and reuses the Python SDK's signing, retry, and HTTP
+primitives rather than maintaining a second security implementation. See
+[SDK-ROADMAP.md](SDK-ROADMAP.md) for the language tiers and release gates.
 
 ## 9. Production hardening profile
 
@@ -205,7 +208,7 @@ then obtain independent security and privacy review for regulated operation.
 Future maintainers should revisit these decisions through a documented
 proposal before changing interoperable behavior:
 
-- Async SDK APIs and batch submission.
+- Async SDK APIs and batch submission in all language bindings.
 - Multi-currency auction rules.
 - Shared-lead routing and fallback buyers.
 - Webhook subscription management.

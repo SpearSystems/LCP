@@ -18,6 +18,54 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
 
+  - package-ecosystem: npm
+    directory: /implementations/sdk/typescript
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: gomod
+    directory: /implementations/sdk/go
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: maven
+    directory: /implementations/sdk/java
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: composer
+    directory: /implementations/sdk/php
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: bundler
+    directory: /implementations/sdk/ruby
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: cargo
+    directory: /implementations/sdk/rust
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: gradle
+    directory: /implementations/sdk/kotlin
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: nuget
+    directory: /implementations/sdk/csharp/src
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

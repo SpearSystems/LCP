@@ -1,0 +1,9 @@
+{
+  "name": "spearsystems/lcp-sdk",
+  "description": "LCP Lead Context Protocol SDK for PHP",
+  "type": "library",
+  "license": "Apache-2.0",
+  "require": { "php": ">=8.1", "ext-curl": "*", "ext-json": "*", "opis/json-schema": "^2.4" },
+  "autoload": { "psr-4": { "Lcp\\": "src/" } },
+  "extra": { "lcp-schema-bundle": "resources/schema-bundle.json" }
+}

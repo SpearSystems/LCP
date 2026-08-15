@@ -1,0 +1,23 @@
+{
+  "name": "@spearsystems/lcp-sdk",
+  "version": "0.1.0",
+  "description": "LCP Lead Context Protocol SDK for TypeScript and JavaScript",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=20" },
+  "files": ["dist", "src/generated/schema-bundle.json", "README.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }, "./schema-bundle.json": "./src/generated/schema-bundle.json" },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node test/hmac.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

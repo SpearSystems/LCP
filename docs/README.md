@@ -1,54 +1,120 @@
-# LCP — Design Notes & Research
+# LCP documentation
 
-## Current documentation
+> **Documentation home · Page 1 of 6**
+>
+> This repository is designed to be browsed like a small documentation site.
+> Use the role cards below, then follow the **previous / next** links at the
+> bottom of each page. Every page is plain Markdown and works offline in a
+> checkout, GitHub, and common IDEs.
 
-- [PUBLISHER-ONBOARDING.md](PUBLISHER-ONBOARDING.md) — publisher setup,
+<details open>
+<summary><strong>Choose your path</strong></summary>
+
+| I want to… | Start here | Then read |
+|---|---|---|
+| Send leads as a publisher | [Publisher onboarding](PUBLISHER-ONBOARDING.md) | [Integration examples](../examples/integrations/) → [SDK index](../implementations/sdk/) |
+| Buy or receive leads | [Buyer onboarding](BUYER-ONBOARDING.md) | [Offer criteria](BUYER-ONBOARDING.md#offer-criteria) → [Platform integration](PLATFORM-INTEGRATION.md) |
+| Run an LCP platform | [Platform integration](PLATFORM-INTEGRATION.md) | [Reference platform](../implementations/reference-platform/README.md) → [Deployment](DEPLOYMENT.md) |
+| Build an application | [SDK index](../implementations/sdk/) | [SDK support policy](SDK-ROADMAP.md) → your language README |
+| Deploy securely | [Deployment](DEPLOYMENT.md) | [Security profiles](SECURITY-PROFILES.md) → [Operations](OPERATIONS.md) |
+| Understand the protocol | [Canonical specification](../SPEC.md) | [Schemas](../schemas/) → [Conformance vectors](../test-vectors/) |
+| Connect an AI agent | [MCP adapter](../implementations/mcp-server/README.md) | [SDK contract](SDK-ROADMAP.md#relationship-to-mcp) |
+
+</details>
+
+## Page map
+
+| Page | Audience | Contents |
+|---:|---|---|
+| 1 | Everyone | This index and the role-based paths |
+| 2 | Publishers and buyers | Onboarding, examples, and offer criteria |
+| 3 | Developers | SDKs, validation, generated models, and publishing |
+| 4 | Platform operators | Reference platform, deployment, and Kubernetes |
+| 5 | Security and operations | Threat model, privacy, supply chain, and runbooks |
+| 6 | Contributors | Governance, extensions, and historical research |
+
+<details>
+<summary><strong>Current documentation</strong></summary>
+
+### Page 2 · Integrate
+
+- [Publisher onboarding](PUBLISHER-ONBOARDING.md) — publisher setup,
   source mapping, authentication, retries, sandbox testing, and go-live checks.
-- [BUYER-ONBOARDING.md](BUYER-ONBOARDING.md) — buyer offers, auction bids,
+- [Buyer onboarding](BUYER-ONBOARDING.md) — buyer offers, auction bids,
   webhook verification, idempotency, and production controls.
-- [PLATFORM-INTEGRATION.md](PLATFORM-INTEGRATION.md) — how common platforms
-  (Facebook Lead Ads, Google Lead Forms, Twilio, HubSpot, Salesforce, TikTok)
-  map to/from LCP fields.
-- [IMPLEMENTATION-DECISIONS.md](IMPLEMENTATION-DECISIONS.md) — approved
-  production reference profile: offer matching, auction selection, HMAC,
-  webhook retries, SDK boundaries, and sandbox parity.
-- [Reference platform](../implementations/reference-platform/README.md) —
-  install, configure, operate, and deploy the persistent LCP router.
-- [Sandbox](../examples/sandbox/README.md) — end-to-end synthetic
-  publisher/buyer test using the same platform code path.
-- [Security architecture](SECURITY-ARCHITECTURE.md) — trust boundaries,
-  security profiles, and defense-in-depth controls.
-- [Threat model](THREAT-MODEL.md) — assets, actors, abuse cases, and
-  residual risks.
-- [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) — residency,
-  retention, erasure, and PII operations.
-- [Production deployment](DEPLOYMENT.md) — Postgres, Kubernetes, scaling,
-  and recovery targets.
-- [Security profiles](SECURITY-PROFILES.md) — Baseline, Enterprise, and
-  Regulated deployment expectations.
-- [Operations runbook](OPERATIONS.md) — health, metrics, deployment, privacy
-  operations, and incident practices.
-- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits, SBOMs,
-  image scanning, and release controls.
-- [Container signing and provenance](CONTAINER-SUPPLY-CHAIN.md) — Cosign,
-  GitHub attestations, digest deployment, and Kyverno admission enforcement.
-- [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
-  full-image scan review, owners, dispositions, and expiry-based follow-up.
-  The CI machine-readable register is [`vulnerability-exceptions.json`](vulnerability-exceptions.json).
+- [Platform integration](PLATFORM-INTEGRATION.md) — mappings for Facebook Lead
+  Ads, Google Lead Forms, Twilio, HubSpot, Salesforce, and TikTok.
 - [Integration examples](../examples/integrations/) — Python, Node.js, cURL,
   and buyer webhook templates.
+- [Sandbox](../examples/sandbox/README.md) — synthetic end-to-end testing on
+  the same platform code path as production.
 
-## Historical artifacts (kept for provenance)
+### Page 3 · Build
 
-These documents were part of the spec development process. Their
-findings have been resolved — they do not reflect the current state of
-the spec.
+- [SDK index](../implementations/sdk/) — language matrix and quickstarts.
+- [SDK program](SDK-ROADMAP.md) — tiers, compatibility contract, validation,
+  generated models, package release gates, and registry publishing.
+- [Implementation decisions](IMPLEMENTATION-DECISIONS.md) — approved
+  production reference profile and rationale.
+- [Canonical specification](../SPEC.md) — wire contract and governance.
+- [JSON Schemas](../schemas/) and [vertical schemas](../verticals/) — the
+  machine-readable contract.
+- [Conformance vectors](../test-vectors/) — executable protocol examples.
 
-- [lcp-deep-research-prompt.md](lcp-deep-research-prompt.md) — the
-  cross-LLM review prompt used to stress-test the v1.0 design.
-- [lcp-deep-research-review.md](lcp-deep-research-review.md) — Sonnet 5
-  adversarial review. All 5 blockers and 15 should-fixes resolved in
-  SPEC.md (see §14 review-log appendix).
+### Page 4 · Operate
+
+- [Reference platform](../implementations/reference-platform/README.md) —
+  persistent HTTP/router implementation.
+- [Production deployment](DEPLOYMENT.md) — Postgres, Kubernetes, scaling,
+  residency, and recovery targets.
+- [Kubernetes example](../implementations/reference-platform/kubernetes/README.md)
+  — verified-image admission deployment.
+- [Operations runbook](OPERATIONS.md) — health, metrics, deployment, privacy
+  operations, and incident practices.
+
+### Page 5 · Assure
+
+- [Security architecture](SECURITY-ARCHITECTURE.md) — trust boundaries and
+  defense-in-depth controls.
+- [Threat model](THREAT-MODEL.md) — assets, actors, abuse cases, and residual
+  risks.
+- [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) — residency,
+  retention, erasure, and PII operations.
+- [Security profiles](SECURITY-PROFILES.md) — Baseline, Enterprise, and
+  Regulated deployment expectations.
+- [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits,
+  SBOMs, image scanning, and release controls.
+- [Container signing and provenance](CONTAINER-SUPPLY-CHAIN.md) — Cosign,
+  attestations, digest deployment, and Kyverno admission enforcement.
+- [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
+  full-image scan review and expiry-based follow-up.
+
+### Page 6 · Contribute
+
+- [Contributing](../governance/CONTRIBUTING.md) — contribution process and
+  core-versus-extension boundaries.
+- [Security policy](../governance/SECURITY.md) — responsible disclosure.
+- [Extension registry](../governance/EXTENSION-REGISTRY.md) — namespaced
+  extension registration.
+- [Trademark and conformance claims](../governance/TRADEMARK.md) — how to
+  describe implementations accurately.
+
+</details>
+
+<details>
+<summary><strong>Reference and research material</strong></summary>
+
+These documents were part of the spec development process. Their findings are
+preserved for provenance and do not override the current specification.
+
+- [lcp-deep-research-prompt.md](lcp-deep-research-prompt.md) — cross-LLM review prompt.
+- [lcp-deep-research-review.md](lcp-deep-research-review.md) — adversarial review;
+  resolved findings are recorded in SPEC.md §14.
 - [publishing-gap-analysis.md](publishing-gap-analysis.md) — pre-publish
-  comparison against LEX and MCP repos. All high/medium gaps addressed.
-  Lower-priority items tracked in SPEC.md §14 deferred tables.
+  comparison against LEX and MCP repositories.
+
+</details>
+
+---
+
+**Previous:** [Repository home](../README.md) · **Next:** [Publisher onboarding](PUBLISHER-ONBOARDING.md)

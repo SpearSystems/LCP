@@ -4,9 +4,29 @@
 
 **The "HTTP of lead generation"** — a universal protocol for transferring consumer lead data (PII) between publishers, advertisers/buyers, platforms, and downstream systems. LCP covers form fills, calls, chats, APIs, and AI agents, together with the lifecycle from intake through delivery, conversion, disputes, and consent changes.
 
-> **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, Python SDK, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
+> **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, multi-language SDKs, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** Draft v1.0, under active development. The conformance runner currently passes 27/27 test vectors. The repository includes a standalone Python SDK, a production-oriented reference platform/router, an optional MCP adapter, and a Docker sandbox using the same platform code path.
+**Status:** Draft v1.0, under active development. The conformance runner currently passes 27/27 test vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path.
+
+## Read this repository like a documentation site
+
+> **Home · Page 1 of 6** — Choose a path, follow the numbered pages, and use
+> the previous/next links in the README files. No website or build step is
+> required.
+
+<details open>
+<summary><strong>Choose a role</strong></summary>
+
+- **Publisher:** [Publisher onboarding](docs/PUBLISHER-ONBOARDING.md) → [integration examples](examples/integrations/) → [SDKs](implementations/sdk/)
+- **Buyer:** [Buyer onboarding](docs/BUYER-ONBOARDING.md) → [offer criteria](#buyer-offers-and-acceptance-criteria) → [webhook template](examples/integrations/)
+- **Platform:** [Platform integration](docs/PLATFORM-INTEGRATION.md) → [reference platform](implementations/reference-platform/) → [deployment](docs/DEPLOYMENT.md)
+- **Developer:** [SDK index](implementations/sdk/) → [SDK contract and code generation](docs/SDK-ROADMAP.md) → [conformance vectors](test-vectors/)
+- **Operator/security reviewer:** [deployment](docs/DEPLOYMENT.md) → [security architecture](docs/SECURITY-ARCHITECTURE.md) → [operations](docs/OPERATIONS.md)
+- **AI-agent builder:** [MCP adapter](implementations/mcp-server/) → [SDK relationship](docs/SDK-ROADMAP.md#relationship-to-mcp)
+
+</details>
+
+**Next:** [Documentation home](docs/README.md) · **Quickstart:** [Run the conformance vectors](#run-the-conformance-vectors)
 
 ## Who uses LCP?
 
@@ -87,6 +107,16 @@ python3 -m pip install -e ./implementations/sdk/python
 
 See the [Python SDK README](implementations/sdk/python/README.md).
 
+### Official SDK program
+
+LCP maintains SDKs for the main publisher, buyer, platform, and enterprise
+languages. TypeScript, Go, and C# are Tier 1 alongside Python; Java, PHP,
+Rust, Ruby, Kotlin, and Swift have reference implementations with lower
+maintenance tiers. Every SDK follows the same signing, validation, idempotency,
+webhook, and test-vector contract. See the [SDK index](implementations/sdk/)
+and [SDK support policy](docs/SDK-ROADMAP.md) for package paths, maturity,
+and release gates.
+
 ### Optional MCP adapter for AI agents
 
 The MCP adapter is useful when a publisher or AI agent needs to interact with an LCP-compatible REST endpoint through an MCP client. It is not required for HTTP integrations and does not deploy an LCP endpoint.
@@ -96,7 +126,7 @@ From a checkout of this repository:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate                 # Windows: .venv\\Scripts\\activate
-python -m pip install -e ./implementations/mcp-server
+python -m pip install -e ./implementations/sdk/python -e ./implementations/mcp-server
 ```
 
 The local editable install creates the `lcp-mcp-server` command. The package is currently distributed from this repository rather than assumed to be available on PyPI.
@@ -315,7 +345,7 @@ schemas/         ── Envelope, core, and message JSON Schemas
 verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services)
 examples/        ── Sample payloads, onboarding templates, integrations, and the synthetic sandbox
 test-vectors/    ── 27 conformance vectors across L1/L2/L3
-implementations/ ── Python SDK, reference platform/router, and MCP adapter
+implementations/ ── Multi-language SDKs, reference platform/router, and MCP adapter
 docs/            ── Integration guides, implementation decisions, and design notes
 api/             ── OpenAPI 3.1 HTTP transport definition
 governance/      ── Contributing, security, extension, trademark, and CLA policies
@@ -335,6 +365,7 @@ SPEC.md          ── Canonical protocol specification
 - [End-to-end sandbox](examples/sandbox/README.md)
 - [Conformance vectors](test-vectors/)
 - [Implementation decisions](docs/IMPLEMENTATION-DECISIONS.md)
+- [SDK index and support tiers](implementations/sdk/)
 - [Python SDK](implementations/sdk/python/)
 - [Reference platform/router](implementations/reference-platform/)
 - [Production deployment guide](docs/DEPLOYMENT.md)

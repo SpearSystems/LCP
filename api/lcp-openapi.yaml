@@ -19,7 +19,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0
   contact:
     name: LCP Maintainers
-    url: https://github.com/lcp-protocol/lcp
+    url: https://github.com/SpearSystems/LCP
 servers:
 - url: https://{host}/v1/lcp
   description: LCP API base URL

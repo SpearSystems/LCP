@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Full Draft 2020-12 runtime validation APIs and generated typed models across all ten SDKs, with deterministic schema bundles and SHA-256 synchronization manifests
+- Coordinated SDK version gate and protected trusted-registry publication workflow for PyPI, npm, NuGet, Maven Central, crates.io, RubyGems, Packagist, Go modules, and Swift Package Manager
+- Repository-native paginated documentation navigation for publishers, buyers, developers, platform operators, security reviewers, and contributors
+- Official multi-language SDK program with shared HMAC vectors, compatibility policy, Tier 1 Python/TypeScript/Go/.NET SDKs, and Tier 2/3 Java/PHP/Rust/Ruby/Kotlin/Swift reference SDKs
+- Python raw-body webhook verification and MCP adapter reuse of the shared Python SDK transport/signing implementation
+- SDK compatibility workflow covering every language package and the shared signing fixture
 - Security/deployment hardening profile with Postgres support, fail-closed production configuration, AES-GCM envelope encryption, request limits, strict test-traffic separation, health endpoints, audit records, durable routing leases, SSRF/egress controls, and controlled lead erasure
 - Cloud-neutral Kubernetes examples with separate API/worker deployments, network policies, disruption budgets, autoscaling guidance, and mounted secret/encryption-key configuration
 - Production-oriented reference platform/router with SQLite/Postgres persistence, offer matching, ping/bid/post routing, signed webhook retries, admin CLI, and Docker sandbox

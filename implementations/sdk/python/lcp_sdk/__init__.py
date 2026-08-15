@@ -4,6 +4,7 @@ from .client import LCPClient, LCPHTTPError
 from .envelope import build_envelope, message_metadata, utc_timestamp
 from .signing import SignatureError, canonical_signing_bytes, sign_hmac, verify_hmac
 from .validation import SchemaValidator, ValidationError
+from .webhook import verify_http_request
 
 __all__ = [
     "LCPClient",
@@ -17,6 +18,7 @@ __all__ = [
     "sign_hmac",
     "utc_timestamp",
     "verify_hmac",
+    "verify_http_request",
 ]
 
 __version__ = "0.1.0"

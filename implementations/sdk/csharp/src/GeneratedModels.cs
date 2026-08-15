@@ -1,0 +1,14 @@
+// GENERATED FROM schemas/ — do not edit manually.
+using System.Text.Json.Nodes;
+namespace LcpSdk;
+
+public sealed record MessageModel(string Id, string Type, string Timestamp, string SenderId, string ReceiverId, string? CorrelationId, string IdempotencyKey, bool Test = false, JsonObject? Security = null);
+public sealed record EnvelopeModel(string Version, MessageModel Message, JsonNode? Payload);
+public sealed record LeadPayload(string LeadId, string Status, string Channel, JsonObject Consumer, JsonObject Location, JsonObject Attributes, string? ExternalId = null, string? SubmittedAt = null, JsonObject? Compliance = null, JsonObject? Provenance = null, JsonObject? Exclusivity = null, JsonObject? ContactWindow = null, JsonObject? LeadQuality = null, JsonObject? Expiry = null);
+public sealed record CallPayload(string LeadId, string Status, string Channel, JsonObject Consumer, JsonObject Location, JsonObject Call, string? ExternalId = null, string? SubmittedAt = null, JsonObject? Compliance = null, JsonObject? Provenance = null, JsonObject? Attributes = null, JsonObject? Expiry = null, JsonObject? Exclusivity = null);
+public sealed record PingPayload(string PingId, string LeadReference, string PhoneHash, string CountryCode, string Vertical, int FloorPriceCents, string Currency, string? PublisherId = null, string? OfferId = null, string? EmailHash = null, JsonObject? Attributes = null);
+public sealed record PostPayload(string LeadId, string DeliveredAt, int PriceCents, string Currency, string BuyerId, JsonObject Consumer, JsonObject Location, JsonObject Attributes, string? SubmittedAt = null, string? OfferId = null, string? BuyerReference = null, JsonObject? Pricing = null, JsonObject? Compliance = null, JsonObject? Provenance = null);
+public sealed record BidPayload(string PingId, string Decision, int BidPriceCents, string Currency, int? EstimatedContactSeconds = null, string? BuyerReference = null, string? RejectReason = null, int? CapacityRemaining = null);
+public sealed record AckPayload(string OriginalMessageId, string Status, IReadOnlyList<JsonObject>? Errors = null, string? LeadId = null, string? RequestId = null, string? RejectionReason = null);
+public sealed record EventPayload(string LeadId, string Event, string Timestamp, JsonObject? Details = null, string? ExternalReference = null);
+public sealed record OfferModel(string OfferId, string BuyerId, string Vertical, IReadOnlyList<string> Countries, int FloorPriceCents, string Currency, string? TenantId = null, bool Active = true, string? RoutingMode = null, string? SchemaVersion = null, JsonObject? Extensions = null);

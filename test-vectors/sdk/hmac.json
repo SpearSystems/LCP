@@ -1,0 +1,11 @@
+{
+  "id": "lcp-sdk-hmac-001",
+  "algorithm": "HMAC-SHA256",
+  "secret": "sdk-shared-secret",
+  "timestamp": "2026-08-15T10:20:00Z",
+  "idempotency_key": "sdk-vector-001",
+  "body_utf8": "{\"hello\":\"world\"}",
+  "signature_hex": "50f90d29b46e92f257eae62c94a3d985bf9a925da03fee82e33c800fe54e7259",
+  "verification_now": "2026-08-15T10:20:01Z",
+  "replay_window_seconds": 300
+}

@@ -25,3 +25,4 @@ packages = ["lcp_sdk"]
 [tool.hatch.build.targets.wheel.force-include]
 "../../../schemas" = "lcp_sdk/schemas"
 "../../../verticals" = "lcp_sdk/verticals"
+"lcp_sdk/schema-bundle.json" = "lcp_sdk/schema-bundle.json"

@@ -1,13 +1,25 @@
 # LCP — Reference Implementations
 
+> **Implementation hub · Page 4 of 6**
+>
+> [Previous: SDK hub](sdk/README.md) · [Next: deployment guide](../docs/DEPLOYMENT.md)
+
 These implementations share the LCP schemas and signing profile but have
 different responsibilities:
 
-## sdk/python
+## sdk
+
+The multi-language SDK program provides idiomatic clients and server helpers
+for publishers, buyers, platforms, and webhook receivers. The shared contract
+and support tiers are documented in [`../docs/SDK-ROADMAP.md`](../docs/SDK-ROADMAP.md).
+
+See the [SDK index](sdk/README.md).
+
+### sdk/python
 
 Standalone Python SDK for envelope construction, validation, HMAC signing,
-idempotency, and HTTP operations. It does not depend on MCP or platform
-storage.
+idempotency, webhook verification, and HTTP operations. It does not depend on
+MCP or platform storage.
 
 See [sdk/python/README.md](sdk/python/README.md).
 
