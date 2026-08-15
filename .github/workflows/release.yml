@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  pull_request:
   workflow_dispatch:
     inputs:
       tag:
@@ -28,6 +29,7 @@ concurrency:
 jobs:
   prepare:
     name: Validate release target and gate tag workflows
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.target.outputs.release_tag }}
@@ -45,11 +47,11 @@ jobs:
         Publish Python packages
         Publish, sign, and attest reference container
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.target_sha || github.ref }}
           fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Resolve release target
@@ -139,10 +141,11 @@ jobs:
 
   source-evidence:
     name: Sign source SBOM
+    if: github.event_name != 'pull_request'
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
@@ -153,7 +156,7 @@ jobs:
           format: cyclonedx-json
           output-file: lcp-source-sbom.cdx.json
       - name: Install Cosign
-        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign source SBOM
         run: cosign sign-blob --yes --bundle lcp-source-sbom.cdx.json.sigstore.json lcp-source-sbom.cdx.json
       - name: Upload source evidence
@@ -168,6 +171,7 @@ jobs:
 
   package-evidence:
     name: Sign ${{ matrix.name }} evidence
+    if: github.event_name != 'pull_request'
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
@@ -211,7 +215,7 @@ jobs:
             path: implementations/sdk/swift
             registry: SwiftPM:https://github.com/SpearSystems/LCP.git
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
@@ -276,7 +280,7 @@ jobs:
           provenance.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
       - name: Install Cosign
-        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign package, SBOM, and provenance
         run: |
           set -euo pipefail
@@ -293,6 +297,7 @@ jobs:
 
   release-evidence:
     name: Verify and generate release record
+    if: github.event_name != 'pull_request'
     needs: [prepare, source-evidence, package-evidence]
     runs-on: ubuntu-latest
     permissions:
@@ -300,11 +305,11 @@ jobs:
       actions: read
       id-token: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Download signed package evidence
@@ -388,7 +393,7 @@ jobs:
           Path("release-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
       - name: Install Cosign
-        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Verify package evidence signatures and signing identity
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -456,6 +461,70 @@ jobs:
             release-assets
           if-no-files-found: error
           retention-days: 90
+
+  pr-evidence-review:
+    name: Inline release-evidence review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check release metadata and evidence shape
+        id: summary
+        run: |
+          set -euo pipefail
+          python tools/check_sdk_versions.py --check
+          python tools/check_sdk_schema_sync.py --check
+          python test-vectors/conformance.py
+          python3 - <<'PY' > evidence-summary.md
+          from pathlib import Path
+          import json, hashlib
+          version = Path("SDK_VERSION").read_text().strip()
+          manifest_path = Path("implementations/sdk/typescript/src/generated/schema-manifest.json")
+          schema_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+          print(f"**LCP release-evidence review** (`{version}`)")
+          print()
+          print(f"- SDK_VERSION: `{version}`")
+          print(f"- schema-manifest SHA-256: `{schema_digest}`")
+          print(f"- Conformance vectors: passed")
+          print(f"- Workflow: `.github/workflows/release.yml` (pull-request review mode)")
+          print()
+          print("This check runs on every pull request. Before a real tag, the")
+          print("non-publishing dry run generates the full signed evidence bundle and the")
+          print("offline verifier (`tools/verify_release_evidence.py`) checks manifests,")
+          print("source archives, SBOMs, provenance statements, and digests.")
+          PY
+      - name: Comment evidence summary on the pull request
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- lcp-release-evidence-review -->';
+            const body = fs.readFileSync('evidence-summary.md', 'utf8');
+            const markerBody = marker + '\n' + body;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: markerBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: markerBody,
+              });
+            }
 
   create-release:
     name: Publish protected GitHub release record

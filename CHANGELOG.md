@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Release-ticket approval checklist (`docs/RELEASE-TICKET.md`) that turns dry-run artifact verification into a gate before the real tag
+- Inline release-evidence review job that posts digest and conformance summaries on release pull requests
+- Scheduled weekly probe (`release-verify.yml`) that verifies the published release evidence against the signed manifest and registry presence
+- Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
+
+### Changed
+- Applied Dependabot updates across GitHub Actions (checkout v7.0.1, setup-node v7.0.0, setup-python v7.0.0, setup-java v5.7.0, cosign-installer v4.1.2, dependency-review v5.0.0, crates-io-auth v1.0.5, ruby/setup-ruby v1.321.0, github-script v7) and SDKs (Rust hmac/getrandom/jsonschema/sha2, Go module bumps, TypeScript devDependencies, Kotlin plugin 2.4.10, JUnit 5.14.4)
+- Deferred the networknt json-schema-validator 3.x Jackson 3 rewrite for Java/Kotlin SDKs; documented in `docs/DEPENDENCY-DECISIONS.md`
 - Visible CI status and a gated tagged-release workflow with a non-publishing dry run, registry collision checks, per-package signed SBOM/provenance evidence, Sigstore-signed notes, release manifest, and source SBOM
 - Offline release-evidence verifier (`tools/verify_release_evidence.py`) that validates downloaded manifests, source archives, SBOMs, provenance statements, digests, and optional Cosign bundles before approval
 - Hermetic Kyverno admission assurance using a pinned local OCI registry, generated fixture images, ephemeral signing keys, and local provenance/SBOM attestation rejection cases

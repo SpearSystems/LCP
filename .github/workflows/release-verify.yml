@@ -1,0 +1,51 @@
+name: Verify published release evidence
+
+on:
+  schedule:
+    - cron: "23 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe latest release evidence and registry publication
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Download latest release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName,assets --jq '{tag: .tagName, names: [.assets[].name]}')"
+          tag="$(jq -r '.tag' <<< "${release}")"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          jq -r '.names[]' <<< "${release}" | while read -r asset; do
+            gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${asset}" --dir release-assets --clobber
+          done
+          find release-assets -maxdepth 1 -type f | sort
+          if [ ! -f release-assets/release-manifest.json ]; then
+            echo "no release-manifest.json in the latest release; nothing to probe" >&2
+            exit 0
+          fi
+      - name: Verify release evidence offline
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          python3 tools/verify_release_evidence.py release-assets
+      - name: Verify published package versions in registries
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.release_tag | ltrimstr("v")' release-assets/release-manifest.json)"
+          python3 tools/check_release_registries.py --version "${version}" --expect-present --timeout 60
+      - name: Report probe result
+        run: |
+          echo "Release evidence probe passed for ${RELEASE_TAG}"

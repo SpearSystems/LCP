@@ -1,4 +1,4 @@
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

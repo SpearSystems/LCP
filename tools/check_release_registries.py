@@ -139,7 +139,7 @@ def check_version_available(version: str, *, timeout: float = 15.0) -> list[str]
     return existing
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="proposed SemVer without the leading v")
     parser.add_argument(
@@ -147,8 +147,16 @@ def main() -> int:
         action="store_true",
         help="fail if any checked registry already contains the proposed version",
     )
+    parser.add_argument(
+        "--expect-present",
+        action="store_true",
+        help="fail unless every checked registry contains the proposed version",
+    )
     parser.add_argument("--timeout", type=float, default=15.0)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.expect_absent and args.expect_present:
+        print("--expect-absent and --expect-present are mutually exclusive", file=sys.stderr)
+        return 2
     try:
         existing = check_version_available(args.version, timeout=args.timeout)
     except RegistryCheckError as error:
@@ -160,6 +168,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    if args.expect_present:
+        missing = [check.name for check in registry_checks(args.version) if check.name not in existing]
+        if missing:
+            print(
+                "proposed version is missing from: " + ", ".join(missing),
+                file=sys.stderr,
+            )
+            return 1
     print(f"release registry validation passed for {args.version}")
     return 0
 

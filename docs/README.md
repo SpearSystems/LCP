@@ -107,6 +107,9 @@
 - [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) — branch protection,
   protected release environment, OIDC trusted publishers, and break-glass
   controls.
+- [Dependency update decisions](DEPENDENCY-DECISIONS.md) — record of applied
+  and deferred Dependabot updates, including the networknt Jackson 3 migration
+  deferral.
 
 ### Page 6 · Contribute
 

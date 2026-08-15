@@ -43,6 +43,33 @@ class ReleaseRegistryTests(unittest.TestCase):
         self.assertTrue(contains_version(check, 200, body, "0.1.0"))
         self.assertFalse(contains_version(check, 200, body, "0.1.1"))
 
+    def test_expect_present_mode_requires_all_registries(self):
+        from unittest import mock
+
+        from check_release_registries import main
+
+        all_names = [check.name for check in registry_checks("0.1.0")]
+        with mock.patch("check_release_registries.check_version_available", return_value=[]):
+            # No registry contains the version yet: probe fails closed.
+            self.assertEqual(main(["--version", "0.1.0", "--expect-present"]), 1)
+        with mock.patch(
+            "check_release_registries.check_version_available", return_value=all_names
+        ):
+            # Every registry contains the version: probe passes.
+            self.assertEqual(main(["--version", "0.1.0", "--expect-present"]), 0)
+
+    def test_expect_absent_and_present_are_mutually_exclusive(self):
+        from unittest import mock
+
+        from check_release_registries import main
+
+        with mock.patch("check_release_registries.check_version_available") as fetch:
+            # Rejected before any registry work happens.
+            self.assertEqual(
+                main(["--version", "0.1.0", "--expect-absent", "--expect-present"]), 2
+            )
+            fetch.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
