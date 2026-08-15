@@ -1,0 +1,450 @@
+name: Signed tagged release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Proposed release tag, for example v0.1.0"
+        required: true
+        type: string
+      target_sha:
+        description: "Optional commit SHA to inspect instead of the selected branch"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: lcp-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release target and gate tag workflows
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.target.outputs.release_tag }}
+      release_sha: ${{ steps.target.outputs.release_sha }}
+      dry_run: ${{ steps.target.outputs.dry_run }}
+      identity_ref: ${{ steps.target.outputs.identity_ref }}
+    env:
+      REQUESTED_TAG: ${{ inputs.tag }}
+      REQUESTED_SHA: ${{ inputs.target_sha }}
+      REQUIRED_WORKFLOWS: |-
+        Test
+        Security and supply chain
+        SDK compatibility
+        Publish SDKs
+        Publish Python packages
+        Publish, sign, and attest reference container
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Resolve release target
+        id: target
+        run: |
+          set -euo pipefail
+          release_tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          release_sha="$(git rev-parse HEAD)"
+          if [[ ! "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be a SemVer tag such as v0.1.0: ${release_tag}" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            dry_run=true
+            identity_ref="${GITHUB_REF}"
+          else
+            dry_run=false
+            identity_ref="refs/tags/${release_tag}"
+          fi
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "dry_run=${dry_run}" >> "${GITHUB_OUTPUT}"
+          echo "identity_ref=${identity_ref}" >> "${GITHUB_OUTPUT}"
+          echo "Release target: ${release_tag} at ${release_sha} (dry_run=${dry_run})"
+      - name: Validate coordinated release metadata
+        env:
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < SDK_VERSION)"
+          test "${RELEASE_TAG}" = "v${version}"
+          python tools/check_sdk_versions.py --check
+          python tools/check_sdk_schema_sync.py --check
+          python test-vectors/conformance.py
+      - name: Validate registry availability for dry run
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+        run: python tools/check_release_registries.py --version "${RELEASE_TAG#v}" --expect-absent
+      - name: Wait for all tag workflows to pass
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.target.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t required <<< "${REQUIRED_WORKFLOWS}"
+          complete=false
+          for attempt in $(seq 1 60); do
+            runs="$(gh run list --repo "${GITHUB_REPOSITORY}" --commit "${RELEASE_SHA}" --limit 100 \
+              --json name,status,conclusion,databaseId)"
+            complete=true
+            failed=false
+            for workflow in "${required[@]}"; do
+              [[ -n "${workflow}" ]] || continue
+              row="$(jq -c --arg name "${workflow}" '[.[] | select(.name == $name)] | sort_by(.databaseId) | last' <<< "${runs}")"
+              if [[ "${row}" == "null" ]]; then
+                echo "Waiting for ${workflow} to start (${attempt}/60)"
+                complete=false
+                continue
+              fi
+              status="$(jq -r '.status' <<< "${row}")"
+              conclusion="$(jq -r '.conclusion // empty' <<< "${row}")"
+              if [[ "${status}" != "completed" ]]; then
+                echo "${workflow}: ${status}"
+                complete=false
+              elif [[ "${conclusion}" != "success" ]]; then
+                echo "${workflow}: ${conclusion}" >&2
+                failed=true
+              else
+                echo "${workflow}: success"
+              fi
+            done
+            if [[ "${failed}" == true ]]; then
+              echo "A required release workflow failed; no GitHub release will be created." >&2
+              exit 1
+            fi
+            if [[ "${complete}" == true ]]; then
+              break
+            fi
+            sleep 20
+          done
+          if [[ "${complete}" != true ]]; then
+            echo "Timed out waiting for required tag workflows." >&2
+            exit 1
+          fi
+
+  source-evidence:
+    name: Sign source SBOM
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Create source SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: lcp-source-sbom.cdx.json
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+      - name: Sign source SBOM
+        run: cosign sign-blob --yes --bundle lcp-source-sbom.cdx.json.sigstore.json lcp-source-sbom.cdx.json
+      - name: Upload source evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-release-source-evidence
+          path: |
+            lcp-source-sbom.cdx.json
+            lcp-source-sbom.cdx.json.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
+
+  package-evidence:
+    name: Sign ${{ matrix.name }} evidence
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: lcp-sdk-python
+            path: implementations/sdk/python
+            registry: PyPI:lcp-sdk
+          - name: lcp-mcp-server
+            path: implementations/mcp-server
+            registry: PyPI:lcp-mcp-server
+          - name: lcp-reference-platform
+            path: implementations/reference-platform
+            registry: PyPI:lcp-reference-platform
+          - name: lcp-sdk-typescript
+            path: implementations/sdk/typescript
+            registry: npm:@spearsystems/lcp-sdk
+          - name: lcp-sdk-go
+            path: implementations/sdk/go
+            registry: Go:github.com/SpearSystems/LCP/implementations/sdk/go
+          - name: lcp-sdk-csharp
+            path: implementations/sdk/csharp
+            registry: NuGet:LcpSdk
+          - name: lcp-sdk-java
+            path: implementations/sdk/java
+            registry: Maven:com.spearsystems:lcp-sdk
+          - name: lcp-sdk-kotlin
+            path: implementations/sdk/kotlin
+            registry: Maven:com.spearsystems:lcp-sdk-kotlin
+          - name: lcp-sdk-php
+            path: implementations/sdk/php
+            registry: Packagist:spearsystems/lcp-sdk
+          - name: lcp-sdk-rust
+            path: implementations/sdk/rust
+            registry: crates.io:lcp-sdk
+          - name: lcp-sdk-ruby
+            path: implementations/sdk/ruby
+            registry: RubyGems:lcp-sdk
+          - name: lcp-sdk-swift
+            path: implementations/sdk/swift
+            registry: SwiftPM:https://github.com/SpearSystems/LCP.git
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Prepare package evidence directory
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          version="${RELEASE_TAG#v}"
+          archive="${{ matrix.name }}-${version}.source.tar.gz"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "release-assets/${archive}" -C "${{ matrix.path }}" .
+          echo "ARCHIVE=${archive}" >> "${GITHUB_ENV}"
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+      - name: Generate package SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: ${{ matrix.path }}
+          format: cyclonedx-json
+          output-file: release-assets/${{ matrix.name }}-${{ needs.prepare.outputs.release_tag }}.cdx.json
+      - name: Generate signed provenance statement
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          REGISTRY_COORDINATE: ${{ matrix.registry }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          archive = Path("release-assets") / os.environ["ARCHIVE"]
+          sbom = Path("release-assets") / f"${{ matrix.name }}-${{ needs.prepare.outputs.release_tag }}.cdx.json"
+          provenance = Path("release-assets") / f"${{ matrix.name }}-${{ needs.prepare.outputs.release_tag }}.provenance.json"
+          document = {
+              "_type": "https://in-toto.io/Statement/v1",
+              "subject": [{"name": archive.name, "digest": {"sha256": hashlib.sha256(archive.read_bytes()).hexdigest()}}],
+              "predicateType": "https://slsa.dev/provenance/v1",
+              "predicate": {
+                  "buildDefinition": {
+                      "buildType": "https://github.com/SpearSystems/LCP/.github/workflows/release.yml",
+                      "externalParameters": {
+                          "release_tag": os.environ["RELEASE_TAG"],
+                          "package": os.environ["REGISTRY_COORDINATE"],
+                          "source_path": "${{ matrix.path }}",
+                      },
+                      "resolvedDependencies": [{
+                          "uri": "git+https://github.com/SpearSystems/LCP.git",
+                          "digest": {"sha1": os.environ["RELEASE_SHA"]},
+                      }],
+                  },
+                  "runDetails": {
+                      "builder": {"id": "https://github.com/SpearSystems/LCP/.github/workflows/release.yml"},
+                      "metadata": {"invocationId": os.environ["GITHUB_RUN_ID"]},
+                      "byproducts": [{"uri": sbom.name, "digest": {"sha256": hashlib.sha256(sbom.read_bytes()).hexdigest()}}],
+                  },
+              },
+          }
+          provenance.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+      - name: Sign package, SBOM, and provenance
+        run: |
+          set -euo pipefail
+          for artifact in release-assets/*.source.tar.gz release-assets/*.cdx.json release-assets/*.provenance.json; do
+            cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "${artifact}"
+          done
+      - name: Upload package evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-release-package-${{ matrix.name }}
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: Verify and publish release record
+    needs: [prepare, source-evidence, package-evidence]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ needs.prepare.outputs.release_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Download signed package evidence
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          pattern: lcp-release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate release notes and manifest
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+          DRY_RUN: ${{ needs.prepare.outputs.dry_run }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 "${RELEASE_SHA}^" 2>/dev/null || true)"
+          {
+            if [[ "${DRY_RUN}" == true ]]; then
+              printf '# LCP %s dry run\n\n' "${RELEASE_TAG}"
+              printf 'This is a non-publishing release rehearsal for commit `%s`. No registry package, container, or GitHub release was created.\n\n' "${RELEASE_SHA}"
+            else
+              printf '# LCP %s\n\n' "${RELEASE_TAG}"
+              printf 'This release was created only after the versioned conformance, security, SDK, package, and container workflows passed for commit `%s`.\n\n' "${RELEASE_SHA}"
+            fi
+            printf '## Signed package evidence\n\n'
+            printf 'Each published package has a tagged source archive, CycloneDX SBOM, SLSA provenance statement, and a Sigstore bundle for each artifact. The registry publication workflows are recorded in `release-manifest.json`.\n\n'
+            printf '## Changes\n\n'
+            if [[ -n "${previous}" ]]; then
+              git log --no-merges --format='- %s (%h)' "${previous}..${RELEASE_SHA}"
+            else
+              printf '%s\n' '- Initial tagged release.'
+            fi
+            printf '\n## Verification\n\n'
+            printf 'Verify the attached Sigstore bundles using [docs/RELEASE.md](https://github.com/%s/blob/%s/docs/RELEASE.md).\n' "${GITHUB_REPOSITORY}" "${RELEASE_TAG}"
+          } > release-notes.md
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("release-assets")
+          packages = []
+          for provenance_path in sorted(root.glob("*.provenance.json")):
+              provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+              subject = provenance["subject"][0]
+              package = provenance["predicate"]["buildDefinition"]["externalParameters"]["package"]
+              source_path = provenance["predicate"]["buildDefinition"]["externalParameters"]["source_path"]
+              prefix = provenance_path.name.removesuffix(".provenance.json")
+              packages.append({
+                  "package": package,
+                  "source_path": source_path,
+                  "source_archive": subject["name"],
+                  "source_sha256": subject["digest"]["sha256"],
+                  "sbom": f"{prefix}.cdx.json",
+                  "provenance": provenance_path.name,
+                  "signatures": {
+                      "source_archive": f"{subject['name']}.sigstore.json",
+                      "sbom": f"{prefix}.cdx.json.sigstore.json",
+                      "provenance": provenance_path.name + ".sigstore.json",
+                  },
+              })
+          if len(packages) != 12:
+              raise SystemExit(f"expected 12 package evidence records, found {len(packages)}")
+          manifest = {
+              "protocol": "LCP",
+              "release_tag": os.environ["RELEASE_TAG"],
+              "commit": os.environ["RELEASE_SHA"],
+              "dry_run": os.environ["DRY_RUN"] == "true",
+              "sdk_version": Path("SDK_VERSION").read_text(encoding="utf-8").strip(),
+              "schema_manifest_sha256": hashlib.sha256(Path("implementations/sdk/typescript/src/generated/schema-manifest.json").read_bytes()).hexdigest(),
+              "release_workflow": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/workflows/release.yml",
+              "source_sbom": {
+                  "file": "lcp-source-sbom.cdx.json",
+                  "signature": "lcp-source-sbom.cdx.json.sigstore.json",
+              },
+              "package_evidence": packages,
+              "container": f"ghcr.io/{os.environ['GITHUB_REPOSITORY'].split('/')[0].lower()}/lcp-reference-platform:{os.environ['RELEASE_TAG']}",
+          }
+          Path("release-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
+      - name: Verify package evidence signatures and signing identity
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          IDENTITY_REF: ${{ needs.prepare.outputs.identity_ref }}
+        run: |
+          set -euo pipefail
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${IDENTITY_REF}"
+          for artifact in release-assets/*.source.tar.gz release-assets/*.cdx.json release-assets/*.provenance.json; do
+            cosign verify-blob \
+              --bundle "${artifact}.sigstore.json" \
+              --certificate-identity "${identity}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${artifact}"
+          done
+      - name: Sign release notes and manifest
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle release-notes.sigstore.json release-notes.md
+          cosign sign-blob --yes --bundle release-manifest.sigstore.json release-manifest.json
+      - name: Verify release notes and manifest signatures
+        env:
+          IDENTITY_REF: ${{ needs.prepare.outputs.identity_ref }}
+        run: |
+          set -euo pipefail
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${IDENTITY_REF}"
+          for artifact in release-notes.md release-manifest.json; do
+            cosign verify-blob \
+              --bundle "${artifact}.sigstore.json" \
+              --certificate-identity "${identity}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${artifact}"
+          done
+      - name: Upload dry-run evidence
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-release-dry-run-${{ needs.prepare.outputs.release_tag }}
+          path: |
+            release-notes.md
+            release-notes.sigstore.json
+            release-manifest.json
+            release-manifest.sigstore.json
+            release-assets
+          if-no-files-found: error
+          retention-days: 30
+      - name: Create or update GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
+              --title "LCP ${RELEASE_TAG}" --notes-file release-notes.md
+          else
+            gh release create "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag \
+              --title "LCP ${RELEASE_TAG}" --notes-file release-notes.md
+          fi
+          gh release upload "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
+            release-notes.md release-notes.sigstore.json \
+            release-manifest.json release-manifest.sigstore.json \
+            release-assets/*

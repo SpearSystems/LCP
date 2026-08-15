@@ -1,0 +1,207 @@
+# LCP tagged releases and artifact verification
+
+> **Release page · Page 3 of 6**
+>
+> This page explains how maintainers create a versioned LCP release and how
+> adopters verify the release record before installing packages or deploying
+> the reference container.
+
+## What a version tag does
+
+A tag such as `v0.1.0` starts the coordinated release process. The tag is
+accepted only when it matches `SDK_VERSION` and the package metadata checked by
+`tools/check_sdk_versions.py`.
+
+The tag runs these workflows for the same commit:
+
+1. **Test** — conformance, SDK tests, reference-platform tests, and real
+   PostgreSQL integration.
+2. **Security and supply chain** — dependency audit, CodeQL, SBOM generation,
+   hardened image build, and Trivy review.
+3. **SDK compatibility** — schema synchronization and every language SDK test.
+4. **Publish SDKs** — trusted or protected publication for the non-Python SDKs.
+5. **Publish Python packages** — PyPI publication for `lcp-sdk`,
+   `lcp-mcp-server`, and `lcp-reference-platform`.
+6. **Publish, sign, and attest reference container** — GHCR image publication,
+   Cosign signature, GitHub provenance, and SBOM attestations.
+7. **Signed tagged release** — waits for all six upstream workflows to pass,
+   then creates the GitHub release record.
+
+If a required workflow fails or does not complete, the final release workflow
+fails and does not create a GitHub release. Package registries may still retain
+an artifact from a failed publication attempt; operators must use the registry's
+immutable version rules and investigate before retrying.
+
+## Maintainer checklist
+
+1. Update `SDK_VERSION` and every package's explicit version together.
+2. Regenerate and check the canonical schema bundle:
+
+   ```bash
+   python3 tools/generate_sdk_models.py --write
+   python3 tools/check_sdk_versions.py --check
+   python3 tools/check_sdk_schema_sync.py --check
+   python3 test-vectors/conformance.py
+   ```
+
+3. Run the complete local compatibility matrix where the language toolchains
+   are available.
+4. Push a tag whose name is exactly `v<SDK_VERSION>`:
+
+   ```bash
+   git tag -a v0.1.0 -m "LCP v0.1.0"
+   git push origin v0.1.0
+   ```
+
+   A signed Git tag is recommended for maintainer provenance, but the release
+   workflow also signs the release record with a GitHub OIDC-backed Sigstore
+   identity.
+
+5. Confirm that every tag workflow is green. The signed release workflow then
+   publishes `release-manifest.json`, the release notes, source SBOM, and their
+   Sigstore bundles as GitHub release assets.
+6. Record the released image digest and registry package URLs in the release
+   ticket or deployment record. Do not deploy a mutable container tag.
+
+Trusted registry configuration is an operator/maintainer prerequisite. Configure
+protected `release` environments and the registry-specific trusted publisher
+identities described in [SDK-ROADMAP.md](SDK-ROADMAP.md#package-publication).
+Do not replace OIDC or protected environments with long-lived credentials just
+to make a release pass.
+
+## Non-publishing release dry run
+
+Before creating a real tag, run the release workflow manually against the
+candidate commit:
+
+```bash
+gh workflow run release.yml \
+  --repo SpearSystems/LCP \
+  --ref main \
+  -f tag=v0.1.0 \
+  -f target_sha="$(git rev-parse HEAD)"
+```
+
+The dry run does not publish packages, push a container, or create a GitHub
+release. It does perform the coordinated version/schema/conformance checks,
+checks that the proposed version is not already occupied in PyPI, npm, NuGet,
+Maven Central, crates.io, RubyGems, or Packagist, generates source evidence for
+every published package, signs each source archive/SBOM/provenance statement
+with the release workflow's OIDC-backed Sigstore identity, verifies those
+signatures, and uploads a 30-day `lcp-release-dry-run-*` workflow artifact.
+
+For a dry-run signature, the expected identity is the branch ref used to start
+the workflow, for example:
+
+```bash
+export WORKFLOW_IDENTITY="https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/heads/main"
+```
+
+A registry outage or an occupied version fails closed. Resolve the issue or
+choose a new patch version before creating the real tag.
+
+## Published SDK coordinates
+
+| Registry | Package or module | Publication mechanism |
+|---|---|---|
+| PyPI | `lcp-sdk`, `lcp-mcp-server`, `lcp-reference-platform` | PyPI Trusted Publishing |
+| npm | `@spearsystems/lcp-sdk` | npm trusted publisher and provenance |
+| NuGet | `LcpSdk` | NuGet trusted login |
+| Maven Central | `com.spearsystems:lcp-sdk`, `com.spearsystems:lcp-sdk-kotlin` | Central Portal protected credentials |
+| crates.io | `lcp-sdk` | crates.io OIDC trusted login |
+| RubyGems | `lcp-sdk` | RubyGems trusted publishing |
+| Packagist | `spearsystems/lcp-sdk` | Signed tag mirroring |
+| Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
+| Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
+
+The release manifest is the authoritative list for a specific tag. Package
+registries can take time to index a new version; verify the package's version
+and checksum through the registry before using it in a production lockfile.
+
+For every package, the GitHub release also contains a deterministic tagged
+source archive, a CycloneDX SBOM, a SLSA provenance statement, and a Sigstore
+bundle for each of those files. These are release-evidence assets for the exact
+source commit; the registry workflows separately build and publish the native
+wheel, npm tarball, NuGet package, Maven artifact, crate, gem, or source-indexed
+module. The manifest binds the published package coordinate and source path to
+the same commit, while the evidence signatures make review independent of the
+GitHub release page.
+
+## Verify the signed release record
+
+Download `release-manifest.json`, `release-notes.md`, and their corresponding
+`.sigstore.json` assets from the GitHub release. Install Cosign from its
+official, verified distribution and set the expected release workflow identity:
+
+```bash
+export VERSION='0.1.0'
+export REPOSITORY='SpearSystems/LCP'
+export TAG="v${VERSION}"
+export WORKFLOW_IDENTITY="https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+export OIDC_ISSUER='https://token.actions.githubusercontent.com'
+
+cosign verify-blob \
+  --bundle release-manifest.sigstore.json \
+  --certificate-identity "${WORKFLOW_IDENTITY}" \
+  --certificate-oidc-issuer "${OIDC_ISSUER}" \
+  release-manifest.json
+
+cosign verify-blob \
+  --bundle release-notes.sigstore.json \
+  --certificate-identity "${WORKFLOW_IDENTITY}" \
+  --certificate-oidc-issuer "${OIDC_ISSUER}" \
+  release-notes.md
+
+cosign verify-blob \
+  --bundle lcp-source-sbom.cdx.json.sigstore.json \
+  --certificate-identity "${WORKFLOW_IDENTITY}" \
+  --certificate-oidc-issuer "${OIDC_ISSUER}" \
+  lcp-source-sbom.cdx.json
+```
+
+The identity must match the exact repository, workflow path, and tag. Do not
+accept a valid Sigstore signature from an unrelated workflow or repository.
+Inspect the manifest's commit and schema-manifest digest before consuming the
+release.
+
+## Verify the reference container
+
+The container workflow publishes a digest-addressed GHCR image and attaches
+GitHub provenance and CycloneDX SBOM attestations. Resolve the tag to a digest,
+then verify all controls before admission:
+
+```bash
+export IMAGE='ghcr.io/spearsystems/lcp-reference-platform@sha256:<digest>'
+
+cosign verify "${IMAGE}" \
+  --certificate-identity-regexp \
+  'https://github.com/SpearSystems/LCP/.github/workflows/container-release.yml@refs/tags/v.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
+gh attestation verify "oci://${IMAGE}" --repo SpearSystems/LCP
+
+gh attestation verify "oci://${IMAGE}" \
+  --predicate-type 'https://cyclonedx.org/bom' \
+  --repo SpearSystems/LCP
+```
+
+Deploy the digest, not the tag. For Kubernetes enforcement, use the
+[Kyverno example](../implementations/reference-platform/kubernetes/verify-images-kyverno.example.yaml)
+and follow the [container supply-chain guide](CONTAINER-SUPPLY-CHAIN.md).
+
+## Release status and rollback
+
+A release record is not a hosted service guarantee. Operators remain
+responsible for package lockfiles, dependency review, data-residency controls,
+backup/recovery, and deployment approval. If a release must be withdrawn:
+
+1. Stop new deployments of the affected tag or package version.
+2. Revoke or quarantine the affected container digest in the registry.
+3. Record the incident and affected PII/data flows.
+4. Publish a corrective patch release; do not mutate an existing package
+   version or reuse a container digest.
+5. Preserve the signed manifest, SBOM, scan reports, and decision record.
+
+---
+
+**Previous:** [SDK index](../implementations/sdk/) · **Next:** [Publisher onboarding](PUBLISHER-ONBOARDING.md)

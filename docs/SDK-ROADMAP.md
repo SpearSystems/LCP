@@ -172,16 +172,24 @@ the same pull request.
 
 `SDK_VERSION` is the coordinated SDK release version. A release tag must match
 it and all package metadata that carries an explicit version. The release
-workflow builds from a clean checkout, regenerates the schema bundle, runs the
-compatibility matrix, creates package SBOMs, and publishes only from the
-protected `release` environment.
+workflows build from clean checkouts, regenerate the schema
+bundle, run the compatibility matrix, create package/source SBOMs, and publish
+only from the protected `release` environment. A version tag must also pass the
+[Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml),
+[security](https://github.com/SpearSystems/LCP/actions/workflows/security.yml),
+[SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml),
+Python, SDK, and container workflows before the
+[signed tagged release workflow](RELEASE.md) creates a GitHub release record.
+The release record contains a Sigstore-signed manifest and release notes so
+adopters can verify the commit, schema bundle, package coordinates, and source
+SBOM independently of the GitHub UI.
 
 | Registry | SDKs | Authentication |
 |---|---|---|
 | PyPI | Python, MCP adapter, reference platform | PyPI Trusted Publishing (GitHub OIDC) |
 | npm | TypeScript | npm trusted publisher plus provenance |
 | NuGet | C#/.NET | NuGet Trusted Publishing (`NuGet/login`) |
-| Maven Central | Java, Kotlin | Central Portal user-token credentials in the protected environment |
+| Maven Central | Java (`com.spearsystems:lcp-sdk`), Kotlin (`com.spearsystems:lcp-sdk-kotlin`) | Central Portal user-token credentials in the protected environment |
 | Packagist | PHP | Git tag mirroring; Packagist webhook/token is not stored in CI |
 | crates.io | Rust | crates.io Trusted Publishing (GitHub OIDC) |
 | RubyGems | Ruby | RubyGems Trusted Publishing (GitHub OIDC) |
@@ -191,7 +199,8 @@ protected `release` environment.
 Registry setup is intentionally a separate operator action. Until the
 publisher identity is registered, the workflow can build and attest packages
 without publishing. Never replace OIDC with a long-lived token merely to make a
-release green.
+release green. The complete tag and verification procedure is in
+[`docs/RELEASE.md`](RELEASE.md).
 
 ## MCP relationship
 

@@ -7,7 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Visible CI status and a gated tagged-release workflow with a non-publishing dry run, registry collision checks, per-package signed SBOM/provenance evidence, Sigstore-signed notes, release manifest, and source SBOM
 - Declarative publisher mapping registry with versioned brand/form normalization, allowlisted transforms, OTP-aware quality signals, and PII-free source digests
+- Distinct Kotlin Maven publication coordinate (`com.spearsystems:lcp-sdk-kotlin`) so Java and Kotlin SDKs can be published from the same release without artifact collision
 - Controlled home-services service/subcategory taxonomy and a dedicated motor-vehicle-accident (`mva`) vertical
 - Authenticated attachment upload/download with local AES-GCM storage and a production S3-compatible SSE-KMS adapter, fail-closed ClamAV scanning, immutable residency policy, and opaque storage references
 - Call post delivery with call blocks, signed call outcome events, structured duration/disposition payable rules, and per-offer monthly quota/pacing reports

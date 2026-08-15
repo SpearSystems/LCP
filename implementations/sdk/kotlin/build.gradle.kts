@@ -18,6 +18,7 @@ kotlin { jvmToolchain(17) }
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {
+            artifactId = "lcp-sdk-kotlin"
             from(components["java"])
             pom {
                 name.set("LCP Kotlin SDK")

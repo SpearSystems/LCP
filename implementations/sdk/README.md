@@ -90,6 +90,10 @@ Package publication is coordinated by `SDK_VERSION` and the tag workflow:
 - [Go / versioned module tags](go/)
 - [Swift / Swift Package Manager tags](swift/)
 
+The [tagged release guide](../../docs/RELEASE.md) explains the required
+`v<SDK_VERSION>` tag, the workflow gate, published coordinates, and how adopters
+verify the signed release manifest and notes.
+
 Read the [release and support policy](../../docs/SDK-ROADMAP.md#package-publication)
 before enabling the protected release environment.
 

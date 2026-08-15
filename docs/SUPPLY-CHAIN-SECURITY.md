@@ -85,11 +85,19 @@ Before publishing a package or container:
 7. Confirm that no secrets, real PII, credentials, or private configuration are
    present in the source, SBOM, image, or release artifacts.
 
-The tag-triggered release workflow enforces the dependency audit, creates
-release SBOM artifacts, scans the reference image, uploads a full non-gating
-Trivy report for release review, and makes the package-build jobs wait for the
-security gate. Keep the source, container, and full Trivy reports with the
-release record even though CI stores them as artifacts rather than commits.
+The tag-triggered package and container workflows enforce the dependency
+audit, create release SBOM artifacts, scan the reference image, upload a full
+non-gating Trivy report for release review, and make package publication wait
+for the release security gate. The separate signed tagged release workflow
+waits for all required tag workflows, then creates a GitHub release containing
+Sigstore-signed release notes, a package/container manifest, the source SBOM,
+and per-package tagged source archives, CycloneDX SBOMs, and SLSA provenance
+statements with signatures. Keep the source, container, full Trivy, and signed
+release reports with the release record even though CI stores them as artifacts
+or release assets rather than commits. The workflow also supports a
+non-publishing dry run which checks registry version availability and verifies
+all release signatures before a real tag. See [RELEASE.md](RELEASE.md) for
+adopter and maintainer verification commands.
 
 The PyPI workflow uses Trusted Publishing and does not store a long-lived PyPI
 API token in the repository. Package ownership, PyPI Trusted Publisher

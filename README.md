@@ -8,6 +8,8 @@
 
 **Status:** Draft v1.0, under active development. The conformance runner currently passes 27/27 test vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path.
 
+[![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
+
 ## Read this repository like a documentation site
 
 > **Home · Page 1 of 6** — Choose a path, follow the numbered pages, and use
@@ -27,6 +29,30 @@
 </details>
 
 **Next:** [Documentation home](docs/README.md) · **Quickstart:** [Run the conformance vectors](#run-the-conformance-vectors)
+
+## CI, releases, and verification
+
+The public repository continuously checks the protocol, SDKs, reference platform,
+Postgres integration, dependency/security controls, container scan, SBOMs, and
+Kubernetes admission fixtures. Use the badges above for the current `main`
+branch result and the workflow links for logs and artifacts.
+
+| Area | Workflow | What it proves |
+|---|---|---|
+| Conformance and platform | [Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) | Schemas, SDKs, reference platform, Postgres, and live Kyverno admission |
+| Security and supply chain | [Security](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) | Dependency audit, CodeQL, SBOM, Trivy, and hardened image runtime |
+| SDK compatibility | [SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) | Cross-language generated-model and runtime compatibility |
+| Container publication | [Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml) | GHCR image signing, provenance, SBOM attestations, and verification |
+| Versioned release | [Signed tagged release](https://github.com/SpearSystems/LCP/actions/workflows/release.yml) | Gated release notes, manifest, source SBOM, and Sigstore signatures |
+
+A versioned tag (`v<SDK_VERSION>`) runs the package and container publication
+workflows. The signed release workflow waits for all required tag workflows to
+pass before creating the GitHub release record. It publishes signed release
+notes, a release manifest, source SBOM, and per-package SBOM/provenance evidence.
+A manual dry run validates registry version availability and performs the same
+signing/verification without publishing. See the [release and verification
+guide](docs/RELEASE.md) before installing a package or deploying a reference
+image.
 
 ## Who uses LCP?
 
@@ -129,7 +155,7 @@ source .venv/bin/activate                 # Windows: .venv\\Scripts\\activate
 python -m pip install -e ./implementations/sdk/python -e ./implementations/mcp-server
 ```
 
-The local editable install creates the `lcp-mcp-server` command. The package is currently distributed from this repository rather than assumed to be available on PyPI.
+The local editable install creates the `lcp-mcp-server` command. The tagged release workflow publishes the adapter and shared SDK to PyPI; before a release is available, use the repository install above. Verify the published version and signed release manifest using [the release guide](docs/RELEASE.md).
 
 Configure the adapter with the endpoint and one partner credential:
 
@@ -383,6 +409,7 @@ SPEC.md          ── Canonical protocol specification
 - [Operations runbook](docs/OPERATIONS.md)
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
+- [Tagged releases and artifact verification](docs/RELEASE.md)
 - [Vulnerability exception register](docs/VULNERABILITY-EXCEPTIONS.md)
 - [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)

@@ -3,6 +3,7 @@ name: Security and supply chain
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   schedule:
     - cron: "17 3 * * 1"

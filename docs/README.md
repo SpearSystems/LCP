@@ -16,6 +16,7 @@
 | Buy or receive leads | [Buyer onboarding](BUYER-ONBOARDING.md) | [Offer criteria](BUYER-ONBOARDING.md#offer-criteria) → [Platform integration](PLATFORM-INTEGRATION.md) |
 | Run an LCP platform | [Platform integration](PLATFORM-INTEGRATION.md) | [Reference platform](../implementations/reference-platform/README.md) → [Deployment](DEPLOYMENT.md) |
 | Build an application | [SDK index](../implementations/sdk/) | [SDK support policy](SDK-ROADMAP.md) → your language README |
+| Publish or verify a release | [Release guide](RELEASE.md) | [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) → [Container verification](CONTAINER-SUPPLY-CHAIN.md) |
 | Deploy securely | [Deployment](DEPLOYMENT.md) | [Security profiles](SECURITY-PROFILES.md) → [Operations](OPERATIONS.md) |
 | Understand the protocol | [Canonical specification](../SPEC.md) | [Schemas](../schemas/) → [Conformance vectors](../test-vectors/) |
 | Connect an AI agent | [MCP adapter](../implementations/mcp-server/README.md) | [SDK contract](SDK-ROADMAP.md#relationship-to-mcp) |
@@ -62,6 +63,9 @@
 - [SDK index](../implementations/sdk/) — language matrix and quickstarts.
 - [SDK program](SDK-ROADMAP.md) — tiers, compatibility contract, validation,
   generated models, package release gates, and registry publishing.
+- [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
+  gates, published SDK coordinates, signed release records, SBOMs, and adopter
+  verification commands.
 - [Implementation decisions](IMPLEMENTATION-DECISIONS.md) — approved
   production reference profile and rationale.
 - [Canonical specification](../SPEC.md) — wire contract and governance.
@@ -93,6 +97,8 @@
   Regulated deployment expectations.
 - [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits,
   SBOMs, image scanning, and release controls.
+- [Tagged releases and artifact verification](RELEASE.md) — signed release
+  notes, package publication, release manifests, and verification.
 - [Container signing and provenance](CONTAINER-SUPPLY-CHAIN.md) — Cosign,
   attestations, digest deployment, and Kyverno admission enforcement.
 - [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
