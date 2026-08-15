@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/SpearSystems/LCP/main/assets/lcp-banner.png" alt="LCP — Lead Context Protocol" width="100%" />
+</p>
+
 # LCP — Lead Context Protocol
 
 > **Created by Spear Systems** (a Spear company). Open standard — Apache 2.0, free to implement.
