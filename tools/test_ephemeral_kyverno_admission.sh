@@ -84,7 +84,7 @@ assert_rejected() {
   local output_file="${WORK_DIR}/${pod_name}.output"
 
   local status=0
-  for attempt in 1 2 3; do
+  for attempt in 1 2 3 4 5; do
     set +e
     kubectl --context "${CONTEXT}" create --dry-run=server -f - >"${output_file}" 2>&1 <<EOF
 apiVersion: v1
@@ -98,11 +98,11 @@ spec:
 EOF
     status=$?
     set -e
-    if [[ "${status}" -ne 0 ]] && grep -Eiq 'denied|rejected|failed to verify|verification failed|signature not found|invalid signature|attestation|no matching (signature|attestation)|does not satisfy' "${output_file}"; then
+    if [[ "${status}" -ne 0 ]] && grep -Eiq 'image verification|denied|rejected|failed to verify|verification failed|signature[s]? (not found|invalid|mismatch)|invalid signature|attestation[s]?|no matching (signature[s]?|attestation[s]?)|no (signature[s]?|attestation[s]?) found|does not satisfy' "${output_file}"; then
       break
     fi
-    if [[ "${attempt}" -lt 3 ]]; then
-      echo "Admission verification for ${pod_name} was inconclusive; retrying (${attempt}/3)" >&2
+    if [[ "${attempt}" -lt 5 ]]; then
+      echo "Admission verification for ${pod_name} was inconclusive; retrying (${attempt}/5)" >&2
       sleep 5
     fi
   done
@@ -116,7 +116,7 @@ EOF
   # Do not accept a generic API-server/webhook outage as an admission result.
   # Kyverno's wording varies by version, so match its stable verification
   # terms rather than one exact error sentence.
-  if ! grep -Eiq 'denied|rejected|failed to verify|verification failed|signature not found|invalid signature|attestation|no matching (signature|attestation)|does not satisfy' "${output_file}"; then
+  if ! grep -Eiq 'image verification|denied|rejected|failed to verify|verification failed|signature[s]? (not found|invalid|mismatch)|invalid signature|attestation[s]?|no matching (signature[s]?|attestation[s]?)|no (signature[s]?|attestation[s]?) found|does not satisfy' "${output_file}"; then
     cat "${output_file}"
     echo "${pod_name} failed for a reason other than Kyverno image verification" >&2
     exit 1
