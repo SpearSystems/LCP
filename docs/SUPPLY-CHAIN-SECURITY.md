@@ -28,12 +28,25 @@ security workflow provides:
   build-time packages. Each image job also uploads a 90-day, non-gating full
   Trivy SARIF report covering OS and library findings, including unfixed issues,
   for exception-register review. The Trivy action is pinned to the signed
-  v0.36.0 commit rather than a mutable version tag.
+  v0.36.0 commit rather than a mutable version tag. The current reviewed
+  findings, dispositions, owners, and expiry dates are recorded in the
+  [vulnerability exception register](VULNERABILITY-EXCEPTIONS.md).
 - **CodeQL** static analysis for Python.
 
 `.github/dependabot.yml` opens weekly update pull requests for Python and
 GitHub Actions dependencies. Update pull requests must pass the normal tests,
 security checks, and package builds before merging.
+
+## Vulnerability report review
+
+The full Trivy report is deliberately non-gating so that unfixed upstream
+findings remain visible rather than being hidden by the release gate. Review the
+SARIF artifact for every scheduled and release run, compare it with the
+[vulnerability exception register](VULNERABILITY-EXCEPTIONS.md), and retain the
+image digest, scanner version, vulnerability database timestamp, SBOMs, and
+review decision with the release record. A finding may only be accepted with a
+named owner, a written rationale, and an expiry-based next review; a local
+exception never automatically applies to a downstream deployment.
 
 ## SBOM use
 

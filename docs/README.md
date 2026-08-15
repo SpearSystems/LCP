@@ -30,6 +30,8 @@
   operations, and incident practices.
 - [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits, SBOMs,
   image scanning, and release controls.
+- [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
+  full-image scan review, owners, dispositions, and expiry-based follow-up.
 - [Integration examples](../examples/integrations/) — Python, Node.js, cURL,
   and buyer webhook templates.
 

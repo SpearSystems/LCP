@@ -344,6 +344,7 @@ SPEC.md          ── Canonical protocol specification
 - [Privacy and data governance](docs/PRIVACY-DATA-GOVERNANCE.md)
 - [Operations runbook](docs/OPERATIONS.md)
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
+- [Vulnerability exception register](docs/VULNERABILITY-EXCEPTIONS.md)
 - [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)
 - [Reference MCP adapter](implementations/mcp-server/)

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:e4842c8a99ca99339e1693e6fe5fe62c7becb31991f066f989047dfb2fbf47af
         env:
           POSTGRES_DB: lcp_test
           POSTGRES_USER: lcp_test
@@ -28,8 +28,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Install test dependencies
@@ -52,8 +52,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Audit release dependencies
@@ -69,22 +69,22 @@ jobs:
           # editables as an audit failure. Vulnerabilities still return nonzero.
           pip-audit --skip-editable
       - name: Generate source SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: cyclonedx-json
           output-file: lcp-release-source-sbom.cdx.json
           artifact-name: lcp-release-source-sbom.cdx.json
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build release reference image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: implementations/reference-platform/Dockerfile
           tags: lcp-reference-platform:release-check
           load: true
       - name: Generate release container SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           image: lcp-reference-platform:release-check
           format: cyclonedx-json
@@ -121,7 +121,7 @@ jobs:
           exit-code: "0"
       - name: Upload full release Trivy report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-release-full-report
           path: trivy-release-full-results.sarif
@@ -129,7 +129,7 @@ jobs:
           retention-days: 90
       - name: Upload release Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
           sarif_file: trivy-release-results.sarif
 
@@ -148,8 +148,8 @@ jobs:
           - name: lcp-reference-platform
             path: implementations/reference-platform
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
       - name: Build package
@@ -158,6 +158,6 @@ jobs:
           python -m pip install --upgrade build
           python -m build --outdir "$GITHUB_WORKSPACE/dist/${{ matrix.name }}"
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist/${{ matrix.name }}/
