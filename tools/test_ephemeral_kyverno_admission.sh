@@ -185,11 +185,16 @@ trusted_key="${WORK_DIR}/trusted-key/cosign.key"
 trusted_public_key="${WORK_DIR}/trusted-key/cosign.pub"
 untrusted_key="${WORK_DIR}/untrusted-key/cosign.key"
 
+# Cosign v3 enables signing-config by default, which rejects --tlog-upload=false.
+# Disable it so the disposable fixtures are signed with the proven v2 semantics:
+# local key, no transparency-log upload, HTTP registry allowed.
 COSIGN_PASSWORD='' cosign sign --yes --key "${untrusted_key}" \
-  --tlog-upload=false --allow-insecure-registry "${push_ref}:wrong-workflow"
+  --tlog-upload=false --use-signing-config=false \
+  --allow-insecure-registry "${push_ref}:wrong-workflow"
 for tag in missing-provenance missing-sbom; do
   COSIGN_PASSWORD='' cosign sign --yes --key "${trusted_key}" \
-    --tlog-upload=false --allow-insecure-registry "${push_ref}:${tag}"
+    --tlog-upload=false --use-signing-config=false \
+    --allow-insecure-registry "${push_ref}:${tag}"
 done
 
 cat > "${WORK_DIR}/provenance.json" <<EOF
@@ -213,11 +218,13 @@ EOF
 # the negative cases prove the missing predicate rather than merely a missing
 # signature.
 COSIGN_PASSWORD='' cosign attest --yes --key "${trusted_key}" \
-  --tlog-upload=false --allow-insecure-registry \
+  --tlog-upload=false --use-signing-config=false \
+  --allow-insecure-registry \
   --predicate "${WORK_DIR}/sbom.json" \
   --type https://cyclonedx.org/bom "${push_ref}:missing-provenance"
 COSIGN_PASSWORD='' cosign attest --yes --key "${trusted_key}" \
-  --tlog-upload=false --allow-insecure-registry \
+  --tlog-upload=false --use-signing-config=false \
+  --allow-insecure-registry \
   --predicate "${WORK_DIR}/provenance.json" \
   --type https://slsa.dev/provenance/v1 "${push_ref}:missing-sbom"
 

@@ -31,6 +31,12 @@ Run the live test when Docker, kind, kubectl, and cosign are available:
 bash tools/test_ephemeral_kyverno_admission.sh
 ```
 
+Cosign v3 enables signing-config by default, which rejects
+`--tlog-upload=false`. The fixture therefore passes
+`--use-signing-config=false` alongside `--tlog-upload=false` so the
+disposable local signatures keep the proven v2 semantics (local key, no
+transparency-log upload, HTTP registry allowed).
+
 The pinned kind node and registry images are infrastructure dependencies, not
 application test fixtures. CI still verifies their declared versions and
 cleans up the cluster, registry, generated keys, and local images on exit.

@@ -16,7 +16,7 @@ vectors, and the security gate before it is merged.
 | GitHub Actions | `actions/setup-python` 6.3.0 → 7.0.0 | No input changes. |
 | GitHub Actions | `actions/setup-java` 4.9.1 → 5.7.0 | No input changes. |
 | GitHub Actions | `actions/setup-dotnet` v4 → v6.0.0 | Node 24 runtime; clears the Node.js 20 deprecation warning. |
-| GitHub Actions | `sigstore/cosign-installer` 3.9.0 → 4.1.2 | No input changes. |
+| GitHub Actions | `sigstore/cosign-installer` 3.9.0 → 4.1.2 | Installs the cosign 3.x CLI. Cosign v3 enables signing-config by default, so any invocation that uses `--tlog-upload=false` must also pass `--use-signing-config=false` (the Kyverno admission fixture was updated accordingly; the keyless release signing path is unaffected). |
 | GitHub Actions | `actions/dependency-review-action` 4.9.0 → 5.0.0 | No input changes. |
 | GitHub Actions | `rust-lang/crates-io-auth-action` 1.0.3 → 1.0.5 | No input changes. |
 | GitHub Actions | `ruby/setup-ruby` 1.0.0 → 1.321.0 | Aligned the release workflow with the compatibility workflow. |

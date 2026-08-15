@@ -14,6 +14,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - Applied Dependabot updates across GitHub Actions (checkout v7.0.1, setup-node v7.0.0, setup-python v7.0.0, setup-java v5.7.0, cosign-installer v4.1.2, dependency-review v5.0.0, crates-io-auth v1.0.5, ruby/setup-ruby v1.321.0, github-script v7) and SDKs (Rust hmac/getrandom/jsonschema/sha2, Go module bumps, TypeScript devDependencies, Kotlin plugin 2.4.10, JUnit 5.14.4)
+- Fixed the Kyverno admission fixture for cosign 3.x: signing-config is enabled by default and rejects `--tlog-upload=false`, so the fixture now passes `--use-signing-config=false`; CI failures now surface the exact failing command in check-run annotations and upload a diagnostics artifact
 - Deferred the networknt json-schema-validator 3.x Jackson 3 rewrite for Java/Kotlin SDKs; documented in `docs/DEPENDENCY-DECISIONS.md`
 - Visible CI status and a gated tagged-release workflow with a non-publishing dry run, registry collision checks, per-package signed SBOM/provenance evidence, Sigstore-signed notes, release manifest, and source SBOM
 - Offline release-evidence verifier (`tools/verify_release_evidence.py`) that validates downloaded manifests, source archives, SBOMs, provenance statements, digests, and optional Cosign bundles before approval
