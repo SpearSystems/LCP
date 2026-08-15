@@ -19,10 +19,11 @@ The live fixture proves that the admission webhook rejects:
 3. an image missing the required SLSA provenance attestation; and
 4. an image missing the required CycloneDX SBOM attestation.
 
-The fixture uses an HTTP registry and `--allowInsecureRegistry=true` only inside
-an ephemeral kind cluster. This is deliberately not a production setting. The
-production example remains keyless, digest-enforcing, and transparency-log
-aware in [`verify-images-kyverno.example.yaml`](../../verify-images-kyverno.example.yaml).
+The fixture uses an HTTP registry and sets Kyverno's
+`allowInsecureRegistry` ConfigMap key only inside an ephemeral kind cluster.
+This is deliberately not a production setting. The production example remains
+keyless, digest-enforcing, and transparency-log aware in
+[`verify-images-kyverno.example.yaml`](../../verify-images-kyverno.example.yaml).
 
 Run the live test when Docker, kind, kubectl, and cosign are available:
 

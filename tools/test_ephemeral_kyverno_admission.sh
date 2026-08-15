@@ -61,7 +61,6 @@ docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 docker run \
   --detach \
   --restart=always \
-  --label io.spearsystems.lcp.fixture=true \
   --publish "127.0.0.1:${REGISTRY_PORT}:5000" \
   --network bridge \
   --name "${REGISTRY_NAME}" \
@@ -83,17 +82,17 @@ kind create cluster \
   --config "${kind_config}" \
   --wait 180s
 
-# Configure kind's containerd to route localhost:5001 to the registry
-# container. Kubernetes dry-run admission does not pull an image, but this
-# keeps the fixture usable for an optional real Pod pull as well.
-registry_dir="/etc/containerd/certs.d/localhost:${REGISTRY_PORT}"
+# Attach the registry to kind's Docker network and configure containerd to
+# route the registry host through HTTP. Kubernetes dry-run admission does not
+# pull an image, but this keeps the fixture usable for an optional real Pod
+# pull as well.
+docker network connect --alias "${REGISTRY_NAME}" kind "${REGISTRY_NAME}"
+registry_dir="/etc/containerd/certs.d/${REGISTRY_KUBE_HOST}"
 for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
   docker exec "${node}" mkdir -p "${registry_dir}"
-  printf '[host."http://%s:5000"]\n' "${REGISTRY_NAME}" | \
+  printf '[host."http://%s"]\n' "${REGISTRY_KUBE_HOST}" | \
     docker exec -i "${node}" sh -c "cat > '${registry_dir}/hosts.toml'"
 done
-
-docker network connect --alias "${REGISTRY_NAME}" kind "${REGISTRY_NAME}" 2>/dev/null || true
 
 registry_ready=false
 for _ in $(seq 1 60); do
@@ -117,11 +116,15 @@ curl --fail --silent --show-error --location --retry 3 \
 echo "${KYVERNO_INSTALL_SHA256}  ${install_manifest}" | sha256sum --check --strict
 
 kubectl --context "${CONTEXT}" apply --server-side -f "${install_manifest}"
-# The local registry intentionally uses HTTP inside the disposable test. This
-# flag is never part of the production deployment example.
-kubectl --context "${CONTEXT}" -n kyverno patch deployment kyverno-admission-controller \
-  --type=json \
-  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--allowInsecureRegistry=true"}]'
+# The local registry intentionally uses HTTP inside the disposable test.
+# Kyverno reads this setting from its namespace ConfigMap; it is not a
+# controller command-line flag. This setting is never part of production.
+kubectl --context "${CONTEXT}" -n kyverno patch configmap kyverno \
+  --type=merge \
+  -p='{"data":{"allowInsecureRegistry":"true"}}'
+# Force the controller to reload the disposable test-only ConfigMap value.
+kubectl --context "${CONTEXT}" -n kyverno rollout restart \
+  deployment/kyverno-admission-controller
 kubectl --context "${CONTEXT}" wait --for=condition=Established \
   crd/clusterpolicies.kyverno.io --timeout=180s
 kubectl --context "${CONTEXT}" -n kyverno rollout status \
