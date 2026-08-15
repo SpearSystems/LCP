@@ -8,6 +8,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Visible CI status and a gated tagged-release workflow with a non-publishing dry run, registry collision checks, per-package signed SBOM/provenance evidence, Sigstore-signed notes, release manifest, and source SBOM
+- Hermetic Kyverno admission assurance using a pinned local OCI registry, generated fixture images, ephemeral signing keys, and local provenance/SBOM attestation rejection cases
+- Protected release-record publication and maintainer documentation for GitHub branch rules, OIDC trusted publishers, release environments, and regulated-production approvals
 - Declarative publisher mapping registry with versioned brand/form normalization, allowlisted transforms, OTP-aware quality signals, and PII-free source digests
 - Distinct Kotlin Maven publication coordinate (`com.spearsystems:lcp-sdk-kotlin`) so Java and Kotlin SDKs can be published from the same release without artifact collision
 - Controlled home-services service/subcategory taxonomy and a dedicated motor-vehicle-accident (`mva`) vertical

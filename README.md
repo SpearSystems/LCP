@@ -24,6 +24,7 @@
 - **Platform:** [Platform integration](docs/PLATFORM-INTEGRATION.md) → [reference platform](implementations/reference-platform/) → [deployment](docs/DEPLOYMENT.md)
 - **Developer:** [SDK index](implementations/sdk/) → [SDK contract and code generation](docs/SDK-ROADMAP.md) → [conformance vectors](test-vectors/)
 - **Operator/security reviewer:** [deployment](docs/DEPLOYMENT.md) → [security architecture](docs/SECURITY-ARCHITECTURE.md) → [operations](docs/OPERATIONS.md)
+- **Maintainer/release approver:** [branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md) → [release verification](docs/RELEASE.md)
 - **AI-agent builder:** [MCP adapter](implementations/mcp-server/) → [SDK relationship](docs/SDK-ROADMAP.md#relationship-to-mcp)
 
 </details>
@@ -34,8 +35,10 @@
 
 The public repository continuously checks the protocol, SDKs, reference platform,
 Postgres integration, dependency/security controls, container scan, SBOMs, and
-Kubernetes admission fixtures. Use the badges above for the current `main`
-branch result and the workflow links for logs and artifacts.
+Kubernetes admission fixtures. The live Kyverno admission job builds its own
+signed/unsigned images in a pinned local OCI registry, so it does not depend on
+Kyverno's public test-image registry. Use the badges above for the current
+`main` branch result and the workflow links for logs and artifacts.
 
 | Area | Workflow | What it proves |
 |---|---|---|
@@ -43,16 +46,17 @@ branch result and the workflow links for logs and artifacts.
 | Security and supply chain | [Security](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) | Dependency audit, CodeQL, SBOM, Trivy, and hardened image runtime |
 | SDK compatibility | [SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) | Cross-language generated-model and runtime compatibility |
 | Container publication | [Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml) | GHCR image signing, provenance, SBOM attestations, and verification |
-| Versioned release | [Signed tagged release](https://github.com/SpearSystems/LCP/actions/workflows/release.yml) | Gated release notes, manifest, source SBOM, and Sigstore signatures |
+| Versioned release | [Signed tagged release](https://github.com/SpearSystems/LCP/actions/workflows/release.yml) | Gated release notes, manifest, source SBOM, and Sigstore signatures; final publication is environment-protected |
 
 A versioned tag (`v<SDK_VERSION>`) runs the package and container publication
 workflows. The signed release workflow waits for all required tag workflows to
-pass before creating the GitHub release record. It publishes signed release
-notes, a release manifest, source SBOM, and per-package SBOM/provenance evidence.
-A manual dry run validates registry version availability and performs the same
+pass, then uses the protected `release` environment for package publication and
+final GitHub release creation. It publishes signed release notes, a release
+manifest, source SBOM, and per-package SBOM/provenance evidence. A manual dry
+run validates registry version availability and performs the same
 signing/verification without publishing. See the [release and verification
-guide](docs/RELEASE.md) before installing a package or deploying a reference
-image.
+guide](docs/RELEASE.md) and [maintainer release setup](docs/MAINTAINER-RELEASE-SETUP.md)
+before installing a package or deploying a reference image.
 
 ## Who uses LCP?
 
@@ -410,6 +414,7 @@ SPEC.md          ── Canonical protocol specification
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
+- [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
 - [Vulnerability exception register](docs/VULNERABILITY-EXCEPTIONS.md)
 - [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)

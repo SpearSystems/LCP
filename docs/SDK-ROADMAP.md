@@ -199,8 +199,11 @@ SBOM independently of the GitHub UI.
 Registry setup is intentionally a separate operator action. Until the
 publisher identity is registered, the workflow can build and attest packages
 without publishing. Never replace OIDC with a long-lived token merely to make a
-release green. The complete tag and verification procedure is in
-[`docs/RELEASE.md`](RELEASE.md).
+release green. Package publication and the final GitHub release-record job are
+protected by the `release` environment; the non-publishing release dry run does
+not use that final write-capable job. Configure the environment and branch/tag
+rules using [`MAINTAINER-RELEASE-SETUP.md`](MAINTAINER-RELEASE-SETUP.md). The
+complete tag and verification procedure is in [`docs/RELEASE.md`](RELEASE.md).
 
 ## MCP relationship
 

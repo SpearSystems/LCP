@@ -34,6 +34,11 @@ security workflow provides:
   findings, dispositions, owners, and expiry dates are recorded in the
   [vulnerability exception register](VULNERABILITY-EXCEPTIONS.md).
 - **CodeQL** static analysis for Python.
+- **Hermetic live admission assurance** in the Test workflow. The Kyverno
+  admission job uses a pinned local OCI registry and generated scratch images,
+  signing keys, and attestation predicates. It does not use public Kyverno
+  test-image artifacts for the live webhook check, and it fails closed on
+  registry, cluster, or webhook errors.
 
 `.github/dependabot.yml` opens weekly update pull requests for Python and
 GitHub Actions dependencies. Update pull requests must pass the normal tests,
@@ -101,8 +106,12 @@ adopter and maintainer verification commands.
 
 The PyPI workflow uses Trusted Publishing and does not store a long-lived PyPI
 API token in the repository. Package ownership, PyPI Trusted Publisher
-configuration, GitHub branch protection, and environment approvals remain
-operator/maintainer responsibilities.
+configuration, GitHub branch protection, release-tag restrictions, and
+protected environment approvals remain operator/maintainer responsibilities.
+Follow the [maintainer release setup](MAINTAINER-RELEASE-SETUP.md) before
+creating a real version tag. The final GitHub release-record job now has
+`contents: write` only inside the protected `release` environment; dry runs
+remain non-publishing.
 
 ## Operator responsibilities
 

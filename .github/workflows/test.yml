@@ -86,6 +86,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
       - name: Install pinned kind binary
         env:
           KIND_VERSION: v0.32.0
@@ -105,6 +106,7 @@ jobs:
           KYVERNO_VERSION: v1.18.2
           KYVERNO_INSTALL_SHA256: 3dcd43eaf11f0719084217148cd0c82a8fa49faa9b1a783ea5bea2cf84041bda
           KIND_NODE_IMAGE: kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95
+          KYVERNO_REGISTRY_IMAGE: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do

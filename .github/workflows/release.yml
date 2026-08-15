@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   actions: read
   id-token: write
 
@@ -88,7 +88,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
-        run: python tools/check_release_registries.py --version "${RELEASE_TAG#v}" --expect-absent
+        run: python tools/check_release_registries.py --version "${RELEASE_TAG#v}" --expect-absent --timeout 60
       - name: Wait for all tag workflows to pass
         if: github.event_name == 'push'
         env:
@@ -291,10 +291,14 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  publish:
-    name: Verify and publish release record
+  release-evidence:
+    name: Verify and generate release record
     needs: [prepare, source-evidence, package-evidence]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
@@ -417,7 +421,7 @@ jobs:
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
               "${artifact}"
           done
-      - name: Upload dry-run evidence
+      - name: Upload signed dry-run evidence
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -430,8 +434,36 @@ jobs:
             release-assets
           if-no-files-found: error
           retention-days: 30
-      - name: Create or update GitHub release
+      - name: Upload signed tagged-release record
         if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-release-record-${{ needs.prepare.outputs.release_tag }}
+          path: |
+            release-notes.md
+            release-notes.sigstore.json
+            release-manifest.json
+            release-manifest.sigstore.json
+            release-assets
+          if-no-files-found: error
+          retention-days: 90
+
+  create-release:
+    name: Publish protected GitHub release record
+    if: github.event_name == 'push'
+    needs: [prepare, release-evidence]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download signed release record
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          name: lcp-release-record-${{ needs.prepare.outputs.release_tag }}
+          path: release-record
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -439,12 +471,12 @@ jobs:
           set -euo pipefail
           if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release edit "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
-              --title "LCP ${RELEASE_TAG}" --notes-file release-notes.md
+              --title "LCP ${RELEASE_TAG}" --notes-file release-record/release-notes.md
           else
             gh release create "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag \
-              --title "LCP ${RELEASE_TAG}" --notes-file release-notes.md
+              --title "LCP ${RELEASE_TAG}" --notes-file release-record/release-notes.md
           fi
           gh release upload "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
-            release-notes.md release-notes.sigstore.json \
-            release-manifest.json release-manifest.sigstore.json \
-            release-assets/*
+            release-record/release-notes.md release-record/release-notes.sigstore.json \
+            release-record/release-manifest.json release-record/release-manifest.sigstore.json \
+            release-record/release-assets/*

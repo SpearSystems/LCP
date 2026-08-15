@@ -17,6 +17,7 @@
 | Run an LCP platform | [Platform integration](PLATFORM-INTEGRATION.md) | [Reference platform](../implementations/reference-platform/README.md) → [Deployment](DEPLOYMENT.md) |
 | Build an application | [SDK index](../implementations/sdk/) | [SDK support policy](SDK-ROADMAP.md) → your language README |
 | Publish or verify a release | [Release guide](RELEASE.md) | [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) → [Container verification](CONTAINER-SUPPLY-CHAIN.md) |
+| Configure protected releases | [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) | [Release guide](RELEASE.md) → [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) |
 | Deploy securely | [Deployment](DEPLOYMENT.md) | [Security profiles](SECURITY-PROFILES.md) → [Operations](OPERATIONS.md) |
 | Understand the protocol | [Canonical specification](../SPEC.md) | [Schemas](../schemas/) → [Conformance vectors](../test-vectors/) |
 | Connect an AI agent | [MCP adapter](../implementations/mcp-server/README.md) | [SDK contract](SDK-ROADMAP.md#relationship-to-mcp) |
@@ -103,6 +104,9 @@
   attestations, digest deployment, and Kyverno admission enforcement.
 - [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
   full-image scan review and expiry-based follow-up.
+- [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) — branch protection,
+  protected release environment, OIDC trusted publishers, and break-glass
+  controls.
 
 ### Page 6 · Contribute
 

@@ -12,6 +12,12 @@ A tag such as `v0.1.0` starts the coordinated release process. The tag is
 accepted only when it matches `SDK_VERSION` and the package metadata checked by
 `tools/check_sdk_versions.py`.
 
+Before the first real tag, configure the protected GitHub `release` environment,
+branch rules, and registry trusted publishers using the [maintainer release
+setup](MAINTAINER-RELEASE-SETUP.md). The final GitHub release record is created
+by a separate environment-protected job, so package publication and release
+creation require explicit approval.
+
 The tag runs these workflows for the same commit:
 
 1. **Test** — conformance, SDK tests, reference-platform tests, and real
@@ -57,17 +63,20 @@ immutable version rules and investigate before retrying.
    workflow also signs the release record with a GitHub OIDC-backed Sigstore
    identity.
 
-5. Confirm that every tag workflow is green. The signed release workflow then
-   publishes `release-manifest.json`, the release notes, source SBOM, and their
-   Sigstore bundles as GitHub release assets.
+5. Confirm that every tag workflow is green. Approve the protected package
+   publication jobs and final release-record job in the `release` environment.
+   The workflow then publishes `release-manifest.json`, the release notes,
+   source SBOM, and their Sigstore bundles as GitHub release assets.
 6. Record the released image digest and registry package URLs in the release
    ticket or deployment record. Do not deploy a mutable container tag.
 
 Trusted registry configuration is an operator/maintainer prerequisite. Configure
-protected `release` environments and the registry-specific trusted publisher
-identities described in [SDK-ROADMAP.md](SDK-ROADMAP.md#package-publication).
-Do not replace OIDC or protected environments with long-lived credentials just
-to make a release pass.
+protected `release` environments, branch/tag rules, and registry-specific
+trusted publisher identities using the [maintainer release setup](MAINTAINER-RELEASE-SETUP.md)
+and [SDK publication policy](SDK-ROADMAP.md#package-publication). The signed
+release record itself is also created inside the protected environment. Do not
+replace OIDC or protected environments with long-lived credentials just to make
+a release pass.
 
 ## Non-publishing release dry run
 
@@ -83,9 +92,10 @@ gh workflow run release.yml \
 ```
 
 The dry run does not publish packages, push a container, or create a GitHub
-release. It does perform the coordinated version/schema/conformance checks,
-checks that the proposed version is not already occupied in PyPI, npm, NuGet,
-Maven Central, crates.io, RubyGems, or Packagist, generates source evidence for
+release, and it never enters the protected final release-record job. It does
+perform the coordinated version/schema/conformance checks, checks that the
+proposed version is not already occupied in PyPI, npm, NuGet, Maven Central,
+crates.io, RubyGems, or Packagist, generates source evidence for
 every published package, signs each source archive/SBOM/provenance statement
 with the release workflow's OIDC-backed Sigstore identity, verifies those
 signatures, and uploads a 30-day `lcp-release-dry-run-*` workflow artifact.
@@ -205,3 +215,5 @@ backup/recovery, and deployment approval. If a release must be withdrawn:
 ---
 
 **Previous:** [SDK index](../implementations/sdk/) · **Next:** [Publisher onboarding](PUBLISHER-ONBOARDING.md)
+
+**Maintainer:** [Branch protection and release environment](MAINTAINER-RELEASE-SETUP.md)

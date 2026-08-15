@@ -33,6 +33,8 @@ For a multi-tenant commercial platform:
 - Audit logs for PII reads, admin actions, offers, bids, and credentials.
 - Backup/restore and disaster-recovery tests.
 - Dependency scanning, SBOMs, signed releases, and penetration testing.
+- Protected `main` branch, reviewed workflow changes, and a protected GitHub
+  `release` environment for package publication and release-record creation.
 
 ## Regulated
 
@@ -52,6 +54,9 @@ For high-scrutiny, government-adjacent, or regulated deployments:
 - Privacy impact assessment and records-of-processing documentation.
 - Tested incident response, business continuity, RTO/RPO, and breach
   notification procedures.
+- Two-person release approval, restricted SemVer tag creation, signed commits
+  or an equivalent maintainer identity control, and quarterly review of OIDC
+  trusted publishers and environment reviewers.
 
 These profiles are implementation guidance, not certifications. Operators must
 obtain qualified security, privacy, and legal review before making compliance

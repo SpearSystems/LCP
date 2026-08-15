@@ -108,13 +108,26 @@ Before applying it:
 
 The policy mutates tags to digests and requires immutable digests after
 verification. This prevents a signed tag from being moved after admission.
+For maintainer-side branch rules, environment approvals, and trusted registry
+publisher setup, see [GitHub branch protection and release-environment setup](MAINTAINER-RELEASE-SETUP.md).
 
 CI also runs a real ephemeral admission check in the `Test` workflow. It uses a
-pinned kind node image and kind binary, installs a SHA-256-verified Kyverno
-release manifest, applies the fixture policies in `Enforce` mode, and submits
-server-side dry-run Pods. The job must observe Kyverno rejecting unsigned,
-wrong-workflow, missing-provenance, and missing-SBOM images; a generic webhook
-or cluster failure does not count as a passing rejection.
+pinned kind node image and kind binary, starts a pinned local OCI Distribution
+registry, builds disposable scratch images, creates ephemeral test signing
+keys, installs a SHA-256-verified Kyverno release manifest, and applies
+key-backed fixture policies in `Enforce` mode. It submits server-side dry-run
+Pods using only the local registry, so the live test does not depend on
+Kyverno's public test-image registry. The job must observe Kyverno rejecting
+unsigned, wrong-workflow, missing-provenance, and missing-SBOM images; a generic
+webhook or cluster failure does not count as a passing rejection. The reviewed
+upstream-image CLI fixture remains separate and is used only to validate the
+production-style keyless policy syntax.
+
+The local registry uses HTTP and Kyverno's `allowInsecureRegistry` test flag
+only inside the disposable cluster. This is intentionally not a production
+recommendation; production deployments must use TLS or an approved private
+registry trust configuration. The fixture details are documented in
+[`kubernetes/tests/verify-images/README.md`](../implementations/reference-platform/kubernetes/tests/verify-images/README.md).
 
 ```bash
 kubectl apply --dry-run=server -f \
