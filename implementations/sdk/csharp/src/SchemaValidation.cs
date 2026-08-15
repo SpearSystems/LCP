@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Schema;
 
@@ -42,7 +43,8 @@ public sealed class LcpSchemaValidator
     {
         if (!schemas.TryGetValue(Normalize(schemaName), out var schema))
             throw new KeyNotFoundException($"Unknown LCP schema: {schemaName}");
-        var results = schema.Evaluate(instance, new EvaluationOptions { OutputFormat = OutputFormat.List });
+        using var document = JsonDocument.Parse(instance.ToJsonString());
+        var results = schema.Evaluate(document.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
         if (!results.IsValid)
             throw new LcpSchemaValidationException(schemaName, results);
     }

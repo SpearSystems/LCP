@@ -32,6 +32,7 @@ jobs:
           python-version: "3.12"
       - name: Install published package dependencies
         run: |
+          python tools/generate_sdk_models.py --write
           python -m pip install --upgrade pip pip-audit
           python -m pip install \
             -e implementations/sdk/python \

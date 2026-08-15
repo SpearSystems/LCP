@@ -75,7 +75,9 @@ def main() -> int:
             "kotlin": "src/main/resources/lcp/schema-bundle.json", "swift": "Sources/LCP/Resources/schema-bundle.json",
         }
         bundle_path = sdk / bundle_files[name]
-        if bundle_path.exists():
+        if not bundle_path.exists():
+            errors.append(f"{name}: missing schema bundle {bundle_path.relative_to(ROOT)}")
+        else:
             try:
                 bundle = json.loads(bundle_path.read_text())
                 if sorted(bundle) != sorted(manifest["schema_files"]):

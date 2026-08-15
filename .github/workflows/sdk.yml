@@ -32,6 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install jsonschema referencing httpx 'mcp>=1.28.1,<1.29'
+      - run: python tools/generate_sdk_models.py --write
       - run: python -m pip install -e implementations/sdk/python
       # The MCP adapter is intentionally installed without dependencies here: its
       # published lcp-sdk dependency is satisfied by the editable SDK above.
