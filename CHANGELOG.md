@@ -13,7 +13,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
-- Applied Dependabot updates across GitHub Actions (checkout v7.0.1, setup-node v7.0.0, setup-python v7.0.0, setup-java v5.7.0, cosign-installer v4.1.2, dependency-review v5.0.0, crates-io-auth v1.0.5, ruby/setup-ruby v1.321.0, github-script v7) and SDKs (Rust hmac/getrandom/jsonschema/sha2, Go module bumps, TypeScript devDependencies, Kotlin plugin 2.4.10, JUnit 5.14.4)
+- Applied Dependabot updates across GitHub Actions (checkout v7.0.1, setup-node v7.0.0, setup-python v7.0.0, setup-java v5.7.0, cosign-installer v4.1.2, dependency-review v5.0.0, crates-io-auth v1.0.5, ruby/setup-ruby v1.321.0, github-script v7) and SDKs (Rust hmac/getrandom/jsonschema/sha2, Go module bumps, TypeScript devDependencies, Kotlin plugin 2.4.10, JUnit 6.1.3)
+- Resolved all known dependency vulnerabilities: pinned Jackson core/databind to 2.18.9 in the Java and Kotlin SDKs (nine CVEs on the transitive 2.18.3 pulled by networknt 1.5.9) and bumped ajv to ^8.18.0 in the TypeScript SDK (GHSA-2g4f-4pwh-qvx6); verified with `mvn test`, the Gradle test suite, `npm test`, and osv-scanner reporting zero findings
 - Fixed the Kyverno admission fixture for cosign 3.x: signing-config is enabled by default and rejects `--tlog-upload=false`, so the fixture now passes `--use-signing-config=false`; CI failures now surface the exact failing command in check-run annotations and upload a diagnostics artifact
 - Deferred the networknt json-schema-validator 3.x Jackson 3 rewrite for Java/Kotlin SDKs; documented in `docs/DEPENDENCY-DECISIONS.md`
 - Visible CI status and a gated tagged-release workflow with a non-publishing dry run, registry collision checks, per-package signed SBOM/provenance evidence, Sigstore-signed notes, release manifest, and source SBOM

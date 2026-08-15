@@ -10,6 +10,11 @@ repositories { mavenCentral() }
 
 dependencies {
     implementation("com.networknt:json-schema-validator:1.5.9")
+    // Pin Jackson above the patched 2.18.9 line: networknt 1.5.9 pulls 2.18.3,
+    // which is affected by multiple CVEs fixed in 2.18.9. Explicit higher
+    // versions win Gradle conflict resolution while staying on the 2.x API.
+    implementation("com.fasterxml.jackson.core:jackson-core:2.18.9")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")
     testImplementation(kotlin("test"))
 }
 

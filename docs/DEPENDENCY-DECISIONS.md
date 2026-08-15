@@ -27,7 +27,10 @@ vectors, and the security gate before it is merged.
 | Go | `github.com/santhosh-tekuri/jsonschema/v6` 6.0.1 → 6.0.3 | Verified with `go test`. |
 | TypeScript | `typescript` 5.x → 7.0.2 | TypeScript 7 no longer auto-includes `@types/node`; the SDK now declares `"types": ["node"]` in `tsconfig.json`. |
 | TypeScript | `@types/node` 22.x → 26.2.0 | Verified with the TypeScript build and HMAC test vectors. |
-| Java | `junit-jupiter` 5.11.4 → 5.14.4 | Same major; verified with `mvn test`. |
+| TypeScript | `ajv` 8.17.1 → ^8.18.0 | Fixes GHSA-2g4f-4pwh-qvx6 (ReDoS via `$data`); verified with `npm test`. |
+| Java | `junit-jupiter` 5.14.4 → 6.1.3 | JUnit 6 major; JDK 17 toolchain and Surefire 3.5.6 already support it; verified with `mvn test`. |
+| Java | Jackson `jackson-core`/`jackson-databind` pinned 2.18.3 → 2.18.9 | networknt 1.5.9 pulls 2.18.3, which is affected by nine CVEs (GHSA-r7wm-3cxj-wff9, GHSA-j3rv-43j4-c7qm, GHSA-rmj7-2vxq-3g9f and others). Explicit nearest-wins dependencies pin the patched 2.18.9 line on the same 2.x API; verified with `mvn test` and the dependency tree. |
+| Kotlin | Jackson `jackson-core`/`jackson-databind` pinned 2.18.3 → 2.18.9 | Same CVEs and rationale as Java; explicit higher versions win Gradle conflict resolution; verified with the Gradle test suite. |
 | Java | `maven-source-plugin` 3.3.1 → 3.4.0 | Build plugin; verified with `mvn test`. |
 | Java | `maven-javadoc-plugin` 3.11.2 → 3.12.0 | Build plugin; verified with `mvn test`. |
 | Java | `maven-gpg-plugin` 3.2.7 → 3.2.8 | Build plugin; verified with `mvn test`. |
@@ -39,9 +42,8 @@ vectors, and the security gate before it is merged.
 
 | Dependency | Proposed | Why deferred |
 |---|---|---|
-| Java `com.networknt:json-schema-validator` | 1.5.9 → 3.0.6 | The 3.x line is a full API rewrite on Jackson 3 (`tools.jackson`): `JsonSchemaFactory`, `JsonSchema`, `ValidationMessage`, and `SpecVersion.VersionFlag` no longer exist, and the validator must be re-architected around the new `Schema` model. The 2.x line has the same class removal. The SDK keeps the proven 1.5.9 API. Tracked as follow-up work before any Java/Kotlin SDK breaking release. |
-| Kotlin `com.networknt:json-schema-validator` | 1.5.9 → 3.0.6 | Same reason as Java; the Kotlin SDK shares the same validation API surface. |
-| Java `junit-jupiter` | 5.x → 6.1.3 | JUnit 6 is a new major requiring the platform toolchain to move in lockstep; deferred with the networknt migration. |
+| Java `com.networknt:json-schema-validator` | 1.5.9 → 3.0.6 | The 3.x line is a full API rewrite on Jackson 3 (`tools.jackson`): `JsonSchemaFactory`, `JsonSchema`, `ValidationMessage`, and `SpecVersion.VersionFlag` no longer exist, and the validator must be re-architected around the new `Schema` model. The 2.x line has the same class removal. The SDK keeps the proven 1.5.9 API, and the Jackson CVEs on the transitive 2.18.3 are mitigated by pinning 2.18.9. Tracked as follow-up work before any Java/Kotlin SDK breaking release. |
+| Kotlin `com.networknt:json-schema-validator` | 1.5.9 → 3.0.6 | Same reason as Java; the Kotlin SDK shares the same validation API surface and Jackson pin. |
 
 Deferring an update means the Dependabot PR is closed with this record as the
 reason. The deferred items are candidates for a dedicated
