@@ -14,15 +14,17 @@ public sealed class LcpSchemaValidationException(string schemaName, EvaluationRe
 public sealed class LcpSchemaValidator
 {
     private readonly Dictionary<string, JsonSchema> schemas = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SchemaRegistry registry = new();
 
     public LcpSchemaValidator(IReadOnlyDictionary<string, string> schemaTexts)
     {
-        // JsonSchema.Net builds each document into its global registry. Build
-        // core first so message schemas can resolve their external $refs.
+        // Keep registrations isolated per validator instance. Build core first
+        // so message schemas can resolve their external $refs in this registry.
+        var buildOptions = new BuildOptions { SchemaRegistry = registry, Dialect = Dialect.Draft202012 };
         foreach (var (name, text) in schemaTexts.OrderBy(pair =>
-                     pair.Key.Equals("core.json", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
+                     Path.GetFileName(pair.Key).Equals("core.json", StringComparison.OrdinalIgnoreCase) ? 0 : 1))
         {
-            var schema = JsonSchema.FromText(text);
+            var schema = JsonSchema.FromText(text, buildOptions);
             schemas[Normalize(name)] = schema;
             if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 schemas[Normalize(Path.GetFileNameWithoutExtension(name))] = schema;
