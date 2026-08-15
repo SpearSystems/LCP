@@ -19,9 +19,16 @@ security workflow provides:
   are intentionally skipped because they are not PyPI-published artifacts;
   their installed and transitive dependencies are still audited.
 - **CycloneDX SBOMs** for the repository source tree and reference container.
-- **Trivy** scanning of the built reference image for HIGH and CRITICAL issues,
-  including unfixed findings. The Trivy action is pinned to the signed v0.36.0
-  commit rather than a mutable version tag.
+- **Trivy** scanning of the built reference image's OS packages for HIGH and
+  CRITICAL issues. Fixed findings fail the CI gate; upstream findings without a
+  fix do not block a build that cannot remediate them and must be reviewed in a
+  full operator scan without the CI filter. Python libraries are covered
+  separately by pip-audit, avoiding false positives from inherited base-image
+  SBOM metadata for removed
+  build-time packages. Each image job also uploads a 90-day, non-gating full
+  Trivy SARIF report covering OS and library findings, including unfixed issues,
+  for exception-register review. The Trivy action is pinned to the signed
+  v0.36.0 commit rather than a mutable version tag.
 - **CodeQL** static analysis for Python.
 
 `.github/dependabot.yml` opens weekly update pull requests for Python and
@@ -46,16 +53,19 @@ Before publishing a package or container:
    database.
 3. Build all Python wheels and inspect their metadata.
 4. Generate and retain the source and container SBOMs.
-5. Resolve or formally accept every HIGH/CRITICAL dependency and image finding.
+5. Resolve or formally accept every HIGH/CRITICAL dependency and image
+   finding. CI blocks actionable fixed findings; operators must track upstream
+   findings without a fix in the vulnerability exception register.
 6. Pin the deployment image by digest and verify its provenance/signature where
    the registry supports it.
 7. Confirm that no secrets, real PII, credentials, or private configuration are
    present in the source, SBOM, image, or release artifacts.
 
 The tag-triggered release workflow enforces the dependency audit, creates
-release SBOM artifacts, scans the reference image, and makes the package-build
-jobs wait for that gate. Keep the source and container SBOMs with the release
-record even though CI stores them as artifacts rather than commits.
+release SBOM artifacts, scans the reference image, uploads a full non-gating
+Trivy report for release review, and makes the package-build jobs wait for the
+security gate. Keep the source, container, and full Trivy reports with the
+release record even though CI stores them as artifacts rather than commits.
 
 The PyPI workflow uses Trusted Publishing and does not store a long-lived PyPI
 API token in the repository. Package ownership, PyPI Trusted Publisher
@@ -70,6 +80,7 @@ A self-hosted deployment should additionally:
 - Scan the base image and final image in the deployment registry.
 - Use signed images and admission policy where available.
 - Maintain a vulnerability exception register with expiry dates and owners.
-- Rebuild promptly for critical cryptography, HTTP, database, or OS findings.
+- Rebuild promptly for critical cryptography, HTTP, database, or OS findings;
+  do not treat a nonblocking CI result as a security exception or certification.
 - Preserve release SBOMs and provenance records for the retention period.
 - Re-run scans after base-image, Python-runtime, or dependency changes.
