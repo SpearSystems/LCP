@@ -117,7 +117,10 @@ jobs:
               # Surface the failing command and diagnostics in the check-run
               # annotation, which is visible without job-log access.
               if [[ -f "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" ]]; then
-                head -c 12000 "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" | while IFS= read -r line; do
+                grep -E 'Script failed|around line' "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" | while IFS= read -r line; do
+                  echo "::error::${line}"
+                done || true
+                tail -n 45 "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" | while IFS= read -r line; do
                   echo "::error::${line}"
                 done || true
               fi

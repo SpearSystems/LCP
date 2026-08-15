@@ -22,11 +22,16 @@ mkdir -p "${WORK_DIR}"
 : > "${DIAG_LOG}"
 
 # Record the exact failing command so CI artifacts identify the failure point.
+# The command and line must be captured into locals before any other statement:
+# the ERR trap's own commands would otherwise overwrite BASH_COMMAND/BASH_LINENO.
 report_error() {
   local status=$?
+  local cmd="${BASH_COMMAND}"
+  local line="${BASH_LINENO[0]}"
+  local src="${BASH_SOURCE[0]}"
   {
-    echo "Script failed: ${BASH_COMMAND}"
-    echo "  around line ${BASH_LINENO[0]} of ${BASH_SOURCE[0]}"
+    echo "Script failed: ${cmd}"
+    echo "  around line ${line} of ${src}"
   } 2>&1 | tee -a "${DIAG_LOG}" >&2
   exit "${status}"
 }
