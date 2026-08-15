@@ -1,11 +1,30 @@
 # LCP — Reference Implementations
 
+These implementations share the LCP schemas and signing profile but have
+different responsibilities:
+
+## sdk/python
+
+Standalone Python SDK for envelope construction, validation, HMAC signing,
+idempotency, and HTTP operations. It does not depend on MCP or platform
+storage.
+
+See [sdk/python/README.md](sdk/python/README.md).
+
+## reference-platform
+
+Production-oriented HTTP gateway/router with SQLite persistence, offer
+matching, ping/bid/post orchestration, signed webhook retries, an admin CLI,
+and a Docker sandbox. It is a foundation for an operator's deployment, not a
+hosted exchange.
+
+See [reference-platform/README.md](reference-platform/README.md).
+
 ## mcp-server
 
-The official LCP MCP server — a thin adapter exposing LCP REST endpoints
-as agent tools. Generic: works with any LCP-compliant endpoint.
-
-**Status: working** — 6 tools, stdio transport, local schema fallback.
+The official LCP MCP adapter — a thin, stateless wrapper exposing an existing
+LCP REST endpoint as agent tools. It does not receive webhooks, persist leads,
+or run auctions.
 
 | Tool | LCP Endpoint | Description |
 |---|---|---|

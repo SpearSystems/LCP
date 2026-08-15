@@ -110,7 +110,7 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_schema",
-            description="Retrieve a JSON Schema by name. Core schemas: envelope, core, lead, call, ping, post, ack, event. Vertical schemas: 'verticals/mortgage', etc. Falls back to local repo files if the REST endpoint is unavailable.",
+            description="Retrieve a JSON Schema by name. Core schemas: envelope, core, lead, call, ping, post, ack, event, bid, offer. Vertical schemas: 'verticals/mortgage', etc. Falls back to local repo files if the REST endpoint is unavailable.",
             inputSchema={
                 "type": "object",
                 "properties": {

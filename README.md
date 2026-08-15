@@ -4,9 +4,9 @@
 
 **The "HTTP of lead generation"** — a universal protocol for transferring consumer lead data (PII) between publishers, advertisers/buyers, platforms, and downstream systems. LCP covers form fills, calls, chats, APIs, and AI agents, together with the lifecycle from intake through delivery, conversion, disputes, and consent changes.
 
-> **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, and an optional MCP adapter. A production deployment still needs an HTTP endpoint, authentication, storage, routing, offer configuration, buyer delivery, and CRM integrations.
+> **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, Python SDK, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** Draft v1.0, under active development. The conformance runner currently passes 27/27 test vectors. The reference MCP package is version 0.1.0 and is an adapter, not a complete LCP platform.
+**Status:** Draft v1.0, under active development. The conformance runner currently passes 27/27 test vectors. The repository includes a standalone Python SDK, a production-oriented reference platform/router, an optional MCP adapter, and a Docker sandbox using the same platform code path.
 
 ## Who uses LCP?
 
@@ -72,6 +72,16 @@ curl -X POST https://your-platform.example/v1/lcp/leads \
 Use a per-partner authentication secret. See [SPEC.md §9](SPEC.md#9-security) for TLS, API-key, HMAC, replay protection, and per-pair hash requirements.
 
 See [the platform integration guide](docs/PLATFORM-INTEGRATION.md) for mappings from Facebook Lead Ads, Google Lead Forms, Twilio, Typeform, HubSpot, Salesforce, and TikTok.
+
+### Python SDK
+
+For Python integrations, the standalone SDK provides envelope construction, JSON Schema validation, canonical HMAC signing, idempotency, and HTTP helpers. It does not depend on MCP or include platform routing:
+
+```bash
+python3 -m pip install -e ./implementations/sdk/python
+```
+
+See the [Python SDK README](implementations/sdk/python/README.md).
 
 ### Optional MCP adapter for AI agents
 
@@ -160,7 +170,7 @@ The platform's bid endpoint is documented as `POST /v1/lcp/bids` in the [OpenAPI
 
 ### Signature verification
 
-For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. Every deployment must document one canonical signing input; the reference adapter currently signs the request body together with the timestamp.
+For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. The reference profile signs `<timestamp>\\n<idempotency-key>\\n<raw-request-body>` with HMAC-SHA256. See [the implementation decisions](docs/IMPLEMENTATION-DECISIONS.md) for the exact signing profile.
 
 Illustrative verification logic:
 
@@ -180,9 +190,10 @@ if not timestamp or not idempotency_key:
 if not signature:
     return "Unauthorized", 401
 
-# Use the same canonical signing profile as the sending partner.
+# Sign: <timestamp>\\n<idempotency-key>\\n<raw-request-body>.
+signing_input = f"{timestamp}\\n{idempotency_key}\\n".encode() + body
 expected = hmac.new(
-    HMAC_SECRET.encode(), body + timestamp.encode(), hashlib.sha256
+    HMAC_SECRET.encode(), signing_input, hashlib.sha256
 ).hexdigest()
 
 if not hmac.compare_digest(signature, expected):
@@ -250,7 +261,7 @@ Publisher → LCP platform
                  └─ deliver the post and lifecycle events
 ```
 
-This repository does not currently include that HTTP gateway, routing engine, database, offer-management UI, or buyer webhook service. Implementers can use the [OpenAPI definition](api/lcp-openapi.yaml), [schemas](schemas/), and [examples](examples/) as the contract for building one.
+The [reference platform](implementations/reference-platform/) includes a persistent SQLite-backed gateway/router, offer matching, ping/bid/post orchestration, signed webhook retries, an admin CLI, and a WSGI entry point. It is intended as a production-oriented foundation; operators must still provide deployment hardening, secret management, backups, monitoring, and an appropriate production database for scale.
 
 ## Platform operator
 
@@ -266,7 +277,7 @@ A platform operator typically needs to provide:
 - Capability, schema, and offer discovery
 - CRM, dialer, and conversion-event integrations
 
-The reference MCP server is not the platform itself; it is a stateless adapter that calls an existing LCP-compatible REST API. Start with the [HTTP API contract](api/lcp-openapi.yaml), then add the deployment services your business requires.
+The reference MCP server is a stateless adapter that calls an existing LCP-compatible REST API. The [reference platform](implementations/reference-platform/) is the runnable HTTP/router implementation. Start with the [HTTP API contract](api/lcp-openapi.yaml) and [implementation decisions](docs/IMPLEMENTATION-DECISIONS.md).
 
 ## Quickstart
 
@@ -278,6 +289,10 @@ python3 -m pip install jsonschema referencing
 
 # Run 27 L1/L2/L3 vectors.
 python3 test-vectors/conformance.py --verbose
+
+# Run the local reference platform (after installing it).
+python3 -m pip install -e ./implementations/reference-platform
+lcp-platform
 ```
 
 The vectors cover envelope validation, lifecycle messages, ping/post PII separation, ping-safe vertical attributes, bidding, compliance evidence, agent attestation, status transitions, exclusivity, and expiry. They are conformance fixtures, not a hosted endpoint or a complete integration test.
@@ -291,10 +306,10 @@ Schemas are available directly in [`schemas/`](schemas/) and [`verticals/`](vert
 ```
 schemas/         ── Envelope, core, and message JSON Schemas
 verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services)
-examples/        ── Sample payloads for lead, call, ping, post, bid, ack, and event
+examples/        ── Sample payloads plus the end-to-end synthetic sandbox
 test-vectors/    ── 27 conformance vectors across L1/L2/L3
-implementations/ ── Reference MCP adapter for an existing LCP endpoint
-docs/            ── Integration guides and design notes
+implementations/ ── Python SDK, reference platform/router, and MCP adapter
+docs/            ── Integration guides, implementation decisions, and design notes
 api/             ── OpenAPI 3.1 HTTP transport definition
 governance/      ── Contributing, security, extension, trademark, and CLA policies
 SPEC.md          ── Canonical protocol specification
@@ -307,7 +322,12 @@ SPEC.md          ── Canonical protocol specification
 - [Platform integration guide](docs/PLATFORM-INTEGRATION.md)
 - [JSON Schemas](schemas/)
 - [Examples](examples/)
+- [End-to-end sandbox](examples/sandbox/README.md)
 - [Conformance vectors](test-vectors/)
+- [Implementation decisions](docs/IMPLEMENTATION-DECISIONS.md)
+- [Python SDK](implementations/sdk/python/)
+- [Reference platform/router](implementations/reference-platform/)
+- [Docker sandbox](examples/sandbox/README.md)
 - [Reference MCP adapter](implementations/mcp-server/)
 - [Security policy](governance/SECURITY.md)
 - [Trademark and conformance claims](governance/TRADEMARK.md)

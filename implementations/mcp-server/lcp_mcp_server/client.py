@@ -34,24 +34,38 @@ class LCPClient:
         self.sender_id = sender_id or os.environ.get("LCP_SENDER_ID", "")
         self.timeout = timeout
 
-    def _auth_headers(self, body: bytes | None = None) -> dict[str, str]:
-        """Build auth headers. Uses Bearer token if available, else HMAC."""
+    def _auth_headers(
+        self,
+        body: bytes | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, str]:
+        """Build Bearer or canonical LCP HMAC authentication headers."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self.sender_id:
+            headers["X-LCP-Sender-Id"] = self.sender_id
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        elif self.hmac_secret and body is not None:
+        elif self.hmac_secret:
+            body = body or b""
             timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            key = idempotency_key or ""
+            signing_input = f"{timestamp}\\n{key}\\n".encode() + body
             sig = hmac.new(
-                self.hmac_secret.encode(), body + timestamp.encode(), hashlib.sha256
+                self.hmac_secret.encode(), signing_input, hashlib.sha256
             ).hexdigest()
             headers["X-LCP-Signature"] = sig
             headers["X-LCP-Timestamp"] = timestamp
+            if idempotency_key:
+                headers["X-LCP-Idempotency-Key"] = idempotency_key
+        elif idempotency_key:
+            headers["X-LCP-Idempotency-Key"] = idempotency_key
         return headers
 
     def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """POST an LCP envelope to the endpoint."""
-        body = json.dumps(payload).encode()
-        headers = self._auth_headers(body)
+        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
+        idempotency_key = payload.get("lcp", {}).get("message", {}).get("idempotency_key")
+        headers = self._auth_headers(body, idempotency_key)
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(f"{self.endpoint}{path}", content=body, headers=headers)
             return _parse_response(resp)

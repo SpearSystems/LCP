@@ -16,13 +16,13 @@ details in anything that could be published.
 ```
 LICENSE            Apache 2.0
 SPEC.md            The canonical specification
-schemas/           JSON Schema for the envelope, core, and message types
+schemas/           JSON Schema for the envelope, core, message, and offer types
 verticals/         Per-vertical attribute schemas
-examples/          Sample payloads (lead, call, ping, post, ack, event)
+examples/          Sample payloads (lead, call, ping, post, ack, event, sandbox)
 test-vectors/      Conformance fixtures (L1/L2/L3)
 governance/        CONTRIBUTING, CLA, extension registry
-implementations/   Reference implementations (incl. MCP server)
-docs/              Design notes and research
+implementations/   Python SDK, reference platform/router, and MCP adapter
+docs/              Integration guides, implementation decisions, and research
 ```
 
 ## Spec authoring rules

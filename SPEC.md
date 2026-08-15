@@ -592,8 +592,13 @@ endpoint may reject them (LCP-011 RATE_LIMITED or a 200 with
 ### offer restrictions
 
 Offers (`GET /v1/lcp/offers`) may declare restrictions — lead
-characteristics the buyer will not accept. The platform filters against
-these before pinging:
+characteristics the buyer will not accept. The standardized discovery shape
+is defined in [schemas/offer.json](schemas/offer.json). Offer creation,
+updates, credentials, and buyer administration remain deployment-specific.
+The `routing_mode` value is `auction` (ping/bid/post) or `direct` (the
+platform sends a post at the offer floor price without bidding).
+
+The platform filters against offer restrictions before pinging:
 
 | Field | Type | Notes |
 |---|---|---|
@@ -658,8 +663,20 @@ Two auth methods:
    }
    ```
 
-Nonce replay protection via `X-LCP-Timestamp` (reject if outside
-acceptable window).
+For HTTP HMAC authentication, the canonical signing input is the exact
+UTF-8 byte sequence:
+
+```text
+<timestamp>\\n<idempotency-key>\\n<raw-request-body>
+```
+
+The signature is the lowercase hexadecimal HMAC-SHA256 digest of that
+input. `X-LCP-Idempotency-Key` MUST match
+`lcp.message.idempotency_key` on mutating messages. Receivers MUST reject
+requests outside the acceptable timestamp window before processing PII.
+The default replay window is five minutes; deployments MAY choose a
+shorter window. During key rotation, a receiver MAY accept a previously
+active secret for a bounded migration period.
 
 ### Phone hash (dedup)
 

@@ -3,14 +3,16 @@ info:
   title: LCP - Lead Context Protocol API
   description: 'HTTP transport binding for the Lead Context Protocol (LCP).
 
-    This OpenAPI spec describes the REST endpoints that an LCP-compliant
+    This OpenAPI spec describes the REST endpoints used by an LCP-compatible
 
-    platform must implement. The MCP server wraps these endpoints as
+    publisher, buyer, or platform. The reference platform implements these
 
-    agent tools; A2A and future bindings map the same abstract operations.
+    operations; the MCP server wraps them as agent tools.
 
 
-    See SPEC.md for the canonical specification.'
+    See SPEC.md and docs/IMPLEMENTATION-DECISIONS.md for the canonical
+
+    protocol and reference deployment profile.'
   version: 1.0.0
   license:
     name: Apache 2.0
@@ -159,6 +161,22 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/EventPayload'
+                  match_decisions:
+                    type: array
+                    description: Explainable offer matching decisions. Reasons contain no consumer PII.
+                    items:
+                      type: object
+                      properties:
+                        offer_id:
+                          type: string
+                        buyer_id:
+                          type: string
+                        matched:
+                          type: boolean
+                        reasons:
+                          type: array
+                          items:
+                            type: string
                   expires_at:
                     type: string
                     format: date-time
@@ -174,8 +192,8 @@ paths:
       - Schema
       summary: Retrieve a JSON Schema
       operationId: getSchema
-      description: 'Get a JSON Schema by name. Core schemas: envelope, core, lead, call, ping, post, ack, event. Vertical
-        schemas: use prefix verticals/ (e.g. verticals/mortgage).'
+      description: 'Get a JSON Schema by name. Core schemas: envelope, core, lead, call, ping, post, ack, event, bid, offer.
+        Vertical schemas: use prefix verticals/ (e.g. verticals/mortgage).'
       parameters:
       - name: name
         in: path
@@ -222,7 +240,7 @@ paths:
       - Offers
       summary: List active offers
       operationId: listOffers
-      description: List active offers available to the authenticated sender.
+      description: List active offers available to the authenticated sender. The interoperable offer shape is defined in schemas/offer.json; offer creation and administration remain deployment-specific.
       parameters:
       - name: vertical
         in: query
@@ -241,74 +259,7 @@ paths:
                   offers:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        offer_id:
-                          type: string
-                        vertical:
-                          type: string
-                        floor_price_cents:
-                          type: integer
-                        currency:
-                          type: string
-                          pattern: ^[A-Z]{3}$
-                        countries:
-                          type: array
-                          items:
-                            type: string
-                            pattern: ^[A-Z]{2}$
-                        payable_definition:
-                          type: string
-                          description: What makes this lead payable.
-                        daily_cap:
-                          type: integer
-                          description: Max leads per day for this offer.
-                        capacity_remaining:
-                          type: integer
-                          description: Leads remaining today for this offer.
-                        excluded_source_types:
-                          type: array
-                          items:
-                            type: string
-                          description: Source types the buyer rejects.
-                        excluded_acquisition_methods:
-                          type: array
-                          items:
-                            type: string
-                          description: Acquisition methods the buyer rejects.
-                        reject_incentivized:
-                          type: boolean
-                          description: Buyer will not accept incentivized leads.
-                        excluded_incentive_types:
-                          type: array
-                          items:
-                            type: string
-                          description: Specific incentive types rejected.
-                        require_verified_phone:
-                          type: boolean
-                        require_verified_email:
-                          type: boolean
-                        max_spam_risk_score:
-                          type: integer
-                        excluded_claim_language:
-                          type: array
-                          items:
-                            type: string
-                          description: Landing page / ad copy language the buyer prohibits.
-                        require_consent_evidence:
-                          type: boolean
-                        min_data_completeness:
-                          type: string
-                          enum:
-                          - minimal
-                          - standard
-                          - rich
-                        reject_dnc_flagged:
-                          type: boolean
-                        reject_litigator_flagged:
-                          type: boolean
-                        reject_blacklist_flagged:
-                          type: boolean
+                      $ref: '#/components/schemas/OfferDiscovery'
   /bids:
     post:
       tags:
@@ -506,6 +457,104 @@ components:
           additionalProperties: true
         external_reference:
           type: string
+    Offer:
+      $ref: '../schemas/offer.json'
+    OfferDiscovery:
+      type: object
+      required:
+      - offer_id
+      - buyer_id
+      - vertical
+      - countries
+      - floor_price_cents
+      - currency
+      properties:
+        offer_id:
+          type: string
+        buyer_id:
+          type: string
+        active:
+          type: boolean
+        routing_mode:
+          type: string
+          enum:
+          - auction
+          - direct
+        vertical:
+          type: string
+        schema_version:
+          type: string
+        countries:
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Z]{2}$
+        state_regions:
+          type: array
+          items:
+            type: string
+        channels:
+          type: array
+          items:
+            type: string
+        floor_price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        payable_definition:
+          type: string
+        daily_cap:
+          type: integer
+        hourly_cap:
+          type: integer
+        excluded_source_types:
+          type: array
+          items:
+            type: string
+        excluded_acquisition_methods:
+          type: array
+          items:
+            type: string
+        reject_incentivized:
+          type: boolean
+        excluded_incentive_types:
+          type: array
+          items:
+            type: string
+        require_verified_phone:
+          type: boolean
+        require_verified_email:
+          type: boolean
+        max_spam_risk_score:
+          type: integer
+        excluded_claim_language:
+          type: array
+          items:
+            type: string
+        require_consent_evidence:
+          type: boolean
+        reject_dnc_flagged:
+          type: boolean
+        reject_litigator_flagged:
+          type: boolean
+        reject_blacklist_flagged:
+          type: boolean
+        min_data_completeness:
+          type: string
+          enum:
+          - minimal
+          - standard
+          - rich
+        delivery_windows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        ping_timeout_seconds:
+          type: integer
+          minimum: 1
     Capabilities:
       type: object
       properties:
@@ -752,7 +801,7 @@ components:
       type: apiKey
       in: header
       name: X-LCP-Signature
-      description: HMAC-SHA256 signature. Requires X-LCP-Signature, X-LCP-Timestamp, and X-LCP-Idempotency-Key headers.
+      description: HMAC-SHA256 signature over <timestamp>\\n<idempotency-key>\\n<raw-request-body>. Requires X-LCP-Signature and X-LCP-Timestamp; mutating requests also require X-LCP-Idempotency-Key.
 security:
 - BearerAuth: []
 - HMACAuth: []

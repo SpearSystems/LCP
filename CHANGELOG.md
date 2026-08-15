@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Production-oriented reference platform/router with SQLite persistence, offer matching, ping/bid/post routing, signed webhook retries, admin CLI, and Docker sandbox
+- Standalone Python SDK for envelope construction, JSON Schema validation, canonical HMAC signing, idempotency, and HTTP operations
+- Buyer offer schema (`schemas/offer.json`) and implementation decision profile (`docs/IMPLEMENTATION-DECISIONS.md`)
+- End-to-end synthetic publisher and buyer sandbox fixtures
+- OpenAPI and MCP documentation for the canonical HMAC signing profile
 - OpenAPI 3.1 specification for the HTTP transport binding (`api/lcp-openapi.yaml`)
 - Code of Conduct (Contributor Covenant v2.1)
 - Maintainers file

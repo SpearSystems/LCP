@@ -5,6 +5,13 @@
 - [PLATFORM-INTEGRATION.md](PLATFORM-INTEGRATION.md) — how common
   platforms (Facebook Lead Ads, Google Lead Forms, Twilio, HubSpot,
   Salesforce, TikTok) map to/from LCP fields.
+- [IMPLEMENTATION-DECISIONS.md](IMPLEMENTATION-DECISIONS.md) — approved
+  production reference profile: offer matching, auction selection, HMAC,
+  webhook retries, SDK boundaries, and sandbox parity.
+- [Reference platform](../implementations/reference-platform/README.md) —
+  install, configure, operate, and deploy the persistent LCP router.
+- [Sandbox](../examples/sandbox/README.md) — end-to-end synthetic
+  publisher/buyer test using the same platform code path.
 
 ## Historical artifacts (kept for provenance)
 

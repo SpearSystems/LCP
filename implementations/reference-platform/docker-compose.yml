@@ -1,0 +1,33 @@
+services:
+  lcp-platform-sandbox:
+    build:
+      context: ../..
+      dockerfile: implementations/reference-platform/Dockerfile
+    environment:
+      LCP_DATABASE_PATH: /app/data/sandbox.sqlite3
+      LCP_REQUIRE_AUTH: "false"
+      LCP_TEST_MODE: "true"
+      LCP_PLATFORM_ID: sandbox_platform
+      LCP_SCHEMA_DIR: /app/schemas
+    command: >-
+      sh -c "lcp-platform-admin credential upsert --sender-id buyer_sandbox
+      --hmac-secret sandbox-buyer-secret &&
+      lcp-platform-admin offer upsert --file /app/examples/sandbox/offer.json &&
+      lcp-platform"
+    ports:
+      - "8080:8080"
+    volumes:
+      - lcp-sandbox-data:/app/data
+
+  buyer-sandbox:
+    build:
+      context: ../..
+      dockerfile: implementations/reference-platform/Dockerfile
+    environment:
+      LCP_PLATFORM_URL: http://lcp-platform-sandbox:8080
+    command: ["python", "/app/examples/sandbox/buyer.py"]
+    depends_on:
+      - lcp-platform-sandbox
+
+volumes:
+  lcp-sandbox-data:

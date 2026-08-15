@@ -9,3 +9,8 @@ CLAUDE.md
 .hermes.md
 *.pyc
 __pycache__/
+
+# Local platform/runtime state
+.venv/
+data/
+*.sqlite3

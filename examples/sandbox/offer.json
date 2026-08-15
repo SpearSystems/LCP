@@ -1,0 +1,13 @@
+{
+  "offer_id": "sandbox-mortgage-au",
+  "buyer_id": "buyer_sandbox",
+  "active": true,
+  "vertical": "mortgage",
+  "countries": ["AU"],
+  "floor_price_cents": 1500,
+  "currency": "AUD",
+  "require_consent_evidence": true,
+  "daily_cap": 1000,
+  "ping_timeout_seconds": 30,
+  "webhook_url": "http://buyer-sandbox:8090/lcp/webhook"
+}
