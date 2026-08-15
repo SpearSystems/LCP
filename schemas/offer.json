@@ -21,6 +21,11 @@
       "type": "string",
       "minLength": 1
     },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Owning platform tenant. Deployment metadata; not necessarily exposed in public offer discovery."
+    },
     "active": {
       "type": "boolean",
       "default": true

@@ -2,7 +2,8 @@
 
 A thin MCP (Model Context Protocol) adapter that exposes LCP REST endpoints
 as agent tools. The core protocol is REST+JSON; this server wraps it so AI
-agents can interact with any LCP-compliant endpoint via MCP.
+agents can interact with any LCP-compliant endpoint via MCP. It does not
+host an LCP platform, persist leads, receive webhooks, or run auctions.
 
 > **Architecture:** The LCP core never depends on MCP. This server is a
 > stateless adapter — it translates MCP tool calls into HTTP requests and
@@ -19,6 +20,7 @@ agents can interact with any LCP-compliant endpoint via MCP.
 | `get_schema` | `GET /v1/lcp/schemas/{name}` | Retrieve a JSON Schema (envelope, core, message type, offer, vertical) |
 | `get_capabilities` | `GET /v1/lcp/capabilities` | Discover endpoint capabilities (versions, verticals, countries) |
 | `list_offers` | `GET /v1/lcp/offers` | List active offers for the authenticated sender |
+| `submit_bid` | `POST /v1/lcp/bids` | Submit a bid in response to a ping |
 
 ## Setup
 
@@ -43,7 +45,7 @@ The server reads its target endpoint from environment variables:
 HMAC requests use the canonical signing input:
 
 ```text
-<timestamp>\\n<idempotency-key>\\n<raw-request-body>
+<timestamp>\n<idempotency-key>\n<raw-request-body>
 ```
 
 The adapter sends `X-LCP-Sender-Id`, `X-LCP-Timestamp`,

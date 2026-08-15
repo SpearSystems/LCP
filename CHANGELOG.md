@@ -7,7 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Production-oriented reference platform/router with SQLite persistence, offer matching, ping/bid/post routing, signed webhook retries, admin CLI, and Docker sandbox
+- Security/deployment hardening profile with Postgres support, fail-closed production configuration, AES-GCM envelope encryption, request limits, strict test-traffic separation, health endpoints, audit records, durable routing leases, SSRF/egress controls, and controlled lead erasure
+- Cloud-neutral Kubernetes examples with separate API/worker deployments, network policies, disruption budgets, autoscaling guidance, and mounted secret/encryption-key configuration
+- Production-oriented reference platform/router with SQLite/Postgres persistence, offer matching, ping/bid/post routing, signed webhook retries, admin CLI, and Docker sandbox
 - Standalone Python SDK for envelope construction, JSON Schema validation, canonical HMAC signing, idempotency, and HTTP operations
 - Buyer offer schema (`schemas/offer.json`) and implementation decision profile (`docs/IMPLEMENTATION-DECISIONS.md`)
 - End-to-end synthetic publisher and buyer sandbox fixtures

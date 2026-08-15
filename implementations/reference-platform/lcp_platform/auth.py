@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 
 from .config import PlatformConfig
+from .secrets import FileSecretProvider
 from .storage import Store
 
 
@@ -54,6 +56,32 @@ class Authenticator:
     def __init__(self, store: Store, config: PlatformConfig):
         self.store = store
         self.config = config
+        self.secrets = FileSecretProvider(config.secrets_file)
+
+    def principal(self, sender_id: str) -> dict[str, object] | None:
+        row = self.store.get_credential(sender_id)
+        principal = dict(row) if row else None
+        external = self.secrets.get(sender_id)
+        if external:
+            principal = principal or {
+                "sender_id": sender_id,
+                "tenant_id": external.get("tenant_id", "default"),
+                "scopes_json": "[]",
+                "active": 1,
+            }
+            for field in ("hmac_secret", "previous_hmac_secret"):
+                if field in external:
+                    principal[field] = external[field]
+            if external.get("api_key"):
+                principal["api_key_hash"] = hashlib.sha256(
+                    str(external["api_key"]).encode()
+                ).hexdigest()
+            if "scopes" in external:
+                principal["scopes_json"] = json.dumps(external["scopes"])
+            principal.setdefault("hmac_secret", None)
+            principal.setdefault("previous_hmac_secret", None)
+            principal.setdefault("api_key_hash", None)
+        return principal
 
     def authenticate(
         self,
@@ -63,9 +91,13 @@ class Authenticator:
         body: bytes,
         idempotency_key: str | None = None,
         mutating: bool = False,
+        required_scope: str | None = None,
     ) -> str:
         """Authenticate and return the authenticated sender ID."""
-        sender_id = sender_id or header(headers, "X-LCP-Sender-Id")
+        header_sender = header(headers, "X-LCP-Sender-Id")
+        if sender_id and header_sender and sender_id != header_sender:
+            raise AuthenticationError("Sender header does not match the envelope", "LCP-002")
+        sender_id = sender_id or header_sender
         authorization = header(headers, "Authorization") or ""
         if not sender_id and authorization.lower().startswith("bearer "):
             sender_id = self.store.find_sender_for_api_key(authorization[7:].strip())
@@ -75,7 +107,7 @@ class Authenticator:
         if not self.config.require_auth:
             return sender_id
 
-        credential = self.store.get_credential(sender_id)
+        credential = self.principal(sender_id)
         if not credential:
             raise AuthenticationError("Unknown sender", "LCP-002")
 
@@ -112,8 +144,30 @@ class Authenticator:
             ):
                 raise AuthenticationError("Invalid HMAC signature", "LCP-012")
 
+        if required_scope and not self.has_scope(sender_id, required_scope):
+            raise AuthenticationError("Sender is not authorized for this operation", "LCP-002")
         return sender_id
 
+    def has_scope(self, sender_id: str, required_scope: str) -> bool:
+        scopes = self.scopes_for(sender_id)
+        return "*" in scopes or required_scope in scopes or "platform:admin" in scopes
+
     def secret_for(self, sender_id: str) -> str | None:
-        credential = self.store.get_credential(sender_id)
-        return credential["hmac_secret"] if credential else None
+        credential = self.principal(sender_id)
+        return str(credential["hmac_secret"]) if credential and credential.get("hmac_secret") else None
+
+    def tenant_for(self, sender_id: str) -> str | None:
+        principal = self.principal(sender_id)
+        return str(principal["tenant_id"]) if principal and principal.get("tenant_id") else None
+
+    def scopes_for(self, sender_id: str) -> set[str]:
+        principal = self.principal(sender_id)
+        if not principal:
+            return set()
+        try:
+            decoded = json.loads(str(principal.get("scopes_json", "[]")))
+        except (TypeError, ValueError):
+            return set()
+        if not isinstance(decoded, list) or not all(isinstance(scope, str) for scope in decoded):
+            return set()
+        return set(decoded)

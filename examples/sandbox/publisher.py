@@ -15,12 +15,17 @@ message["id"] = str(uuid4())
 message["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 message["idempotency_key"] = f"sandbox-publisher-{uuid4().hex}"
 message["test"] = True
+message["receiver_id"] = "sandbox_platform"
 lead["lcp"]["payload"]["lead_id"] = f"sandbox-lead-{uuid4().hex[:8]}"
 body = json.dumps(lead).encode()
 request = Request(
     "http://localhost:8080/v1/lcp/leads",
     data=body,
-    headers={"Content-Type": "application/json", "X-LCP-Test": "true"},
+    headers={
+        "Content-Type": "application/json",
+        "X-LCP-Test": "true",
+        "X-LCP-Idempotency-Key": message["idempotency_key"],
+    },
     method="POST",
 )
 with urlopen(request, timeout=10) as response:

@@ -1,0 +1,80 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lcp-platform-api
+spec:
+  podSelector:
+    matchLabels:
+      app: lcp-platform-api
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        # Replace with the namespace/labels of the approved ingress controller.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        # Replace with the database namespace/labels.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        # Replace with an approved egress gateway or buyer network policy.
+        - namespaceSelector:
+            matchLabels:
+              lcp-egress: approved
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        # DNS is required for webhook resolution; restrict the destination
+        # according to the cluster's DNS policy.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lcp-platform-worker-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: lcp-platform-worker
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              lcp-egress: approved
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

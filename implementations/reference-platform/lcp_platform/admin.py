@@ -23,9 +23,17 @@ def main() -> None:
     credential_sub = credential.add_subparsers(dest="credential_command", required=True)
     add_credential = credential_sub.add_parser("upsert")
     add_credential.add_argument("--sender-id", required=True)
+    add_credential.add_argument("--tenant-id", default="default")
+    add_credential.add_argument("--scope", action="append", dest="scopes")
     add_credential.add_argument("--hmac-secret")
     add_credential.add_argument("--previous-hmac-secret")
     add_credential.add_argument("--api-key")
+
+    privacy = commands.add_parser("privacy", help="Perform controlled privacy operations")
+    privacy_sub = privacy.add_subparsers(dest="privacy_command", required=True)
+    erase_lead = privacy_sub.add_parser("erase-lead")
+    erase_lead.add_argument("--lead-id", required=True)
+    erase_lead.add_argument("--actor-id", default="operator")
 
     offer = commands.add_parser("offer", help="Manage buyer offers")
     offer_sub = offer.add_subparsers(dest="offer_command", required=True)
@@ -46,11 +54,17 @@ def main() -> None:
                 raise SystemExit("Provide --hmac-secret, LCP_ADMIN_HMAC_SECRET, or --api-key")
             platform.upsert_credential(
                 args.sender_id,
+                tenant_id=args.tenant_id,
+                scopes=args.scopes or ["*"],
                 hmac_secret=hmac_secret,
                 previous_hmac_secret=args.previous_hmac_secret,
                 api_key=args.api_key,
             )
             print(f"Upserted credential for {args.sender_id}")
+        elif args.command == "privacy":
+            if args.privacy_command == "erase-lead":
+                platform.erase_lead(args.lead_id, actor_id=args.actor_id)
+                print(f"Erased lead {args.lead_id}")
         elif args.command == "offer":
             with args.file.open(encoding="utf-8") as handle:
                 offer_data = json.load(handle)

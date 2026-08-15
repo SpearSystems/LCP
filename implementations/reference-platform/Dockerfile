@@ -15,8 +15,12 @@ COPY examples/sandbox /app/examples/sandbox
 COPY implementations/reference-platform /app/implementations/reference-platform
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -e /app/implementations/reference-platform \
-    && mkdir -p /app/data
+    && python -m pip install --no-cache-dir -e '/app/implementations/reference-platform[production]' \
+    && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin lcp \
+    && mkdir -p /app/data \
+    && chown -R lcp:lcp /app/data /app/implementations
+
+USER lcp
 
 EXPOSE 8080
 

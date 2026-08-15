@@ -17,7 +17,7 @@ appearance, race, caste, color, religion, or sexual identity and orientation.
 ## Enforcement
 
 Violations of the code of conduct can be reported via the contact path
-defined in [SECURITY.md](governance/SECURITY.md). All reports will be
+defined in [SECURITY.md](SECURITY.md). All reports will be
 reviewed and addressed with discretion.
 
 The full text of the Contributor Covenant v2.1 is available at

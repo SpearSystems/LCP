@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test dependencies
-        run: python -m pip install jsonschema referencing httpx
+        run: python -m pip install jsonschema referencing httpx cryptography
       - name: Run conformance vectors
         run: python test-vectors/conformance.py
       - name: Run SDK tests

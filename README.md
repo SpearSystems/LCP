@@ -170,7 +170,7 @@ The platform's bid endpoint is documented as `POST /v1/lcp/bids` in the [OpenAPI
 
 ### Signature verification
 
-For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. The reference profile signs `<timestamp>\\n<idempotency-key>\\n<raw-request-body>` with HMAC-SHA256. See [the implementation decisions](docs/IMPLEMENTATION-DECISIONS.md) for the exact signing profile.
+For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. The reference profile signs `<timestamp>\n<idempotency-key>\n<raw-request-body>` with HMAC-SHA256. See [the implementation decisions](docs/IMPLEMENTATION-DECISIONS.md) for the exact signing profile.
 
 Illustrative verification logic:
 
@@ -190,8 +190,8 @@ if not timestamp or not idempotency_key:
 if not signature:
     return "Unauthorized", 401
 
-# Sign: <timestamp>\\n<idempotency-key>\\n<raw-request-body>.
-signing_input = f"{timestamp}\\n{idempotency_key}\\n".encode() + body
+# Sign: <timestamp>\n<idempotency-key>\n<raw-request-body>.
+signing_input = f"{timestamp}\n{idempotency_key}\n".encode() + body
 expected = hmac.new(
     HMAC_SECRET.encode(), signing_input, hashlib.sha256
 ).hexdigest()
@@ -261,7 +261,7 @@ Publisher → LCP platform
                  └─ deliver the post and lifecycle events
 ```
 
-The [reference platform](implementations/reference-platform/) includes a persistent SQLite-backed gateway/router, offer matching, ping/bid/post orchestration, signed webhook retries, an admin CLI, and a WSGI entry point. It is intended as a production-oriented foundation; operators must still provide deployment hardening, secret management, backups, monitoring, and an appropriate production database for scale.
+The [reference platform](implementations/reference-platform/) includes a persistent SQLite/Postgres gateway/router, offer matching, durable routing and delivery jobs, signed webhook retries, tenant-scoped credentials, application-level AES-GCM envelope encryption, controlled lead erasure, an admin CLI, and a WSGI entry point. It is a production-oriented foundation, not a certification: operators must still provide TLS/WAF, KMS/HSM operations, backups and restore drills, monitoring, retention/legal controls, and an appropriate production database/queue profile for scale.
 
 ## Platform operator
 
@@ -277,7 +277,7 @@ A platform operator typically needs to provide:
 - Capability, schema, and offer discovery
 - CRM, dialer, and conversion-event integrations
 
-The reference MCP server is a stateless adapter that calls an existing LCP-compatible REST API. The [reference platform](implementations/reference-platform/) is the runnable HTTP/router implementation. Start with the [HTTP API contract](api/lcp-openapi.yaml) and [implementation decisions](docs/IMPLEMENTATION-DECISIONS.md).
+The reference MCP server is a stateless adapter that calls an existing LCP-compatible REST API. The [reference platform](implementations/reference-platform/) is the runnable HTTP/router implementation; the [security architecture](docs/SECURITY-ARCHITECTURE.md), [threat model](docs/THREAT-MODEL.md), and [deployment guide](docs/DEPLOYMENT.md) define the hardening boundary. Start with the [HTTP API contract](api/lcp-openapi.yaml) and [implementation decisions](docs/IMPLEMENTATION-DECISIONS.md).
 
 ## Quickstart
 
@@ -292,6 +292,9 @@ python3 test-vectors/conformance.py --verbose
 
 # Run the local reference platform (after installing it).
 python3 -m pip install -e ./implementations/reference-platform
+export LCP_SCHEMA_DIR="$PWD/schemas"
+# Generate once, store securely, and reuse for this database.
+export LCP_PII_ENCRYPTION_KEY="<persisted-urlsafe-base64-32-byte-key>"
 lcp-platform
 ```
 
@@ -327,6 +330,13 @@ SPEC.md          ── Canonical protocol specification
 - [Implementation decisions](docs/IMPLEMENTATION-DECISIONS.md)
 - [Python SDK](implementations/sdk/python/)
 - [Reference platform/router](implementations/reference-platform/)
+- [Production deployment guide](docs/DEPLOYMENT.md)
+- [Security architecture](docs/SECURITY-ARCHITECTURE.md)
+- [Threat model](docs/THREAT-MODEL.md)
+- [Security profiles](docs/SECURITY-PROFILES.md)
+- [Privacy and data governance](docs/PRIVACY-DATA-GOVERNANCE.md)
+- [Operations runbook](docs/OPERATIONS.md)
+- [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)
 - [Reference MCP adapter](implementations/mcp-server/)
 - [Security policy](governance/SECURITY.md)

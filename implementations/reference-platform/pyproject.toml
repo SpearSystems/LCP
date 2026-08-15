@@ -8,7 +8,12 @@ dependencies = [
     "httpx>=0.27.0",
     "jsonschema>=4.20.0",
     "referencing>=0.35.0",
+    "cryptography>=42.0.0",
 ]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+production = ["gunicorn>=23.0", "psycopg[binary]>=3.2"]
 
 [project.scripts]
 lcp-platform = "lcp_platform.server:main"

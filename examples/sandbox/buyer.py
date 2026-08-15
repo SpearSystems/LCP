@@ -11,7 +11,13 @@ from uuid import uuid4
 PLATFORM_URL = os.environ.get("LCP_PLATFORM_URL", "http://lcp-platform-sandbox:8080")
 
 
-def envelope(message_type: str, receiver_id: str, payload: dict) -> dict:
+def envelope(
+    message_type: str,
+    receiver_id: str,
+    payload: dict,
+    *,
+    correlation_id: str | None = None,
+) -> dict:
     message_id = str(uuid4())
     return {
         "lcp": {
@@ -22,7 +28,7 @@ def envelope(message_type: str, receiver_id: str, payload: dict) -> dict:
                 "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "sender_id": "buyer_sandbox",
                 "receiver_id": receiver_id,
-                "correlation_id": None,
+                "correlation_id": correlation_id,
                 "idempotency_key": f"buyer-sandbox-{message_type}-{message_id}",
                 "test": True,
             },
@@ -49,12 +55,17 @@ class BuyerHandler(BaseHTTPRequestHandler):
                     "estimated_contact_seconds": 45,
                     "buyer_reference": "sandbox-buyer",
                 },
+                correlation_id=message["lcp"]["message"]["id"],
             )
             body = json.dumps(bid).encode()
             request = Request(
                 f"{PLATFORM_URL}/v1/lcp/bids",
                 data=body,
-                headers={"Content-Type": "application/json", "X-LCP-Test": "true"},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-LCP-Test": "true",
+                    "X-LCP-Idempotency-Key": bid["lcp"]["message"]["idempotency_key"],
+                },
                 method="POST",
             )
             with urlopen(request, timeout=10) as response:

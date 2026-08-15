@@ -11,7 +11,7 @@ hardening.
 
 ## Components
 
-- SQLite persistence by default; replaceable through the `Store` boundary.
+- SQLite persistence for local/single-node use and a Postgres backend for multi-node production; replaceable through the `Store` boundary.
 - HTTP intake for `lead`, `call`, and `bid` messages.
 - JSON Schema and strict ping-safe validation.
 - Bearer API-key and HMAC authentication.
@@ -19,7 +19,7 @@ hardening.
 - At-least-once buyer webhook delivery.
 - Standalone delivery worker for multi-process deployments.
 - WSGI entry point for a production HTTP process manager.
-- Admin CLI for credentials and offers.
+- Admin CLI for credentials, offers, and controlled lead erasure.
 
 See [the implementation decisions](../../docs/IMPLEMENTATION-DECISIONS.md) for
 matching, signing, retry, and sandbox behavior.
@@ -29,25 +29,39 @@ matching, signing, retry, and sandbox behavior.
 From the repository root:
 
 ```bash
+# Local/single-node profile.
 python3 -m pip install -e implementations/reference-platform
 export LCP_SCHEMA_DIR="$PWD/schemas"
 export LCP_DATABASE_PATH="$PWD/data/lcp.sqlite3"
+# Generate once, store securely, and reuse for this database:
+# python3 -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+export LCP_PII_ENCRYPTION_KEY="<persisted-urlsafe-base64-32-byte-key>"
+
+# Production profile.
+python3 -m pip install -e 'implementations/reference-platform[production]'
+export LCP_DATABASE_URL='postgresql://lcp_app:<password>@postgres.internal:5432/lcp?sslmode=verify-full'
+export LCP_PII_ENCRYPTION_KEY='<urlsafe-base64-32-byte-key>'
 ```
 
-The package targets Python 3.10+.
+The package targets Python 3.10+. The `[production]` extra adds Gunicorn and
+Psycopg for the Postgres/WSGI deployment profile.
 
 ## Configure credentials and offers
 
 Do not put production credentials in source control. For local setup, add a
-publisher and buyer credential:
+publisher and buyer credential with least-privilege scopes:
 
 ```bash
 lcp-platform-admin credential upsert \
   --sender-id publisher_001 \
+  --tenant-id publisher_tenant \
+  --scope lead:submit --scope lead:read \
   --hmac-secret publisher-secret
 
 lcp-platform-admin credential upsert \
   --sender-id buyer_001 \
+  --tenant-id buyer_tenant \
+  --scope bid:submit --scope lead:read \
   --hmac-secret buyer-secret
 ```
 
@@ -77,6 +91,9 @@ Validate and store it:
 
 ```bash
 lcp-platform-admin offer upsert --file offer.json
+
+# Controlled privacy operation; verify the legal request and retain the audit record.
+lcp-platform-admin privacy erase-lead --lead-id lead_abc123 --actor-id privacy_operator
 ```
 
 Offer management is intentionally an operator/admin concern. The public LCP
@@ -89,6 +106,10 @@ together:
 
 ```bash
 export LCP_REQUIRE_AUTH=true
+# Keep this key in a secret manager for any non-test deployment.
+# Generate once, store securely, and reuse for this database:
+# python3 -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+export LCP_PII_ENCRYPTION_KEY="<persisted-urlsafe-base64-32-byte-key>"
 lcp-platform
 ```
 
@@ -109,10 +130,17 @@ WSGI/HTTP application processes  ←→  shared database
 Delivery worker process
 ```
 
-The WSGI entry point is `lcp_platform.wsgi:application`. Run
-`lcp-platform-worker` as a separate supervised process. Use a production WSGI
-server/process manager and place the application behind TLS; the included
-threaded server is intended for local operation and smoke tests.
+The WSGI entry point is `lcp_platform.wsgi:application`. With the
+`[production]` extra, a typical process command is:
+
+```bash
+gunicorn --bind 0.0.0.0:8080 --workers 3 --threads 4 \
+  --access-logfile - lcp_platform.wsgi:application
+```
+
+Run `lcp-platform-worker` as a separate supervised process. Place the
+application behind TLS; the included threaded server is intended for local
+operation and smoke tests.
 
 SQLite is appropriate for a single-node deployment or controlled starting
 point. Use a compatible production store implementation when operating at
@@ -126,11 +154,29 @@ multiple nodes or high throughput.
 | `POST` | `/v1/lcp/calls` | Publisher call intake |
 | `POST` | `/v1/lcp/bids` | Buyer bid submission |
 | `GET` | `/v1/lcp/leads/{lead_id}` | Lead status and lifecycle |
+| `GET` | `/health/live` | Unauthenticated process liveness |
+| `GET` | `/health/ready` | Database-backed readiness |
 | `GET` | `/v1/lcp/capabilities` | Capability discovery |
 | `GET` | `/v1/lcp/offers` | Active offer discovery |
 | `GET` | `/v1/lcp/schemas/{name}` | Schema discovery |
 
 The complete transport contract is [api/lcp-openapi.yaml](../../api/lcp-openapi.yaml).
+
+## Tenant and credential model
+
+Every sender has a tenant ID and scopes. Examples include `lead:submit`,
+`lead:read`, `bid:submit`, `offer:read`, and `platform:admin`. Lead status is
+only visible to the submitting sender, an authorized buyer that received the
+lead, or a platform administrator. Offers are routed within the configured
+`LCP_ROUTING_TENANT_ID` and are not writable through participant endpoints.
+
+Production credentials should be mounted from a secret manager using
+`LCP_SECRETS_FILE`; the database-backed credential path is intended for local
+administration. Production startup also requires `LCP_PII_ENCRYPTION_KEY`, a
+URL-safe base64 encoding of a random 32-byte AES-GCM key. Persisted lead,
+ping, bid, post, and event envelopes are encrypted and authenticated before
+being written to SQLite or Postgres. Store that key in a KMS/HSM-backed secret
+manager and plan an explicit re-encryption migration before rotating it.
 
 ## Authentication
 

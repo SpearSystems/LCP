@@ -4,8 +4,11 @@
 > analysis have been addressed (OpenAPI spec, CODE_OF_CONDUCT, CHANGELOG,
 > MAINTAINERS, ADOPTERS, GitHub templates, AI contribution policy, trust
 > model, bid message type, vertical schemas, platform integration guide).
-> This file is kept for provenance. Lower-priority items are tracked in
-> SPEC.md §14 deferred items tables.
+> This file is kept for provenance. It is a historical snapshot, not a
+> current gap list. Subsequent work added the OpenAPI contract, CHANGELOG,
+> governance files, Docker sandbox, Python SDK, and reference platform.
+> The hosted conformance service and other lower-priority items remain tracked
+> in SPEC.md §14 deferred-item tables.
 
 **Date:** 2026-08-15
 **Purpose:** Patterns and features LCP should borrow from LEX and MCP spec repos before publishing to GitHub.
@@ -104,8 +107,8 @@ LCP is structurally solid — spec, schemas, test vectors, conformance runner, M
 
 ### 13. Sandbox / conformance testing endpoint
 **Source:** LEX defines a sandbox endpoint spec (`sandbox.lexstandard.org`) with deterministic test behaviors and a `/conformance/run` endpoint that issues certification tokens.
-**LCP status:** Conformance is a local Python runner (`test-vectors/conformance.py`). No hosted sandbox.
-**Recommendation:** A hosted sandbox is a v1.1+ feature. For v1.0, document in the README that the conformance runner is the test path. Consider a Docker-based self-hosted sandbox later.
+**Historical LCP status:** At the time of this analysis, conformance was only a local Python runner (`test-vectors/conformance.py`). The repository now also includes a Docker-based self-hosted sandbox; a hosted conformance service remains a v1.1+ consideration.
+**Historical recommendation:** Keep the local runner and self-hosted Docker sandbox as the v1 path; consider hosted certification infrastructure later.
 **Priority:** LOW — aspirational.
 
 ### 14. Batch endpoint

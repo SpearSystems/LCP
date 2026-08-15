@@ -20,7 +20,16 @@ def application(environ: dict, start_response):
     method = environ.get("REQUEST_METHOD", "GET")
     path = environ.get("PATH_INFO", "/")
     query = environ.get("QUERY_STRING", "")
-    length = int(environ.get("CONTENT_LENGTH") or 0)
+    raw_length = environ.get("CONTENT_LENGTH")
+    try:
+        length = int(raw_length) if raw_length else 0
+    except ValueError:
+        length = -1
+    if length < 0 or length > _platform.config.max_body_bytes:
+        payload = {"errors": [{"code": "LCP-001", "message": "Request body is too large"}]}
+        encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        start_response("413 ERROR", [("Content-Type", "application/json"), ("Content-Length", str(len(encoded)))])
+        return [encoded]
     body = environ["wsgi.input"].read(length) if length else b""
     headers = {
         key[5:].replace("_", "-"): value

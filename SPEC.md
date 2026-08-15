@@ -501,6 +501,7 @@ and `ERASURE_REQUEST` without schema changes.
 | LCP-010 | INVALID_TERRITORY | 422 |
 | LCP-011 | RATE_LIMITED | 429 |
 | LCP-012 | SIGNATURE_INVALID | 401 |
+| LCP-013 | TEST_TRAFFIC_POLICY | 400 |
 | LCP-100 | VALIDATION_ERROR | 400 |
 | LCP-500 | INTERNAL_ERROR | 500 |
 
@@ -528,7 +529,10 @@ failure modes (identity vs. replay protection) and now have distinct
 codes.
 
 `LCP-011 RATE_LIMITED` (429) pairs with the per-sender rate limits
-defined in §9.
+defined in §9. `LCP-013 TEST_TRAFFIC_POLICY` is used by the HTTP
+reference profile when the `test` envelope field and `X-LCP-Test` header
+disagree, when a sandbox receives non-test traffic, or when a production
+endpoint receives test traffic.
 
 ## 6. Versioning & extensibility
 
@@ -667,7 +671,7 @@ For HTTP HMAC authentication, the canonical signing input is the exact
 UTF-8 byte sequence:
 
 ```text
-<timestamp>\\n<idempotency-key>\\n<raw-request-body>
+<timestamp>\n<idempotency-key>\n<raw-request-body>
 ```
 
 The signature is the lowercase hexadecimal HMAC-SHA256 digest of that

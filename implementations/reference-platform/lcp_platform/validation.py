@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
@@ -37,15 +37,18 @@ class SchemaValidator:
         registry = Registry().with_resource(
             uri="https://lcp.dev/schemas/core.json", resource=resource
         ).with_resource(uri="core.json", resource=resource)
+        format_checker = FormatChecker()
         self._validators = {
-            name: Draft202012Validator(self._load(name), registry=registry)
+            name: Draft202012Validator(
+                self._load(name), registry=registry, format_checker=format_checker
+            )
             for name in MESSAGE_TYPES
         }
         self._envelope = Draft202012Validator(
-            self._load("envelope"), registry=registry
+            self._load("envelope"), registry=registry, format_checker=format_checker
         )
         self._offer = Draft202012Validator(
-            self._load("offer"), registry=registry
+            self._load("offer"), registry=registry, format_checker=format_checker
         )
 
     def _load(self, name: str) -> dict[str, Any]:

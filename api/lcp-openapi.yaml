@@ -41,6 +41,44 @@ tags:
 - name: Bids
   description: Bid submission in response to pings
 paths:
+  /health/live:
+    get:
+      tags:
+      - Capabilities
+      summary: Process liveness
+      operationId: getLiveness
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /health/ready:
+    get:
+      tags:
+      - Capabilities
+      summary: Database-backed readiness
+      operationId: getReadiness
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: ready
+        '503':
+          description: Service is not ready
   /leads:
     post:
       tags:
@@ -801,7 +839,7 @@ components:
       type: apiKey
       in: header
       name: X-LCP-Signature
-      description: HMAC-SHA256 signature over <timestamp>\\n<idempotency-key>\\n<raw-request-body>. Requires X-LCP-Signature and X-LCP-Timestamp; mutating requests also require X-LCP-Idempotency-Key.
+      description: HMAC-SHA256 signature over <timestamp>\n<idempotency-key>\n<raw-request-body>. Requires X-LCP-Signature and X-LCP-Timestamp; mutating requests also require X-LCP-Idempotency-Key.
 security:
 - BearerAuth: []
 - HMACAuth: []

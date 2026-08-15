@@ -23,6 +23,10 @@ usable foundation for a real deployment. It provides:
 - Capability, offer, lead-status, and schema discovery.
 - A Docker/local sandbox using the same application and validation path as
   the live deployment.
+- Durable routing jobs, worker leases, audit records, and a controlled lead
+  erasure operation.
+- AES-GCM application-level encryption for persisted envelopes outside test
+  mode.
 
 It remains an implementation rather than a hosted LCP service. Operators are
 responsible for TLS termination, secret management, database backups,
@@ -146,6 +150,8 @@ semantics**:
 - The reference retry schedule is five attempts with delays of 1, 5, 30, 120,
   and 600 seconds.
 - Every delivery uses a stable LCP message ID and idempotency key.
+- Workers claim deliveries with a lease so multiple worker replicas do not
+  process the same job concurrently; expired leases are reclaimable.
 - Operators must retain delivery attempts and the last error for operations
   and dispute review.
 - A failed final delivery is recorded as a failed delivery; it is not silently
@@ -182,7 +188,19 @@ routing logic.
 MCP remains a thin adapter and should use the same signing profile as the SDK
 and reference platform.
 
-## 9. Future changes
+## 9. Production hardening profile
+
+The production deployment profile uses Postgres, external secret injection,
+AES-GCM envelope encryption, scoped tenant credentials, resource
+authorization, HTTPS-only webhooks, private-destination/egress checks, leased
+routing and delivery workers, health probes, and a WSGI process manager.
+SQLite and database-stored secrets remain local/reference options.
+
+The reference platform does not claim a certification. Operators should map
+their deployment to OWASP ASVS Level 2 and a NIST/ISO-style control framework,
+then obtain independent security and privacy review for regulated operation.
+
+## 10. Future changes
 
 Future maintainers should revisit these decisions through a documented
 proposal before changing interoperable behavior:
@@ -192,8 +210,9 @@ proposal before changing interoperable behavior:
 - Shared-lead routing and fallback buyers.
 - Webhook subscription management.
 - Delivery receipts beyond transport acknowledgement.
-- Key-management service integration and mTLS.
-- Postgres or another production database backend.
+- Deeper key-management service/HSM integration and mandatory mTLS profiles.
+- Additional production database migration tooling and queue backends.
+- Fully managed DSAR/consent-withdrawal propagation across downstream buyers.
 - Hosted conformance sandbox and certification workflow.
 - Formal namespaced buyer criteria in `extensions`.
 

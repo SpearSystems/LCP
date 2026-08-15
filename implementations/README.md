@@ -13,12 +13,15 @@ See [sdk/python/README.md](sdk/python/README.md).
 
 ## reference-platform
 
-Production-oriented HTTP gateway/router with SQLite persistence, offer
-matching, ping/bid/post orchestration, signed webhook retries, an admin CLI,
-and a Docker sandbox. It is a foundation for an operator's deployment, not a
-hosted exchange.
+Production-oriented HTTP gateway/router with SQLite/Postgres persistence,
+offer matching, durable routing and delivery jobs, signed webhook retries,
+scoped credentials, AES-GCM envelope encryption, controlled lead erasure,
+health endpoints, an admin CLI, and a Docker sandbox. It is a foundation for
+an operator's deployment, not a hosted exchange or security certification.
 
-See [reference-platform/README.md](reference-platform/README.md).
+See [reference-platform/README.md](reference-platform/README.md), the
+[deployment guide](../docs/DEPLOYMENT.md), and the
+[security architecture](../docs/SECURITY-ARCHITECTURE.md).
 
 ## mcp-server
 

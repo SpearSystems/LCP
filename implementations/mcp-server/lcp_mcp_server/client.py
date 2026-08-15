@@ -49,7 +49,7 @@ class LCPClient:
             body = body or b""
             timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             key = idempotency_key or ""
-            signing_input = f"{timestamp}\\n{key}\\n".encode() + body
+            signing_input = f"{timestamp}\n{key}\n".encode() + body
             sig = hmac.new(
                 self.hmac_secret.encode(), signing_input, hashlib.sha256
             ).hexdigest()

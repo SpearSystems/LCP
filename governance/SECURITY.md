@@ -25,6 +25,11 @@ In scope:
   PII leakage or malformed payloads.
 - The reference MCP server (`implementations/mcp-server/`) — code
   vulnerabilities (auth bypass, injection, SSRF).
+- The reference platform (`implementations/reference-platform/`) — code,
+  storage, authentication, authorization, encryption, webhook/egress, and
+  tenant-isolation vulnerabilities.
+- Kubernetes/Docker deployment examples — insecure defaults that could expose
+  production credentials or consumer data.
 - The conformance runner (`test-vectors/conformance.py`) — logic flaws that
   produce false pass results.
 
@@ -41,6 +46,11 @@ LCP's core security property is the ping/post PII split: ping messages
 carry no PII, post messages carry full PII. A vulnerability that allows
 PII to leak into a ping payload is **critical severity** — the ping is
 explicitly designed to be safe to share with unvetted buyers.
+
+For the reference platform, reports involving plaintext persisted PII,
+application-encryption bypass, cross-tenant access, forged webhooks, SSRF,
+credential exposure, or erasure bypass should include the affected deployment
+profile and release version, but must not include real consumer data.
 
 The `phone_hash` field uses per-pair HMAC-SHA256 (SPEC.md §9). A
 vulnerability that enables reversal of phone_hash without the shared

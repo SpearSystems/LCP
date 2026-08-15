@@ -1,0 +1,19 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lcp-platform-api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: lcp-platform-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lcp-platform-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: lcp-platform-worker

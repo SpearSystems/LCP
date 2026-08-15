@@ -12,6 +12,18 @@
   install, configure, operate, and deploy the persistent LCP router.
 - [Sandbox](../examples/sandbox/README.md) — end-to-end synthetic
   publisher/buyer test using the same platform code path.
+- [Security architecture](SECURITY-ARCHITECTURE.md) — trust boundaries,
+  security profiles, and defense-in-depth controls.
+- [Threat model](THREAT-MODEL.md) — assets, actors, abuse cases, and
+  residual risks.
+- [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) — residency,
+  retention, erasure, and PII operations.
+- [Production deployment](DEPLOYMENT.md) — Postgres, Kubernetes, scaling,
+  and recovery targets.
+- [Security profiles](SECURITY-PROFILES.md) — Baseline, Enterprise, and
+  Regulated deployment expectations.
+- [Operations runbook](OPERATIONS.md) — health, metrics, deployment, privacy
+  operations, and incident practices.
 
 ## Historical artifacts (kept for provenance)
 
