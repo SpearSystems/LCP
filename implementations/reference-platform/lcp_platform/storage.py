@@ -12,6 +12,7 @@ from threading import RLock
 from typing import Any, Iterator
 from uuid import uuid4
 
+from .api_keys import hash_api_key, verify_api_key
 from .crypto import EnvelopeCipher
 
 
@@ -71,6 +72,7 @@ class Store:
                     hmac_secret TEXT,
                     previous_hmac_secret TEXT,
                     api_key_hash TEXT,
+                    api_key_salt TEXT,
                     active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -276,6 +278,8 @@ class Store:
             db.execute("ALTER TABLE credentials ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
         if "scopes_json" not in columns:
             db.execute("ALTER TABLE credentials ADD COLUMN scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'")
+        if "api_key_salt" not in columns:
+            db.execute("ALTER TABLE credentials ADD COLUMN api_key_salt TEXT")
         lead_columns = {
             row[1] for row in db.execute("PRAGMA table_info(leads)").fetchall()
         }
@@ -316,20 +320,23 @@ class Store:
         active: bool = True,
     ) -> None:
         timestamp = now_iso()
-        api_key_hash = hashlib.sha256(api_key.encode()).hexdigest() if api_key else None
+        api_key_hash = api_key_salt = None
+        if api_key:
+            api_key_salt, api_key_hash = hash_api_key(api_key)
         with self.transaction() as db:
             db.execute(
                 """
                 INSERT INTO credentials
                     (sender_id, tenant_id, scopes_json, hmac_secret, previous_hmac_secret, api_key_hash,
-                     active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     api_key_salt, active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(sender_id) DO UPDATE SET
                     tenant_id=excluded.tenant_id,
                     scopes_json=excluded.scopes_json,
                     hmac_secret=excluded.hmac_secret,
                     previous_hmac_secret=excluded.previous_hmac_secret,
                     api_key_hash=excluded.api_key_hash,
+                    api_key_salt=excluded.api_key_salt,
                     active=excluded.active,
                     updated_at=excluded.updated_at
                 """,
@@ -340,6 +347,7 @@ class Store:
                     hmac_secret,
                     previous_hmac_secret,
                     api_key_hash,
+                    api_key_salt,
                     int(active),
                     timestamp,
                     timestamp,
@@ -354,13 +362,18 @@ class Store:
             ).fetchone()
 
     def find_sender_for_api_key(self, api_key: str) -> str | None:
-        digest = hashlib.sha256(api_key.encode()).hexdigest()
+        # Every credential has its own random salt, so the digest cannot be
+        # matched with an indexed equality query; the credentials table is
+        # small in the reference platform and each candidate is verified with
+        # a constant-time comparison.
         with self._lock:
-            row = self._connection.execute(
-                "SELECT sender_id FROM credentials WHERE api_key_hash = ? AND active = 1",
-                (digest,),
-            ).fetchone()
-        return row["sender_id"] if row else None
+            rows = self._connection.execute(
+                "SELECT sender_id, api_key_hash, api_key_salt FROM credentials WHERE active = 1"
+            ).fetchall()
+        for row in rows:
+            if verify_api_key(api_key, row["api_key_salt"], row["api_key_hash"]):
+                return row["sender_id"]
+        return None
 
     # ─── Audit ──────────────────────────────────────────────────────────────
 

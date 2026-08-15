@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 
+from .api_keys import hash_api_key, verify_api_key
 from .config import PlatformConfig
 from .secrets import FileSecretProvider
 from .storage import Store
@@ -87,14 +88,15 @@ class Authenticator:
                 if field in external:
                     principal[field] = external[field]
             if external.get("api_key"):
-                principal["api_key_hash"] = hashlib.sha256(
-                    str(external["api_key"]).encode()
-                ).hexdigest()
+                principal["api_key_salt"], principal["api_key_hash"] = hash_api_key(
+                    str(external["api_key"])
+                )
             if "scopes" in external:
                 principal["scopes_json"] = json.dumps(external["scopes"])
             principal.setdefault("hmac_secret", None)
             principal.setdefault("previous_hmac_secret", None)
             principal.setdefault("api_key_hash", None)
+            principal.setdefault("api_key_salt", None)
         return principal
 
     def authenticate(
@@ -127,9 +129,10 @@ class Authenticator:
 
         if authorization.lower().startswith("bearer "):
             presented = authorization[7:].strip()
-            digest = hashlib.sha256(presented.encode()).hexdigest()
-            if not credential["api_key_hash"] or not hmac.compare_digest(
-                digest, credential["api_key_hash"]
+            salt = credential.get("api_key_salt")
+            stored = credential.get("api_key_hash")
+            if not verify_api_key(
+                presented, str(salt) if salt else None, str(stored) if stored else None
             ):
                 raise AuthenticationError("Invalid bearer credential", "LCP-012")
         else:

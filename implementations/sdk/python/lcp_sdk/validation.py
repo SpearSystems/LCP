@@ -154,11 +154,13 @@ class SchemaValidator:
         vertical = payload.get("vertical")
         if not attributes or not vertical:
             return []
-        vertical_path = self.vertical_root / f"{vertical}.json"
-        if not vertical_path.exists():
+        # Resolve the vertical against the preloaded validator map only. The
+        # vertical name is attacker-controlled and must never be interpolated
+        # into a filesystem path.
+        validator = self._verticals.get(vertical)
+        if validator is None:
             return [f"vertical schema '{vertical}' not found for ping-safe validation"]
-        with vertical_path.open(encoding="utf-8") as handle:
-            schema = json.load(handle)
+        schema = validator.schema
         errors: list[str] = []
         for field_name in attributes:
             definition = schema.get("properties", {}).get(field_name, {})

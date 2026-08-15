@@ -79,6 +79,46 @@ class SDKTests(unittest.TestCase):
                 now=datetime(2026, 8, 15, 10, 10, tzinfo=timezone.utc),
             )
 
+    def _ping_envelope(self, ping_id: str, vertical: str, attributes: dict) -> dict:
+        return build_envelope(
+            "ping",
+            "publisher_001",
+            "platform_001",
+            {
+                "ping_id": ping_id,
+                "lead_reference": "ref_xyz789",
+                "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                "country_code": "AU",
+                "floor_price_cents": 1500,
+                "currency": "AUD",
+                "vertical": vertical,
+                "attributes": attributes,
+            },
+            timestamp="2026-08-15T10:20:00Z",
+            idempotency_key=f"sdk-{ping_id}",
+        )
+
+    def test_ping_vertical_name_is_never_used_as_a_path(self) -> None:
+        """A malicious vertical must not escape the vertical schema directory."""
+        validator = SchemaValidator(ROOT / "schemas")
+        envelope = self._ping_envelope(
+            "ping_traversal_001", "../../../../etc/passwd", {"home_ownership": "owned"}
+        )
+        # Must not raise and must not attempt filesystem access; the vertical is
+        # resolved against the preloaded schema map only.
+        errors = validator.validate_envelope(envelope)
+        self.assertEqual(
+            errors,
+            ["vertical schema '../../../../etc/passwd' not found for ping-safe validation"],
+        )
+
+    def test_ping_vertical_resolves_preloaded_schema(self) -> None:
+        validator = SchemaValidator(ROOT / "schemas")
+        envelope = self._ping_envelope(
+            "ping_safe_001", "mortgage", {"loan_type": "refinance"}
+        )
+        self.assertEqual(validator.validate_envelope(envelope), [])
+
 
 if __name__ == "__main__":
     unittest.main()
