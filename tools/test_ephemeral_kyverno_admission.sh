@@ -11,9 +11,22 @@ CONTEXT="kind-${CLUSTER_NAME}"
 
 mkdir -p "${WORK_DIR}"
 
+dump_diagnostics() {
+  echo '--- Kyverno diagnostics ---' >&2
+  kubectl --context "${CONTEXT}" get pods -A -o wide >&2 || true
+  kubectl --context "${CONTEXT}" get clusterpolicies -o yaml >&2 || true
+  kubectl --context "${CONTEXT}" get events -A --sort-by=.lastTimestamp >&2 || true
+  kubectl --context "${CONTEXT}" -n kyverno logs deployment/kyverno-admission-controller --all-containers --tail=200 >&2 || true
+}
+
 cleanup() {
+  local status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    dump_diagnostics
+  fi
   kind delete cluster --name "${CLUSTER_NAME}" >/dev/null 2>&1 || true
   rm -rf "${WORK_DIR}"
+  exit "${status}"
 }
 trap cleanup EXIT
 
@@ -67,6 +80,7 @@ kubectl --context "${CONTEXT}" get clusterpolicy
 assert_rejected() {
   local pod_name="$1"
   local image="$2"
+  local expected_policy="$3"
   local output_file="${WORK_DIR}/${pod_name}.output"
 
   set +e
@@ -89,21 +103,30 @@ EOF
     exit 1
   fi
 
-  if ! grep -Eiq 'denied|rejected|failed to verify|verification failed' "${output_file}"; then
+  # Do not accept a generic API-server/webhook outage as an admission result.
+  # Kyverno's wording varies by version, so match its stable verification
+  # terms rather than one exact error sentence.
+  if ! grep -Eiq 'denied|rejected|failed to verify|verification failed|signature not found|invalid signature|attestation|no matching (signature|attestation)|does not satisfy' "${output_file}"; then
     cat "${output_file}"
     echo "${pod_name} failed for a reason other than Kyverno image verification" >&2
     exit 1
   fi
 
-  echo "Admission correctly rejected ${pod_name} (${image})"
+  if ! grep -Fq "${expected_policy}" "${output_file}"; then
+    cat "${output_file}"
+    echo "${pod_name} was not rejected by expected policy ${expected_policy}" >&2
+    exit 1
+  fi
+
+  echo "Admission correctly rejected ${pod_name} (${image}) via ${expected_policy}"
   cat "${output_file}"
 }
 
 # These four cases exercise unsigned images, the wrong signing workflow, and
 # missing/untrusted provenance and SBOM attestations through the live webhook.
-assert_rejected unsigned-image ghcr.io/kyverno/test-verify-image:unsigned
-assert_rejected wrong-workflow-image ghcr.io/kyverno/test-verify-image:signed-keyless
-assert_rejected missing-provenance-image ghcr.io/kyverno/test-verify-image:signed-by-someone-else
-assert_rejected missing-sbom-image ghcr.io/kyverno/test-verify-image:signed-by-someone-else
+assert_rejected unsigned-image ghcr.io/kyverno/test-verify-image:unsigned lcp-fixture-signature-policy
+assert_rejected wrong-workflow-image ghcr.io/kyverno/test-verify-image:signed-keyless lcp-fixture-signature-policy
+assert_rejected missing-provenance-image ghcr.io/kyverno/test-verify-image:signed-by-someone-else lcp-fixture-provenance-policy
+assert_rejected missing-sbom-image ghcr.io/kyverno/test-verify-image:signed-by-someone-else lcp-fixture-sbom-policy
 
 echo "Ephemeral Kyverno admission rejection test passed"
