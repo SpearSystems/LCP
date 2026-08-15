@@ -45,7 +45,7 @@ jobs:
         Publish Python packages
         Publish, sign, and attest reference container
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           ref: ${{ inputs.target_sha || github.ref }}
           fetch-depth: 0
@@ -142,7 +142,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
@@ -211,7 +211,7 @@ jobs:
             path: implementations/sdk/swift
             registry: SwiftPM:https://github.com/SpearSystems/LCP.git
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
@@ -300,7 +300,7 @@ jobs:
       actions: read
       id-token: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           ref: ${{ needs.prepare.outputs.release_sha }}
           fetch-depth: 0
