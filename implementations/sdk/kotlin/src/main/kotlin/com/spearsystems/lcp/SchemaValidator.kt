@@ -1,17 +1,17 @@
 package com.spearsystems.lcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.networknt.schema.InputFormat
-import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SchemaLocation
-import com.networknt.schema.SpecVersion.VersionFlag
+import com.networknt.schema.SchemaRegistry
+import com.networknt.schema.SpecificationVersion
 import java.nio.file.Files
 import java.nio.file.Path
+import tools.jackson.databind.ObjectMapper
 
 class LcpSchemaValidator(schemaTexts: Map<String, String>) {
     private val mapper = ObjectMapper()
     private val ids = mutableMapOf<String, String>()
-    private val factory: JsonSchemaFactory
+    private val registry: SchemaRegistry
 
     init {
         val resources = linkedMapOf<String, String>()
@@ -21,15 +21,15 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
             ids[normalize(name)] = id
             ids[normalize(id)] = id
         }
-        factory = JsonSchemaFactory.getInstance(VersionFlag.V202012) { builder ->
-            builder.schemaLoaders { loaders -> loaders.schemas(resources) }
+        registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12) { builder ->
+            builder.schemas(resources)
         }
     }
 
     fun validate(schemaName: String, document: String) {
         val id = ids[normalize(schemaName)] ?: error("Unknown LCP schema: $schemaName")
-        val errors = factory.getSchema(SchemaLocation.of(id)).validate(document, InputFormat.JSON) { executionContext ->
-            executionContext.executionConfig.setFormatAssertionsEnabled(true)
+        val errors = registry.getSchema(SchemaLocation.of(id)).validate(document, InputFormat.JSON) { executionContext ->
+            executionContext.executionConfig { config -> config.formatAssertionsEnabled(true) }
         }
         require(errors.isEmpty()) { "LCP schema validation failed for $schemaName: $errors" }
     }
