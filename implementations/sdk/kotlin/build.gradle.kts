@@ -11,7 +11,7 @@ repositories { mavenCentral() }
 dependencies {
     implementation("com.networknt:json-schema-validator:3.0.6")
     // Jackson 3 (tools.jackson) is used for both the SDK's own envelope/$id
-    // parsing and networknt 3.x. 3.1.5 fixes CVE-2026-54512, CVE-2026-54513,
+    // parsing and networknt 3.x. 3.2.1 fixes CVE-2026-54512, CVE-2026-54513,
     // and CVE-2026-59889 (@JsonView bypass for @JsonUnwrapped containers);
     // the old Jackson 2 pins are gone with the 1.5.9 line.
     implementation("tools.jackson.core:jackson-databind:3.2.1")
