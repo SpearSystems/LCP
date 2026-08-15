@@ -114,6 +114,13 @@ jobs:
               exit 0
             fi
             if [[ "${attempt}" -eq 3 ]]; then
+              # Surface the failing command and diagnostics in the check-run
+              # annotation, which is visible without job-log access.
+              if [[ -f "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" ]]; then
+                head -c 12000 "${RUNNER_TEMP}/lcp-kyverno-admission-diag.log" | while IFS= read -r line; do
+                  echo "::error::${line}"
+                done || true
+              fi
               echo "Ephemeral Kyverno admission test failed after ${attempt} attempts" >&2
               exit 1
             fi
