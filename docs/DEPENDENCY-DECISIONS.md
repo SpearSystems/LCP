@@ -25,6 +25,7 @@ vectors, and the security gate before it is merged.
 | Rust | `getrandom` 0.3 → 0.4 | Verified with cargo test. |
 | Rust | `jsonschema` 0.37 → 0.49 | Verified with cargo test. |
 | Go | `github.com/santhosh-tekuri/jsonschema/v6` 6.0.1 → 6.0.3 | Verified with `go test`. |
+| Go | `golang.org/x/text` 0.14.0 → 0.39.0 (indirect) | Fixes GO-2026-5970 (infinite loop on invalid input). The fixed version requires Go 1.25, so the module's `go` directive moved from 1.22 to 1.25.0; the SDK compatibility job uses the runner toolchain with GOTOOLCHAIN auto. |
 | TypeScript | `typescript` 5.x → 7.0.2 | TypeScript 7 no longer auto-includes `@types/node`; the SDK now declares `"types": ["node"]` in `tsconfig.json`. |
 | TypeScript | `@types/node` 22.x → 26.2.0 | Verified with the TypeScript build and HMAC test vectors. |
 | TypeScript | `ajv` 8.17.1 → ^8.18.0 | Fixes GHSA-2g4f-4pwh-qvx6 (ReDoS via `$data`); verified with `npm test`. |

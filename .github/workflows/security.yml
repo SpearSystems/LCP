@@ -46,6 +46,80 @@ jobs:
           # editables as an audit failure. Vulnerabilities still return nonzero.
           pip-audit --skip-editable
 
+  osv-scan:
+    name: SDK dependency vulnerability scan (OSV)
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned osv-scanner
+        env:
+          OSV_SCANNER_SHA256: edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64" \
+            --output "${RUNNER_TEMP}/osv-scanner"
+          echo "${OSV_SCANNER_SHA256}  ${RUNNER_TEMP}/osv-scanner" | sha256sum --check --strict
+          install -m 0755 "${RUNNER_TEMP}/osv-scanner" "${RUNNER_TEMP}/osv-scanner-bin"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+          osv-scanner version
+      - name: Scan all SDK lockfiles
+        run: |
+          set -euo pipefail
+          set +e
+          osv-scanner scan --recursive --format json --output-file osv-results.json .
+          json_status=$?
+          osv-scanner scan --recursive --format sarif --output-file osv-results.sarif .
+          sarif_status=$?
+          set -e
+          for status in "${json_status}" "${sarif_status}"; do
+            if [[ "${status}" -ge 2 ]]; then
+              echo "osv-scanner failed to complete the scan (exit ${status})" >&2
+              exit "${status}"
+            fi
+          done
+          echo "osv-scanner exit codes: json=${json_status} sarif=${sarif_status} (1 = vulnerabilities found; severity gate below)"
+      - name: Fail on high or critical vulnerabilities
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("osv-results.json")
+          if not path.is_file():
+              raise SystemExit("osv-results.json missing")
+          data = json.loads(path.read_text())
+          gate_failures = []
+          advisory_only = []
+          for result in data.get("results", []):
+              for pkg in result.get("packages", []):
+                  name = (pkg.get("package") or {}).get("name", "?")
+                  version = (pkg.get("package") or {}).get("version", "?")
+                  for vuln in pkg.get("vulnerabilities", []):
+                      sev = ((vuln.get("database_specific") or {}).get("severity") or "UNKNOWN").upper()
+                      item = f"{vuln.get('id')} {name}@{version} severity={sev}"
+                      if sev in ("CRITICAL", "HIGH", "UNKNOWN"):
+                          gate_failures.append(item)
+                      else:
+                          advisory_only.append(item)
+          for item in advisory_only:
+              print(f"advisory (non-gating): {item}")
+          if gate_failures:
+              print("High/critical (or unrated) vulnerabilities found:")
+              for item in gate_failures:
+                  print(f"  {item}")
+              raise SystemExit(1)
+          print("OSV gate passed: no high or critical vulnerabilities")
+          PY
+      - name: Upload OSV SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: osv-results.sarif
+
   source-sbom:
     name: Generate source SBOM
     runs-on: ubuntu-latest
