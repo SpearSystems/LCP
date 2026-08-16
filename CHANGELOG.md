@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Switched Java and Kotlin Maven coordinates to the DNS-controlled `systems.spear` namespace, verified through `spear.systems`
 - Recorded the NuGet `SpearSystems` organization as the `LcpSdk` package and Trusted Publishing owner while retaining `rbeno` as the OIDC token-requesting profile
 - Moved the TypeScript SDK to the controlled `@spear-systems/lcp-sdk` npm scope after auditing the pre-existing `@spearsystems` namespace
 - Updated the npm release job to Node.js 24 with npm caching disabled, meeting npm Trusted Publishing's current OIDC runtime requirements
@@ -37,7 +38,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Hermetic Kyverno admission assurance using a pinned local OCI registry, generated fixture images, ephemeral signing keys, and local provenance/SBOM attestation rejection cases
 - Protected release-record publication and maintainer documentation for GitHub branch rules, OIDC trusted publishers, release environments, and regulated-production approvals
 - Declarative publisher mapping registry with versioned brand/form normalization, allowlisted transforms, OTP-aware quality signals, and PII-free source digests
-- Distinct Kotlin Maven publication coordinate (`com.spearsystems:lcp-sdk-kotlin`) so Java and Kotlin SDKs can be published from the same release without artifact collision
+- Distinct Kotlin Maven publication coordinate (`systems.spear:lcp-sdk-kotlin`) so Java and Kotlin SDKs can be published from the same release without artifact collision
 - Controlled home-services service/subcategory taxonomy and a dedicated motor-vehicle-accident (`mva`) vertical
 - Authenticated attachment upload/download with local AES-GCM storage and a production S3-compatible SSE-KMS adapter, fail-closed ClamAV scanning, immutable residency policy, and opaque storage references
 - Call post delivery with call blocks, signed call outcome events, structured duration/disposition payable rules, and per-offer monthly quota/pacing reports

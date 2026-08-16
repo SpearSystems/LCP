@@ -61,11 +61,11 @@ def registry_checks(version: str) -> tuple[RegistryCheck, ...]:
         # times out, so it is deliberately not used as a release gate.)
         RegistryCheck(
             "Maven Central lcp-sdk",
-            f"https://repo1.maven.org/maven2/com/spearsystems/lcp-sdk/{encoded_version}/lcp-sdk-{encoded_version}.pom",
+            f"https://repo1.maven.org/maven2/systems/spear/lcp-sdk/{encoded_version}/lcp-sdk-{encoded_version}.pom",
         ),
         RegistryCheck(
             "Maven Central lcp-sdk-kotlin",
-            f"https://repo1.maven.org/maven2/com/spearsystems/lcp-sdk-kotlin/{encoded_version}/lcp-sdk-kotlin-{encoded_version}.pom",
+            f"https://repo1.maven.org/maven2/systems/spear/lcp-sdk-kotlin/{encoded_version}/lcp-sdk-kotlin-{encoded_version}.pom",
         ),
         RegistryCheck(
             "crates.io lcp-sdk",

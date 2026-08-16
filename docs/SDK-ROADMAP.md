@@ -190,7 +190,7 @@ SBOM independently of the GitHub UI.
 | PyPI | Python, MCP adapter, reference platform | PyPI Trusted Publishing (GitHub OIDC) |
 | npm | TypeScript | npm trusted publisher plus provenance |
 | NuGet | C#/.NET | NuGet Trusted Publishing (`NuGet/login`) |
-| Maven Central | Java (`com.spearsystems:lcp-sdk`), Kotlin (`com.spearsystems:lcp-sdk-kotlin`) | Central Portal user-token credentials in the protected environment |
+| Maven Central | Java (`systems.spear:lcp-sdk`), Kotlin (`systems.spear:lcp-sdk-kotlin`) | Central Portal user-token credentials in the protected environment; DNS ownership via `spear.systems` |
 | Packagist | PHP | Git tag mirroring; Packagist webhook/token is not stored in CI |
 | crates.io | Rust | crates.io Trusted Publishing (GitHub OIDC) |
 | RubyGems | Ruby | RubyGems Trusted Publishing (GitHub OIDC) |

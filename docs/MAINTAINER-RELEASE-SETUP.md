@@ -104,7 +104,7 @@ identities:
 | npm | Trusted publisher for `@spear-systems/lcp-sdk` | Bind the exact repository and `sdk-release.yml` workflow; retain provenance. |
 | NuGet | Package owner `SpearSystems`; `NUGET_USER` (the `rbeno` profile) consumed by `NuGet/login` | Bind `SpearSystems/LCP`, `sdk-release.yml`, and environment `release` in NuGet Trusted Publishing; do not store a reusable API key. |
 | Maven Central | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Store only as environment secrets; rotate and audit the signing key and Central Portal token. |
-| Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` | Use the distinct `com.spearsystems:lcp-sdk-kotlin` coordinate and protected repository. |
+| Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` | Use the distinct `systems.spear:lcp-sdk-kotlin` coordinate and protected repository; namespace ownership is verified through `spear.systems`. |
 | crates.io | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. Do not use `CARGO_REGISTRY_TOKEN`. |
 | RubyGems | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. |
 | GHCR | `GITHUB_TOKEN` with job-scoped package permission | Keep the image package private or access-controlled until its release policy is reviewed; publish by digest and verify before deployment. |

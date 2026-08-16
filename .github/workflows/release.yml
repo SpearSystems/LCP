@@ -200,10 +200,10 @@ jobs:
             registry: NuGet:LcpSdk
           - name: lcp-sdk-java
             path: implementations/sdk/java
-            registry: Maven:com.spearsystems:lcp-sdk
+            registry: Maven:systems.spear:lcp-sdk
           - name: lcp-sdk-kotlin
             path: implementations/sdk/kotlin
-            registry: Maven:com.spearsystems:lcp-sdk-kotlin
+            registry: Maven:systems.spear:lcp-sdk-kotlin
           - name: lcp-sdk-php
             path: implementations/sdk/php
             registry: Packagist:spearsystems/lcp-sdk

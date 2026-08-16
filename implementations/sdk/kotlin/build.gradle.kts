@@ -3,7 +3,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.spearsystems"
+group = "systems.spear"
 version = "1.0.0"
 
 repositories { mavenCentral() }

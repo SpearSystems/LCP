@@ -68,11 +68,11 @@ evidence, package publication configuration, and release approvals all pass.
       dry-run gate already fails otherwise):
       PyPI `lcp-sdk` / `lcp-mcp-server` / `lcp-reference-platform`,
       npm `@spear-systems/lcp-sdk`, NuGet `SpearSystems:LcpSdk`,
-      Maven `com.spearsystems:lcp-sdk` / `:lcp-sdk-kotlin`,
+      Maven `systems.spear:lcp-sdk` / `:lcp-sdk-kotlin`,
       crates.io `lcp-sdk`, RubyGems `lcp-sdk`, Packagist `spearsystems/lcp-sdk`,
       Go `github.com/SpearSystems/LCP/implementations/sdk/go`,
       SwiftPM `https://github.com/SpearSystems/LCP.git`.
-- [ ] The Kotlin Maven coordinate is distinct (`com.spearsystems:lcp-sdk-kotlin`)
+- [ ] The Kotlin Maven coordinate is distinct (`systems.spear:lcp-sdk-kotlin`)
       and the release manifest references it.
 - [ ] Container publication will target `ghcr.io/spearsystems/lcp-reference-platform:v1.0.0`
       with signature, provenance, and SBOM attestations.

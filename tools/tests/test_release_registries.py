@@ -36,7 +36,7 @@ class ReleaseRegistryTests(unittest.TestCase):
         self.assertEqual(len(maven), 2)
         for check in maven:
             self.assertEqual(check.kind, "exact")
-            self.assertIn("https://repo1.maven.org/maven2/com/spearsystems/", check.url)
+            self.assertIn("https://repo1.maven.org/maven2/systems/spear/", check.url)
             self.assertIn("0.1.0", check.url)
             # 404 on repo1 means the version is absent (available); 200 occupied.
             self.assertFalse(contains_version(check, 404, b"", "0.1.0"))
