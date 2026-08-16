@@ -24,7 +24,7 @@ from lcp_sdk import build_envelope
 from .client import LCPClient
 from .schema_loader import list_schemas, load_schema
 
-app = Server("lcp-mcp-server")
+app: Server
 
 def _make_envelope(msg_type: str, sender_id: str, receiver_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Wrap a payload using the shared Python SDK envelope builder."""
@@ -43,8 +43,7 @@ def _error_result(message: str, code: str = "LCP-500") -> list[types.TextContent
 
 # ─── Tool definitions ────────────────────────────────────────────────────────
 
-@app.list_tools()
-async def list_tools() -> list[types.Tool]:
+async def _list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="submit_lead",
@@ -144,8 +143,7 @@ async def list_tools() -> list[types.Tool]:
 
 # ─── Tool call handler ───────────────────────────────────────────────────────
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
     client = LCPClient()
 
     if name == "submit_lead":
@@ -216,6 +214,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
     else:
         return _error_result(f"Unknown tool: {name}", code="LCP-006")
+
+
+# ─── MCP SDK compatibility ───────────────────────────────────────────────────
+
+# MCP 1.x exposed decorator methods on Server; MCP 2.x accepts callbacks in
+# the constructor. Keep the adapter compatible with both supported API shapes
+# while the dependency range transitions to the 2.x server implementation.
+if hasattr(Server, "list_tools"):
+    legacy_app = Server("lcp-mcp-server")
+    list_tools = legacy_app.list_tools()(_list_tools)
+    call_tool = legacy_app.call_tool()(_call_tool)
+    app = legacy_app
+else:
+    async def list_tools(_context: Any, _params: Any) -> types.ListToolsResult:
+        return types.ListToolsResult(tools=await _list_tools())
+
+    async def call_tool(_context: Any, params: types.CallToolRequestParams) -> types.CallToolResult:
+        content = await _call_tool(params.name, params.arguments or {})
+        return types.CallToolResult(content=content)
+
+    app = Server(
+        "lcp-mcp-server",
+        on_list_tools=list_tools,
+        on_call_tool=call_tool,
+    )
 
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────

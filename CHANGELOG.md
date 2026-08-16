@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Updated the MCP adapter for the MCP 2.x callback-based `Server` API while retaining compatibility with the 1.x decorator API; the SDK compatibility import gate now passes with `mcp 2.0.0`.
 - Added the Kotlin Central Portal submission step required after Gradle's OSSRH compatibility upload, so the Kotlin deployment is automatically validated and published instead of remaining outside the Portal.
 - Added complete Rust crate metadata (homepage, repository, documentation, and README) for a discoverable v1 package.
 - Completed registry-side Trusted Publishing setup for crates.io and RubyGems; the crates.io bootstrap token was revoked and RubyGems is configured with a pending `lcp-sdk` publisher.
