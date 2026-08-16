@@ -395,6 +395,7 @@ SPEC.md          ── Canonical protocol specification
 - [HTTP API definition](api/lcp-openapi.yaml)
 - [Publisher onboarding](docs/PUBLISHER-ONBOARDING.md)
 - [Publisher mapping and normalization](docs/PUBLISHER-MAPPING.md)
+- [Requirement profiles and service areas](docs/REQUIREMENT-PROFILES.md)
 - [Buyer onboarding](docs/BUYER-ONBOARDING.md)
 - [Calls and telephony](docs/CALLS-AND-TELEPHONY.md)
 - [MVA and secure attachments](docs/MVA-ATTACHMENTS.md)
@@ -421,11 +422,15 @@ SPEC.md          ── Canonical protocol specification
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
 - [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
+- [Adoption readiness](docs/ADOPTION-READINESS.md)
+- [v1.1 roadmap](docs/V1.1-ROADMAP.md)
 - [Vulnerability exception register](docs/VULNERABILITY-EXCEPTIONS.md)
 - [Kubernetes example](implementations/reference-platform/kubernetes/README.md)
 - [Docker sandbox](examples/sandbox/README.md)
 - [Reference MCP adapter](implementations/mcp-server/)
 - [Security policy](governance/SECURITY.md)
+- [LEP proposal process](governance/LEP.md)
+- [Extension registry](governance/EXTENSION-REGISTRY.md)
 - [Trademark and conformance claims](governance/TRADEMARK.md)
 
 ## License

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .offer_extensions import evaluate_offer_extensions
+
 
 _COMPLETENESS = {"minimal": 1, "standard": 2, "rich": 3}
 
@@ -136,6 +138,8 @@ def match_offer(
         reasons.append("litigator_not_clean")
     if offer.get("reject_blacklist_flagged") and _scrub_status(payload, "blacklist") != "clean":
         reasons.append("blacklist_not_clean")
+
+    reasons.extend(evaluate_offer_extensions(offer, payload))
 
     # Claim-language evidence is intentionally fail-closed. A deployment may
     # provide a namespaced evidence block without putting copy/PII in a ping.

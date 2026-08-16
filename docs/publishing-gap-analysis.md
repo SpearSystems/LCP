@@ -12,7 +12,7 @@
 > in SPEC.md §14 deferred-item tables.
 
 **Date:** 2026-08-15
-**Purpose:** Historical pre-v1 audit of patterns LCP could borrow from LEX and MCP. The repository is now public and v1.0.0 is released; the checklist at the end is the current post-release backlog.
+**Purpose:** Historical pre-v1 audit of patterns LCP could borrow from LEX and MCP. The repository is now public and v1.0.0 is released; current post-release planning lives in [`V1.1-ROADMAP.md`](V1.1-ROADMAP.md).
 
 ---
 
@@ -178,7 +178,10 @@ These are things LCP already does well, confirmed by comparison:
 
 ---
 
-## E. Current post-v1 action checklist
+## E. Historical post-v1 action checklist
+
+The canonical current checklist is [`V1.1-ROADMAP.md`](V1.1-ROADMAP.md).
+
 
 ### Completed before v1.0.0
 
@@ -215,7 +218,9 @@ These are things LCP already does well, confirmed by comparison:
 
 ---
 
-## G. Focused v1.1 roadmap
+## G. Historical focused v1.1 roadmap snapshot
+
+The maintained roadmap is [`V1.1-ROADMAP.md`](V1.1-ROADMAP.md).
 
 The following work is intentionally post-v1.0. It should be proposed and
 versioned as additive changes rather than quietly changing the v1.0 contract.

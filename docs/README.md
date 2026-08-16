@@ -44,6 +44,8 @@
   source mapping, authentication, retries, sandbox testing, and go-live checks.
 - [Publisher mapping](PUBLISHER-MAPPING.md) — versioned multi-brand form
   normalization, OTP variation, taxonomy mapping, and audit records.
+- [Requirement profiles](REQUIREMENT-PROFILES.md) — versioned buyer criteria,
+  named service areas, safe operators, and dynamic deployment guidance.
 - [Calls and telephony](CALLS-AND-TELEPHONY.md) — post-call and real-time
   transfer boundaries, call posts, outcome events, and payable duration rules.
 - [MVA and attachments](MVA-ATTACHMENTS.md) — MVA schema, encrypted file
@@ -122,6 +124,11 @@
 - [Security policy](../governance/SECURITY.md) — responsible disclosure.
 - [Extension registry](../governance/EXTENSION-REGISTRY.md) — namespaced
   extension registration.
+- [LEP process](../governance/LEP.md) — proposal, review, compatibility, and
+  deprecation workflow.
+- [Adoption readiness](ADOPTION-READINESS.md) — post-release signals,
+  feedback funnel, and scale triggers.
+- [v1.1 roadmap](V1.1-ROADMAP.md) — implemented foundations and deferred work.
 - [Trademark and conformance claims](../governance/TRADEMARK.md) — how to
   describe implementations accurately.
 
@@ -137,7 +144,8 @@ preserved for provenance and do not override the current specification.
 - [lcp-deep-research-review.md](lcp-deep-research-review.md) — adversarial review;
   resolved findings are recorded in SPEC.md §14.
 - [publishing-gap-analysis.md](publishing-gap-analysis.md) — historical pre-publish
-  comparison against LEX and MCP repositories plus the current v1.1 backlog.
+  comparison against LEX and MCP repositories; current planning lives in the
+  [v1.1 roadmap](V1.1-ROADMAP.md).
 
 </details>
 

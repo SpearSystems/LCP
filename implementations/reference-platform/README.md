@@ -18,7 +18,8 @@ hardening.
 - Structured call payable evaluation and per-offer monthly quota reporting.
 - JSON Schema and strict ping-safe validation.
 - Bearer API-key and HMAC authentication.
-- Deterministic offer matching and auction selection.
+- Deterministic offer matching and auction selection, including versioned
+  `lcp.platform.requirements` and `lcp.platform.service_area` extensions.
 - At-least-once buyer webhook delivery.
 - Standalone delivery worker for multi-process deployments.
 - WSGI entry point for a production HTTP process manager.
@@ -126,7 +127,10 @@ lcp-platform-admin privacy erase-lead --lead-id lead_abc123 --actor-id privacy_o
 ```
 
 Offer management is intentionally an operator/admin concern. The public LCP
-surface exposes active offers through `GET /v1/lcp/offers`.
+surface exposes active offers through `GET /v1/lcp/offers`. For fast-changing
+buyer requirements, use the versioned [requirement profiles and service areas](../../docs/REQUIREMENT-PROFILES.md)
+without expanding the universal core or creating a new vertical for each
+category.
 
 ## Run locally
 

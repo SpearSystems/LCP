@@ -2,4 +2,6 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
-exec python3 "$repo_root/tools/check_commit_attribution.py" --message-file "$1"
+exec python3 "$repo_root/tools/check_commit_attribution.py" \
+  --config "$repo_root/.github/attribution-policy.json" \
+  --message-file "$1"

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from tools.check_commit_attribution import (
     check_range,
     find_violations,
+    load_policy_config,
     normalize_message_file,
     strip_attributions,
 )
@@ -33,6 +34,32 @@ class CommitAttributionPolicyTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_generated_coauthor_identities_are_configurable(self) -> None:
+        with TemporaryDirectory() as directory:
+            policy_file = Path(directory) / "attribution-policy.json"
+            policy_file.write_text(
+                '{"generated_coauthor_names": ["buildbot"], '
+                '"generated_coauthor_emails": ["bot@example.test"]}',
+                encoding="utf-8",
+            )
+
+            identities = load_policy_config(policy_file)
+
+            self.assertEqual(
+                find_violations(
+                    "Document release\n\nCo-Authored-By: BuildBot <bot@example.test>",
+                    identities,
+                )[0][1],
+                "generated co-author attribution",
+            )
+            self.assertEqual(
+                find_violations(
+                    "Document release\n\nCo-Authored-By: Codebuff <noreply@codebuff.com>",
+                    identities,
+                ),
+                [],
+            )
 
     @patch(
         "tools.check_commit_attribution._commit_messages",

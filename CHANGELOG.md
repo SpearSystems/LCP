@@ -8,8 +8,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Non-blocking commit-attribution reporting, a one-command hook bootstrap,
-  and a tracked `commit-msg` hook that strips generated attribution and known
-  automation co-author trailers while preserving human co-authors.
+  and a tracked `commit-msg` hook with configurable generated-identity policy
+  that preserves human co-authors.
+- Versioned requirement-profile and named service-area extensions in the
+  reference platform, with adoption-readiness, LEP, and v1.1 roadmap guidance.
 - Human-readable v1.0 field dictionary and advisory consent/evidence guide.
 
 ### Changed

@@ -28,6 +28,8 @@ usable foundation for a real deployment. It provides:
   erasure operation.
 - Versioned declarative publisher mapping and normalization with source-record
   digests rather than source-body audit retention.
+- Versioned buyer requirement profiles and exact named service-area extensions;
+  invalid profiles fail closed and never execute arbitrary expressions.
 - AES-GCM application-level encryption for persisted envelopes and reference
   attachment bytes outside test mode.
 - Call post delivery, signed call-outcome events, structured payable rules, and
@@ -59,6 +61,8 @@ The v1.0 implementation standardizes common, explainable predicates:
 - Consent, DNC, litigator, and blacklist requirements.
 - Delivery windows and capacity limits.
 - Publisher and brand allowlists plus safe vertical attribute equality/allowlist predicates.
+- Versioned `lcp.platform.requirements` and `lcp.platform.service_area`
+  extensions for dynamic buyer criteria without changing the universal core.
 - Direct or auction routing mode.
 - Call routing mode and structured call payable rules.
 - Monthly minimum/maximum payable targets and pacing policy.
@@ -97,6 +101,8 @@ Standard behavior:
    offer. Only ping-safe fields may be included in the ping.
 9. Capacity and delivery-window checks happen immediately before routing.
 10. Publisher/brand allowlists and declarative vertical attribute predicates are evaluated before a ping; unknown data fails closed when a required predicate is configured.
+11. Known platform requirement profiles and service-area profiles are evaluated
+    as additional restrictions; invalid profiles fail closed.
 
 ## 4. Auction selection
 

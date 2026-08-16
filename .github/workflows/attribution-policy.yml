@@ -44,5 +44,6 @@ jobs:
           # normal commit is created. CI reports commits made without the hook,
           # but deliberately never rewrites PR, fork, or protected-branch history.
           python tools/check_commit_attribution.py \
+            --config .github/attribution-policy.json \
             --base "${BASE_SHA}" \
             --head "${HEAD_REF}"

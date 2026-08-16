@@ -44,7 +44,8 @@ No editorial veto. No fees. No mandatory review period.
 
 | Namespace | Registrant | Description | Since |
 |---|---|---|---|
-| _(empty — registrations open)_ | | | |
+| `lcp.platform.requirements` | LCP reference platform | Versioned, allowlisted buyer requirement predicates evaluated before routing; no executable expressions. | v1.0 |
+| `lcp.platform.service_area` | LCP reference platform | Versioned country, region, and exact-postal service-area allowlists for deployment-scoped offer matching. | v1.0 |
 
 ## Extension payload location
 
