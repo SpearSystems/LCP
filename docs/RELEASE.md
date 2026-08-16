@@ -37,7 +37,10 @@ The tag runs these workflows for the same commit:
 If a required workflow fails or does not complete, the final release workflow
 fails and does not create a GitHub release. Package registries may still retain
 an artifact from a failed publication attempt; operators must use the registry's
-immutable version rules and investigate before retrying.
+immutable version rules and investigate before retrying. The non-Python SDK
+publication jobs probe their immutable coordinates and skip packages already
+published, so a corrected tag retry does not attempt to overwrite Java, Kotlin,
+npm, crates.io, or RubyGems versions.
 
 ## Maintainer checklist
 
