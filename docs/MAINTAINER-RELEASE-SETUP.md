@@ -22,8 +22,9 @@ The release workflow has two distinct paths:
   does not publish packages, create a GitHub release, or use the protected
   release-record job.
 - **Versioned tag:** waits for the required test, security, SDK, package, and
-  container workflows. Package publication and the final GitHub release-record
-  job use the protected `release` environment.
+  container workflows. Package publication uses protected release environments,
+  and the final GitHub release-record job uses the protected `release`
+  environment.
 
 ## Protect `main`
 
@@ -99,7 +100,7 @@ identities:
 
 | Target | Configuration | Recommended control |
 |---|---|---|
-| PyPI | Trusted Publishers for `lcp-sdk`, `lcp-mcp-server`, and `lcp-reference-platform` | Bind each project to `SpearSystems/LCP`, `python-release.yml`, environment `release`; do not add a PyPI API token. |
+| PyPI | Trusted Publishers for `lcp-sdk`, `lcp-mcp-server`, and `lcp-reference-platform` | Bind `lcp-sdk` to `SpearSystems/LCP`, `python-release.yml`, environment `release`; bind `lcp-mcp-server` to environment `release-python-mcp`; bind `lcp-reference-platform` to `release-python-reference`; do not add a PyPI API token. |
 | npm | Trusted publisher for `@spearsystems/lcp-sdk` | Bind the exact repository and `sdk-release.yml` workflow; retain provenance. |
 | NuGet | `NUGET_USER` consumed by `NuGet/login` | Use NuGet trusted login and a protected environment; do not store a reusable API key. |
 | Maven Central | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Store only as environment secrets; rotate and audit the signing key and Central Portal token. |
@@ -108,9 +109,14 @@ identities:
 | RubyGems | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. |
 | GHCR | `GITHUB_TOKEN` with job-scoped package permission | Keep the image package private or access-controlled until its release policy is reviewed; publish by digest and verify before deployment. |
 
-The workflow file is the source of the requested identity paths, but the
-registry's trusted-publisher configuration is the enforcement point. A valid
-OIDC token from another repository or workflow must not be accepted.
+The Python packages use distinct environment names because PyPI requires
+pending publishers for multiple not-yet-created projects in one repository to
+have unique publisher identities. Create and protect `release-python-mcp` and
+`release-python-reference` like `release`; they do not need registry secrets,
+but they should retain the same reviewer and tag restrictions. The workflow
+file is the source of the requested identity paths, but the registry's
+trusted-publisher configuration is the enforcement point. A valid OIDC token
+from another repository or workflow must not be accepted.
 
 ## GitHub Actions and OIDC settings
 

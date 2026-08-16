@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Made the Python release matrix use distinct GitHub environments for each pending PyPI publisher, allowing the three new monorepo projects to use OIDC Trusted Publishing without reusing an ambiguous pending-publisher identity
 - Added an SDK packaging gate to the compatibility workflow that builds each SDK's distributable artifact on every push and PR (`python -m build`, `npm pack`, `dotnet pack`, `mvn package`, `cargo package`, `gem build`, `gradle jar`, `composer archive`), catching packaging regressions such as the sdist-to-wheel force-include breakage before release
 - Fixed the release-evidence workflow: sign and verify now agree on Sigstore bundle names (`release-notes.md.sigstore.json` / `release-manifest.json.sigstore.json`), and the release manifest records the package identity (e.g. `lcp-sdk-python`) instead of the registry coordinate so the offline verifier accepts all 12 evidence records
 - Added the LCP banner to the repository and made it the README masthead (`assets/lcp-banner.png`)

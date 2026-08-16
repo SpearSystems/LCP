@@ -12,8 +12,9 @@ A tag such as `v1.0.0` starts the coordinated release process. The tag is
 accepted only when it matches `SDK_VERSION` and the package metadata checked by
 `tools/check_sdk_versions.py`.
 
-Before the first real tag, configure the protected GitHub `release` environment,
-branch rules, and registry trusted publishers using the [maintainer release
+Before the first real tag, configure the protected GitHub release environments
+(`release`, `release-python-mcp`, and `release-python-reference`), branch rules,
+and registry trusted publishers using the [maintainer release
 setup](MAINTAINER-RELEASE-SETUP.md). The final GitHub release record is created
 by a separate environment-protected job, so package publication and release
 creation require explicit approval.
