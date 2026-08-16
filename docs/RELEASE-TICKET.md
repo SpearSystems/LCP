@@ -16,6 +16,14 @@ evidence, package publication configuration, and release approvals all pass.
 - [ ] Registry trusted publishers / protected credentials are configured and
       tested for PyPI, npm, NuGet, Maven Central, crates.io, RubyGems,
       Packagist, Go, and SwiftPM.
+- [ ] The `systems.spear` namespace is Verified, the public GPG key is
+      available from a Central-supported keyserver, and the Kotlin workflow
+      submits its compatibility deployment with `publishing_type=automatic`.
+- [ ] The crates.io bootstrap version is not confused with the v1 release;
+      trusted publishing is required for new crate versions and the temporary
+      API token has been revoked.
+- [ ] RubyGems has a pending trusted publisher for `lcp-sdk` bound to
+      `SpearSystems/LCP`, `sdk-release.yml`, and `release`.
 - [ ] `SDK_VERSION` is `1.0.0` and every package's explicit version matches.
 
 ## 2. Dry-run release rehearsal

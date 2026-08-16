@@ -104,10 +104,26 @@ identities:
 | npm | Trusted publisher for `@spear-systems/lcp-sdk` | Bind the exact repository and `sdk-release.yml` workflow; retain provenance. |
 | NuGet | Package owner `SpearSystems`; `NUGET_USER` (the `rbeno` profile) consumed by `NuGet/login` | Bind `SpearSystems/LCP`, `sdk-release.yml`, and environment `release` in NuGet Trusted Publishing; do not store a reusable API key. |
 | Maven Central | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Store only as environment secrets; rotate and audit the signing key and Central Portal token. |
-| Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` | Use the distinct `systems.spear:lcp-sdk-kotlin` coordinate and protected repository; namespace ownership is verified through `spear.systems`. |
-| crates.io | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. Do not use `CARGO_REGISTRY_TOKEN`. |
-| RubyGems | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. |
+| Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` | Use the distinct `systems.spear:lcp-sdk-kotlin` coordinate and protected repository; the workflow submits the compatibility deployment to Central Portal automatic publishing; namespace ownership is verified through `spear.systems`. |
+| crates.io | OIDC trusted publisher | The one-time bootstrap was published manually, then API-token access was revoked and trusted publishing is required for new versions; bind the exact `sdk-release.yml` workflow and repository. Do not use `CARGO_REGISTRY_TOKEN`. |
+| RubyGems | Pending OIDC trusted publisher for `lcp-sdk` | Register `SpearSystems/LCP`, `sdk-release.yml`, and environment `release`; the pending publisher becomes active after the first successful OIDC push. |
 | GHCR | `GITHUB_TOKEN` with job-scoped package permission | Keep the image package private or access-controlled until its release policy is reviewed; publish by digest and verify before deployment. |
+
+### Maven and registry transition notes
+
+Gradle's built-in `maven-publish` task uploads Kotlin artifacts file-by-file to
+Central's OSSRH compatibility endpoint. The tagged release workflow must then
+submit `systems.spear` through
+`/manual/upload/defaultRepository/systems.spear?publishing_type=automatic`
+from the same job and IP; otherwise the deployment will not appear in the
+Central Publisher Portal. Java uses the Central publishing Maven plugin directly.
+
+The Rust crate required one manual bootstrap because crates.io requires an
+initial publication before Trusted Publishing can be configured. The bootstrap
+version is intentionally not the v1 release. Future versions, including
+`1.0.0`, must use the configured GitHub OIDC publisher. RubyGems supports a
+pending publisher for a not-yet-created gem, so no RubyGems API token or
+bootstrap version is needed.
 
 The Python packages use distinct environment names because PyPI requires
 pending publishers for multiple not-yet-created projects in one repository to

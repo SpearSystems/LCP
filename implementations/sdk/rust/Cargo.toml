@@ -3,6 +3,10 @@ name = "lcp-sdk"
 version = "1.0.0"
 edition = "2021"
 description = "LCP Lead Context Protocol SDK for Rust"
+homepage = "https://spear.systems"
+repository = "https://github.com/SpearSystems/LCP"
+documentation = "https://docs.rs/lcp-sdk"
+readme = "README.md"
 license = "Apache-2.0"
 
 [dependencies]

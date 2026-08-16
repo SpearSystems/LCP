@@ -15,6 +15,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Added the Kotlin Central Portal submission step required after Gradle's OSSRH compatibility upload, so the Kotlin deployment is automatically validated and published instead of remaining outside the Portal.
+- Added complete Rust crate metadata (homepage, repository, documentation, and README) for a discoverable v1 package.
+- Completed registry-side Trusted Publishing setup for crates.io and RubyGems; the crates.io bootstrap token was revoked and RubyGems is configured with a pending `lcp-sdk` publisher.
 - Fixed the npm release job to build the TypeScript SDK before publishing, so the bootstrap package will be replaced by the complete v1.0.0 distribution
 - Switched Java and Kotlin Maven coordinates to the DNS-controlled `systems.spear` namespace, verified through `spear.systems`
 - Recorded the NuGet `SpearSystems` organization as the `LcpSdk` package and Trusted Publishing owner while retaining `rbeno` as the OIDC token-requesting profile

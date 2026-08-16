@@ -152,11 +152,19 @@ release workflow runs on its own evidence before uploading.
 | npm | `@spear-systems/lcp-sdk` | npm trusted publisher and provenance |
 | NuGet | `LcpSdk` (owner `SpearSystems`) | NuGet Trusted Publishing via `NuGet/login` |
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | Central Portal protected credentials and DNS-verified `spear.systems` namespace |
-| crates.io | `lcp-sdk` | crates.io OIDC trusted login |
-| RubyGems | `lcp-sdk` | RubyGems trusted publishing |
+| crates.io | `lcp-sdk` | crates.io OIDC trusted login; the manually published bootstrap is not the v1 release |
+| RubyGems | `lcp-sdk` | RubyGems pending trusted publisher converted on the first OIDC release |
 | Packagist | `spearsystems/lcp-sdk` | Signed tag mirroring |
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
+
+For Kotlin, the Gradle compatibility upload is explicitly submitted to Central
+Portal with `publishing_type=automatic` by the same tagged workflow job. This
+is required because Gradle's built-in `maven-publish` task does not close or
+submit the compatibility repository on its own. The Rust bootstrap version is
+not part of the v1 release; the `1.0.0` publication must come through the
+configured crates.io OIDC publisher. RubyGems uses its pending publisher for
+the first release and converts it to an active publisher afterward.
 
 The release manifest is the authoritative list for a specific tag. Package
 registries can take time to index a new version; verify the package's version
