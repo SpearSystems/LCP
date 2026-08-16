@@ -4,6 +4,10 @@
   "description": "LCP Lead Context Protocol SDK for TypeScript and JavaScript",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SpearSystems/LCP"
+  },
   "engines": { "node": ">=20" },
   "files": ["dist", "src/generated/schema-bundle.json", "README.md"],
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }, "./schema-bundle.json": "./src/generated/schema-bundle.json" },

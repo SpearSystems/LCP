@@ -7,6 +7,7 @@ Gem::Specification.new do |spec|
   spec.license = "Apache-2.0"
   spec.required_ruby_version = ">= 3.0"
   spec.add_runtime_dependency "json_schemer", "~> 2.5"
+  spec.add_development_dependency "rake", "~> 13.0"
   spec.files = Dir["lib/**/*", "README.md"]
   spec.require_paths = ["lib"]
 end
