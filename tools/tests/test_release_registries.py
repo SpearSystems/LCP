@@ -18,7 +18,7 @@ class ReleaseRegistryTests(unittest.TestCase):
         self.assertIn("PyPI lcp-sdk", names)
         self.assertIn("PyPI lcp-mcp-server", names)
         self.assertIn("PyPI lcp-reference-platform", names)
-        self.assertIn("npm @spearsystems/lcp-sdk", names)
+        self.assertIn("npm @spear-systems/lcp-sdk", names)
         self.assertIn("Maven Central lcp-sdk", names)
         self.assertIn("Maven Central lcp-sdk-kotlin", names)
         self.assertIn("Packagist spearsystems/lcp-sdk", names)

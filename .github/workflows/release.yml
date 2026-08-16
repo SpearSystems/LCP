@@ -191,7 +191,7 @@ jobs:
             registry: PyPI:lcp-reference-platform
           - name: lcp-sdk-typescript
             path: implementations/sdk/typescript
-            registry: npm:@spearsystems/lcp-sdk
+            registry: npm:@spear-systems/lcp-sdk
           - name: lcp-sdk-go
             path: implementations/sdk/go
             registry: Go:github.com/SpearSystems/LCP/implementations/sdk/go

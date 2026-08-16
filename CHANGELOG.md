@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Moved the TypeScript SDK to the controlled `@spear-systems/lcp-sdk` npm scope after auditing the pre-existing `@spearsystems` namespace
 - Updated the npm release job to Node.js 24 with npm caching disabled, meeting npm Trusted Publishing's current OIDC runtime requirements
 - Made the Python release matrix use distinct GitHub environments for each pending PyPI publisher, allowing the three new monorepo projects to use OIDC Trusted Publishing without reusing an ambiguous pending-publisher identity
 - Added an SDK packaging gate to the compatibility workflow that builds each SDK's distributable artifact on every push and PR (`python -m build`, `npm pack`, `dotnet pack`, `mvn package`, `cargo package`, `gem build`, `gradle jar`, `composer archive`), catching packaging regressions such as the sdist-to-wheel force-include breakage before release

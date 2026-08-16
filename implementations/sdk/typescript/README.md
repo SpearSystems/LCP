@@ -4,7 +4,7 @@ Tier 1 reference SDK for Node.js 20+, browser-compatible Web Crypto runtimes,
 web publishers, serverless functions, and ad-tech services.
 
 ```bash
-npm install @spearsystems/lcp-sdk
+npm install @spear-systems/lcp-sdk
 ```
 
 From this repository:

@@ -32,7 +32,7 @@ class RegistryCheckError(RuntimeError):
 
 
 def registry_checks(version: str) -> tuple[RegistryCheck, ...]:
-    encoded_npm = quote("@spearsystems/lcp-sdk", safe="")
+    encoded_npm = quote("@spear-systems/lcp-sdk", safe="")
     encoded_version = quote(version, safe="")
     return (
         RegistryCheck(
@@ -48,7 +48,7 @@ def registry_checks(version: str) -> tuple[RegistryCheck, ...]:
             f"https://pypi.org/pypi/lcp-reference-platform/{encoded_version}/json",
         ),
         RegistryCheck(
-            "npm @spearsystems/lcp-sdk",
+            "npm @spear-systems/lcp-sdk",
             f"https://registry.npmjs.org/{encoded_npm}/{encoded_version}",
         ),
         RegistryCheck(

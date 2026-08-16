@@ -149,7 +149,7 @@ release workflow runs on its own evidence before uploading.
 | Registry | Package or module | Publication mechanism |
 |---|---|---|
 | PyPI | `lcp-sdk`, `lcp-mcp-server`, `lcp-reference-platform` | PyPI Trusted Publishing |
-| npm | `@spearsystems/lcp-sdk` | npm trusted publisher and provenance |
+| npm | `@spear-systems/lcp-sdk` | npm trusted publisher and provenance |
 | NuGet | `LcpSdk` | NuGet trusted login |
 | Maven Central | `com.spearsystems:lcp-sdk`, `com.spearsystems:lcp-sdk-kotlin` | Central Portal protected credentials |
 | crates.io | `lcp-sdk` | crates.io OIDC trusted login |
