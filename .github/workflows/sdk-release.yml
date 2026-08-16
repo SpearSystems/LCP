@@ -71,7 +71,10 @@ jobs:
           package-manager-cache: false
       - run: python3 tools/generate_sdk_models.py --write
       - working-directory: implementations/sdk/typescript
-        run: npm install --ignore-scripts --no-audit --no-fund && npm publish --provenance --access public
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm publish --provenance --access public
 
   nuget:
     name: Publish .NET SDK to NuGet

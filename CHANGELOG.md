@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Fixed the npm release job to build the TypeScript SDK before publishing, so the bootstrap package will be replaced by the complete v1.0.0 distribution
 - Switched Java and Kotlin Maven coordinates to the DNS-controlled `systems.spear` namespace, verified through `spear.systems`
 - Recorded the NuGet `SpearSystems` organization as the `LcpSdk` package and Trusted Publishing owner while retaining `rbeno` as the OIDC token-requesting profile
 - Moved the TypeScript SDK to the controlled `@spear-systems/lcp-sdk` npm scope after auditing the pre-existing `@spearsystems` namespace
