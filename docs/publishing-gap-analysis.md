@@ -87,7 +87,7 @@ LCP is structurally solid — spec, schemas, test vectors, conformance runner, M
 
 ### 10. AI contribution disclosure policy
 **Source:** MCP's CONTRIBUTING.md has an explicit "AI Contributions" section requiring disclosure of AI-assisted PRs. MCP's AGENTS.md restricts agent-submitted PRs to trusted maintainers or contributors with 3+ merged PRs.
-**Historical LCP status:** `governance/CONTRIBUTING.md` requires AI disclosure in the PR, and the attribution-policy workflow rejects generated commit trailers.
+**Historical LCP status:** `governance/CONTRIBUTING.md` requires AI disclosure in the PR, and the attribution-policy workflow now reports messages created without the commit-message normalizer while the tracked hook strips generated trailers before commit.
 **Recommendation:** Add a short "AI Contributions" section to CONTRIBUTING.md requiring disclosure. LCP is itself AI-authored, so this is both principled and practical.
 **Priority:** MEDIUM — increasingly expected.
 

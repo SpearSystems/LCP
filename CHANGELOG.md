@@ -7,8 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Commit-attribution policy workflow that rejects generated attribution and
-  `Co-Authored-By` trailers in future pull requests and pushes to `main`.
+- Non-blocking commit-attribution reporting and a tracked `commit-msg` hook
+  that strips generated attribution and `Co-Authored-By` trailers before normal
+  commits.
 - Human-readable v1.0 field dictionary and advisory consent/evidence guide.
 
 ### Changed

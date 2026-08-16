@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Reject prohibited generated-attribution trailers in Git commit messages.
+"""Normalize generated-attribution lines in Git commit messages.
 
-The policy deliberately keeps attribution in the pull request description and
-CLA process rather than allowing generated commit trailers. It checks only the
-commit range supplied by CI, so historical commits are not rewritten or
-revalidated.
+The policy keeps attribution in the pull request description and CLA process.
+The tracked commit-msg hook removes generated attribution before Git creates a
+commit, while CI reports messages created without the hook without rewriting
+pull-request or protected-branch history.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Iterable
 
 
@@ -46,6 +47,38 @@ def find_violations(message: str) -> list[Violation]:
     return violations
 
 
+def strip_attributions(message: str) -> str:
+    """Remove only prohibited generated-attribution lines from a message."""
+
+    violating_line_numbers = {
+        line_number for line_number, _, _ in find_violations(message)
+    }
+    if not violating_line_numbers:
+        return message
+
+    return "".join(
+        line
+        for line_number, line in enumerate(message.splitlines(keepends=True), start=1)
+        if line_number not in violating_line_numbers
+    )
+
+
+def normalize_message_file(message_file: Path) -> list[Violation]:
+    """Strip prohibited lines in place and return what was removed."""
+
+    with message_file.open("r", encoding="utf-8", newline="") as file:
+        original = file.read()
+
+    violations = find_violations(original)
+    if not violations:
+        return []
+
+    cleaned = strip_attributions(original)
+    with message_file.open("w", encoding="utf-8", newline="") as file:
+        file.write(cleaned)
+    return violations
+
+
 def _commit_messages(base: str, head: str) -> Iterable[tuple[str, str]]:
     """Yield (commit SHA, commit message) pairs from base (exclusive) to head."""
 
@@ -75,7 +108,7 @@ def _commit_messages(base: str, head: str) -> Iterable[tuple[str, str]]:
 
 
 def check_range(base: str, head: str) -> list[str]:
-    """Return human-readable violations for a Git commit range."""
+    """Return human-readable messages that the hook would normalize."""
 
     failures: list[str] = []
     for commit_sha, message in _commit_messages(base, head):
@@ -88,33 +121,62 @@ def check_range(base: str, head: str) -> list[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Reject generated attribution trailers in a Git commit range."
+        description="Strip generated attribution from a commit message before commit."
     )
-    parser.add_argument("--base", required=True, help="exclusive base commit SHA")
-    parser.add_argument("--head", required=True, help="inclusive head commit SHA or ref")
-    return parser.parse_args()
+    parser.add_argument(
+        "--message-file",
+        help="commit-msg hook file to normalize in place",
+    )
+    parser.add_argument("--base", help="exclusive base commit SHA for a non-blocking report")
+    parser.add_argument("--head", help="inclusive head commit SHA or ref for a non-blocking report")
+    args = parser.parse_args()
+
+    if args.message_file and (args.base or args.head):
+        parser.error("--message-file cannot be combined with --base or --head")
+    if bool(args.base) != bool(args.head):
+        parser.error("--base and --head must be provided together")
+    if not args.message_file and not args.base:
+        parser.error("provide --message-file or both --base and --head")
+    return args
 
 
 def main() -> int:
     args = parse_args()
+
+    if args.message_file:
+        try:
+            violations = normalize_message_file(Path(args.message_file))
+        except OSError as exc:
+            print(f"Commit message could not be normalized: {exc}", file=sys.stderr)
+            return 2
+
+        if violations:
+            print(
+                f"Stripped {len(violations)} generated attribution line(s) "
+                "from the commit message."
+            )
+        return 0
+
+    if re.fullmatch(r"0+", args.base):
+        print("No previous commit is available; nothing to normalize.")
+        return 0
+
     try:
-        failures = check_range(args.base, args.head)
+        messages_to_normalize = check_range(args.base, args.head)
     except (subprocess.CalledProcessError, ValueError) as exc:
         print(f"Attribution policy could not inspect the commit range: {exc}", file=sys.stderr)
         return 2
 
-    if failures:
-        print("Prohibited generated attribution found in commit messages:", file=sys.stderr)
-        for failure in failures:
-            print(f"  {failure}", file=sys.stderr)
+    if messages_to_normalize:
         print(
-            "Move attribution and AI disclosure to the pull request description; "
-            "do not add generated or co-author trailers to commits.",
-            file=sys.stderr,
+            "Commit messages containing generated attribution were found. "
+            "The local commit-msg hook strips these lines before new commits; "
+            "existing history is not rewritten."
         )
-        return 1
-
-    print(f"Attribution policy passed for {args.base}..{args.head}")
+        for message in messages_to_normalize:
+            print(f"  {message}")
+    else:
+        print(f"Attribution policy report clean for {args.base}..{args.head}")
     return 0
 
 

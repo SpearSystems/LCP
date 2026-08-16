@@ -75,12 +75,14 @@ GitHub. The current workflow job names are:
 - `Swift SDK`
 - `Attribution policy`
 
-Require the `Attribution policy` check for `main`. It runs from the base
-branch on pull requests, inspects only the PR commit range, and never executes
-pull-request code. Do not require tag-only publication checks as pull-request
-checks unless the workflow is also configured to run for pull requests.
-Reconfirm required-check names after renaming a workflow job; GitHub treats the
-check name as an API identity.
+Keep the `Attribution policy` check informational rather than requiring it
+for `main`. It runs from the base branch on pull requests, inspects only the PR
+commit range, and never executes pull-request code. The tracked commit-msg hook
+strips generated attribution before normal local commits; the workflow reports
+commits created without that hook and does not rewrite history. Do not require
+tag-only publication checks as pull-request checks unless the workflow is also
+configured to run for pull requests. Reconfirm required-check names after
+renaming a workflow job; GitHub treats the check name as an API identity.
 
 ## Create the protected `release` environment
 
