@@ -73,11 +73,14 @@ GitHub. The current workflow job names are:
 - `Ruby SDK`
 - `Kotlin SDK`
 - `Swift SDK`
+- `Attribution policy`
 
-Do not require tag-only publication checks as pull-request checks unless the
-workflow is also configured to run for pull requests. Reconfirm required-check
-names after renaming a workflow job; GitHub treats the check name as an API
-identity.
+Require the `Attribution policy` check for `main`. It runs from the base
+branch on pull requests, inspects only the PR commit range, and never executes
+pull-request code. Do not require tag-only publication checks as pull-request
+checks unless the workflow is also configured to run for pull requests.
+Reconfirm required-check names after renaming a workflow job; GitHub treats the
+check name as an API identity.
 
 ## Create the protected `release` environment
 
@@ -106,7 +109,7 @@ identities:
 | Maven Central | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Store only as environment secrets; rotate and audit the signing key and Central Portal token. |
 | Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Use the distinct `systems.spear:lcp-sdk-kotlin` coordinate and protected repository; publish sources, Javadocs, and signed artifacts with complete SCM/developer metadata, then submit the compatibility deployment to Central Portal automatic publishing; namespace ownership is verified through `spear.systems`. |
 | crates.io | OIDC trusted publisher | The one-time bootstrap was published manually, then API-token access was revoked and trusted publishing is required for new versions; bind the exact `sdk-release.yml` workflow and repository. Do not use `CARGO_REGISTRY_TOKEN`. |
-| RubyGems | Pending OIDC trusted publisher for `lcp-sdk` | Register `SpearSystems/LCP`, `sdk-release.yml`, and environment `release`; the pending publisher becomes active after the first successful OIDC push. |
+| RubyGems | Active OIDC trusted publisher for `lcp-sdk` | The publisher was activated by the successful v1.0.0 release; keep the exact `SpearSystems/LCP`, `sdk-release.yml`, and `release` binding and do not add an API token. |
 | GHCR | `GITHUB_TOKEN` with job-scoped package permission | Keep the image package private or access-controlled until its release policy is reviewed; publish by digest and verify before deployment. |
 
 ### Maven and registry transition notes
@@ -124,10 +127,10 @@ Maven plugin directly.
 
 The Rust crate required one manual bootstrap because crates.io requires an
 initial publication before Trusted Publishing can be configured. The bootstrap
-version is intentionally not the v1 release. Future versions, including
-`1.0.0`, must use the configured GitHub OIDC publisher. RubyGems supports a
-pending publisher for a not-yet-created gem, so no RubyGems API token or
-bootstrap version is needed.
+version is intentionally not the v1 release; `1.0.0` was published through the
+configured GitHub OIDC publisher. RubyGems' publisher is now active after the
+successful v1.0.0 OIDC release, so no RubyGems API token or bootstrap version is
+needed.
 
 The Python packages use distinct environment names because PyPI requires
 pending publishers for multiple not-yet-created projects in one repository to
@@ -188,8 +191,8 @@ bumps.
    pass:
 
    ```bash
-   git tag -s v1.0.0 -m "LCP v1.0.0"
-   git push origin v1.0.0
+   git tag -s "v${SDK_VERSION}" -m "LCP ${SDK_VERSION}"
+   git push origin "v${SDK_VERSION}"
    ```
 
 7. Confirm all tag workflows pass. Approve only the package publication jobs

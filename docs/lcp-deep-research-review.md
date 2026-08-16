@@ -13,13 +13,19 @@
 
 ---
 
-## 1. Verdict
+## 1. Historical pre-fix verdict
 
-The design is a sound foundation. The ping/post PII split, envelope/payload separation, country-code-first location model, and "REST core + thin MCP wrapper" agent binding are all defensible choices for a 20-year, multi-vertical, multi-market standard. But it is not yet bulletproof. PII protection in the `ping` message relies on an enumerable **blocklist** rather than a structural **allowlist**; the `compliance` block quietly bakes US-specific vendor tokens (`jornaya_token`, `trustedform_token`, `tcpac_consent`) into the universal core, in direct tension with the spec's own "zero market-specific fields" rule; `phone_hash` uses an unsalted `sha256(E.164)`, which is trivially reversible given the small phone-number keyspace and so provides no real privacy guarantee despite implying one; and the `status` state machine that `LCP-004 INVALID_STATUS_TRANSITION` depends on is never actually published. None of this requires a rewrite — every blocker below is fixable within the current shape of the spec, and all of them are cheap **right now**, because `schemas/*.json` haven't been authored yet (SPEC.md §13 TODO). This is a strong v0.9 that becomes a credible v1.0 once the five blockers are closed.
+At the time of this review, the design was a sound foundation but not yet
+bulletproof. The ping/post PII split, envelope/payload separation,
+country-code-first location model, and "REST core + thin MCP wrapper" agent
+binding were defensible choices, while the findings below identified the
+remaining pre-v1 blockers. This historical snapshot deliberately preserves the
+adversarial starting point; the canonical v1.0 decisions and resolutions are
+recorded in SPEC.md §14 and are not restated as current defects here.
 
 ---
 
-## 2. Blockers (must fix before v1.0)
+## 2. Historical blockers (all resolved before v1.0)
 
 **B1 — Ping PII safety is a blocklist, not a structural guarantee.**
 §4 `ping` lists 18 forbidden keys. A blocklist can never be complete — it already misses `full_name`, `middle_name`, `session_capture_id`, `jornaya_token`/`trustedform_token`, `call_recording_id`, and any quasi-identifying field a *vertical* schema might introduce inside `attributes` (e.g. a mortgage vertical accidentally including `property_address`). Enumeration-based safety is a matter of when it fails, not if.
@@ -43,7 +49,7 @@ The design is a sound foundation. The ping/post PII split, envelope/payload sepa
 
 ---
 
-## 3. Should-fix (v1.0 if cheap, else v1.1)
+## 3. Historical should-fix findings (resolved or explicitly deferred)
 
 - **Consolidate `call` into `lead` with `channel: call`.** Right now channel is split across two competing taxonomies: `lead.channel` (form|chat|click|api|agent|referral) and a wholly separate `call` message type. As new channels arrive (video, IoT, in-app), each one has to decide which taxonomy it belongs to, and the two will drift. Since `schemas/*.json` haven't been written yet (§13), this is nearly free to fix now and expensive later — recommend doing it before schema authoring starts, not deferring it.
 - **`consumer.first_name`/`last_name` assumes a splittable Western name.** Add support for an unstructured `full_name` for the large fraction of the world where given/family-name splitting doesn't cleanly apply.
@@ -65,7 +71,7 @@ The design is a sound foundation. The ping/post PII split, envelope/payload sepa
 
 ---
 
-## 4. Deferred (v1.1+, with trigger)
+## 4. Deferred roadmap items (v1.1+, with trigger)
 
 - **Erasure/DSAR message type or event** (right-to-be-forgotten style deletion request tied to `lead_id`/`phone_hash`). *Trigger:* operating in a market with statutory erasure obligations (EU/UK/BR/CA-CCPA), or a counterparty contractually requiring it.
 - **Agent-to-agent price negotiation** beyond the current single-shot `floor_price_cents` ping/post auction. *Trigger:* agent-native bidding volume becomes large enough that static floor pricing is materially leaving money on the table versus a negotiation protocol.
@@ -74,7 +80,7 @@ The design is a sound foundation. The ping/post PII split, envelope/payload sepa
 
 ---
 
-## 5. Universal audit result
+## 5. Historical universal-audit result
 
 Confirmed non-universal fields, all traceable to concrete fixes above:
 - `compliance.jornaya_token` / `trustedform_token` / `tcpac_consent` — US-specific vendors and law reference in the *core*. **(B2)**

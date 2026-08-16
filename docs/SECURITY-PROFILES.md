@@ -65,4 +65,4 @@ claims.
 
 ---
 
-**Previous:** [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) · **Next:** [Supply-chain security](SUPPLY-CHAIN-SECURITY.md)
+**Previous:** [Consent and evidence guide](CONSENT-GUIDE.md) · **Next:** [Supply-chain security](SUPPLY-CHAIN-SECURITY.md)

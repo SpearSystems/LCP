@@ -18,6 +18,7 @@
   python3 test-vectors/conformance.py --verbose
   ```
 - [ ] If AI-assisted: I have disclosed AI involvement (see CONTRIBUTING.md)
+- [ ] My commits contain no generated attribution or `Co-Authored-By` trailers
 
 ## Description
 

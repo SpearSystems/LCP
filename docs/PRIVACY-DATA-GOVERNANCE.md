@@ -80,4 +80,4 @@ be handled through the operator's downstream and backup processes.
 
 ---
 
-**Previous:** [Threat model](THREAT-MODEL.md) · **Next:** [Security profiles](SECURITY-PROFILES.md)
+**Previous:** [Threat model](THREAT-MODEL.md) · **Next:** [Consent and evidence guide](CONSENT-GUIDE.md)

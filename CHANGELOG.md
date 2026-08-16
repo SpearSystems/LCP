@@ -4,9 +4,23 @@ All notable changes to LCP (Lead Context Protocol) are documented in this
 file. The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Commit-attribution policy workflow that rejects generated attribution and
+  `Co-Authored-By` trailers in future pull requests and pushes to `main`.
+- Human-readable v1.0 field dictionary and advisory consent/evidence guide.
+
+### Changed
+- Converted the v1.0 release ticket and publishing-gap analysis into accurate
+  post-release records, with the remaining governance and v1.1 work explicitly
+  tracked.
+
 ## [1.0.0] — 2026-08-16
 
 ### Added
+- Published the signed v1.0.0 release with verified package, container, SBOM,
+  provenance, and release-manifest evidence.
 - Complete Previous/Next navigation and `Page N of 6` numbering across all documentation pages, forming one continuous reading path through the docs site
 - First adopter in [ADOPTERS.md](ADOPTERS.md): SpearPointX — performance-weighted lead exchange
 - Release-ticket approval checklist (`docs/RELEASE-TICKET.md`) that turns dry-run artifact verification into a gate before the real tag
@@ -21,7 +35,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Added immutable-version probes for retrying partially completed registry releases without attempting to republish Java, Kotlin, npm, crates.io, or RubyGems artifacts that already exist; crates.io publication now checks the sparse index and fails closed when registry state cannot be determined.
 - Added the npm repository metadata required for provenance validation and the Ruby `rake` development dependency required by the trusted release task.
 - Added complete Rust crate metadata (homepage, repository, documentation, and README) for a discoverable v1 package.
-- Completed registry-side Trusted Publishing setup for crates.io and RubyGems; the crates.io bootstrap token was revoked and RubyGems is configured with a pending `lcp-sdk` publisher.
+- Completed registry-side Trusted Publishing setup for crates.io and RubyGems; the crates.io bootstrap token was revoked and the RubyGems `lcp-sdk` publisher was activated by the successful v1.0.0 OIDC release.
 - Fixed the npm release job to build the TypeScript SDK before publishing, so the bootstrap package will be replaced by the complete v1.0.0 distribution
 - Switched Java and Kotlin Maven coordinates to the DNS-controlled `systems.spear` namespace, verified through `spear.systems`
 - Recorded the NuGet `SpearSystems` organization as the `LcpSdk` package and Trusted Publishing owner while retaining `rbeno` as the OIDC token-requesting profile

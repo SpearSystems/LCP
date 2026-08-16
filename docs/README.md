@@ -64,6 +64,8 @@
 - [SDK index](../implementations/sdk/) — language matrix and quickstarts.
 - [SDK program](SDK-ROADMAP.md) — tiers, compatibility contract, validation,
   generated models, package release gates, and registry publishing.
+- [Field dictionary](FIELD-DICTIONARY.md) — human-readable paths, types,
+  requiredness, privacy boundaries, and schema references.
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
   gates, published SDK coordinates, signed release records, SBOMs, and adopter
   verification commands.
@@ -94,6 +96,8 @@
   risks.
 - [Privacy and data governance](PRIVACY-DATA-GOVERNANCE.md) — residency,
   retention, erasure, and PII operations.
+- [Consent and evidence guide](CONSENT-GUIDE.md) — jurisdiction-neutral
+  evidence mapping, purpose scope, ping/post handling, and withdrawal.
 - [Security profiles](SECURITY-PROFILES.md) — Baseline, Enterprise, and
   Regulated deployment expectations.
 - [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) — dependency audits,
@@ -132,8 +136,8 @@ preserved for provenance and do not override the current specification.
 - [lcp-deep-research-prompt.md](lcp-deep-research-prompt.md) — cross-LLM review prompt.
 - [lcp-deep-research-review.md](lcp-deep-research-review.md) — adversarial review;
   resolved findings are recorded in SPEC.md §14.
-- [publishing-gap-analysis.md](publishing-gap-analysis.md) — pre-publish
-  comparison against LEX and MCP repositories.
+- [publishing-gap-analysis.md](publishing-gap-analysis.md) — historical pre-publish
+  comparison against LEX and MCP repositories plus the current v1.1 backlog.
 
 </details>
 

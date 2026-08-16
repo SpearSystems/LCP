@@ -3,6 +3,7 @@
 
 # Local tooling artifacts — never published
 .gitnexus/
+.freebuff/
 .claude/
 graphify-out/
 CLAUDE.md

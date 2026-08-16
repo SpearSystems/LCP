@@ -1,126 +1,92 @@
-# Release ticket — v1.0.0
+# Release record — v1.0.0
 
-> **Maintainer page · Release approval gate · Page 3 of 6**
+> **Maintainer page · Release record · Page 3 of 6**
+>
+> **Status: complete.** This record documents the signed v1.0.0 publication
+> and the evidence reviewed after the tag was released. For a future release,
+> copy this file, change the version, and reset only the version-specific gates.
 
-Copy this ticket into the release tracker (or an issue) and complete every
-item before creating the real `v1.0.0` tag. The ticket turns the non-publishing
-dry run into an approvable gate: the tag must not be pushed until the dry-run
-evidence, package publication configuration, and release approvals all pass.
+## 1. Candidate and release identity
 
-## 1. Prerequisites
+- [x] Candidate commit: `020a6f3110db9cf5389454d62d8367d7e80e70d4`.
+- [x] Coordinated `SDK_VERSION` and package metadata: `1.0.0`.
+- [x] Signed annotated tag: `v1.0.0`, resolving to the candidate commit.
+- [x] GitHub release record: [SpearSystems/LCP v1.0.0](https://github.com/SpearSystems/LCP/releases/tag/v1.0.0).
+- [x] Final signed-release workflow: [run 31968977535](https://github.com/SpearSystems/LCP/actions/runs/31968977535).
 
-- [ ] `main` is green: Test, Security and supply chain, SDK compatibility, and
-      container publication all passed for the exact candidate SHA.
-- [ ] Branch protection and the protected `release` environment are configured
-      per [MAINTAINER-RELEASE-SETUP.md](MAINTAINER-RELEASE-SETUP.md).
-- [ ] Registry trusted publishers / protected credentials are configured and
-      tested for PyPI, npm, NuGet, Maven Central, crates.io, RubyGems,
-      Packagist, Go, and SwiftPM.
-- [ ] The `systems.spear` namespace is Verified, the public GPG key is
-      available from a Central-supported keyserver, and the Kotlin workflow
-      submits its compatibility deployment with `publishing_type=automatic`.
-- [ ] The crates.io bootstrap version is not confused with the v1 release;
-      trusted publishing is required for new crate versions and the temporary
-      API token has been revoked.
-- [ ] RubyGems has a pending trusted publisher for `lcp-sdk` bound to
-      `SpearSystems/LCP`, `sdk-release.yml`, and `release`.
-- [ ] `SDK_VERSION` is `1.0.0` and every package's explicit version matches.
+## 2. Release gates
 
-## 2. Dry-run release rehearsal
+- [x] Test, conformance, SDK compatibility, platform, and Postgres checks passed.
+- [x] Security, dependency, CodeQL, SBOM, container-scan, and admission checks passed.
+- [x] Non-Python SDK publication workflow passed after immutable-version retry
+      handling was added for partially completed publication attempts.
+- [x] Python publication workflow passed for `lcp-sdk`, `lcp-mcp-server`, and
+      `lcp-reference-platform`.
+- [x] Container publication, signature, provenance, and SBOM attestations passed.
+- [x] Protected final release-record publication completed.
 
-- [ ] Started the non-publishing rehearsal:
+The tag-triggered SDK run is retained at
+[Publish SDKs #9](https://github.com/SpearSystems/LCP/actions/runs/31968977477),
+and the Python and container runs are retained with the release workflow's
+upstream checks.
 
-      ```bash
-      gh workflow run release.yml \
-        --repo SpearSystems/LCP \
-        --ref main \
-        -f tag=v1.0.0 \
-        -f target_sha=<candidate-sha>
-      ```
+## 3. Evidence and registry results
 
-- [ ] The run completed successfully (registry availability check, schema and
-      conformance gates, source/package evidence generation, signing, and
-      verification).
-- [ ] Downloaded the `lcp-release-dry-run-v1.0.0` workflow artifact and
-      extracted it.
+- [x] The release manifest contains the coordinated package evidence records.
+- [x] Source archives, SBOMs, provenance statements, and Sigstore bundles were
+      generated for the exact tagged commit.
+- [x] npm package: `@spear-systems/lcp-sdk@1.0.0`.
+- [x] PyPI packages: `lcp-sdk`, `lcp-mcp-server`, and
+      `lcp-reference-platform`, all at `1.0.0`.
+- [x] NuGet package: `LcpSdk` owned by `SpearSystems`, at `1.0.0`.
+- [x] Maven Central coordinates: `systems.spear:lcp-sdk` and
+      `systems.spear:lcp-sdk-kotlin`, at `1.0.0`.
+- [x] crates.io package: `lcp-sdk@1.0.0`; the earlier bootstrap version is
+      not the v1 release.
+- [x] RubyGems package: `lcp-sdk@1.0.0`; its OIDC publisher was activated by
+      the successful v1 release.
+- [x] Reference image: `ghcr.io/spearsystems/lcp-reference-platform:v1.0.0`,
+      consumed by digest after verification.
 
-## 3. Offline evidence verification
+See [RELEASE.md](RELEASE.md) for the verification commands and authoritative
+registry coordinate table.
 
-- [ ] Structural verification passed:
+## 4. Approval and governance notes
 
-      ```bash
-      python3 tools/verify_release_evidence.py ./release-assets
-      ```
+- [x] The protected release environments were reviewed and approved.
+- [x] A single-maintainer approval exception was used for v1.0.0 because a
+      second independent reviewer was not yet available.
+- [ ] Add a second maintainer/reviewer and enable **Prevent self-review** before
+      the next production release.
+- [x] No release secret, credential, or real consumer PII was added to the
+      repository or release evidence.
 
-- [ ] Signature verification passed with the dry-run identity:
+The single-maintainer exception does not change the artifact or tag history;
+it is recorded here so the v1 release is auditable rather than implying that a
+two-person approval occurred.
 
-      ```bash
-      python3 tools/verify_release_evidence.py ./release-assets \
-        --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/heads/main" \
-        --issuer "https://token.actions.githubusercontent.com"
-      ```
+## 5. Post-release operations
 
-- [ ] `release-manifest.json` contains all 12 package evidence records.
-- [ ] The manifest's `commit` equals the candidate SHA, and the
-      `schema_manifest_sha256` matches `implementations/sdk/typescript/src/generated/schema-manifest.json`.
-- [ ] Every source archive's SHA-256 in the manifest matches the downloaded
-      file, and each provenance statement's subject binds the same digest.
-- [ ] Every package SBOM parses as CycloneDX and every provenance statement as
-      SLSA v1.
-- [ ] The release notes and manifest Sigstore bundles verify against the
-      expected workflow identity.
+- [x] Weekly post-release verification is configured through
+      [`release-verify.yml`](../.github/workflows/release-verify.yml).
+- [x] Future package versions must use new immutable SemVer tags; `v1.0.0` is
+      never moved or reused.
+- [x] Registry trusted publishing is the normal path for future releases;
+      bootstrap credentials were revoked where applicable.
+- [ ] Record future release-probe results and any adoption feedback in the
+      next version's release record.
 
-## 4. Package publication readiness
+## 6. Using this record for a future release
 
-- [ ] Each published coordinate is absent from its registry for `1.0.0` (the
-      dry-run gate already fails otherwise):
-      PyPI `lcp-sdk` / `lcp-mcp-server` / `lcp-reference-platform`,
-      npm `@spear-systems/lcp-sdk`, NuGet `SpearSystems:LcpSdk`,
-      Maven `systems.spear:lcp-sdk` / `:lcp-sdk-kotlin`,
-      crates.io `lcp-sdk`, RubyGems `lcp-sdk`, Packagist `spearsystems/lcp-sdk`,
-      Go `github.com/SpearSystems/LCP/implementations/sdk/go`,
-      SwiftPM `https://github.com/SpearSystems/LCP.git`.
-- [ ] The Kotlin Maven coordinate is distinct (`systems.spear:lcp-sdk-kotlin`)
-      and the release manifest references it.
-- [ ] Container publication will target `ghcr.io/spearsystems/lcp-reference-platform:v1.0.0`
-      with signature, provenance, and SBOM attestations.
+For `v1.0.1`, `v1.1.0`, or another future version:
 
-## 5. Release approval
-
-- [ ] Two independent reviewers approved the release ticket (release and
-      security roles; the person who initiated the release does not approve
-      their own deployment).
-- [ ] Reviewers confirmed the dry-run evidence digest, scanner reports,
-      SBOMs, and the candidate SHA.
-- [ ] Any HIGH/CRITICAL findings are resolved or accepted in the
-      [vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) with an
-      owner and expiry.
-- [ ] No secrets, real PII, credentials, or private configuration are present
-      in the source, SBOMs, image, or release assets.
-
-## 6. Create the tag
-
-- [ ] Push the signed tag only after all items above are checked:
-
-      ```bash
-      git tag -s v1.0.0 -m "LCP v1.0.0"
-      git push origin v1.0.0
-      ```
-
-- [ ] Confirm the tag runs Test, Security, SDK compatibility, package, and
-      container workflows, and approve the protected publication jobs.
-- [ ] Verify the signed release record with
-      [RELEASE.md](RELEASE.md#verify-the-signed-release-record) and record the
-      image digest and registry package URLs in this ticket.
-
-## 7. Post-release verification
-
-- [ ] Ran the scheduled post-release probe
-      ([release-verify.yml](../.github/workflows/release-verify.yml)) against
-      the published `v1.0.0` and it passed.
-- [ ] Recorded the signed manifest, SBOMs, provenance, scanner reports,
-      reviewer identities, approvals, and deployment digest in the release
-      record.
+1. Copy this file and replace every version-specific coordinate and link.
+2. Run the non-publishing release rehearsal and verify its evidence offline.
+3. Confirm the candidate SHA, package availability, security findings, and
+   approvals before creating the new signed tag.
+4. Do not republish an existing package version or move an existing tag.
+5. Record the final workflow, registry, image digest, and reviewer evidence in
+   the copied record.
 
 ---
 

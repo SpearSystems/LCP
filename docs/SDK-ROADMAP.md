@@ -216,4 +216,4 @@ MCP unless an adopter has a concrete agent integration requirement.
 
 ---
 
-**Previous:** [Platform integration](PLATFORM-INTEGRATION.md) · **Next:** [Tagged releases and artifact verification](RELEASE.md)
+**Previous:** [Platform integration](PLATFORM-INTEGRATION.md) · **Next:** [Field dictionary](FIELD-DICTIONARY.md)

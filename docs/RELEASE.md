@@ -12,12 +12,13 @@ A tag such as `v1.0.0` starts the coordinated release process. The tag is
 accepted only when it matches `SDK_VERSION` and the package metadata checked by
 `tools/check_sdk_versions.py`.
 
-Before the first real tag, configure the protected GitHub release environments
+Before the first release, or when provisioning a new repository, configure the protected GitHub release environments
 (`release`, `release-python-mcp`, and `release-python-reference`), branch rules,
 and registry trusted publishers using the [maintainer release
-setup](MAINTAINER-RELEASE-SETUP.md). The final GitHub release record is created
-by a separate environment-protected job, so package publication and release
-creation require explicit approval.
+setup](MAINTAINER-RELEASE-SETUP.md). The v1.0.0 release completed this flow
+successfully; future releases repeat it with a new immutable version tag. The
+final GitHub release record is created by a separate environment-protected job,
+so package publication and release creation require explicit approval.
 
 The tag runs these workflows for the same commit:
 
@@ -156,7 +157,7 @@ release workflow runs on its own evidence before uploading.
 | NuGet | `LcpSdk` (owner `SpearSystems`) | NuGet Trusted Publishing via `NuGet/login` |
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | Central Portal protected credentials and DNS-verified `spear.systems` namespace |
 | crates.io | `lcp-sdk` | crates.io OIDC trusted login; the manually published bootstrap is not the v1 release |
-| RubyGems | `lcp-sdk` | RubyGems pending trusted publisher converted on the first OIDC release |
+| RubyGems | `lcp-sdk` | Active RubyGems OIDC trusted publisher, activated by v1.0.0 |
 | Packagist | `spearsystems/lcp-sdk` | Signed tag mirroring |
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
@@ -168,11 +169,12 @@ same tagged workflow job. This is required because Gradle's built-in
 `maven-publish` task does not close or submit the compatibility repository on
 its own. If Central validation closes a failed compatibility repository, drop
 that repository before retrying the publication. The Rust bootstrap version is
-not part of the v1 release; the `1.0.0` publication must come through the
-configured crates.io OIDC publisher. RubyGems uses its pending publisher for
-the first release and converts it to an active publisher afterward.
+not part of the v1 release; the `1.0.0` publication came through the configured crates.io OIDC publisher.
+RubyGems now uses its active OIDC publisher for subsequent versions.
 
-The release manifest is the authoritative list for a specific tag. Package
+The v1.0.0 release is the first published LCP release; its signed tag and
+release manifest are immutable. The release manifest is the authoritative list
+for a specific tag. Package
 registries can take time to index a new version; verify the package's version
 and checksum through the registry before using it in a production lockfile.
 
@@ -262,6 +264,6 @@ backup/recovery, and deployment approval. If a release must be withdrawn:
 
 ---
 
-**Previous:** [SDK program](SDK-ROADMAP.md) · **Next:** [Release ticket](RELEASE-TICKET.md)
+**Previous:** [Field dictionary](FIELD-DICTIONARY.md) · **Next:** [Release ticket](RELEASE-TICKET.md)
 
 **Maintainer:** [Branch protection and release environment](MAINTAINER-RELEASE-SETUP.md)
