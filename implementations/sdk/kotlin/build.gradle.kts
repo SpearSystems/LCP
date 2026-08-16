@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.4.10"
     `maven-publish`
+    `signing`
 }
 
 group = "systems.spear"
@@ -20,6 +21,11 @@ dependencies {
 
 kotlin { jvmToolchain(17) }
 
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {
@@ -30,6 +36,19 @@ publishing {
                 description.set("LCP Lead Context Protocol SDK for Kotlin")
                 url.set("https://github.com/SpearSystems/LCP")
                 licenses { license { name.set("Apache-2.0"); url.set("https://www.apache.org/licenses/LICENSE-2.0") } }
+                developers {
+                    developer {
+                        id.set("spearsystems")
+                        name.set("Spear Systems")
+                        organization.set("Spear Systems")
+                        organizationUrl.set("https://spear.systems")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/SpearSystems/LCP.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/SpearSystems/LCP.git")
+                    url.set("https://github.com/SpearSystems/LCP")
+                }
             }
         }
     }
@@ -42,5 +61,21 @@ publishing {
                 password = System.getenv("MAVEN_PASSWORD")
             }
         }
+    }
+}
+
+val publishingRequested = gradle.startParameter.taskNames.any { task ->
+    task.substringAfterLast(":").startsWith("publish")
+}
+
+if (publishingRequested) {
+    val signingKey = System.getenv("MAVEN_GPG_PRIVATE_KEY")
+        ?: throw GradleException("MAVEN_GPG_PRIVATE_KEY is required for Maven publication")
+    val signingPassphrase = System.getenv("MAVEN_GPG_PASSPHRASE")
+        ?: throw GradleException("MAVEN_GPG_PASSPHRASE is required for Maven publication")
+
+    signing {
+        useInMemoryPgpKeys(signingKey, signingPassphrase)
+        sign(publishing.publications["mavenJava"])
     }
 }

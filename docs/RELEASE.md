@@ -158,10 +158,13 @@ release workflow runs on its own evidence before uploading.
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
 
-For Kotlin, the Gradle compatibility upload is explicitly submitted to Central
-Portal with `publishing_type=automatic` by the same tagged workflow job. This
-is required because Gradle's built-in `maven-publish` task does not close or
-submit the compatibility repository on its own. The Rust bootstrap version is
+For Kotlin, the Gradle compatibility upload publishes sources, Javadocs,
+detached PGP signatures, SCM metadata, and developer metadata before it is
+explicitly submitted to Central Portal with `publishing_type=automatic` by the
+same tagged workflow job. This is required because Gradle's built-in
+`maven-publish` task does not close or submit the compatibility repository on
+its own. If Central validation closes a failed compatibility repository, drop
+that repository before retrying the publication. The Rust bootstrap version is
 not part of the v1 release; the `1.0.0` publication must come through the
 configured crates.io OIDC publisher. RubyGems uses its pending publisher for
 the first release and converts it to an active publisher afterward.
