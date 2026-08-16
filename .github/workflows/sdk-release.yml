@@ -223,24 +223,39 @@ jobs:
         id: crates-existing
         run: |
           version="$(tr -d '[:space:]' < SDK_VERSION)"
-          status="$(curl --silent --show-error --location \
+          index_file="$(mktemp)"
+          trap 'rm -f "$index_file"' EXIT
+          curl --silent --show-error --location \
             --retry 5 --retry-all-errors --retry-delay 2 \
             --connect-timeout 10 --max-time 30 \
-            --output /dev/null --write-out '%{http_code}' \
-            "https://crates.io/api/v1/crates/lcp-sdk/${version}")" || {
-              echo "Unable to determine whether lcp-sdk@${version} exists on crates.io; refusing to publish." >&2
+            --output "$index_file" \
+            "https://index.crates.io/lc/p-/lcp-sdk" || {
+              echo "Unable to determine whether lcp-sdk@${version} exists on the crates.io index; refusing to publish." >&2
               exit 1
             }
-          case "$status" in
-            200)
+          result="$(python3 - "$version" "$index_file" <<'PY'
+          import json
+          import sys
+
+          version, index_path = sys.argv[1:]
+          with open(index_path, encoding="utf-8") as index:
+              versions = [json.loads(line)["vers"] for line in index if line.strip()]
+          print("published" if version in versions else "unpublished")
+          PY
+          )" || {
+            echo "Unable to parse the crates.io index; refusing to publish." >&2
+            exit 1
+          }
+          case "$result" in
+            published)
               echo "published=true" >> "$GITHUB_OUTPUT"
               echo "lcp-sdk@${version} already exists; skipping immutable publication."
               ;;
-            404)
+            unpublished)
               echo "published=false" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "Unexpected crates.io response HTTP $status; refusing to publish." >&2
+              echo "Unexpected crates.io index result $result; refusing to publish." >&2
               exit 1
               ;;
           esac

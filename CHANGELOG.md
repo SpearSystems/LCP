@@ -18,7 +18,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Updated the MCP adapter for the MCP 2.x callback-based `Server` API while retaining compatibility with the 1.x decorator API; the SDK compatibility import gate now passes with `mcp 2.0.0`.
 - Added the Kotlin Central Portal submission step required after Gradle's OSSRH compatibility upload, so the Kotlin deployment is automatically validated and published instead of remaining outside the Portal.
 - Completed Kotlin Maven publication metadata and detached signing (sources, Javadocs, SCM, developers, and PGP signatures), fixed the nested Ruby SDK release working directory, and stopped retrying non-transient Central validation failures.
-- Added immutable-version probes for retrying partially completed registry releases without attempting to republish Java, Kotlin, npm, crates.io, or RubyGems artifacts that already exist; registry probes now fail closed when crates.io cannot be queried.
+- Added immutable-version probes for retrying partially completed registry releases without attempting to republish Java, Kotlin, npm, crates.io, or RubyGems artifacts that already exist; crates.io publication now checks the sparse index and fails closed when registry state cannot be determined.
 - Added the npm repository metadata required for provenance validation and the Ruby `rake` development dependency required by the trusted release task.
 - Added complete Rust crate metadata (homepage, repository, documentation, and README) for a discoverable v1 package.
 - Completed registry-side Trusted Publishing setup for crates.io and RubyGems; the crates.io bootstrap token was revoked and RubyGems is configured with a pending `lcp-sdk` publisher.
