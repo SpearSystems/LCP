@@ -87,6 +87,9 @@ jobs:
       - run: python3 tools/generate_sdk_models.py --write
       - working-directory: implementations/sdk/csharp
         run: dotnet pack src/LcpSdk.csproj --configuration Release --output "$GITHUB_WORKSPACE/artifacts/nuget"
+      # NUGET_USER is the nuget.org profile requesting the short-lived key;
+      # the LcpSdk package and trusted-publishing policy are owned by the
+      # NuGet organization SpearSystems.
       - name: NuGet trusted login
         id: nuget-login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1

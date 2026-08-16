@@ -67,7 +67,7 @@ evidence, package publication configuration, and release approvals all pass.
 - [ ] Each published coordinate is absent from its registry for `1.0.0` (the
       dry-run gate already fails otherwise):
       PyPI `lcp-sdk` / `lcp-mcp-server` / `lcp-reference-platform`,
-      npm `@spear-systems/lcp-sdk`, NuGet `LcpSdk`,
+      npm `@spear-systems/lcp-sdk`, NuGet `SpearSystems:LcpSdk`,
       Maven `com.spearsystems:lcp-sdk` / `:lcp-sdk-kotlin`,
       crates.io `lcp-sdk`, RubyGems `lcp-sdk`, Packagist `spearsystems/lcp-sdk`,
       Go `github.com/SpearSystems/LCP/implementations/sdk/go`,

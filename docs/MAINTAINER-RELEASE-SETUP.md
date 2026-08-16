@@ -102,7 +102,7 @@ identities:
 |---|---|---|
 | PyPI | Trusted Publishers for `lcp-sdk`, `lcp-mcp-server`, and `lcp-reference-platform` | Bind `lcp-sdk` to `SpearSystems/LCP`, `python-release.yml`, environment `release`; bind `lcp-mcp-server` to environment `release-python-mcp`; bind `lcp-reference-platform` to `release-python-reference`; do not add a PyPI API token. |
 | npm | Trusted publisher for `@spear-systems/lcp-sdk` | Bind the exact repository and `sdk-release.yml` workflow; retain provenance. |
-| NuGet | `NUGET_USER` consumed by `NuGet/login` | Use NuGet trusted login and a protected environment; do not store a reusable API key. |
+| NuGet | Package owner `SpearSystems`; `NUGET_USER` (the `rbeno` profile) consumed by `NuGet/login` | Bind `SpearSystems/LCP`, `sdk-release.yml`, and environment `release` in NuGet Trusted Publishing; do not store a reusable API key. |
 | Maven Central | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` | Store only as environment secrets; rotate and audit the signing key and Central Portal token. |
 | Kotlin Maven | `MAVEN_REPOSITORY_URL`, `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` | Use the distinct `com.spearsystems:lcp-sdk-kotlin` coordinate and protected repository. |
 | crates.io | OIDC trusted publisher | Bind the exact `sdk-release.yml` workflow and repository. Do not use `CARGO_REGISTRY_TOKEN`. |

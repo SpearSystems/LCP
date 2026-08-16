@@ -15,6 +15,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency update decision record (`docs/DEPENDENCY-DECISIONS.md`) documenting applied and deferred Dependabot updates
 
 ### Changed
+- Recorded the NuGet `SpearSystems` organization as the `LcpSdk` package and Trusted Publishing owner while retaining `rbeno` as the OIDC token-requesting profile
 - Moved the TypeScript SDK to the controlled `@spear-systems/lcp-sdk` npm scope after auditing the pre-existing `@spearsystems` namespace
 - Updated the npm release job to Node.js 24 with npm caching disabled, meeting npm Trusted Publishing's current OIDC runtime requirements
 - Made the Python release matrix use distinct GitHub environments for each pending PyPI publisher, allowing the three new monorepo projects to use OIDC Trusted Publishing without reusing an ambiguous pending-publisher identity
