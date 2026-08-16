@@ -18,7 +18,7 @@
   python3 test-vectors/conformance.py --verbose
   ```
 - [ ] If AI-assisted: I have disclosed AI involvement (see CONTRIBUTING.md)
-<!-- The tracked commit-msg hook strips generated attribution from local commits; see CONTRIBUTING.md. -->
+<!-- Run `python3 tools/setup_git_hooks.py` once; the hook strips generated tool attribution while preserving human co-authors. -->
 
 ## Description
 

@@ -4,7 +4,8 @@
 The policy keeps attribution in the pull request description and CLA process.
 The tracked commit-msg hook removes generated attribution before Git creates a
 commit, while CI reports messages created without the hook without rewriting
-pull-request or protected-branch history.
+pull-request or protected-branch history. Human co-author trailers are kept
+unless they identify a known automation identity.
 """
 
 from __future__ import annotations
@@ -25,14 +26,39 @@ PROHIBITED_TRAILERS: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.IGNORECASE,
         ),
     ),
-    (
-        "co-author attribution",
-        re.compile(r"^\s*co[- ]?authored[- ]by\s*:\s*.+$", re.IGNORECASE),
-    ),
 )
+COAUTHOR_TRAILER_PATTERN = re.compile(
+    r"^\s*co[- ]?authored[- ]by\s*:\s*(?P<author>.+)$",
+    re.IGNORECASE,
+)
+COAUTHOR_EMAIL_PATTERN = re.compile(r"<(?P<email>[^<>\s]+@[^<>\s]+)>")
+GENERATED_COAUTHOR_NAMES = frozenset({"codebuff"})
+GENERATED_COAUTHOR_EMAILS = frozenset({"noreply@codebuff.com"})
 
 
 Violation = tuple[int, str, str]
+
+
+def _generated_policy(line: str) -> str | None:
+    """Return the policy name when a line is generated attribution."""
+
+    for policy_name, pattern in PROHIBITED_TRAILERS:
+        if pattern.match(line):
+            return policy_name
+
+    coauthor_match = COAUTHOR_TRAILER_PATTERN.match(line)
+    if not coauthor_match:
+        return None
+
+    author = coauthor_match.group("author").strip()
+    email_match = COAUTHOR_EMAIL_PATTERN.search(author)
+    if email_match and email_match.group("email").casefold() in GENERATED_COAUTHOR_EMAILS:
+        return "generated co-author attribution"
+
+    display_name = author.split("<", maxsplit=1)[0].strip().casefold()
+    if display_name in GENERATED_COAUTHOR_NAMES:
+        return "generated co-author attribution"
+    return None
 
 
 def find_violations(message: str) -> list[Violation]:
@@ -40,15 +66,14 @@ def find_violations(message: str) -> list[Violation]:
 
     violations: list[Violation] = []
     for line_number, line in enumerate(message.splitlines(), start=1):
-        for policy_name, pattern in PROHIBITED_TRAILERS:
-            if pattern.match(line):
-                violations.append((line_number, policy_name, line.strip()))
-                break
+        policy_name = _generated_policy(line)
+        if policy_name:
+            violations.append((line_number, policy_name, line.strip()))
     return violations
 
 
 def strip_attributions(message: str) -> str:
-    """Remove only prohibited generated-attribution lines from a message."""
+    """Remove only generated-attribution lines from a message."""
 
     violating_line_numbers = {
         line_number for line_number, _, _ in find_violations(message)
@@ -64,7 +89,7 @@ def strip_attributions(message: str) -> str:
 
 
 def normalize_message_file(message_file: Path) -> list[Violation]:
-    """Strip prohibited lines in place and return what was removed."""
+    """Strip generated lines in place and return what was removed."""
 
     with message_file.open("r", encoding="utf-8", newline="") as file:
         original = file.read()

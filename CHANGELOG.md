@@ -7,9 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Non-blocking commit-attribution reporting and a tracked `commit-msg` hook
-  that strips generated attribution and `Co-Authored-By` trailers before normal
-  commits.
+- Non-blocking commit-attribution reporting, a one-command hook bootstrap,
+  and a tracked `commit-msg` hook that strips generated attribution and known
+  automation co-author trailers while preserving human co-authors.
 - Human-readable v1.0 field dictionary and advisory consent/evidence guide.
 
 ### Changed
