@@ -71,6 +71,8 @@
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
   gates, published SDK coordinates, signed release records, SBOMs, and adopter
   verification commands.
+- [v1.0.1 release candidate record](RELEASE-TICKET-1.0.1.md) — pending patch
+  release gates, performance evidence, and approval checklist.
 - [Implementation decisions](IMPLEMENTATION-DECISIONS.md) — approved
   production reference profile and rationale.
 - [Canonical specification](../SPEC.md) — wire contract and governance.
@@ -81,8 +83,10 @@
 ### Page 4 · Operate
 
 - [Reference platform](../implementations/reference-platform/README.md) —
-  persistent HTTP/router implementation, mappings, attachments, call outcomes,
-  and quota reporting.
+  persistent HTTP/router implementation, mappings, indexed offer candidates,
+  attachments, call outcomes, and quota reporting.
+- [Performance workflow](../.github/workflows/performance.yml) — non-publishing
+  PostgreSQL 18.4 and candidate-reduction regression checks.
 - [Production deployment](DEPLOYMENT.md) — Postgres, Kubernetes, scaling,
   residency, and recovery targets.
 - [Kubernetes example](../implementations/reference-platform/kubernetes/README.md)

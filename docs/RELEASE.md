@@ -1,6 +1,11 @@
 # LCP tagged releases and artifact verification
 
 > **Release page · Page 3 of 6**
+
+> **Current candidate:** coordinated `v1.0.1` metadata is prepared on `main`
+> for a patch release of the published reference-platform extensions. No
+> immutable tag, package publication, container publication, or GitHub release
+> has been created by this preparation change.
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -83,6 +88,25 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
+## v1.0.1 candidate dry run
+
+The current candidate is a coordinated patch release because it adds
+implementation-level candidate indexing and benchmark tooling without changing
+schemas, message types, or the universal wire contract. Before creating the
+immutable tag, run the non-publishing workflow against the pushed candidate:
+
+```bash
+gh workflow run release.yml \
+  --repo SpearSystems/LCP \
+  --ref main \
+  -f tag=v1.0.1 \
+  -f target_sha="$(git rev-parse HEAD)"
+```
+
+The workflow must report the coordinated `SDK_VERSION` as `1.0.1`, pass schema
+and conformance gates, and upload the signed dry-run evidence artifact. Review
+that artifact offline before approving a real `v1.0.1` tag.
+
 ## Non-publishing release dry run
 
 Before creating a real tag, run the release workflow manually against the
@@ -92,7 +116,7 @@ candidate commit:
 gh workflow run release.yml \
   --repo SpearSystems/LCP \
   --ref main \
-  -f tag=v1.0.0 \
+  -f tag=v1.0.1 \
   -f target_sha="$(git rev-parse HEAD)"
 ```
 

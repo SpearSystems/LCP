@@ -264,6 +264,79 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(result.matched)
         self.assertIn("phone_not_verified", result.reasons)
 
+    def test_indexed_offer_candidates_are_conservative_and_reindex_updates(self) -> None:
+        payload = self.load_lead()["lcp"]["payload"]
+        payload["attributes"] = {
+            "vertical": "home_services",
+            "service_type": "roofing",
+        }
+        payload["location"] = {
+            "country_code": "AU",
+            "state_region": "NSW",
+            "postal_code": "2000",
+        }
+        offers = [
+            {
+                "offer_id": "candidate-roofing-au",
+                "buyer_id": "buyer_001",
+                "active": True,
+                "vertical": "home_services",
+                "countries": ["AU"],
+                "attribute_in": {"service_type": ["roofing"]},
+            },
+            {
+                "offer_id": "candidate-gutters-au",
+                "buyer_id": "buyer_001",
+                "active": True,
+                "vertical": "home_services",
+                "countries": ["AU"],
+                "attribute_in": {"service_type": ["gutters"]},
+            },
+            {
+                "offer_id": "candidate-roofing-us",
+                "buyer_id": "buyer_001",
+                "active": True,
+                "vertical": "home_services",
+                "countries": ["US"],
+                "attribute_in": {"service_type": ["roofing"]},
+            },
+            {
+                "offer_id": "candidate-uncertain",
+                "buyer_id": "buyer_001",
+                "active": True,
+                "vertical": "home_services",
+                "countries": ["AU"],
+                "extensions": None,
+            },
+        ]
+        for offer in offers:
+            self.platform.store.upsert_offer(offer)
+
+        candidates = {
+            offer["offer_id"]
+            for offer in self.platform.store.list_offer_candidates(
+                payload,
+                tenant_id="default",
+            )
+        }
+        self.assertEqual(
+            candidates,
+            {"candidate-roofing-au", "candidate-uncertain"},
+        )
+
+        updated = dict(offers[0])
+        updated["countries"] = ["US"]
+        self.platform.store.upsert_offer(updated)
+        candidates_after_update = {
+            offer["offer_id"]
+            for offer in self.platform.store.list_offer_candidates(
+                payload,
+                tenant_id="default",
+            )
+        }
+        self.assertNotIn("candidate-roofing-au", candidates_after_update)
+        self.assertIn("candidate-uncertain", candidates_after_update)
+
     def test_intake_persists_and_creates_non_pii_ping(self) -> None:
         self.platform.upsert_offer(self.offer())
         lead = self.load_lead()

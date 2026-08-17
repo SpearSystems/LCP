@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -18,6 +19,217 @@ from .crypto import EnvelopeCipher
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+_CANDIDATE_REQUIREMENTS_NAMESPACE = "lcp.platform.requirements"
+_CANDIDATE_SERVICE_AREA_NAMESPACE = "lcp.platform.service_area"
+_CANDIDATE_ALLOWED_PATH_ROOTS = {"attributes", "location", "provenance"}
+_CANDIDATE_ALLOWED_OPERATORS = {"equals", "in", "exists", "between", "prefix"}
+
+
+def _candidate_string_values(value: Any) -> set[str] | None:
+    if not isinstance(value, list) or not value or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        return None
+    return set(value)
+
+
+def _candidate_optional_values(
+    container: Mapping[str, Any], key: str
+) -> tuple[set[str] | None, bool]:
+    """Return values, plus whether a present value is too uncertain to index."""
+    if key not in container or container[key] is None:
+        return None, False
+    if container[key] == []:
+        return None, True
+    values = _candidate_string_values(container[key])
+    return values, values is None
+
+
+def _candidate_profile_values(
+    profile: Any,
+) -> tuple[dict[str, set[str]], bool]:
+    """Read valid service-area dimensions without making them sufficient."""
+    if not isinstance(profile, Mapping):
+        return {}, True
+    if not isinstance(profile.get("profile_id"), str) or not profile["profile_id"]:
+        return {}, True
+    if not isinstance(profile.get("version"), str) or not profile["version"]:
+        return {}, True
+    values: dict[str, set[str]] = {}
+    uncertain = False
+    for profile_field, index_dimension in (
+        ("countries", "country_code"),
+        ("state_regions", "state_region"),
+        ("postal_codes", "postal_code"),
+    ):
+        if profile_field not in profile or profile[profile_field] is None:
+            continue
+        candidate, invalid = _candidate_optional_values(profile, profile_field)
+        uncertain = uncertain or invalid
+        if candidate is not None:
+            values[index_dimension] = candidate
+    return values, uncertain
+
+
+def _candidate_requirement_values(
+    profile: Any,
+) -> tuple[set[str] | None, bool]:
+    """Extract only service-type equality constraints from a valid profile."""
+    if not isinstance(profile, Mapping):
+        return None, True
+    if not isinstance(profile.get("profile_id"), str) or not profile["profile_id"]:
+        return None, True
+    if not isinstance(profile.get("version"), str) or not profile["version"]:
+        return None, True
+    predicates = profile.get("predicates")
+    if not isinstance(predicates, list) or not predicates:
+        return None, True
+
+    service_values: set[str] | None = None
+    uncertain = False
+    for predicate in predicates:
+        if not isinstance(predicate, Mapping):
+            uncertain = True
+            continue
+        path = predicate.get("path")
+        operator = predicate.get("operator")
+        if not isinstance(path, str) or not isinstance(operator, str):
+            uncertain = True
+            continue
+        if path != "channel":
+            parts = path.split(".")
+            if len(parts) != 2 or parts[0] not in _CANDIDATE_ALLOWED_PATH_ROOTS or not parts[1]:
+                uncertain = True
+                continue
+        if operator not in _CANDIDATE_ALLOWED_OPERATORS:
+            uncertain = True
+            continue
+
+        if operator == "exists":
+            if not isinstance(predicate.get("value"), bool):
+                uncertain = True
+        elif operator == "equals":
+            if "value" not in predicate:
+                uncertain = True
+            elif path == "attributes.service_type":
+                value = predicate["value"]
+                if not isinstance(value, str) or not value:
+                    uncertain = True
+                else:
+                    service_values = {value} if service_values is None else service_values & {value}
+        elif operator == "in":
+            values = _candidate_string_values(predicate.get("values"))
+            if values is None:
+                uncertain = True
+            elif path == "attributes.service_type":
+                service_values = values if service_values is None else service_values & values
+        elif operator == "between":
+            minimum = predicate.get("min")
+            maximum = predicate.get("max")
+            if (
+                isinstance(minimum, bool)
+                or not isinstance(minimum, (int, float))
+                or isinstance(maximum, bool)
+                or not isinstance(maximum, (int, float))
+                or minimum > maximum
+            ):
+                uncertain = True
+        elif operator == "prefix" and not isinstance(predicate.get("value"), str):
+            uncertain = True
+    return service_values, uncertain
+
+
+def _candidate_intersection(
+    first: set[str] | None, second: set[str] | None
+) -> set[str] | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return first & second
+
+
+def _offer_candidate_dimensions(offer: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Build necessary-condition index rows, falling back when uncertain.
+
+    Candidate indexing is deliberately a prefilter, never an alternate
+    matcher. Any malformed or unrecognized configuration gets a fallback row
+    so the existing full matcher can preserve its fail-closed semantics.
+    """
+    uncertain = False
+    vertical = offer.get("vertical")
+    if not isinstance(vertical, str) or not vertical:
+        uncertain = True
+
+    countries, invalid_countries = _candidate_optional_values(offer, "countries")
+    uncertain = uncertain or invalid_countries or "countries" not in offer
+
+    state_regions, invalid_regions = _candidate_optional_values(offer, "state_regions")
+    postal_codes, invalid_postal_codes = _candidate_optional_values(offer, "postal_codes")
+    uncertain = uncertain or invalid_regions or invalid_postal_codes
+
+    attribute_equals = offer.get("attribute_equals", {})
+    attribute_in = offer.get("attribute_in", {})
+    if not isinstance(attribute_equals, Mapping) or not isinstance(attribute_in, Mapping):
+        uncertain = True
+        attribute_equals = {}
+        attribute_in = {}
+    service_type: set[str] | None = None
+    if "service_type" in attribute_equals:
+        value = attribute_equals["service_type"]
+        if not isinstance(value, str) or not value:
+            uncertain = True
+        else:
+            service_type = {value}
+    if "service_type" in attribute_in:
+        values = _candidate_string_values(attribute_in["service_type"])
+        if values is None:
+            uncertain = True
+        else:
+            service_type = values if service_type is None else service_type & values
+
+    extensions = offer.get("extensions", {})
+    if not isinstance(extensions, Mapping):
+        return [("fallback", "1")]
+    area_values: dict[str, set[str]] = {}
+    if _CANDIDATE_SERVICE_AREA_NAMESPACE in extensions:
+        area_values, area_uncertain = _candidate_profile_values(
+            extensions[_CANDIDATE_SERVICE_AREA_NAMESPACE]
+        )
+        uncertain = uncertain or area_uncertain
+    requirement_values: set[str] | None = None
+    if _CANDIDATE_REQUIREMENTS_NAMESPACE in extensions:
+        requirement_values, requirement_uncertain = _candidate_requirement_values(
+            extensions[_CANDIDATE_REQUIREMENTS_NAMESPACE]
+        )
+        uncertain = uncertain or requirement_uncertain
+    service_type = _candidate_intersection(service_type, requirement_values)
+
+    countries = _candidate_intersection(countries, area_values.get("country_code"))
+    state_regions = _candidate_intersection(state_regions, area_values.get("state_region"))
+    postal_codes = _candidate_intersection(postal_codes, area_values.get("postal_code"))
+
+    if uncertain:
+        return [("fallback", "1")]
+    if countries is None:
+        return [("fallback", "1")]
+    if not countries or not isinstance(vertical, str) or not vertical:
+        return [("impossible", "1")]
+
+    dimensions: list[tuple[str, str]] = [("vertical", vertical)]
+    dimensions.extend(("country_code", value) for value in sorted(countries))
+    for dimension, values in (
+        ("state_region", state_regions),
+        ("postal_code", postal_codes),
+        ("service_type", service_type),
+    ):
+        if values is not None:
+            if not values:
+                return [("impossible", "1")]
+            dimensions.extend((dimension, value) for value in sorted(values))
+    return dimensions
 
 
 class Store:
@@ -102,6 +314,16 @@ class Store:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS offer_candidate_index (
+                    offer_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    dimension TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (offer_id, dimension, value)
+                );
+                CREATE INDEX IF NOT EXISTS idx_offer_candidate_lookup
+                    ON offer_candidate_index(tenant_id, dimension, value, offer_id);
                 CREATE TABLE IF NOT EXISTS publisher_mappings (
                     mapping_id TEXT NOT NULL,
                     publisher_id TEXT NOT NULL,
@@ -269,6 +491,44 @@ class Store:
                 """
             )
             self._migrate_sqlite_columns(db)
+            self._backfill_offer_candidate_index(db)
+
+    def _backfill_offer_candidate_index(self, db: Any) -> None:
+        """Backfill indexes created before candidate selection was introduced."""
+        missing = db.execute(
+            """
+            SELECT o.offer_id
+            FROM offers AS o
+            LEFT JOIN offer_candidate_index AS i ON i.offer_id = o.offer_id
+            WHERE i.offer_id IS NULL
+            LIMIT 1
+            """
+        ).fetchone()
+        if missing is None:
+            return
+        db.execute("DELETE FROM offer_candidate_index")
+        for row in db.execute("SELECT offer_json FROM offers").fetchall():
+            self._replace_offer_candidate_index(db, json.loads(row["offer_json"]))
+
+    def _replace_offer_candidate_index(self, db: Any, offer: Mapping[str, Any]) -> None:
+        db.execute(
+            "DELETE FROM offer_candidate_index WHERE offer_id = ?",
+            (offer["offer_id"],),
+        )
+        timestamp = now_iso()
+        tenant_id = str(offer.get("tenant_id", "default"))
+        for dimension, value in _offer_candidate_dimensions(offer):
+            db.execute(
+                """
+                INSERT INTO offer_candidate_index
+                    (offer_id, tenant_id, dimension, value, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(offer_id, dimension, value) DO UPDATE SET
+                    tenant_id=excluded.tenant_id,
+                    updated_at=excluded.updated_at
+                """,
+                (offer["offer_id"], tenant_id, dimension, value, timestamp),
+            )
 
     def _migrate_sqlite_columns(self, db: sqlite3.Connection) -> None:
         columns = {
@@ -738,6 +998,7 @@ class Store:
                     timestamp,
                 ),
             )
+            self._replace_offer_candidate_index(db, offer)
 
     def list_offers(
         self,
@@ -762,6 +1023,67 @@ class Store:
         query += " ORDER BY offer_id"
         with self._lock:
             rows = self._connection.execute(query, values).fetchall()
+        return [json.loads(row["offer_json"]) for row in rows]
+
+    def list_offer_candidates(
+        self,
+        payload: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
+        active_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return a conservative subset for the existing full matcher.
+
+        The index contains only necessary conditions. Fallback and impossible
+        rows preserve behavior for uncertain or contradictory configurations.
+        """
+        attributes = payload.get("attributes", {})
+        location = payload.get("location", {})
+        vertical = attributes.get("vertical") if isinstance(attributes, Mapping) else None
+        country = location.get("country_code") if isinstance(location, Mapping) else None
+        if not isinstance(vertical, str) or not isinstance(country, str):
+            return []
+
+        where = ["o.active = 1"] if active_only else []
+        params: list[Any] = []
+        if tenant_id is None:
+            cte = "SELECT offer_id, dimension, value FROM offer_candidate_index"
+        else:
+            cte = "SELECT offer_id, dimension, value FROM offer_candidate_index WHERE tenant_id = ?"
+            params.append(tenant_id)
+        state = location.get("state_region") if isinstance(location, Mapping) else None
+        postal = location.get("postal_code") if isinstance(location, Mapping) else None
+        service_type = attributes.get("service_type") if isinstance(attributes, Mapping) else None
+
+        def exists(dimension: str, value: Any | None = None) -> str:
+            clause = ["i.offer_id = o.offer_id", "i.dimension = ?"]
+            params.append(dimension)
+            if value is not None:
+                clause.append("i.value = ?")
+                params.append(value)
+            return "EXISTS (SELECT 1 FROM candidate_index AS i WHERE " + " AND ".join(clause) + ")"
+
+        def optional_dimension(dimension: str, value: Any) -> str:
+            return "(NOT " + exists(dimension) + " OR " + exists(dimension, value) + ")"
+
+        where.append("NOT " + exists("impossible"))
+        where.append("(" + exists("fallback") + " OR (" + " AND ".join(
+            [
+                exists("vertical", vertical),
+                exists("country_code", country),
+                optional_dimension("state_region", state),
+                optional_dimension("postal_code", postal),
+                optional_dimension("service_type", service_type),
+            ]
+        ) + "))")
+        if not active_only:
+            where = [condition for condition in where if condition != "o.active = 1"]
+        query = (
+            "WITH candidate_index AS (" + cte + ") "
+            "SELECT o.offer_json FROM offers AS o WHERE " + " AND ".join(where) + " ORDER BY o.offer_id"
+        )
+        with self._lock:
+            rows = self._connection.execute(query, params).fetchall()
         return [json.loads(row["offer_json"]) for row in rows]
 
     def get_offer(self, offer_id: str) -> dict[str, Any] | None:

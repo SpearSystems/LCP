@@ -20,9 +20,15 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.parse_args()
     expected = read_version(Path("SDK_VERSION"))
+    typescript_lock = json.loads(
+        read_version(Path("implementations/sdk/typescript/package-lock.json"))
+    )
     checks = {
         "python": re.search(r'^version = "([^"]+)"', read_version(Path("implementations/sdk/python/pyproject.toml")), re.MULTILINE),
+        "reference-platform": re.search(r'^version = "([^"]+)"', read_version(Path("implementations/reference-platform/pyproject.toml")), re.MULTILINE),
+        "mcp-server": re.search(r'^version = "([^"]+)"', read_version(Path("implementations/mcp-server/pyproject.toml")), re.MULTILINE),
         "typescript": json.loads(read_version(Path("implementations/sdk/typescript/package.json")))["version"],
+        "typescript-lock": typescript_lock["packages"][""]["version"],
         "csharp": re.search(r"<Version>([^<]+)</Version>", read_version(Path("implementations/sdk/csharp/src/LcpSdk.csproj"))),
         "java": re.search(r"<version>([^<]+)</version>", read_version(Path("implementations/sdk/java/pom.xml"))),
         "rust": re.search(r'^version = "([^"]+)"', read_version(Path("implementations/sdk/rust/Cargo.toml")), re.MULTILINE),

@@ -2,9 +2,10 @@
 """Stress-test the reference platform with synthetic, messy lead traffic.
 
 This benchmark never sends network webhooks and never uses real consumer data.
-Use match mode for CPU-only scaling and ingest/route modes for persistence and
-routing pressure. Results are directional benchmarks, not production capacity
-claims.
+Use match mode for full-scan CPU-only scaling, candidates mode for indexed
+candidate-reduction regression checks, and ingest/route modes for persistence
+and routing pressure. Results are directional benchmarks, not production
+capacity claims.
 """
 
 from __future__ import annotations
@@ -192,8 +193,15 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--records", type=int, default=10_000)
     parser.add_argument("--offers", type=int, default=24)
-    parser.add_argument("--mode", choices=("match", "ingest", "route"), default="ingest")
+    parser.add_argument(
+        "--mode",
+        choices=("match", "candidates", "ingest", "route"),
+        default="ingest",
+    )
     parser.add_argument("--batch-size", type=int, default=1_000)
+    parser.add_argument("--min-candidate-reduction-percent", type=float, default=None)
+    parser.add_argument("--min-records-per-second", type=float, default=None)
+    parser.add_argument("--json-output", type=Path, default=None)
     args = parser.parse_args()
     if args.records <= 0 or args.offers <= 0 or args.batch_size <= 0:
         parser.error("records, offers, and batch-size must be positive")
@@ -208,6 +216,8 @@ def main() -> int:
     first_errors: list[str] = []
     started = time.perf_counter()
 
+    candidate_evaluations = 0
+    full_evaluations = 0
     with tempfile.TemporaryDirectory(prefix="lcp-stress-") as directory:
         database_path = Path(directory) / "stress.sqlite3"
         platform = None
@@ -226,7 +236,17 @@ def main() -> int:
                 try:
                     if args.mode == "match":
                         payload = envelope["lcp"]["payload"]
+                        full_evaluations += len(offers)
                         for offer in offers:
+                            match_offer(offer, payload, sender_id="stress-publisher")
+                    elif args.mode == "candidates":
+                        payload = envelope["lcp"]["payload"]
+                        candidates = platform.store.list_offer_candidates(
+                            payload,
+                            tenant_id="default",
+                        )
+                        candidate_evaluations += len(candidates)
+                        for offer in candidates:
                             match_offer(offer, payload, sender_id="stress-publisher")
                     else:
                         platform.ingest(envelope, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
@@ -241,7 +261,7 @@ def main() -> int:
                         print(f"processed={index + 1}/{args.records}", flush=True)
             elapsed = time.perf_counter() - started
             db_bytes = database_path.stat().st_size if database_path.exists() else 0
-            print(json.dumps({
+            report: dict[str, Any] = {
                 "records": args.records,
                 "offers": args.offers,
                 "mode": args.mode,
@@ -254,11 +274,48 @@ def main() -> int:
                 "first_errors": first_errors,
                 "peak_rss_mb": round(_rss_bytes() / 1024 / 1024, 2),
                 "sqlite_bytes": db_bytes,
-            }, indent=2))
+            }
+            threshold_failures: list[str] = []
+            if args.mode == "candidates":
+                full_evaluations = args.records * args.offers
+                reduction = (
+                    100 * (1 - candidate_evaluations / full_evaluations)
+                    if full_evaluations
+                    else 0
+                )
+                report.update({
+                    "full_offer_evaluations": full_evaluations,
+                    "candidate_offer_evaluations": candidate_evaluations,
+                    "candidate_reduction_percent": round(reduction, 2),
+                })
+                if (
+                    args.min_candidate_reduction_percent is not None
+                    and reduction < args.min_candidate_reduction_percent
+                ):
+                    threshold_failures.append(
+                        f"candidate reduction {reduction:.2f}% is below "
+                        f"{args.min_candidate_reduction_percent:.2f}%"
+                    )
+            if (
+                args.min_records_per_second is not None
+                and args.records / elapsed < args.min_records_per_second
+            ):
+                threshold_failures.append(
+                    f"throughput {args.records / elapsed:.2f} records/sec is below "
+                    f"{args.min_records_per_second:.2f}"
+                )
+            report["threshold_failures"] = threshold_failures
+            if args.json_output:
+                args.json_output.parent.mkdir(parents=True, exist_ok=True)
+                args.json_output.write_text(
+                    json.dumps(report, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            print(json.dumps(report, indent=2))
         finally:
             if platform is not None:
                 platform.close()
-    return 0 if errors == 0 else 1
+    return 0 if errors == 0 and not report["threshold_failures"] else 1
 
 
 if __name__ == "__main__":

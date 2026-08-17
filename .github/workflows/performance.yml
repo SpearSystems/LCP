@@ -1,0 +1,105 @@
+name: Performance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-scale:
+    name: PostgreSQL 18.4 scale and candidate-index regression
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+        env:
+          POSTGRES_DB: lcp_benchmark
+          POSTGRES_USER: lcp_benchmark
+          POSTGRES_PASSWORD: lcp_benchmark
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lcp_benchmark -d lcp_benchmark"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install benchmark dependencies
+        run: python -m pip install jsonschema referencing httpx cryptography 'psycopg[binary]'
+      - name: Verify indexed candidate reduction
+        run: |
+          set -euo pipefail
+          python tools/benchmark_reference_platform.py \
+            --mode candidates \
+            --records 2000 \
+            --offers 96 \
+            --batch-size 500 \
+            --min-candidate-reduction-percent 90 \
+            --min-records-per-second 100 \
+            --json-output "${RUNNER_TEMP}/candidate-index.json" \
+            | tee "${RUNNER_TEMP}/candidate-index.log"
+      - name: Benchmark concurrent PostgreSQL intake
+        env:
+          LCP_TEST_POSTGRES_URL: postgresql://lcp_benchmark:lcp_benchmark@localhost:5432/lcp_benchmark
+        run: |
+          set -euo pipefail
+          python tools/benchmark_postgres_platform.py \
+            --mode ingest \
+            --records 4000 \
+            --offers 96 \
+            --workers 4 \
+            --timeout-seconds 240 \
+            --min-records-per-second 35 \
+            --json-output "${RUNNER_TEMP}/postgres-ingest.json" \
+            | tee "${RUNNER_TEMP}/postgres-ingest.log"
+      - name: Create a fresh delivery benchmark database
+        run: |
+          python - <<'PY'
+          import psycopg
+
+          with psycopg.connect(
+              "postgresql://lcp_benchmark:lcp_benchmark@localhost:5432/postgres",
+              autocommit=True,
+          ) as connection:
+              connection.execute("CREATE DATABASE lcp_delivery_benchmark")
+          PY
+      - name: Benchmark concurrent PostgreSQL delivery
+        env:
+          LCP_TEST_POSTGRES_URL: postgresql://lcp_benchmark:lcp_benchmark@localhost:5432/lcp_delivery_benchmark
+        run: |
+          set -euo pipefail
+          python tools/benchmark_postgres_platform.py \
+            --mode deliver \
+            --records 500 \
+            --offers 24 \
+            --workers 4 \
+            --delivery-workers 2 \
+            --webhook-latency-ms 20 \
+            --timeout-seconds 240 \
+            --min-records-per-second 10 \
+            --min-deliveries-per-second 20 \
+            --min-end-to-end-records-per-second 8 \
+            --json-output "${RUNNER_TEMP}/postgres-delivery.json" \
+            | tee "${RUNNER_TEMP}/postgres-delivery.log"
+      - name: Upload performance reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-postgres-performance-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/candidate-index.json
+            ${{ runner.temp }}/candidate-index.log
+            ${{ runner.temp }}/postgres-ingest.json
+            ${{ runner.temp }}/postgres-ingest.log
+            ${{ runner.temp }}/postgres-delivery.json
+            ${{ runner.temp }}/postgres-delivery.log
+          if-no-files-found: warn
+          retention-days: 30

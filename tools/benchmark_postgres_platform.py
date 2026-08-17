@@ -353,6 +353,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--delivery-workers", type=int, default=2)
     parser.add_argument("--webhook-latency-ms", type=int, default=0)
     parser.add_argument("--timeout-seconds", type=float, default=300.0)
+    parser.add_argument("--min-records-per-second", type=float, default=None)
+    parser.add_argument("--min-deliveries-per-second", type=float, default=None)
+    parser.add_argument("--min-end-to-end-records-per-second", type=float, default=None)
+    parser.add_argument("--json-output", type=Path, default=None)
     args = parser.parse_args()
     if args.records <= 0 or args.offers <= 0:
         parser.error("records and offers must be positive")
@@ -475,6 +479,7 @@ def main() -> int:
         "records": args.records,
         "offers": args.offers,
         "workers": args.workers,
+        "candidate_index": "enabled",
         "intake_elapsed_seconds": round(intake_elapsed, 3),
         "records_per_second": round(args.records / intake_elapsed, 2),
         "errors": errors,
@@ -495,8 +500,39 @@ def main() -> int:
                 "end_to_end_records_per_second": round(args.records / total_elapsed, 2),
             }
         )
+    threshold_failures: list[str] = []
+    if args.min_records_per_second is not None and report["records_per_second"] < args.min_records_per_second:
+        threshold_failures.append(
+            f"intake throughput {report['records_per_second']:.2f} records/sec is below "
+            f"{args.min_records_per_second:.2f}"
+        )
+    if args.mode == "deliver":
+        if (
+            args.min_deliveries_per_second is not None
+            and report["deliveries_per_second"] < args.min_deliveries_per_second
+        ):
+            threshold_failures.append(
+                f"delivery throughput {report['deliveries_per_second']:.2f} deliveries/sec is below "
+                f"{args.min_deliveries_per_second:.2f}"
+            )
+        if (
+            args.min_end_to_end_records_per_second is not None
+            and report["end_to_end_records_per_second"] < args.min_end_to_end_records_per_second
+        ):
+            threshold_failures.append(
+                f"end-to-end throughput {report['end_to_end_records_per_second']:.2f} records/sec is below "
+                f"{args.min_end_to_end_records_per_second:.2f}"
+            )
+    report["threshold_failures"] = threshold_failures
+    if args.json_output:
+        args.json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.json_output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    ok = errors == 0 and (args.mode != "deliver" or delivered_posts == args.records)
+    ok = (
+        errors == 0
+        and (args.mode != "deliver" or delivered_posts == args.records)
+        and not threshold_failures
+    )
     return 0 if ok else 1
 
 

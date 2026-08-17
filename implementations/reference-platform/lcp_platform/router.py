@@ -221,8 +221,8 @@ class Platform:
             )
 
         payload = envelope["lcp"]["payload"]
-        offers = self.store.list_offers(
-            vertical=payload.get("attributes", {}).get("vertical"),
+        offers = self.store.list_offer_candidates(
+            payload,
             tenant_id=self.config.routing_tenant_id,
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
@@ -360,8 +360,8 @@ class Platform:
             return
         envelope = self.store.decode_envelope(row["envelope_json"])
         payload = envelope["lcp"]["payload"]
-        offers = self.store.list_offers(
-            vertical=payload.get("attributes", {}).get("vertical"),
+        offers = self.store.list_offer_candidates(
+            payload,
             tenant_id=self.config.routing_tenant_id,
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []

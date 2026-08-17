@@ -15,6 +15,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Human-readable v1.0 field dictionary and advisory consent/evidence guide.
 - Repeatable synthetic SQLite and concurrent PostgreSQL 18.4 benchmark tools,
   including local webhook latency simulation and documented capacity baselines.
+- Conservative indexed offer candidate selection with fallback-safe matching,
+  candidate-reduction regression thresholds, and PostgreSQL 18.4 CI reports.
+- Coordinated 1.0.1 package metadata for the reference platform extensions and
+  the other published SDK artifacts; no tag or registry publication has been made.
 
 ### Changed
 - Converted the v1.0 release ticket and publishing-gap analysis into accurate
