@@ -4,5 +4,8 @@ cryptography==50.0.0
 httpx==0.28.1
 jsonschema==4.26.0
 mcp==2.0.0
+# Pinned transitively (mcp -> starlette): 0.0.32 fixes CVE-2024-53981,
+# CVE-2026-24486, CVE-2026-40347, CVE-2026-42561, CVE-2026-53537/8/9/40.
+python-multipart==0.0.32
 psycopg==3.3.4
 referencing==0.37.0
