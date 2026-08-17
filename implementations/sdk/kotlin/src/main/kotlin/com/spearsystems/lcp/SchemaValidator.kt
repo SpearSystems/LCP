@@ -63,7 +63,7 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
             if (!verticalAttributes.has("vertical")) verticalAttributes.put("vertical", vertical)
             if (!verticalAttributes.has("schema_version")) {
                 val version = schema.path("properties").path("schema_version").path("const")
-                if (!version.isMissingNode) verticalAttributes.set<JsonNode>("schema_version", version)
+                if (!version.isMissingNode) verticalAttributes.set("schema_version", version)
             }
         }
         validate("verticals/$vertical.json", verticalAttributes.toString())
@@ -72,9 +72,8 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
 
     private fun validatePingSafe(vertical: String, value: JsonNode, schema: JsonNode, path: String) {
         if (!value.isObject) return
-        val fields = value.fields()
-        while (fields.hasNext()) {
-            val field = fields.next()
+        val fields = value.properties()
+        for (field in fields) {
             val name = field.key
             if (path == "attributes" && (name == "vertical" || name == "schema_version")) continue
             val definition = schema.path("properties").path(name)
@@ -91,10 +90,11 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
     companion object {
         fun fromDirectory(root: Path): LcpSchemaValidator {
             val documents = linkedMapOf<String, String>()
-            val roots = mutableListOf(root)
+            val roots = mutableListOf<Path>()
+            roots.add(root)
             if (root.fileName?.toString() == "schemas") {
                 val verticalRoot = root.parent?.resolve("verticals") ?: Path.of("verticals")
-                if (Files.isDirectory(verticalRoot)) roots += verticalRoot
+                if (Files.isDirectory(verticalRoot)) roots.add(verticalRoot)
             }
             roots.forEach { scanRoot ->
                 Files.walk(scanRoot).use { paths ->
