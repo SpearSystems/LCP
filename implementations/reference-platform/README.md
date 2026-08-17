@@ -178,16 +178,28 @@ before `wsgi.input` is read, downloads stream raw encrypted bytes (never
 `Content-Length`) are forwarded. Upload and download with curl:
 
 ```bash
-# Upload: Bearer-authenticated, application/octet-stream; the route's body
-# limit applies before wsgi.input is read.
+export LCP_ATTACHMENT_FILE=scanned-evidence.pdf
+export LCP_ATTACHMENT_ID=att_evidence_001
+export LCP_ATTACHMENT_SHA256="$(sha256sum "$LCP_ATTACHMENT_FILE" | cut -d' ' -f1)"
+
+# Upload: Bearer-authenticated raw bytes. The route's body limit applies before
+# wsgi.input is read; replace the lead and sender IDs with your own values.
 curl -sS -X POST "$LCP_ENDPOINT/v1/lcp/attachments" \
   -H "Authorization: Bearer $LCP_API_KEY" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @scanned-evidence.bin
+  -H "X-LCP-Sender-Id: publisher_001" \
+  -H "X-LCP-Lead-Id: <lead_id>" \
+  -H "X-LCP-Attachment-Id: $LCP_ATTACHMENT_ID" \
+  -H "X-LCP-Attachment-Purpose: supporting_document" \
+  -H "X-LCP-Filename: $LCP_ATTACHMENT_FILE" \
+  -H "X-LCP-Content-SHA256: $LCP_ATTACHMENT_SHA256" \
+  -H "X-LCP-Idempotency-Key: publisher-attachment-001" \
+  -H "Content-Type: application/pdf" \
+  --data-binary @"$LCP_ATTACHMENT_FILE"
 
 # Download: bytes are returned unchanged with the original content headers.
-curl -sS "$LCP_ENDPOINT/v1/lcp/attachments/<attachment_id>" \
+curl -sS "$LCP_ENDPOINT/v1/lcp/attachments/$LCP_ATTACHMENT_ID" \
   -H "Authorization: Bearer $LCP_API_KEY" \
+  -H "X-LCP-Sender-Id: publisher_001" \
   -o evidence.bin
 ```
 
@@ -243,8 +255,11 @@ buyer sees only its own match decisions, payables, and events:
 ```bash
 # Buyer confirms the delivered lead (event -> audit row lead.accepted).
 curl -sS -X POST "$LCP_ENDPOINT/v1/lcp/events" \
+  -H "Authorization: Bearer $LCP_API_KEY" \
+  -H "X-LCP-Sender-Id: buyer_001" \
+  -H "X-LCP-Idempotency-Key: buyer-accept-001" \
   -H "Content-Type: application/json" \
-  -d '{"lcp":{"version":"1.0.0","message":{"type":"event","id":"<uuid>","timestamp":"2026-08-18T00:00:00Z","sender_id":"buyer_001","receiver_id":"platform_001"},"payload":{"lead_id":"<lead_id>","event":"ACCEPTED","timestamp":"2026-08-18T00:00:00Z"}}}'
+  -d '{"lcp":{"version":"1.0.0","message":{"type":"event","id":"<uuid>","timestamp":"2026-08-18T00:00:00Z","sender_id":"buyer_001","receiver_id":"platform_001","idempotency_key":"buyer-accept-001"},"payload":{"lead_id":"<lead_id>","event":"ACCEPTED","timestamp":"2026-08-18T00:00:00Z"}}}'
 
 # Publisher reads status; the response contains only publisher-scoped data.
 curl -sS "$LCP_ENDPOINT/v1/lcp/leads/<lead_id>" \

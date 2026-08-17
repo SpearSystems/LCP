@@ -1,9 +1,10 @@
 """Public markdown links and anchors must resolve.
 
-Scans every markdown file under ``docs/``, ``implementations/``, and the root
-``README.md``: each relative link must point at an existing file, and each
-``#anchor`` must match the GitHub slug of a heading in the target file. Runs
-as part of the tooling tests, so CI catches broken docs links automatically.
+Scans public Markdown files throughout the repository, excluding local/tooling
+and build artifacts: each relative link must point at an existing file, and
+each ``#anchor`` must match the GitHub slug of a heading in the target file.
+Runs as part of the tooling tests, so CI catches broken docs links
+automatically.
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ EXCLUDED_PARTS = {
     "coverage",
     ".git",
     ".gitnexus",
+    ".claude",
+    ".freebuff",
 }
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -53,13 +56,14 @@ def _lines_outside_fences(text: str) -> list[tuple[int, str]]:
 
 
 def _markdown_files() -> list[Path]:
-    files: list[Path] = [ROOT / "README.md"]
-    for base in (ROOT / "docs", ROOT / "implementations"):
-        if base.is_dir():
-            for path in sorted(base.rglob("*.md")):
-                relative = path.relative_to(ROOT)
-                if not any(part in EXCLUDED_PARTS for part in relative.parts):
-                    files.append(path)
+    """Return public Markdown files while excluding local/tooling artifacts."""
+    files: list[Path] = []
+    for path in sorted(ROOT.rglob("*.md")):
+        relative = path.relative_to(ROOT)
+        if relative.name in {"AGENTS.md", "CLAUDE.md"}:
+            continue
+        if not any(part in EXCLUDED_PARTS for part in relative.parts):
+            files.append(path)
     return files
 
 

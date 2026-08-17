@@ -98,29 +98,29 @@ release manifest and evidence assets before consuming packages or the
 reference image:
 
 ```bash
-gh workflow run release.yml \
+mkdir -p release-assets
+gh release download v1.0.1 \
   --repo SpearSystems/LCP \
-  --ref main \
-  -f tag=v1.0.1 \
-  -f target_sha="$(git rev-parse HEAD)"
+  --dir release-assets \
+  --clobber
+python3 tools/verify_release_evidence.py release-assets
 ```
 
-For the published release, download `release-manifest.json` and its
-`.sigstore.json` bundle from the GitHub release page and verify them with the
-offline command below. The workflow command above is only a repeatable
-rehearsal for future release candidates; it must not be treated as evidence
-that a new release was published.
+The published release assets are the evidence for `v1.0.1`; do not rerun a
+release dry run with an already-occupied version. Use the non-publishing dry
+run below only for a new version after updating `SDK_VERSION` and package
+metadata.
 
 ## Non-publishing release dry run
 
-For a future patch, run the release workflow manually against the exact
-candidate commit:
+For the next patch, first update `SDK_VERSION` and every package manifest to
+`1.0.2`, then run the workflow against the exact candidate commit:
 
 ```bash
 gh workflow run release.yml \
   --repo SpearSystems/LCP \
   --ref main \
-  -f tag=v1.0.1 \
+  -f tag=v1.0.2 \
   -f target_sha="$(git rev-parse HEAD)"
 ```
 

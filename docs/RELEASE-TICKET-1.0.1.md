@@ -35,7 +35,7 @@
 
 - [x] `python tools/check_sdk_versions.py --check` passed before publication.
 - [x] `python tools/check_sdk_schema_sync.py --check` passed before publication.
-- [x] `python test-vectors/conformance.py` passed 27/27 vectors before publication.
+- [x] `python test-vectors/conformance.py` passed 27/27 vectors before publication. The current post-release tree passes 30/30; the three sensitive-ping vectors were added after this tag.
 - [x] Reference-platform and SDK compatibility gates passed in the tagged
       release workflows.
 - [x] Candidate-index and PostgreSQL performance evidence was retained by CI.

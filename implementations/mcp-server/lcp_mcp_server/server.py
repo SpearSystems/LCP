@@ -33,9 +33,10 @@ def _make_envelope(msg_type: str, sender_id: str, receiver_id: str, payload: dic
     return build_envelope(msg_type, sender_id, receiver_id, payload)
 
 
-def _platform_receiver_id() -> str:
-    """Return the configured platform receiver used by bid submissions."""
-    return os.environ.get("LCP_PLATFORM_ID", "platform_001")
+def _platform_receiver_id() -> str | None:
+    """Return the explicitly configured platform receiver for bid submissions."""
+    receiver_id = os.environ.get("LCP_PLATFORM_ID", "").strip()
+    return receiver_id or None
 
 
 def _tool_result(data: dict[str, Any]) -> list[types.TextContent]:
@@ -253,6 +254,11 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
             if opt_field in arguments:
                 payload[opt_field] = arguments[opt_field]
         receiver_id = _platform_receiver_id()  # bids go to the platform, not a buyer
+        if receiver_id is None:
+            return _error_result(
+                "LCP_PLATFORM_ID is required for bid submission",
+                code="LCP-100",
+            )
         envelope, error = _validated_envelope("bid", client.sender_id, receiver_id, payload)
         if error is not None:
             return error

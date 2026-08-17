@@ -66,3 +66,7 @@ published behavior.
 
 The current roadmap and deferred triggers are in
 [`docs/V1.1-ROADMAP.md`](../docs/V1.1-ROADMAP.md).
+
+Current governance records include the [LEP process adoption plan](LEP-PROCESS-PLAN.md)
+and the [LEP-0001 batch/subscription draft](LEPs/LEP-0001-batch-submission-and-event-subscriptions.md).
+Both remain review artifacts; neither accepts or implements a protocol change.

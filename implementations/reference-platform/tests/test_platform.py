@@ -889,6 +889,24 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(len(self.platform.store.list_pings("lead_test_001")), 1)
         self.assertEqual(self.platform.store.get_lead("lead_test_001")["status"], "PINGED")
 
+    def test_expiry_uses_legal_transition_graph(self) -> None:
+        lead = self.load_lead()
+        self.assertTrue(self.platform.store.insert_lead(lead, status="NEW"))
+        self.assertTrue(self.platform.store.expire_lead("lead_test_001"))
+        self.assertEqual(self.platform.store.get_lead("lead_test_001")["status"], "EXPIRED")
+        self.assertFalse(self.platform.store.expire_lead("lead_test_001"))
+
+        terminal = deepcopy(self.load_lead())
+        terminal["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440100"
+        terminal["lcp"]["message"]["idempotency_key"] = "terminal-expiry-test-001"
+        terminal["lcp"]["payload"]["lead_id"] = "lead_terminal_expiry_001"
+        self.assertTrue(self.platform.store.insert_lead(terminal, status="ACCEPTED"))
+        self.assertFalse(self.platform.store.expire_lead("lead_terminal_expiry_001"))
+        self.assertEqual(
+            self.platform.store.get_lead("lead_terminal_expiry_001")["status"],
+            "ACCEPTED",
+        )
+
     def test_persisted_envelopes_are_authenticated_and_encrypted(self) -> None:
         key = base64.urlsafe_b64encode(b"k" * 32).decode("ascii")
         store = Store(Path(":memory:"), pii_encryption_key=key)

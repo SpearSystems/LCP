@@ -175,7 +175,7 @@ bumps.
    gh workflow run release.yml \
      --repo SpearSystems/LCP \
      --ref main \
-     -f tag=v1.0.0 \
+     -f tag=v1.0.2 \
      -f target_sha="$(git rev-parse HEAD)"
    ```
 

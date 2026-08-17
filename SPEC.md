@@ -874,7 +874,7 @@ core changes. Audit checklist:
 - [x] Tag every vertical attribute field `ping_safe: true/false`.
 - [x] Fill examples (`examples/*.json`).
 - [x] Fill test vectors (`test-vectors/`).
-- [x] Write conformance runner (L1/L2/L3) — 27/27 pass.
+- [x] Write conformance runner (L1/L2/L3) — 30/30 pass, including the post-release sensitive-ping vectors.
 - [x] Write reference MCP server (`implementations/mcp-server/`).
 - [x] Add `governance/SECURITY.md` (responsible disclosure).
 - [x] Add trademark/usage policy for "LCP compliant" claims.

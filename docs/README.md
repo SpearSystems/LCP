@@ -130,6 +130,10 @@
   extension registration.
 - [LEP process](../governance/LEP.md) — proposal, review, compatibility, and
   deprecation workflow.
+- [LEP process adoption plan](../governance/LEP-PROCESS-PLAN.md) — draft storage,
+  review, registry, and pilot workflow.
+- [LEP-0001 batch/subscription draft](../governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
+  — review-ready, not-yet-accepted adoption-scale proposal.
 - [Adoption readiness](ADOPTION-READINESS.md) — post-release signals,
   feedback funnel, and scale triggers.
 - [v1.1 roadmap](V1.1-ROADMAP.md) — implemented foundations and deferred work.

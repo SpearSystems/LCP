@@ -40,15 +40,30 @@ class McpAdapterTests(unittest.TestCase):
         self.assertTrue(all(".." not in name and not name.startswith("/") for name in names))
 
     @unittest.skipUnless(importlib.util.find_spec("mcp"), "MCP runtime dependency is not installed")
-    def test_bid_receiver_defaults_to_documented_platform_id(self) -> None:
+    def test_bid_receiver_requires_explicit_platform_id(self) -> None:
         # Importing the MCP server is intentionally deferred because the MCP
         # dependency is optional for local schema-only tooling.
         from lcp_mcp_server.server import _platform_receiver_id
 
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(_platform_receiver_id(), "platform_001")
+            self.assertIsNone(_platform_receiver_id())
         with patch.dict(os.environ, {"LCP_PLATFORM_ID": "sandbox_platform"}):
             self.assertEqual(_platform_receiver_id(), "sandbox_platform")
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp"), "MCP runtime dependency is not installed")
+    def test_bid_without_platform_id_is_rejected_before_network(self) -> None:
+        from lcp_mcp_server import server as server_module
+        from lcp_mcp_server.client import LCPClient
+
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            LCPClient, "post", side_effect=AssertionError("network must not be reached")
+        ):
+            result = _run_tool(
+                "submit_bid",
+                {"ping_id": "ping_001", "decision": "pass"},
+            )
+        self.assertIn("LCP-100", result[0].text)
+        self.assertIn("LCP_PLATFORM_ID is required", result[0].text)
 
     def test_lead_status_path_encodes_lead_id(self) -> None:
         from lcp_mcp_server.client import LCPClient

@@ -10,11 +10,10 @@
 
 `governance/LEP.md` already defines *what* an LEP is and the six stages
 (discuss → draft → review → decision → implement → deprecate/supersede), but
-the process has never been exercised: no numbered LEP exists and no proposal
-has been through the stages. This plan operationalizes the process so the
-first external or material protocol change (natural candidate: LEP-0001)
-actually flows through it. It is a plan, not a change to the published
-protocol.
+the process has not yet been exercised through a completed
+Discuss → Draft → Review → Decision cycle. LEP-0001 is now the first numbered
+draft and the natural pilot for this plan. This document operationalizes the
+review path; it is not a change to the published protocol.
 
 ## Goal and acceptance
 

@@ -1393,6 +1393,35 @@ class Store:
             )
         return True
 
+    def _update_lead_status_in_transaction(
+        self,
+        db: Any,
+        lead_id: str,
+        status: str,
+        *,
+        reason: str | None = None,
+    ) -> str | None:
+        """Apply one lifecycle transition using the shared legal graph."""
+        row = db.execute(
+            "SELECT status FROM leads WHERE lead_id = ?",
+            (lead_id,),
+        ).fetchone()
+        if not row:
+            raise KeyError(f"Lead not found: {lead_id}")
+        current = str(row["status"])
+        if current == status:
+            return None
+        direct_post = current == "NEW" and status == "POSTED" and reason == "direct_delivery"
+        if not direct_post and status not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
+            raise InvalidStatusTransition(
+                f"Invalid lead status transition {current} -> {status}"
+            )
+        db.execute(
+            "UPDATE leads SET status = ?, updated_at = ? WHERE lead_id = ?",
+            (status, now_iso(), lead_id),
+        )
+        return current
+
     def expire_lead(self, lead_id: str) -> bool:
         """Move an unaccepted lead to EXPIRED and stop pending delivery."""
         with self.transaction() as db:
@@ -1402,13 +1431,11 @@ class Store:
             ).fetchone()
             if not row:
                 return False
-            if row["status"] not in {"NEW", "PINGED", "POSTED"}:
+            current = str(row["status"])
+            if "EXPIRED" not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
                 return False
+            self._update_lead_status_in_transaction(db, lead_id, "EXPIRED")
             timestamp = now_iso()
-            db.execute(
-                "UPDATE leads SET status = 'EXPIRED', updated_at = ? WHERE lead_id = ?",
-                (timestamp, lead_id),
-            )
             db.execute(
                 "UPDATE pings SET status = 'EXPIRED', updated_at = ? WHERE lead_id = ? AND status = 'OPEN'",
                 (timestamp, lead_id),
@@ -1429,25 +1456,9 @@ class Store:
         the requested status (no transition was applied).
         """
         with self.transaction() as db:
-            row = db.execute(
-                "SELECT status FROM leads WHERE lead_id = ?",
-                (lead_id,),
-            ).fetchone()
-            if not row:
-                raise KeyError(f"Lead not found: {lead_id}")
-            current = str(row["status"])
-            if current == status:
-                return None
-            direct_post = current == "NEW" and status == "POSTED" and reason == "direct_delivery"
-            if not direct_post and status not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
-                raise InvalidStatusTransition(
-                    f"Invalid lead status transition {current} -> {status}"
-                )
-            db.execute(
-                "UPDATE leads SET status = ?, updated_at = ? WHERE lead_id = ?",
-                (status, now_iso(), lead_id),
+            return self._update_lead_status_in_transaction(
+                db, lead_id, status, reason=reason
             )
-            return current
 
     def routing_job_pending(self, lead_id: str) -> bool:
         with self._lock:

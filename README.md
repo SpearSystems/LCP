@@ -10,7 +10,7 @@
 
 > **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, multi-language SDKs, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** v1.0.1 — a published, stable protocol and reference implementation release. The signed `v1.0.1` tag resolves to commit `61886511d2c9424ffb197d0788b049216a4645a2`, and the GitHub release includes the signed manifest, SBOM, provenance, and package evidence. The conformance runner passes 27/27 test vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path. See [docs/RELEASE.md](docs/RELEASE.md) for verification instructions.
+**Status:** v1.0.1 — a published, stable protocol and reference implementation release. The signed `v1.0.1` tag resolves to commit `61886511d2c9424ffb197d0788b049216a4645a2`, and the GitHub release includes the signed manifest, SBOM, provenance, and package evidence. The current tree's conformance runner passes 30/30 test vectors; the published v1.0.1 tag predates the post-release hardening vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path. See [docs/RELEASE.md](docs/RELEASE.md) for verification instructions.
 
 [![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
 
@@ -120,6 +120,7 @@ LCP is JSON over HTTP. A publisher can implement it in any language using the sc
 # Point this at the LCP-compatible platform or buyer endpoint you use.
 curl -X POST https://your-platform.example/v1/lcp/leads \
   -H 'Content-Type: application/json' \
+  -H 'X-LCP-Sender-Id: pub_123' \
   -H 'X-LCP-Timestamp: 2026-08-15T10:20:00Z' \
   -H 'X-LCP-Idempotency-Key: pub-lead-20260815-001' \
   -H 'X-LCP-Signature: <signature>' \
@@ -173,6 +174,7 @@ Configure the adapter with the endpoint and one partner credential:
 ```bash
 export LCP_ENDPOINT=https://your-platform.example
 export LCP_SENDER_ID=your-publisher-id
+export LCP_PLATFORM_ID=platform_001       # required for submit_bid
 export LCP_API_KEY=your-api-key            # or use LCP_HMAC_SECRET
 ```
 
@@ -186,7 +188,8 @@ Then configure your MCP client to launch `lcp-mcp-server`. For example, an MCP c
       "env": {
         "LCP_ENDPOINT": "https://your-platform.example",
         "LCP_API_KEY": "your-api-key",
-        "LCP_SENDER_ID": "your-publisher-id"
+        "LCP_SENDER_ID": "your-publisher-id",
+        "LCP_PLATFORM_ID": "platform_001"
       }
     }
   }
@@ -361,7 +364,7 @@ The reference MCP server is a stateless adapter that calls an existing LCP-compa
 # Install the conformance runner's dependencies if needed.
 python3 -m pip install jsonschema referencing
 
-# Run 27 L1/L2/L3 vectors.
+# Run 30 L1/L2/L3 vectors.
 python3 test-vectors/conformance.py --verbose
 
 # Run the local reference platform (after installing it).
@@ -384,7 +387,7 @@ Schemas are available directly in [`schemas/`](schemas/) and [`verticals/`](vert
 schemas/         ── Envelope, core, and message JSON Schemas
 verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services, mva)
 examples/        ── Sample payloads, onboarding templates, integrations, and the synthetic sandbox
-test-vectors/    ── 27 conformance vectors across L1/L2/L3
+test-vectors/    ── 30 conformance vectors across L1/L2/L3
 implementations/ ── Multi-language SDKs, reference platform/router, and MCP adapter
 docs/            ── Integration guides, implementation decisions, and design notes
 api/             ── OpenAPI 3.1 HTTP transport definition
@@ -434,6 +437,8 @@ SPEC.md          ── Canonical protocol specification
 - [Reference MCP adapter](implementations/mcp-server/)
 - [Security policy](governance/SECURITY.md)
 - [LEP proposal process](governance/LEP.md)
+- [LEP process adoption plan](governance/LEP-PROCESS-PLAN.md)
+- [LEP-0001 batch/subscription draft](governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
 - [Extension registry](governance/EXTENSION-REGISTRY.md)
 - [Trademark and conformance claims](governance/TRADEMARK.md)
 

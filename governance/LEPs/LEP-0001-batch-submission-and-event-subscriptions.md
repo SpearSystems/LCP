@@ -30,9 +30,10 @@ cross-organization — not a single deployment's quirk.
 
 ## Scope
 
-- **Core protocol:** two new message types (`batch`, `subscription`) and their
-  additive envelope blocks — requires the MINOR version bump and the universal
-  core audit (§12 checklist).
+- **Core protocol:** two new message types (`batch`, `subscription`) with
+  payload schemas dispatched through the existing `message.type` + `payload`
+  envelope shape — requires the MINOR version bump and the universal-core audit
+  (§12 checklist).
 - **Reference implementation:** batch intake + subscription registry,
   delivery, replay, retry/dead-letter in the reference platform.
 - **REST / OpenAPI and MCP:** `submit_leads_batch` and `subscribe_to_events`
@@ -46,31 +47,51 @@ cross-organization — not a single deployment's quirk.
 
 ### Batch submission
 
-A new `batch` message type in the existing envelope. The envelope is unchanged
-for single-item flows; the `batch` block is additive.
+A new `batch` message type uses the same top-level `lcp.message` and
+`lcp.payload` shape as existing messages. Each item payload reuses the current
+lead schema and authentication boundary; the batch dispatch and per-item
+metadata are the new v1.1.0 proposal.
 
 ```json
 {
   "lcp": {
-    "version": "1.1",
+    "version": "1.1.0",
     "message": {
+      "id": "d9a20000-0000-4000-8000-000000000001",
       "type": "batch",
-      "message_id": "d9a2...",
-      "timestamp": "2026-08-18T09:00:00Z"
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "publisher_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "publisher-001-batch-001",
+      "test": true
     },
-    "sender": { "id": "publisher_001" },
-    "batch": {
+    "payload": {
       "request_id": "batch-20260818-001",
       "items": [
         {
-          "item_id": "lead-1",
-          "idempotency_key": "pub-001/batch-001/lead-1",
-          "lead": { "consumer": { "first_name": "Ada" }, "attributes": {} }
+          "item_id": "item-001",
+          "idempotency_key": "publisher-001/batch-001/lead-1",
+          "payload": {
+            "lead_id": "lead-1",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Ada", "last_name": "Lovelace" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
         },
         {
-          "item_id": "lead-2",
-          "idempotency_key": "pub-001/batch-001/lead-2",
-          "lead": { "consumer": { "first_name": "Grace" }, "attributes": {} }
+          "item_id": "item-002",
+          "idempotency_key": "publisher-001/batch-001/lead-2",
+          "payload": {
+            "lead_id": "lead-2",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Grace", "last_name": "Hopper" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
         }
       ]
     }
@@ -85,8 +106,8 @@ for single-item flows; the `batch` block is additive.
   "request_id": "batch-20260818-001",
   "summary": { "total": 2, "accepted": 1, "duplicate": 1, "rejected": 0, "error": 0 },
   "results": [
-    { "item_id": "lead-1", "status": "accepted", "lead_id": "L-9001" },
-    { "item_id": "lead-2", "status": "duplicate", "lead_id": "L-9001" }
+    { "item_id": "item-001", "status": "accepted", "lead_id": "lead-1" },
+    { "item_id": "item-002", "status": "duplicate", "lead_id": "lead-1" }
   ]
 }
 ```
@@ -102,44 +123,82 @@ for single-item flows; the `batch` block is additive.
   client can retry **only failed items**.
 - **Limits (draft, flagged for review):** maximum 500 items and 5 MB body
   per request; exceed either → whole-request `413`, not per-item rejection.
-- **Validation:** every item is validated by the same schema and
-  `ping_safe` rules as a single post. Items are full-PII lead payloads
-  (post flow), never ping payloads.
+- **Validation:** every item is validated by the same `lead.json` schema,
+  authentication, and lifecycle intake rules as a single lead. Items are
+  full-PII intake payloads, never ping payloads.
 
 **Invalid example — one bad item must not fail the batch:**
 
 ```json
 {
   "lcp": {
-    "version": "1.1",
-    "message": { "type": "batch", "message_id": "b2", "timestamp": "2026-08-18T09:00:01Z" },
-    "sender": { "id": "publisher_001" },
-    "batch": {
+    "version": "1.1.0",
+    "message": {
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "type": "batch",
+      "timestamp": "2026-08-18T09:00:01Z",
+      "sender_id": "publisher_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "publisher-001-batch-002",
+      "test": true
+    },
+    "payload": {
       "request_id": "batch-20260818-002",
       "items": [
-        { "item_id": "lead-1", "idempotency_key": "k1", "lead": { "consumer": {} } },
-        { "item_id": "lead-2", "idempotency_key": "k2", "lead": { "consumer": { "first_name": "Lin" } } }
+        {
+          "item_id": "item-001",
+          "idempotency_key": "publisher-001/batch-002/lead-1",
+          "payload": {
+            "lead_id": "lead-1",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {},
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        },
+        {
+          "item_id": "item-002",
+          "idempotency_key": "publisher-001/batch-002/lead-2",
+          "payload": {
+            "lead_id": "lead-2",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Lin", "last_name": "Zhao" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        }
       ]
     }
   }
 }
 ```
 
-Result: `lead-1` → `rejected` (`required` field error, per-item), `lead-2` →
+Result: `item-001` → `rejected` (`required` field error, per-item), `item-002` →
 `accepted`. No cross-item rollback.
 
 ### Event subscriptions
 
-A new `subscription` message type registers an authenticated, tenant-scoped
-event subscription:
+A new `subscription` message type uses the existing envelope shape to
+register an authenticated, tenant-scoped event subscription:
 
 ```json
 {
   "lcp": {
-    "version": "1.1",
-    "message": { "type": "subscription", "message_id": "s1", "timestamp": "2026-08-18T09:00:00Z" },
-    "sender": { "id": "buyer_002" },
-    "subscription": {
+    "version": "1.1.0",
+    "message": {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "type": "subscription",
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "buyer-002-subscription-001",
+      "test": true
+    },
+    "payload": {
       "event_types": ["lead.accepted", "lead.posted", "offer.selected"],
       "callback_url": "https://buyer.example/hooks/lcp",
       "filter": { "offer_id": "offer-17" }
@@ -170,10 +229,18 @@ event subscription:
 ```json
 {
   "lcp": {
-    "version": "1.1",
-    "message": { "type": "subscription", "message_id": "s2", "timestamp": "2026-08-18T09:00:00Z" },
-    "sender": { "id": "buyer_002" },
-    "subscription": {
+    "version": "1.1.0",
+    "message": {
+      "id": "a2000000-0000-4000-8000-000000000002",
+      "type": "subscription",
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "buyer-002-subscription-002",
+      "test": true
+    },
+    "payload": {
       "event_types": ["lead.consumer_email_changed"],
       "callback_url": "https://buyer.example/hooks/lcp"
     }
@@ -186,18 +253,18 @@ event would violate PII discipline anyway).
 
 ## Privacy, security, and universal-core audit
 
-- **PII boundaries unchanged.** Batch items are full-PII post-flow payloads
-  validated by the existing post schemas and the recursive `ping_safe` rules;
-  nothing new crosses into pings. Subscription events carry hashes and
-  allowlisted metadata only.
+- **PII boundaries unchanged.** Batch items are full-PII lead-intake payloads
+  validated by the existing lead schema and authentication rules; nothing new
+  crosses into pings. Subscription events carry hashes and allowlisted metadata
+  only.
 - **No predicate-driven PII leakage.** Subscription filters are restricted to
   allowlisted event metadata; arbitrary consumer-field filters are rejected by
   schema (closed `filter` shape).
 - **AuthN/AuthZ:** batch intake authenticates the publisher exactly like
-  single posts; subscription registration requires authentication and is
+  single lead intake; subscription registration requires authentication and is
   tenant-scoped, with authorization checked on registration and on every
   delivery.
-- **Universal core audit:** the two new message types and their blocks add
+- **Universal core audit:** the two new message types and their payloads add
   **zero vertical-specific or market-specific fields** to the core. Vertical
   data continues to live in `attributes`. Run the §12 checklist before merge.
 - **Abuse cases considered:** oversized batches (limit + 413), subscription
@@ -206,15 +273,17 @@ event would violate PII discipline anyway).
 
 ## Compatibility, versioning, and deprecation impact
 
-- **MINOR bump to v1.1.0** — new message types and additive envelope blocks
+- **MINOR bump to v1.1.0** — new message types and additive payload schemas
   are backward compatible; unknown-message-type receivers already return the
   structured error required by SPEC.md, so a v1.0 receiver rejects `batch` /
   `subscription` cleanly instead of misreading them.
 - Additive-only: no existing field, message type, or error code changes.
 - N+2 deprecation window applies to any later change; nothing here is
   deprecated.
-- Envelope schema gains the optional `batch` and `subscription` blocks;
-  unknown optional fields continue to be ignored by v1 receivers (unchanged
+- The closed `message.type` gains `batch` and `subscription`, each with a
+  payload schema; the existing `lcp.message` + `lcp.payload` envelope shape is
+  retained and unknown message types continue to receive the structured error.
+  Unknown optional fields continue to be ignored by v1 receivers (unchanged
   rule).
 
 ## SDK, OpenAPI, MCP, conformance, and operational impact

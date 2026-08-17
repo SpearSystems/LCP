@@ -62,6 +62,7 @@ The server reads its target endpoint from environment variables:
 | `LCP_API_KEY` | (none) | Bearer token for authentication |
 | `LCP_HMAC_SECRET` | (none) | HMAC shared secret (if using HMAC auth instead of API key) |
 | `LCP_SENDER_ID` | (none) | Sender ID to use in outgoing messages and read requests |
+| `LCP_PLATFORM_ID` | (none) | Required receiver ID for bid submissions; prevents sending bids to an unintended platform |
 
 ## Authentication profile
 

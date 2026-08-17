@@ -127,6 +127,28 @@ class WSGIAttachmentTests(unittest.TestCase):
         self.assertEqual(response_headers["Content-Type"], "application/json; charset=utf-8")
         self.assertEqual(json.loads(response)["attachment_id"], "att_wsgi_001")
 
+    def test_oversized_json_body_returns_json_413(self) -> None:
+        status, response_headers, response = self.request(
+            "POST",
+            "/v1/lcp/leads",
+            body=b"{}too-large",
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 413)
+        self.assertEqual(response_headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(response)["errors"][0]["code"], "LCP-001")
+
+    def test_malformed_json_content_type_returns_json_error(self) -> None:
+        status, response_headers, response = self.request(
+            "POST",
+            "/v1/lcp/leads",
+            body=b"{}",
+            headers={"Content-Type": "text/plain"},
+        )
+        self.assertEqual(status, 415)
+        self.assertEqual(response_headers["Content-Type"], "application/json; charset=utf-8")
+        self.assertEqual(json.loads(response)["errors"][0]["code"], "LCP-001")
+
     def test_attachment_download_returns_binary_headers_and_bytes(self) -> None:
         body = b"%PDF\x00binary\xffdownload"
         digest = sha256(body).hexdigest()
