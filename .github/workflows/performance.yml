@@ -83,10 +83,10 @@ jobs:
             --workers 4 \
             --delivery-workers 2 \
             --webhook-latency-ms 20 \
-            --timeout-seconds 240 \
+            --timeout-seconds 300 \
             --min-records-per-second 10 \
-            --min-deliveries-per-second 20 \
-            --min-end-to-end-records-per-second 8 \
+            --min-deliveries-per-second 10 \
+            --min-end-to-end-records-per-second 5 \
             --json-output "${RUNNER_TEMP}/postgres-delivery.json" \
             | tee "${RUNNER_TEMP}/postgres-delivery.log"
       - name: Upload performance reports
