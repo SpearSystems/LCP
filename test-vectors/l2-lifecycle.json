@@ -138,6 +138,7 @@
       "name": "ping_attributes_contain_non_ping_safe_field",
       "expect": "fail",
       "error_code": "LCP-008",
+      "error_contains": ["PII_IN_PING", "LCP-008"],
       "description": "Attributes contains loan_amount_cents which is ping_safe: false in mortgage.json. The conformance runner must reject this.",
       "payload": {
         "lcp": {
@@ -160,6 +161,117 @@
               "loan_type": "refinance",
               "loan_amount_cents": 65000000,
               "loan_amount_band": "500k_750k"
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_safe_attributes_only"
+      ]
+    },
+    {
+      "id": "L2-009b",
+      "name": "ping_attributes_insurance_health_field",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "error_contains": ["PII_IN_PING", "LCP-008"],
+      "description": "Insurance ping attributes contain health_condition_band which is ping_safe: false in insurance.json. Sensitive health profiling data must not cross the ping boundary.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440004",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-ping-bad-004"
+          },
+          "payload": {
+            "ping_id": "ping_bad4",
+            "lead_reference": "ref_bad4",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "insurance",
+            "attributes": {
+              "insurance_type": "health",
+              "health_condition_band": "fair"
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_safe_attributes_only"
+      ]
+    },
+    {
+      "id": "L2-009c",
+      "name": "ping_attributes_legal_injury_field",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "error_contains": ["PII_IN_PING", "LCP-008"],
+      "description": "Legal ping attributes contain injury_severity which is ping_safe: false in legal.json. Sensitive injury/health-adjacent data must not cross the ping boundary.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440005",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-ping-bad-005"
+          },
+          "payload": {
+            "ping_id": "ping_bad5",
+            "lead_reference": "ref_bad5",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "legal",
+            "attributes": {
+              "case_type": "personal_injury",
+              "injury_severity": "moderate"
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_safe_attributes_only"
+      ]
+    },
+    {
+      "id": "L2-009d",
+      "name": "ping_attributes_mva_accident_field",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "error_contains": ["PII_IN_PING", "LCP-008"],
+      "description": "MVA ping attributes contain accident_date which is ping_safe: false in mva.json. Exact incident dates can narrow identity and must not cross the ping boundary.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440006",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-ping-bad-006"
+          },
+          "payload": {
+            "ping_id": "ping_bad6",
+            "lead_reference": "ref_bad6",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mva",
+            "attributes": {
+              "accident_type": "collision",
+              "accident_date": "2026-08-01"
             },
             "floor_price_cents": 1500,
             "currency": "AUD"
