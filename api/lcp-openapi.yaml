@@ -1005,8 +1005,6 @@ components:
       required:
       - ping_id
       - decision
-      - bid_price_cents
-      - currency
       properties:
         ping_id:
           type: string
@@ -1032,6 +1030,17 @@ components:
         capacity_remaining:
           type: integer
           minimum: 0
+      allOf:
+      - if:
+          properties:
+            decision:
+              const: accept
+          required:
+          - decision
+        then:
+          required:
+          - bid_price_cents
+          - currency
   securitySchemes:
     BearerAuth:
       type: http

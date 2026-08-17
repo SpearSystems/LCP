@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
+from datetime import datetime, timezone
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
@@ -8,6 +10,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from uuid import uuid4
 
 from lcp_platform.auth import signature_for
 from lcp_platform.config import PlatformConfig
@@ -45,6 +48,10 @@ class PlatformTests(unittest.TestCase):
         lead["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440099"
         lead["lcp"]["message"]["idempotency_key"] = "test-lead-001"
         lead["lcp"]["payload"]["lead_id"] = "lead_test_001"
+        # The checked-in example intentionally demonstrates an historical
+        # expiry. Routing tests use a non-expiring intake and cover expiry in
+        # dedicated cases below.
+        lead["lcp"]["payload"].pop("expiry", None)
         return lead
 
     def offer(self, **overrides: object) -> dict:
@@ -255,6 +262,113 @@ class PlatformTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_lifecycle_events_enforce_transitions_roles_and_idempotency(self) -> None:
+        from lcp_platform.storage import InvalidStatusTransition
+
+        publisher_id = "publisher_lifecycle"
+        buyer_id = "buyer_lifecycle"
+        ping_only_buyer = "buyer_ping_only"
+        for sender_id in (publisher_id, buyer_id, ping_only_buyer):
+            self.platform.upsert_credential(sender_id, hmac_secret=f"{sender_id}-secret", scopes=[])
+
+        lead = self.load_lead()
+        lead["lcp"]["message"]["sender_id"] = publisher_id
+        lead_id = lead["lcp"]["payload"]["lead_id"]
+        self.assertTrue(self.platform.store.insert_lead(lead, status="POSTED"))
+        with self.assertRaises(InvalidStatusTransition):
+            self.platform.store.update_lead_status(lead_id, "CONVERTED")
+
+        post = _envelope(
+            "post",
+            "platform_001",
+            buyer_id,
+            {"lead_id": lead_id, "offer_id": "lifecycle-offer"},
+            test=True,
+        )
+        self.platform.store.insert_delivery(
+            lead_id=lead_id,
+            ping_id=None,
+            offer_id="lifecycle-offer",
+            buyer_id=buyer_id,
+            kind="post",
+            envelope=post,
+            webhook_url="http://127.0.0.1:9/post",
+        )
+        self.platform.store._connection.execute(
+            "UPDATE deliveries SET status = 'DELIVERED' WHERE message_id = ?",
+            (post["lcp"]["message"]["id"],),
+        )
+        ping_only = _envelope(
+            "ping",
+            "platform_001",
+            ping_only_buyer,
+            {"ping_id": "ping-only-lifecycle", "lead_id": lead_id},
+            test=True,
+        )
+        self.platform.store.insert_delivery(
+            lead_id=lead_id,
+            ping_id="ping-only-lifecycle",
+            offer_id="ping-only-offer",
+            buyer_id=ping_only_buyer,
+            kind="ping",
+            envelope=ping_only,
+            webhook_url="http://127.0.0.1:9/ping",
+        )
+        self.platform.store._connection.execute(
+            "UPDATE deliveries SET status = 'DELIVERED' WHERE message_id = ?",
+            (ping_only["lcp"]["message"]["id"],),
+        )
+
+        invalid = _envelope(
+            "event",
+            buyer_id,
+            "platform_001",
+            {"lead_id": lead_id, "event": "CONVERTED", "timestamp": now_iso()},
+            test=True,
+        )
+        with self.assertRaises(RequestError) as invalid_error:
+            self.platform.submit_event(invalid, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
+        self.assertEqual(invalid_error.exception.code, "LCP-004")
+        self.assertEqual(self.platform.store.get_lead(lead_id)["status"], "POSTED")
+
+        accepted = _envelope(
+            "event",
+            buyer_id,
+            "platform_001",
+            {"lead_id": lead_id, "event": "ACCEPTED", "timestamp": now_iso()},
+            test=True,
+        )
+        first_ack = self.platform.submit_event(
+            accepted, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(first_ack["lcp"]["payload"]["status"], "RECEIVED")
+        self.assertEqual(self.platform.store.get_lead(lead_id)["status"], "ACCEPTED")
+        duplicate_ack = self.platform.submit_event(
+            accepted, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(duplicate_ack["lcp"]["payload"]["status"], "DUPLICATE")
+
+        conflicting = deepcopy(accepted)
+        conflicting["lcp"]["payload"]["event"] = "CONVERTED"
+        with self.assertRaises(RequestError) as conflict_error:
+            self.platform.submit_event(
+                conflicting, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+            )
+        self.assertEqual(conflict_error.exception.code, "LCP-005")
+
+        ping_event = _envelope(
+            "event",
+            ping_only_buyer,
+            "platform_001",
+            {"lead_id": lead_id, "event": "ACCEPTED", "timestamp": now_iso()},
+            test=True,
+        )
+        with self.assertRaises(RequestError) as role_error:
+            self.platform.submit_event(
+                ping_event, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+            )
+        self.assertEqual(role_error.exception.code, "LCP-002")
+
     def test_matching_returns_explainable_reasons(self) -> None:
         lead = self.load_lead()["lcp"]["payload"]
         result = match_offer(
@@ -263,6 +377,179 @@ class PlatformTests(unittest.TestCase):
         )
         self.assertFalse(result.matched)
         self.assertIn("phone_not_verified", result.reasons)
+
+    def test_delivery_window_filters_vertical_and_channel(self) -> None:
+        lead = self.load_lead()["lcp"]["payload"]
+        now = datetime(2026, 8, 17, 10, 0, tzinfo=timezone.utc)
+        window = {
+            "timezone": "UTC",
+            "available_from": "09:00",
+            "available_to": "17:00",
+            "days": ["mon"],
+            "verticals": ["mortgage"],
+            "channels": ["form"],
+        }
+        matched = match_offer(self.offer(delivery_windows=[window]), lead, now=now)
+        self.assertTrue(matched.matched, matched.reasons)
+
+        wrong_vertical = dict(window, verticals=["insurance"])
+        result = match_offer(
+            self.offer(delivery_windows=[wrong_vertical]),
+            lead,
+            now=now,
+        )
+        self.assertFalse(result.matched)
+        self.assertIn("outside_delivery_window", result.reasons)
+
+        wrong_channel = dict(window, channels=["call"])
+        result = match_offer(
+            self.offer(delivery_windows=[wrong_channel]),
+            lead,
+            now=now,
+        )
+        self.assertFalse(result.matched)
+        self.assertIn("outside_delivery_window", result.reasons)
+
+        outside_hours = match_offer(
+            self.offer(delivery_windows=[window]),
+            lead,
+            now=datetime(2026, 8, 17, 18, 0, tzinfo=timezone.utc),
+        )
+        self.assertFalse(outside_hours.matched)
+        self.assertIn("outside_delivery_window", outside_hours.reasons)
+
+    def test_retention_boundaries_stop_expired_and_unconsented_routing(self) -> None:
+        self.platform.upsert_offer(self.offer(offer_id="retention-offer"))
+        expired = self.load_lead()
+        expired["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440101"
+        expired["lcp"]["message"]["idempotency_key"] = "expired-lead-001"
+        expired["lcp"]["payload"]["lead_id"] = "lead_expired_001"
+        expired["lcp"]["payload"]["expiry"] = {"expires_at": "2020-01-01T00:00:00Z"}
+        self.platform.ingest(expired, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
+        self.assertEqual(self.platform.store.get_lead("lead_expired_001")["status"], "EXPIRED")
+        self.assertEqual(self.platform.store.list_pings("lead_expired_001"), [])
+
+        consent_expired = self.load_lead()
+        consent_expired["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440102"
+        consent_expired["lcp"]["message"]["idempotency_key"] = "expired-consent-001"
+        consent_expired["lcp"]["payload"]["lead_id"] = "lead_consent_expired_001"
+        consent_expired["lcp"]["payload"]["compliance"]["consent_expires_at"] = "2020-01-01T00:00:00Z"
+        self.platform.ingest(consent_expired, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
+        self.assertEqual(self.platform.store.list_pings("lead_consent_expired_001"), [])
+        self.platform.process_once()
+        consent_row = self.platform.store.get_lead("lead_consent_expired_001")
+        self.assertEqual(consent_row["suppressed"], 1)
+        self.assertTrue(self.platform.store.is_lead_suppressed("lead_consent_expired_001"))
+
+        purpose_offer = self.offer(
+            offer_id="purpose-offer",
+            extensions={"lcp.platform.required_consent_purposes": ["marketing"]},
+        )
+        self.platform.upsert_offer(purpose_offer)
+        purpose_lead = self.load_lead()
+        purpose_lead["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440103"
+        purpose_lead["lcp"]["message"]["idempotency_key"] = "purpose-mismatch-001"
+        purpose_lead["lcp"]["payload"]["lead_id"] = "lead_purpose_mismatch_001"
+        purpose_lead["lcp"]["payload"]["compliance"]["consent_purposes"] = ["email"]
+        self.platform.ingest(purpose_lead, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
+        purpose_decision = next(
+            decision for decision in self.platform.store.list_match_decisions("lead_purpose_mismatch_001")
+            if decision["offer_id"] == "purpose-offer"
+        )
+        self.assertFalse(purpose_decision["matched"])
+        self.assertIn("consent_purpose_missing:marketing", purpose_decision["reasons"])
+
+    def test_consent_events_trigger_suppression_and_erasure(self) -> None:
+        publisher_id = "publisher_privacy_events"
+        self.platform.upsert_credential(publisher_id, hmac_secret="privacy-events-secret", scopes=[])
+        lead = self.load_lead()
+        lead["lcp"]["message"]["sender_id"] = publisher_id
+        lead["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440104"
+        lead["lcp"]["message"]["idempotency_key"] = "privacy-events-lead-001"
+        lead["lcp"]["payload"]["lead_id"] = "lead_privacy_events_001"
+        self.assertTrue(self.platform.store.insert_lead(lead, status="POSTED"))
+
+        withdrawn = _envelope(
+            "event",
+            publisher_id,
+            "platform_001",
+            {"lead_id": "lead_privacy_events_001", "event": "CONSENT_WITHDRAWN", "timestamp": now_iso()},
+            test=True,
+        )
+        withdrawal_ack = self.platform.submit_event(
+            withdrawn, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(withdrawal_ack["lcp"]["payload"]["status"], "RECEIVED")
+        self.assertTrue(self.platform.store.is_lead_suppressed("lead_privacy_events_001"))
+
+        erasure = _envelope(
+            "event",
+            publisher_id,
+            "platform_001",
+            {"lead_id": "lead_privacy_events_001", "event": "ERASURE_REQUEST", "timestamp": now_iso()},
+            test=True,
+        )
+        erasure_ack = self.platform.submit_event(
+            erasure, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(erasure_ack["lcp"]["payload"]["status"], "RECEIVED")
+        self.assertEqual(self.platform.store.get_lead("lead_privacy_events_001")["status"], "ERASED")
+
+    def test_lead_status_is_projected_by_requester_role(self) -> None:
+        publisher_id = "publisher_status_view"
+        winner_id = "buyer_status_winner"
+        non_winner_id = "buyer_status_nonwinner"
+        lead = self.load_lead()
+        lead["lcp"]["message"]["sender_id"] = publisher_id
+        lead["lcp"]["message"]["id"] = "550e8400-e29b-41d4-a716-446655440105"
+        lead["lcp"]["message"]["idempotency_key"] = "status-view-lead-001"
+        lead["lcp"]["payload"]["lead_id"] = "lead_status_view_001"
+        self.assertTrue(self.platform.store.insert_lead(lead, status="POSTED"))
+        self.platform.store.insert_match_decision(
+            lead_id="lead_status_view_001", offer_id="winner-offer", buyer_id=winner_id,
+            matched=True, reasons=[],
+        )
+        self.platform.store.insert_match_decision(
+            lead_id="lead_status_view_001", offer_id="nonwinner-offer", buyer_id=non_winner_id,
+            matched=False, reasons=["outside_delivery_window"],
+        )
+        self.platform.store.record_payable(
+            offer_id="winner-offer", lead_id="lead_status_view_001", buyer_id=winner_id,
+            month_key="2026-08", channel="form", status="payable", price_cents=2200, currency="AUD",
+        )
+        self.platform.store.record_payable(
+            offer_id="nonwinner-offer", lead_id="lead_status_view_001", buyer_id=non_winner_id,
+            month_key="2026-08", channel="form", status="not_payable", reason="not_winner",
+        )
+        ping = _envelope("ping", "platform_001", non_winner_id, {"ping_id": "status-ping-001"}, test=True)
+        self.platform.store.insert_delivery(
+            lead_id="lead_status_view_001", ping_id="status-ping-001", offer_id="nonwinner-offer",
+            buyer_id=non_winner_id, kind="ping", envelope=ping, webhook_url="http://127.0.0.1:9/ping",
+        )
+        post = _envelope("post", "platform_001", winner_id, {"lead_id": "lead_status_view_001"}, test=True)
+        self.platform.store.insert_delivery(
+            lead_id="lead_status_view_001", ping_id=None, offer_id="winner-offer",
+            buyer_id=winner_id, kind="post", envelope=post, webhook_url="http://127.0.0.1:9/post",
+        )
+        self.platform.store._connection.execute(
+            "UPDATE deliveries SET status = 'DELIVERED' WHERE message_id = ?",
+            (post["lcp"]["message"]["id"],),
+        )
+
+        publisher_view = self.platform.lead_status("lead_status_view_001", requester_id=publisher_id)
+        self.assertEqual(publisher_view["view"], "publisher")
+        self.assertEqual(
+            {item["buyer_id"] for item in publisher_view["match_decisions"]},
+            {winner_id, non_winner_id},
+        )
+        winner_view = self.platform.lead_status("lead_status_view_001", requester_id=winner_id)
+        self.assertEqual(winner_view["view"], "buyer")
+        self.assertEqual({item["buyer_id"] for item in winner_view["match_decisions"]}, {winner_id})
+        self.assertEqual({item["buyer_id"] for item in winner_view["payable_records"]}, {winner_id})
+        with self.assertRaises(RequestError):
+            self.platform.authorize_lead_read("lead_status_view_001", non_winner_id)
+        with self.assertRaises(RequestError):
+            self.platform.lead_status("lead_status_view_001", requester_id=non_winner_id)
 
     def test_indexed_offer_candidates_are_conservative_and_reindex_updates(self) -> None:
         payload = self.load_lead()["lcp"]["payload"]
@@ -336,6 +623,61 @@ class PlatformTests(unittest.TestCase):
         }
         self.assertNotIn("candidate-roofing-au", candidates_after_update)
         self.assertIn("candidate-uncertain", candidates_after_update)
+
+    def test_offer_discovery_filters_active_tenant_and_vertical(self) -> None:
+        offers = [
+            {
+                "offer_id": "discovery-default-mortgage",
+                "buyer_id": "buyer_001",
+                "tenant_id": "tenant-a",
+                "vertical": "mortgage",
+                "active": True,
+                "countries": ["AU"],
+            },
+            {
+                "offer_id": "discovery-default-solar",
+                "buyer_id": "buyer_001",
+                "tenant_id": "tenant-a",
+                "vertical": "solar",
+                "active": True,
+                "countries": ["AU"],
+            },
+            {
+                "offer_id": "discovery-other-tenant",
+                "buyer_id": "buyer_001",
+                "tenant_id": "tenant-b",
+                "vertical": "mortgage",
+                "active": True,
+                "countries": ["AU"],
+            },
+            {
+                "offer_id": "discovery-inactive",
+                "buyer_id": "buyer_001",
+                "tenant_id": "tenant-a",
+                "vertical": "mortgage",
+                "active": False,
+                "countries": ["AU"],
+            },
+        ]
+        for offer in offers:
+            self.platform.store.upsert_offer(offer)
+
+        tenant_offers = self.platform.store.list_offers(tenant_id="tenant-a")
+        self.assertEqual(
+            {offer["offer_id"] for offer in tenant_offers},
+            {"discovery-default-mortgage", "discovery-default-solar"},
+        )
+        mortgage_offers = self.platform.store.list_offers(
+            vertical="mortgage", tenant_id="tenant-a"
+        )
+        self.assertEqual(
+            [offer["offer_id"] for offer in mortgage_offers],
+            ["discovery-default-mortgage"],
+        )
+        self.assertEqual(
+            [offer["offer_id"] for offer in self.platform.store.list_offers(active_only=False, tenant_id="tenant-a")],
+            ["discovery-default-mortgage", "discovery-default-solar", "discovery-inactive"],
+        )
 
     def test_intake_persists_and_creates_non_pii_ping(self) -> None:
         self.platform.upsert_offer(self.offer())
@@ -476,6 +818,72 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(context.exception.code, "LCP-013")
         finally:
             secure_platform.close()
+
+    def test_conditional_bid_fields_accept_reject_pass_without_price(self) -> None:
+        buyer_id = "buyer_001"
+
+        def _create_ping_and_get_id() -> tuple[str, str]:
+            offer_id = f"bid-offer-{uuid4().hex[:8]}"
+            self.platform.upsert_offer(self.offer(offer_id=offer_id, ping_timeout_seconds=5))
+            lead = self.load_lead()
+            lead["lcp"]["message"]["sender_id"] = "publisher_001"
+            lead["lcp"]["message"]["id"] = str(uuid4())
+            lead_id = f"bid-test-{uuid4().hex[:8]}"
+            lead["lcp"]["payload"]["lead_id"] = lead_id
+            lead["lcp"]["message"]["idempotency_key"] = f"bid-test-{lead_id}"
+            self.platform.ingest(lead, headers={"X-LCP-Test": "true"}, raw_body=b"{}")
+            self.platform.process_once()
+            pings = self.platform.store.list_pings(lead_id=lead_id)
+            self.assertTrue(pings)
+            ping_id = pings[0]["ping_id"]
+            ping_envelope = self.platform.store.decode_envelope(pings[0]["envelope_json"])
+            return ping_id, ping_envelope["lcp"]["message"]["id"]
+
+        # Reject bid without price — must be accepted
+        ping_id, ping_msg_id = _create_ping_and_get_id()
+        reject_bid = _envelope(
+            "bid", buyer_id, "platform_001",
+            {"ping_id": ping_id, "decision": "reject", "reject_reason": "price_too_low"},
+            correlation_id=ping_msg_id,
+            test=True,
+        )
+        ack = self.platform.submit_bid(
+            reject_bid,
+            headers={"X-LCP-Test": "true"},
+            raw_body=json.dumps(reject_bid, separators=(",", ":")).encode(),
+        )
+        self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
+
+        # Pass bid without price — must be accepted
+        ping_id, ping_msg_id = _create_ping_and_get_id()
+        pass_bid = _envelope(
+            "bid", buyer_id, "platform_001",
+            {"ping_id": ping_id, "decision": "pass"},
+            correlation_id=ping_msg_id,
+            test=True,
+        )
+        ack = self.platform.submit_bid(
+            pass_bid,
+            headers={"X-LCP-Test": "true"},
+            raw_body=json.dumps(pass_bid, separators=(",", ":")).encode(),
+        )
+        self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
+
+        # Accept bid without price — must be rejected by schema validation
+        ping_id, ping_msg_id = _create_ping_and_get_id()
+        accept_bid = _envelope(
+            "bid", buyer_id, "platform_001",
+            {"ping_id": ping_id, "decision": "accept"},
+            correlation_id=ping_msg_id,
+            test=True,
+        )
+        with self.assertRaises(RequestError) as context:
+            self.platform.submit_bid(
+                accept_bid,
+                headers={"X-LCP-Test": "true"},
+                raw_body=json.dumps(accept_bid, separators=(",", ":")).encode(),
+            )
+        self.assertEqual(context.exception.code, "LCP-100")
 
 
 if __name__ == "__main__":
