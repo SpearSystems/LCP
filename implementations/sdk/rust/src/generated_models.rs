@@ -15,7 +15,7 @@ pub struct PingPayload { pub ping_id: String, pub lead_reference: String, pub ph
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostPayload { pub lead_id: String, pub delivered_at: String, pub price_cents: i64, pub currency: String, pub buyer_id: String, pub consumer: Value, pub location: Value, pub attributes: Value, pub submitted_at: Option<String>, pub offer_id: Option<String>, pub buyer_reference: Option<String>, pub pricing: Option<Value>, pub compliance: Option<Value>, pub provenance: Option<Value>, pub call: Option<Value>, pub attachments: Option<Vec<Value>> }
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BidPayload { pub ping_id: String, pub decision: String, pub bid_price_cents: i64, pub currency: String, pub estimated_contact_seconds: Option<i64>, pub buyer_reference: Option<String>, pub reject_reason: Option<String>, pub capacity_remaining: Option<i64> }
+pub struct BidPayload { pub ping_id: String, pub decision: String, #[serde(skip_serializing_if = "Option::is_none")] pub bid_price_cents: Option<i64>, #[serde(skip_serializing_if = "Option::is_none")] pub currency: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] pub estimated_contact_seconds: Option<i64>, #[serde(skip_serializing_if = "Option::is_none")] pub buyer_reference: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] pub reject_reason: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] pub capacity_remaining: Option<i64> }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AckPayload { pub original_message_id: String, pub status: String, pub errors: Option<Vec<Value>>, pub lead_id: Option<String>, pub request_id: Option<String>, pub rejection_reason: Option<String> }
 #[derive(Debug, Serialize, Deserialize)]

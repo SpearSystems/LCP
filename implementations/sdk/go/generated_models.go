@@ -86,8 +86,8 @@ type PostPayload struct {
 type BidPayload struct {
 	PingID                  string `json:"ping_id"`
 	Decision                string `json:"decision"`
-	BidPriceCents           int    `json:"bid_price_cents"`
-	Currency                string `json:"currency"`
+	BidPriceCents           int    `json:"bid_price_cents,omitempty"`
+	Currency                string `json:"currency,omitempty"`
 	EstimatedContactSeconds int    `json:"estimated_contact_seconds,omitempty"`
 	BuyerReference          string `json:"buyer_reference,omitempty"`
 	RejectReason            string `json:"reject_reason,omitempty"`

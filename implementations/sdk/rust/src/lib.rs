@@ -6,6 +6,7 @@ use sha2::Sha256;
 use std::time::Duration;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+pub mod generated_models;
 pub mod validation;
 pub use validation::SchemaValidator;
 
@@ -94,5 +95,42 @@ mod tests {
         let validator = SchemaValidator::new(schemas);
         let envelope: Value = serde_json::from_str(&std::fs::read_to_string("../../../examples/lead.json").unwrap()).unwrap();
         validator.validate_envelope(&envelope).unwrap();
+    }
+
+    #[test]
+    fn reject_bid_without_price_serializes_and_validates() {
+        use std::collections::HashMap;
+        let bid = generated_models::BidPayload {
+            ping_id: "ping-001".to_string(),
+            decision: "reject".to_string(),
+            bid_price_cents: None,
+            currency: None,
+            estimated_contact_seconds: None,
+            buyer_reference: None,
+            reject_reason: Some("price_too_low".to_string()),
+            capacity_remaining: None,
+        };
+        let json = serde_json::to_string(&bid).unwrap();
+        assert!(!json.contains("bid_price_cents"), "optional price must be omitted: {json}");
+        assert!(!json.contains("currency"), "optional currency must be omitted: {json}");
+
+        let mut schemas = HashMap::new();
+        for directory in ["schemas", "verticals"] {
+            let root = format!("../../../{directory}");
+            for entry in std::fs::read_dir(&root).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                    continue;
+                }
+                let name = path.file_name().unwrap().to_string_lossy();
+                schemas.insert(
+                    format!("{directory}/{name}"),
+                    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap(),
+                );
+            }
+        }
+        let validator = SchemaValidator::new(schemas);
+        let payload: Value = serde_json::from_str(&json).unwrap();
+        validator.validate("schemas/bid.json", &payload).unwrap();
     }
 }
