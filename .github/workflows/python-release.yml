@@ -185,3 +185,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist/${{ matrix.name }}/
+          # Immutable-version retry: a re-run after a partially completed
+          # release must skip versions already accepted by PyPI instead of
+          # failing the whole release-record job.
+          skip-existing: true
