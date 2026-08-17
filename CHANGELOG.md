@@ -13,6 +13,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Versioned requirement-profile and named service-area extensions in the
   reference platform, with adoption-readiness, LEP, and v1.1 roadmap guidance.
 - Human-readable v1.0 field dictionary and advisory consent/evidence guide.
+- Repeatable synthetic SQLite and concurrent PostgreSQL 18.4 benchmark tools,
+  including local webhook latency simulation and documented capacity baselines.
 
 ### Changed
 - Converted the v1.0 release ticket and publishing-gap analysis into accurate
