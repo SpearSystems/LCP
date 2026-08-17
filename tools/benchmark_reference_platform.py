@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import resource
@@ -90,6 +90,14 @@ def _template() -> dict[str, Any]:
         "stories_band": "two",
         "has_insurance_claim": False,
         "occupancy": "owner_occupied",
+    }
+    # Override the example's absolute expiry (a fixed past date) with a fresh
+    # absolute expires_at so every generated lead is routable at ingestion
+    # time (the example's submitted_at/received_at are also fixed past dates).
+    envelope["lcp"]["payload"]["expiry"] = {
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
     }
     return envelope
 

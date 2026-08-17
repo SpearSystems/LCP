@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import http.server
 import json
 import multiprocessing as mp
@@ -123,6 +123,14 @@ def _record(template: dict[str, Any], worker_id: int, index: int, run_id: str) -
     payload["location"]["postal_code"] = postal
     payload["provenance"]["acquisition_method"] = "paid" if index % 5 else "marketplace"
     payload["provenance"]["campaign_id"] = f"campaign-{index % 31}"
+    # Override the example's absolute expiry (a fixed past date) with a fresh
+    # absolute expires_at so every generated lead is routable at ingestion
+    # time (the example's submitted_at/received_at are also fixed past dates).
+    payload["expiry"] = {
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    }
     return envelope
 
 
