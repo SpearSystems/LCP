@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from verify_release_evidence import (  # noqa: E402
     EXPECTED_PACKAGES,
     EvidenceError,
+    check_stale_release_state,
     sha256_file,
     verify_manifest,
 )
@@ -143,6 +144,40 @@ def build_fixture_release(root: Path, *, tamper_manifest_digest: bool = False, d
     )
     (manifest_dir / "release-manifest.json.sigstore.json").write_text('{"fake":"bundle"}\n')
     return manifest_dir
+
+
+class StaleReleaseStateTests(unittest.TestCase):
+    def _write(self, root: Path, relative: str, text: str) -> None:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_stale_phrases_are_reported_with_file_and_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "README.md", "# LCP\n\nThe v1.0.1 release is not yet published.\n")
+            self._write(root, "docs/RELEASE.md", "Tag v1.0.1 has not been tagged yet.\n")
+            problems = check_stale_release_state(root)
+        self.assertEqual(len(problems), 2)
+        self.assertTrue(any("README.md:3" in p and "not yet published" in p for p in problems))
+        self.assertTrue(any("docs/RELEASE.md:1" in p and "has not been tagged" in p for p in problems))
+
+    def test_clean_docs_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "README.md", "# LCP\n\nv1.0.1 is published. New features arrive in future releases.\n")
+            self._write(root, "docs/RELEASE.md", "Release evidence verified.\n")
+            self._write(root, "CHANGELOG.md", "- Released v1.0.1.\n")
+            self.assertEqual(check_stale_release_state(root), [])
+
+    def test_missing_repo_root_is_reported(self) -> None:
+        problems = check_stale_release_state(Path("/definitely/not/a/real/path"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not a directory", problems[0])
+
+    def test_repository_docs_are_clean_today(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        self.assertEqual(check_stale_release_state(repo_root), [])
 
 
 class VerifyReleaseEvidenceTests(unittest.TestCase):

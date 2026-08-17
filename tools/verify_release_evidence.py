@@ -20,7 +20,7 @@ JSON are inconsistent, and it refuses to skip signature verification when an
 identity was requested but cosign is unavailable.
 
 Usage:
-    python3 tools/verify_release_evidence.py PATH [--identity ...] [--issuer ...]
+    python3 tools/verify_release_evidence.py PATH [--identity ...] [--issuer ...] [--repo-root DIR]
 """
 
 from __future__ import annotations
@@ -52,9 +52,59 @@ EXPECTED_PACKAGES = {
 MANIFEST_FILE = "release-manifest.json"
 NOTES_FILE = "release-notes.md"
 
+# Release-facing docs scanned for stale state before a release can complete.
+STALE_STATE_DOCS = (
+    "README.md",
+    "docs/README.md",
+    "docs/RELEASE.md",
+    "docs/RELEASE-TICKET-1.0.1.md",
+    "CHANGELOG.md",
+)
+
+# Phrases that describe a release as unpublished/pending. Deliberately narrower
+# than plain "candidate" (offer-candidate language is legitimate throughout the
+# docs) so the check has no false positives on current content.
+STALE_RELEASE_STATE_PHRASES = (
+    "not published",
+    "not yet published",
+    "has not been published",
+    "was not published",
+    "not tagged",
+    "has not been tagged",
+    "not yet tagged",
+    "release pending",
+    "pending release",
+    "not yet released",
+)
+
 
 class EvidenceError(RuntimeError):
     pass
+
+
+def check_stale_release_state(repo_root: Path) -> list[str]:
+    """Scan release-facing docs for stale "candidate/not published" language.
+
+    Returns one problem per matching line so a release can never complete while
+    public documentation still describes the release as unpublished, untagged,
+    or pending.
+    """
+    if not repo_root.is_dir():
+        return [f"repo root is not a directory: {repo_root}"]
+    problems: list[str] = []
+    for relative in STALE_STATE_DOCS:
+        path = repo_root / relative
+        if not path.is_file():
+            continue
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            lowered = line.lower()
+            for phrase in STALE_RELEASE_STATE_PHRASES:
+                if phrase in lowered:
+                    problems.append(
+                        f"{relative}:{line_number}: stale release-state phrase '{phrase}'"
+                    )
+                    break
+    return problems
 
 
 def sha256_file(path: Path) -> str:
@@ -351,6 +401,11 @@ def main() -> int:
         default="",
         help="expected Sigstore OIDC issuer, e.g. https://token.actions.githubusercontent.com",
     )
+    parser.add_argument(
+        "--repo-root",
+        default="",
+        help="repository checkout to scan for stale release-state documentation",
+    )
     args = parser.parse_args()
 
     root = Path(args.path).expanduser()
@@ -364,6 +419,8 @@ def main() -> int:
         return 2
 
     errors = verify_manifest(manifest_path, root)
+    if args.repo_root:
+        errors.extend(check_stale_release_state(Path(args.repo_root).expanduser()))
     if args.identity or args.issuer:
         if not args.identity or not args.issuer:
             print("both --identity and --issuer are required for signature verification", file=sys.stderr)
