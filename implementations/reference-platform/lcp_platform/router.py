@@ -320,7 +320,7 @@ class Platform:
         self.store.insert_audit(
             tenant_id=sender_tenant,
             actor_id=sender_id,
-            action="lead.accepted",
+            action="lead.routed",
             resource_type="lead",
             resource_id=payload["lead_id"],
             metadata={"message_type": message["type"], "ping_count": created_pings, "post_count": created_direct_posts},
@@ -972,9 +972,24 @@ class Platform:
         target_status = _EVENT_STATUS_TARGETS.get(event_name)
         if target_status:
             try:
-                self.store.update_lead_status(payload["lead_id"], target_status)
+                previous_status = self.store.update_lead_status(
+                    payload["lead_id"], target_status
+                )
             except InvalidStatusTransition as exc:
                 raise RequestError(str(exc), "LCP-004", 422) from exc
+            if previous_status is not None:
+                self.store.insert_audit(
+                    tenant_id=self.auth.tenant_for(sender_id)
+                    or self.config.routing_tenant_id,
+                    actor_id=sender_id,
+                    action=f"lead.{target_status.lower()}",
+                    resource_type="lead",
+                    resource_id=payload["lead_id"],
+                    metadata={
+                        "event": event_name,
+                        "previous_status": previous_status,
+                    },
+                )
 
         try:
             inserted_event = self.store.insert_event(payload["lead_id"], event_name, envelope)

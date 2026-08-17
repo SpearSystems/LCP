@@ -89,6 +89,18 @@ The reference platform exposes only aggregate metrics. Example response shape:
 
 Do not put raw consumer payloads into incident tickets or chat systems.
 
+## Audit trail
+
+- Every lifecycle status change is recorded in `audit_events` with the actor,
+  before/after status, event name, and request ID: `lead.accepted`,
+  `lead.rejected`, `lead.disputed`, `lead.refunded`, `lead.converted`,
+  `lead.archived`, and `lead.expired` for event-driven transitions.
+- Intake and routing record `lead.routed` (ping/post counts) per accepted
+  lead; attachment authorization, erasure, and dead-letter operations write
+  their own action names.
+- Audit rows never contain consumer payloads or secrets. Trace from a request
+  ID without PII; the original envelopes live only in the encrypted store.
+
 ## Backup and restore
 
 - Encrypt backups with a separate key hierarchy.

@@ -1422,7 +1422,12 @@ class Store:
         status: str,
         *,
         reason: str | None = None,
-    ) -> None:
+    ) -> str | None:
+        """Move a lead to a new status.
+
+        Returns the previous status, or ``None`` when the lead was already in
+        the requested status (no transition was applied).
+        """
         with self.transaction() as db:
             row = db.execute(
                 "SELECT status FROM leads WHERE lead_id = ?",
@@ -1432,7 +1437,7 @@ class Store:
                 raise KeyError(f"Lead not found: {lead_id}")
             current = str(row["status"])
             if current == status:
-                return
+                return None
             direct_post = current == "NEW" and status == "POSTED" and reason == "direct_delivery"
             if not direct_post and status not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
                 raise InvalidStatusTransition(
@@ -1442,6 +1447,7 @@ class Store:
                 "UPDATE leads SET status = ?, updated_at = ? WHERE lead_id = ?",
                 (status, now_iso(), lead_id),
             )
+            return current
 
     def routing_job_pending(self, lead_id: str) -> bool:
         with self._lock:

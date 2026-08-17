@@ -7,6 +7,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
+import sys
 import tempfile
 import time
 import unittest
@@ -368,6 +369,132 @@ class PlatformTests(unittest.TestCase):
                 ping_event, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
             )
         self.assertEqual(role_error.exception.code, "LCP-002")
+
+    def test_legal_transition_table_matches_conformance_graph(self) -> None:
+        # The runtime table and the conformance runner's published graph are
+        # hand-maintained duplicates. Keep them identical: the implementation-
+        # only NEW -> POSTED direct-delivery edge is a code-level carve-out in
+        # update_lead_status(reason="direct_delivery"), not part of either table.
+        from lcp_platform.storage import LEGAL_LEAD_TRANSITIONS
+
+        vectors_path = str(ROOT / "test-vectors")
+        sys.path.insert(0, vectors_path)
+        try:
+            from conformance import LEGAL_TRANSITIONS
+        finally:
+            sys.path.remove(vectors_path)
+        self.assertEqual(LEGAL_LEAD_TRANSITIONS, LEGAL_TRANSITIONS)
+
+    def test_lifecycle_transitions_write_audit_records(self) -> None:
+        publisher_id = "publisher_audit_events"
+        buyer_id = "buyer_audit_events"
+        for sender_id in (publisher_id, buyer_id):
+            self.platform.upsert_credential(
+                sender_id, hmac_secret=f"{sender_id}-secret", scopes=[]
+            )
+
+        def delivered_lead(lead_id: str, message_id: str) -> None:
+            lead = self.load_lead()
+            lead["lcp"]["message"]["sender_id"] = publisher_id
+            lead["lcp"]["message"]["id"] = message_id
+            lead["lcp"]["message"]["idempotency_key"] = f"{lead_id}-key"
+            lead["lcp"]["payload"]["lead_id"] = lead_id
+            self.assertTrue(self.platform.store.insert_lead(lead, status="POSTED"))
+            post = _envelope(
+                "post",
+                "platform_001",
+                buyer_id,
+                {"lead_id": lead_id, "offer_id": "audit-offer"},
+                test=True,
+            )
+            self.platform.store.insert_delivery(
+                lead_id=lead_id,
+                ping_id=None,
+                offer_id="audit-offer",
+                buyer_id=buyer_id,
+                kind="post",
+                envelope=post,
+                webhook_url="http://127.0.0.1:9/post",
+            )
+            self.platform.store._connection.execute(
+                "UPDATE deliveries SET status = 'DELIVERED' WHERE message_id = ?",
+                (post["lcp"]["message"]["id"],),
+            )
+
+        def audit_rows(lead_id: str) -> list[dict[str, str]]:
+            rows = self.platform.store._connection.execute(
+                """
+                SELECT action, actor_id, metadata_json FROM audit_events
+                WHERE resource_id = ? ORDER BY created_at
+                """,
+                (lead_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+        accepted_id = "lead_audit_accepted_001"
+        delivered_lead(accepted_id, "550e8400-e29b-41d4-a716-446655440201")
+        accepted = _envelope(
+            "event",
+            buyer_id,
+            "platform_001",
+            {"lead_id": accepted_id, "event": "ACCEPTED", "timestamp": now_iso()},
+            test=True,
+        )
+        ack = self.platform.submit_event(
+            accepted, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
+        accepted_audit = [
+            row for row in audit_rows(accepted_id) if row["action"] == "lead.accepted"
+        ]
+        self.assertEqual(len(accepted_audit), 1)
+        self.assertEqual(accepted_audit[0]["actor_id"], buyer_id)
+        self.assertEqual(
+            json.loads(accepted_audit[0]["metadata_json"])["previous_status"],
+            "POSTED",
+        )
+
+        rejected_id = "lead_audit_rejected_001"
+        delivered_lead(rejected_id, "550e8400-e29b-41d4-a716-446655440202")
+        rejected = _envelope(
+            "event",
+            buyer_id,
+            "platform_001",
+            {"lead_id": rejected_id, "event": "REJECTED", "timestamp": now_iso()},
+            test=True,
+        )
+        ack = self.platform.submit_event(
+            rejected, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+        )
+        self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
+        rejected_audit = [
+            row for row in audit_rows(rejected_id) if row["action"] == "lead.rejected"
+        ]
+        self.assertEqual(len(rejected_audit), 1)
+        self.assertEqual(rejected_audit[0]["actor_id"], buyer_id)
+
+        invalid_id = "lead_audit_invalid_001"
+        delivered_lead(invalid_id, "550e8400-e29b-41d4-a716-446655440203")
+        invalid = _envelope(
+            "event",
+            buyer_id,
+            "platform_001",
+            {"lead_id": invalid_id, "event": "CONVERTED", "timestamp": now_iso()},
+            test=True,
+        )
+        with self.assertRaises(RequestError) as context:
+            self.platform.submit_event(
+                invalid, headers={"X-LCP-Test": "true"}, raw_body=b"{}"
+            )
+        self.assertEqual(context.exception.code, "LCP-004")
+        self.assertEqual(self.platform.store.get_lead(invalid_id)["status"], "POSTED")
+        self.assertFalse(
+            [
+                row
+                for row in audit_rows(invalid_id)
+                if row["action"] == "lead.converted"
+            ]
+        )
 
     def test_matching_returns_explainable_reasons(self) -> None:
         lead = self.load_lead()["lcp"]["payload"]
