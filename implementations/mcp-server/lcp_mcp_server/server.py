@@ -14,6 +14,7 @@ The server is stateless — it creates a fresh HTTP client per tool call.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import mcp.types as types
@@ -29,6 +30,11 @@ app: Server
 def _make_envelope(msg_type: str, sender_id: str, receiver_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Wrap a payload using the shared Python SDK envelope builder."""
     return build_envelope(msg_type, sender_id, receiver_id, payload)
+
+
+def _platform_receiver_id() -> str:
+    """Return the configured platform receiver used by bid submissions."""
+    return os.environ.get("LCP_PLATFORM_ID", "platform_001")
 
 
 def _tool_result(data: dict[str, Any]) -> list[types.TextContent]:
@@ -207,7 +213,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
         for opt_field in ["estimated_contact_seconds", "buyer_reference", "reject_reason"]:
             if opt_field in arguments:
                 payload[opt_field] = arguments[opt_field]
-        receiver_id = "platform"  # bids go to the platform, not a buyer
+        receiver_id = _platform_receiver_id()  # bids go to the platform, not a buyer
         envelope = _make_envelope("bid", client.sender_id, receiver_id, payload)
         result = client.post("/v1/lcp/bids", envelope)
         return _tool_result(result)

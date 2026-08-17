@@ -10,7 +10,7 @@
 
 > **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, multi-language SDKs, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** v1.0 — a published, stable protocol. A coordinated v1.0.1 patch candidate is prepared on `main` but is not yet tagged or published. The conformance runner passes 27/27 test vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path. See [docs/RELEASE.md](docs/RELEASE.md) for the signed release record, current candidate, and artifact verification.
+**Status:** v1.0.1 — a published, stable protocol and reference implementation release. The signed `v1.0.1` tag resolves to commit `61886511d2c9424ffb197d0788b049216a4645a2`, and the GitHub release includes the signed manifest, SBOM, provenance, and package evidence. The conformance runner passes 27/27 test vectors. The repository includes maintained Tier 1 Python, TypeScript, Go, and C# SDKs; reference Java, PHP, Rust, Ruby, Kotlin, and Swift SDKs; a production-oriented reference platform/router; an optional MCP adapter; and a Docker sandbox using the same platform code path. See [docs/RELEASE.md](docs/RELEASE.md) for verification instructions.
 
 [![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
 
@@ -424,7 +424,7 @@ SPEC.md          ── Canonical protocol specification
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
-- [v1.0.1 release candidate record](docs/RELEASE-TICKET-1.0.1.md)
+- [v1.0.1 release record](docs/RELEASE-TICKET-1.0.1.md)
 - [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
 - [Adoption readiness](docs/ADOPTION-READINESS.md)
 - [v1.1 roadmap](docs/V1.1-ROADMAP.md)

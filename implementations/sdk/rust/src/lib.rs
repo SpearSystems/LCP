@@ -75,7 +75,23 @@ mod tests {
 
     #[test]
     fn full_schema_vector() {
-        let validator = SchemaValidator::from_directory("../../../schemas").unwrap();
+        use std::collections::HashMap;
+        let mut schemas = HashMap::new();
+        for directory in ["schemas", "verticals"] {
+            let root = format!("../../../{directory}");
+            for entry in std::fs::read_dir(&root).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                    continue;
+                }
+                let name = path.file_name().unwrap().to_string_lossy();
+                schemas.insert(
+                    format!("{directory}/{name}"),
+                    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap(),
+                );
+            }
+        }
+        let validator = SchemaValidator::new(schemas);
         let envelope: Value = serde_json::from_str(&std::fs::read_to_string("../../../examples/lead.json").unwrap()).unwrap();
         validator.validate_envelope(&envelope).unwrap();
     }

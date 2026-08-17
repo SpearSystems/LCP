@@ -44,14 +44,14 @@
     },
     "has_claims_history": {
       "type": "boolean",
-      "description": "Has the consumer filed any claims?",
-      "ping_safe": true
+      "description": "Has the consumer filed any claims? Sensitive underwriting data; post-only.",
+      "ping_safe": false
     },
     "claim_count_band": {
       "type": "string",
       "enum": ["none", "one", "two", "three_or_more"],
-      "description": "Banded number of claims filed.",
-      "ping_safe": true
+      "description": "Banded number of claims filed. Sensitive underwriting data; post-only.",
+      "ping_safe": false
     },
     "driver_age_band": {
       "type": "string",
@@ -74,42 +74,42 @@
     "marital_status": {
       "type": "string",
       "enum": ["single", "married", "divorced", "widowed", "separated", "domestic_partnership"],
-      "ping_safe": true
+      "ping_safe": false
     },
     "gender": {
       "type": "string",
       "enum": ["male", "female", "non_binary", "prefer_not_to_say"],
-      "description": "Gender — insurance requires this for underwriting rate classification.",
-      "ping_safe": true
+      "description": "Gender — sensitive underwriting data; post-only.",
+      "ping_safe": false
     },
     "health_condition_band": {
       "type": "string",
       "enum": ["excellent", "good", "fair", "poor", "unknown"],
-      "description": "Self-reported health condition band for health insurance.",
-      "ping_safe": true
+      "description": "Self-reported health condition band for health insurance; sensitive health data, post-only.",
+      "ping_safe": false
     },
     "smoker": {
       "type": "boolean",
-      "description": "Smoking status for health/life insurance underwriting.",
-      "ping_safe": true
+      "description": "Smoking status for health/life insurance underwriting; sensitive health data, post-only.",
+      "ping_safe": false
     },
     "height_band": {
       "type": "string",
       "enum": ["under_5ft", "5_5ft5", "5ft5_5ft9", "5ft9_6ft", "over_6ft"],
-      "description": "Banded height for health/life insurance underwriting.",
-      "ping_safe": true
+      "description": "Banded height for health/life insurance underwriting; sensitive health data, post-only.",
+      "ping_safe": false
     },
     "weight_band": {
       "type": "string",
       "enum": ["under_120", "120_150", "150_180", "180_210", "210_250", "over_250"],
-      "description": "Banded weight (lbs) for health/life insurance underwriting.",
-      "ping_safe": true
+      "description": "Banded weight (lbs) for health/life insurance underwriting; sensitive health data, post-only.",
+      "ping_safe": false
     },
     "occupation_class": {
       "type": "string",
       "enum": ["professional", "clerical", "skilled_trade", "manual_labor", "heavy_labor", "self_employed", "other"],
-      "description": "Occupation risk class for life/disability insurance underwriting.",
-      "ping_safe": true
+      "description": "Occupation risk class for life/disability insurance underwriting; sensitive employment data, post-only.",
+      "ping_safe": false
     }
   },
   "additionalProperties": false

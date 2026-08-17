@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from .auth import AuthenticationError, header
+from .observability import reset_request_id, set_request_id
 from .router import Platform, RequestError
+
+
+_REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+
+
+def _request_id(headers: dict[str, str]) -> str:
+    supplied = header(headers, "X-LCP-Request-Id") or header(headers, "X-Request-Id")
+    if supplied and _REQUEST_ID_PATTERN.fullmatch(supplied):
+        return supplied
+    return f"req_{uuid4().hex}"
 
 
 class PlatformService:
@@ -21,37 +34,65 @@ class PlatformService:
         *,
         headers: dict[str, str] | None = None,
         body: bytes = b"",
-    ) -> tuple[int, dict[str, str], dict[str, Any]]:
+    ) -> tuple[int, dict[str, str], Any]:
         headers = {key: value for key, value in (headers or {}).items()}
-        header_bytes = sum(len(key.encode("utf-8")) + len(value.encode("utf-8")) for key, value in headers.items())
-        if header_bytes > self.platform.config.max_header_bytes:
-            return self._response(431, {"errors": [{"code": "LCP-001", "message": "Request headers are too large"}]})
-        parsed = urlsplit(path)
-        route = parsed.path.rstrip("/") or "/"
+        request_id = _request_id(headers)
+        request_token = set_request_id(request_id)
         try:
-            if method == "POST":
-                return self._post(route, headers, body)
-            if method == "GET":
-                return self._get(route, parsed.query, headers)
-            return self._response(405, {"errors": [{"code": "LCP-001", "message": "Method not allowed"}]})
-        except AuthenticationError as exc:
-            return self._response(401, {"errors": [{"code": exc.code, "message": str(exc)}]})
-        except RequestError as exc:
-            error: dict[str, Any] = {"code": exc.code, "message": str(exc)}
-            if exc.details is not None:
-                error["details"] = exc.details
-            response_headers = {"Retry-After": "60"} if exc.status_code == 429 else None
-            return self._response(exc.status_code, {"errors": [error]}, response_headers)
-        except json.JSONDecodeError:
-            return self._response(
-                400,
-                {"errors": [{"code": "LCP-001", "message": "Request body must be JSON"}]},
+            header_bytes = sum(
+                len(key.encode("utf-8")) + len(value.encode("utf-8"))
+                for key, value in headers.items()
             )
-        except Exception:
-            return self._response(
-                500,
-                {"errors": [{"code": "LCP-500", "message": "Internal server error"}]},
-            )
+            if header_bytes > self.platform.config.max_header_bytes:
+                response = self._response(
+                    431,
+                    {"errors": [{"code": "LCP-001", "message": "Request headers are too large"}]},
+                )
+            else:
+                parsed = urlsplit(path)
+                route = parsed.path.rstrip("/") or "/"
+                try:
+                    if method == "POST":
+                        response = self._post(route, headers, body)
+                    elif method == "GET":
+                        response = self._get(route, parsed.query, headers)
+                    else:
+                        response = self._response(
+                            405,
+                            {"errors": [{"code": "LCP-001", "message": "Method not allowed"}]},
+                        )
+                except AuthenticationError as exc:
+                    response = self._response(
+                        401, {"errors": [{"code": exc.code, "message": str(exc)}]}
+                    )
+                except RequestError as exc:
+                    error: dict[str, Any] = {"code": exc.code, "message": str(exc)}
+                    if exc.details is not None:
+                        error["details"] = exc.details
+                    response_headers = {"Retry-After": "60"} if exc.status_code == 429 else None
+                    response = self._response(
+                        exc.status_code, {"errors": [error]}, response_headers
+                    )
+                except json.JSONDecodeError:
+                    response = self._response(
+                        400,
+                        {"errors": [{"code": "LCP-001", "message": "Request body must be JSON"}]},
+                    )
+                except Exception:
+                    response = self._response(
+                        500,
+                        {"errors": [{"code": "LCP-500", "message": "Internal server error"}]},
+                    )
+
+            status, response_headers, payload = response
+            response_headers = dict(response_headers)
+            response_headers.setdefault("X-LCP-Request-Id", request_id)
+            if isinstance(payload, dict) and "errors" in payload:
+                payload = dict(payload)
+                payload.setdefault("request_id", request_id)
+            return status, response_headers, payload
+        finally:
+            reset_request_id(request_token)
 
     def _post(
         self,
@@ -103,6 +144,9 @@ class PlatformService:
             except Exception:
                 return self._response(503, {"status": "not_ready"})
             return self._response(200, {"status": "ready"})
+        if route in {"/metrics", "/v1/lcp/metrics"}:
+            self._authenticate_read(headers, required_scope="platform:admin")
+            return self._response(200, self.platform.store.metrics())
         if route == "/v1/lcp/capabilities":
             return self._response(200, self.platform.capabilities())
         if route.startswith("/v1/lcp/attachments/"):
@@ -124,7 +168,7 @@ class PlatformService:
             sender_id = self._authenticate_read(headers, required_scope="lead:read")
             lead_id = route.removeprefix("/v1/lcp/leads/")
             self.platform.authorize_lead_read(lead_id, sender_id)
-            return self._response(200, self.platform.lead_status(lead_id))
+            return self._response(200, self.platform.lead_status(lead_id, requester_id=sender_id))
         raise RequestError("Endpoint not found", "LCP-001", 404)
 
     def _authenticate_read(self, headers: dict[str, str], *, required_scope: str) -> str:

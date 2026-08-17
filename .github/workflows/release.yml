@@ -55,7 +55,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install validation dependencies
-        run: python -m pip install jsonschema referencing
+        run: python -m pip install --constraint requirements-ci.txt jsonschema referencing
       - name: Resolve release target
         id: target
         run: |
@@ -321,6 +321,36 @@ jobs:
           pattern: lcp-release-*
           path: release-assets
           merge-multiple: true
+      - name: Download verified container digest metadata
+        if: needs.prepare.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          container_run_id="$(gh run list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --workflow container-release.yml \
+            --commit "${RELEASE_SHA}" \
+            --limit 20 \
+            --json databaseId,conclusion \
+            --jq '[.[] | select(.conclusion == "success")] | .[0].databaseId // empty')"
+          if [[ -z "${container_run_id}" ]]; then
+            echo "No successful container workflow was found for ${RELEASE_SHA}" >&2
+            exit 1
+          fi
+          rm -rf container-evidence
+          mkdir -p container-evidence
+          gh run download "${container_run_id}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name lcp-container-release-metadata \
+            --dir container-evidence
+          metadata_path="$(find container-evidence -type f -name lcp-container-release.json -print -quit)"
+          test -n "${metadata_path}"
+          cp "${metadata_path}" release-assets/lcp-container-release.json
+          jq -e --arg commit "${RELEASE_SHA}" \
+            '.commit == $commit and (.digest | startswith("sha256:")) and .reference == (.image + "@" + .digest)' \
+            release-assets/lcp-container-release.json >/dev/null
       - name: Generate release notes and manifest
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
@@ -378,6 +408,28 @@ jobs:
               })
           if len(packages) != 12:
               raise SystemExit(f"expected 12 package evidence records, found {len(packages)}")
+          dry_run = os.environ["DRY_RUN"] == "true"
+          if dry_run:
+              placeholder_image = f"ghcr.io/{os.environ['GITHUB_REPOSITORY'].split('/')[0].lower()}/lcp-reference-platform"
+              container_metadata = {
+                  "image": placeholder_image,
+                  "tag": os.environ["RELEASE_TAG"],
+                  "digest": "sha256:" + "0" * 64,
+                  "reference": placeholder_image + "@sha256:" + "0" * 64,
+                  "commit": os.environ["RELEASE_SHA"],
+                  "dry_run": True,
+              }
+          else:
+              container_metadata = json.loads(
+                  Path("release-assets/lcp-container-release.json").read_text(encoding="utf-8")
+              )
+              if (
+                  container_metadata.get("commit") != os.environ["RELEASE_SHA"]
+                  or not str(container_metadata.get("digest", "")).startswith("sha256:")
+                  or container_metadata.get("reference")
+                  != f"{container_metadata.get('image')}@{container_metadata.get('digest')}"
+              ):
+                  raise SystemExit("container metadata is not bound to the release commit and digest")
           manifest = {
               "protocol": "LCP",
               "release_tag": os.environ["RELEASE_TAG"],
@@ -391,7 +443,7 @@ jobs:
                   "signature": "lcp-source-sbom.cdx.json.sigstore.json",
               },
               "package_evidence": packages,
-              "container": f"ghcr.io/{os.environ['GITHUB_REPOSITORY'].split('/')[0].lower()}/lcp-reference-platform:{os.environ['RELEASE_TAG']}",
+              "container": dict(container_metadata, dry_run=dry_run),
           }
           Path("release-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY

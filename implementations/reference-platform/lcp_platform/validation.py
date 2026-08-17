@@ -75,10 +75,13 @@ class SchemaValidator:
             self._format(error)
             for error in self._validators[message["type"]].iter_errors(envelope["lcp"]["payload"])
         )
-        if message["type"] == "ping":
-            errors.extend(self._ping_safe_errors(envelope["lcp"]["payload"]))
-        elif message["type"] in {"lead", "call", "post"}:
-            errors.extend(self._vertical_errors(envelope["lcp"]["payload"]))
+        if message["type"] in {"lead", "call", "post", "ping"}:
+            errors.extend(
+                self._vertical_errors(
+                    envelope["lcp"]["payload"],
+                    message_type=message["type"],
+                )
+            )
         return errors
 
     def require_valid_envelope(self, envelope: dict[str, Any]) -> None:
@@ -91,28 +94,73 @@ class SchemaValidator:
         if errors:
             raise ValidationError(errors)
 
-    def _vertical_errors(self, payload: dict[str, Any]) -> list[str]:
-        attributes = payload.get("attributes", {})
-        vertical = attributes.get("vertical") if isinstance(attributes, dict) else None
-        if not vertical:
-            return ["attributes.vertical is required for vertical validation"]
-        validator = self._vertical_validators.get(str(vertical))
-        if not validator:
+    def _vertical_errors(
+        self,
+        payload: dict[str, Any],
+        *,
+        message_type: str,
+    ) -> list[str]:
+        raw_attributes = payload.get("attributes")
+        attributes = raw_attributes if isinstance(raw_attributes, dict) else {}
+        vertical = (
+            payload.get("vertical")
+            if message_type == "ping"
+            else attributes.get("vertical")
+        )
+        if not isinstance(vertical, str) or not vertical:
+            return ["vertical is required for vertical validation"]
+        validator = self._vertical_validators.get(vertical)
+        if validator is None:
             return [f"vertical schema '{vertical}' was not found"]
-        return [self._format(error) for error in validator.iter_errors(attributes)]
 
-    def _ping_safe_errors(self, payload: dict[str, Any]) -> list[str]:
+        vertical_attributes = dict(attributes)
+        if message_type == "ping":
+            vertical_attributes.setdefault("vertical", vertical)
+            version_schema = validator.schema.get("properties", {}).get("schema_version", {})
+            vertical_attributes.setdefault(
+                "schema_version", version_schema.get("const", "1.0.0")
+            )
+        errors = [
+            self._format(error)
+            for error in validator.iter_errors(vertical_attributes)
+        ]
+        if message_type == "ping":
+            errors.extend(self._ping_safe_errors(payload, validator.schema))
+        return errors
+
+    def _ping_safe_errors(
+        self,
+        payload: dict[str, Any],
+        schema: dict[str, Any] | None = None,
+    ) -> list[str]:
         vertical = payload.get("vertical")
         attributes = payload.get("attributes", {})
-        if not vertical or not attributes:
+        if not isinstance(vertical, str) or not isinstance(attributes, dict):
             return []
-        path = self.vertical_root / f"{vertical}.json"
-        if not path.exists():
-            return [f"vertical schema '{vertical}' not found for ping-safe validation"]
-        with path.open(encoding="utf-8") as handle:
-            schema = json.load(handle)
+        if schema is None:
+            validator = self._vertical_validators.get(vertical)
+            if validator is None:
+                return [f"vertical schema '{vertical}' not found for ping-safe validation"]
+            schema = validator.schema
+
         errors: list[str] = []
-        for field in attributes:
-            if schema.get("properties", {}).get(field, {}).get("ping_safe") is not True:
-                errors.append(f"attributes.{field} is not ping_safe in vertical '{vertical}'")
+
+        def walk(value: Any, definition: dict[str, Any], path: str) -> None:
+            if not isinstance(value, dict):
+                return
+            properties = definition.get("properties", {})
+            for field_name, field_value in value.items():
+                if path == "attributes" and field_name in {"vertical", "schema_version"}:
+                    continue
+                field_definition = properties.get(field_name)
+                field_path = f"{path}.{field_name}"
+                if not isinstance(field_definition, dict) or field_definition.get("ping_safe") is not True:
+                    errors.append(
+                        f"{field_path} is not tagged ping_safe: true in vertical '{vertical}'"
+                    )
+                    continue
+                if isinstance(field_definition.get("properties"), dict):
+                    walk(field_value, field_definition, field_path)
+
+        walk(attributes, schema, "attributes")
         return errors

@@ -40,6 +40,23 @@ operational metrics. Attachment storage, replicas, malware-scanning queues,
 and download logs must follow the same country/state residency decision as the
 lead they support.
 
+## Ping data minimization
+
+A `ping` is sent to multiple prospective buyers before a winner is selected, so
+"not a direct identifier" is not sufficient to make a field safe for ping use.
+The vertical schemas therefore classify sensitive financial, health, legal,
+insurance, military, representation, liability, and claims information as
+`ping_safe: false` and post-only. Examples include credit classification,
+health condition, smoking status, injury/treatment, fault, attorney status,
+claim history, bankruptcy/foreclosure, and veteran status.
+
+Implementations must validate both the selected vertical schema and its
+`ping_safe` annotations, including nested objects, before sending a ping.
+Routing requirements should use coarse, non-sensitive signals where possible;
+any deployment-specific exception requires a documented purpose, consent,
+recipient policy, and privacy review. The conformance vectors include negative
+checks for representative sensitive ping attributes.
+
 ## Required operational controls
 
 - Encrypt database, queue, object storage, attachments, and backups. The

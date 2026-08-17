@@ -15,16 +15,99 @@ from uuid import uuid4
 
 from .api_keys import hash_api_key, verify_api_key
 from .crypto import EnvelopeCipher
+from .observability import current_request_id
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def parse_iso_datetime(value: Any) -> datetime | None:
+    """Parse an RFC 3339 value into an aware UTC datetime.
+
+    Schemas reject malformed values before they reach the router. The runtime
+    still fails closed for legacy rows or extension data that cannot be parsed.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def format_iso_datetime(value: datetime) -> str:
+    """Format an aware datetime using the canonical second-precision UTC form."""
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def envelope_expiry(envelope: dict[str, Any]) -> datetime | None:
+    """Return the effective lead/call expiry from absolute or relative syntax."""
+    payload = envelope.get("lcp", {}).get("payload", {})
+    expiry = payload.get("expiry")
+    if not isinstance(expiry, Mapping):
+        expiry = {}
+    absolute = expiry.get("expires_at", payload.get("expires_at"))
+    parsed_absolute = parse_iso_datetime(absolute)
+    if parsed_absolute is not None:
+        return parsed_absolute
+    ttl = expiry.get("ttl_seconds", payload.get("ttl_seconds"))
+    if isinstance(ttl, bool) or not isinstance(ttl, (int, float)) or ttl <= 0:
+        return None
+    message = envelope.get("lcp", {}).get("message", {})
+    base = (
+        parse_iso_datetime(payload.get("submitted_at"))
+        or parse_iso_datetime(payload.get("provenance", {}).get("received_at"))
+        or parse_iso_datetime(message.get("timestamp"))
+    )
+    return base + timedelta(seconds=int(ttl)) if base else None
+
+
+def envelope_consent_expiry(envelope: dict[str, Any]) -> datetime | None:
+    """Return the consumer consent validity boundary, if one is supplied."""
+    payload = envelope.get("lcp", {}).get("payload", {})
+    compliance = payload.get("compliance", {})
+    if not isinstance(compliance, Mapping):
+        return None
+    return parse_iso_datetime(compliance.get("consent_expires_at"))
+
+
+def is_expired(value: datetime | None, *, at: datetime | None = None) -> bool:
+    return value is not None and value <= (at or datetime.now(timezone.utc))
+
+
 _CANDIDATE_REQUIREMENTS_NAMESPACE = "lcp.platform.requirements"
 _CANDIDATE_SERVICE_AREA_NAMESPACE = "lcp.platform.service_area"
 _CANDIDATE_ALLOWED_PATH_ROOTS = {"attributes", "location", "provenance"}
 _CANDIDATE_ALLOWED_OPERATORS = {"equals", "in", "exists", "between", "prefix"}
+
+# Keep the runtime graph aligned with test-vectors/conformance.py and SPEC.md.
+# Direct offers use the implementation-only NEW -> POSTED path explicitly
+# marked by update_lead_status(reason="direct_delivery").
+LEGAL_LEAD_TRANSITIONS: dict[str, set[str]] = {
+    "NEW": {"PINGED", "REJECTED", "EXPIRED", "DUPLICATE"},
+    "PINGED": {"POSTED", "EXPIRED", "DUPLICATE"},
+    "POSTED": {"ACCEPTED", "REJECTED", "EXPIRED", "DUPLICATE"},
+    "ACCEPTED": {"CONVERTED", "DISPUTED", "ARCHIVED"},
+    "DISPUTED": {"REFUNDED", "ACCEPTED"},
+    "CONVERTED": set(),
+    "REFUNDED": set(),
+    "REJECTED": set(),
+    "ARCHIVED": set(),
+    "EXPIRED": set(),
+    "DUPLICATE": set(),
+}
+
+
+class InvalidStatusTransition(ValueError):
+    """Raised when a lead status leaves the published lifecycle graph."""
+
+
+class EventIdempotencyConflict(ValueError):
+    """Raised when an event message ID is reused with different content."""
 
 
 def _candidate_string_values(value: Any) -> set[str] | None:
@@ -255,6 +338,99 @@ class Store:
         with self._lock:
             self._connection.execute("SELECT 1").fetchone()
 
+    def metrics(self) -> dict[str, Any]:
+        """Return aggregate queue and retention metrics without identifiers or payloads."""
+        current = datetime.now(timezone.utc)
+        current_text = format_iso_datetime(current)
+        with self._lock:
+            routing_rows = self._connection.execute(
+                "SELECT status, lease_until, created_at FROM routing_jobs"
+            ).fetchall()
+            delivery_rows = self._connection.execute(
+                "SELECT status, next_attempt_at, lease_until, created_at FROM deliveries"
+            ).fetchall()
+            deletion_rows = self._connection.execute(
+                "SELECT status, next_attempt_at, created_at FROM attachment_deletion_jobs"
+            ).fetchall()
+            attachment_rows = self._connection.execute(
+                "SELECT scan_status FROM attachments WHERE status = 'AVAILABLE'"
+            ).fetchall()
+            dead_letter_rows = self._connection.execute(
+                "SELECT queue_type, status FROM dead_letter_jobs"
+            ).fetchall()
+
+        def age(value: Any) -> int | None:
+            parsed = parse_iso_datetime(value)
+            if parsed is None:
+                return None
+            return max(0, int((current - parsed).total_seconds()))
+
+        routing_pending = [row for row in routing_rows if row["status"] == "PENDING"]
+        routing_processing = [row for row in routing_rows if row["status"] == "PROCESSING"]
+        routing_leases_expired = [
+            row for row in routing_processing
+            if row["lease_until"] is not None and str(row["lease_until"]) <= current_text
+        ]
+        delivery_pending = [row for row in delivery_rows if row["status"] == "PENDING"]
+        delivery_retry = [row for row in delivery_rows if row["status"] == "RETRY"]
+        delivery_processing = [row for row in delivery_rows if row["status"] == "PROCESSING"]
+        delivery_leases_expired = [
+            row for row in delivery_processing
+            if row["lease_until"] is not None and str(row["lease_until"]) <= current_text
+        ]
+        deletion_pending = [row for row in deletion_rows if row["status"] == "PENDING"]
+        deletion_retry = [row for row in deletion_rows if row["status"] == "RETRY"]
+        deletion_failed = [row for row in deletion_rows if row["status"] == "FAILED"]
+        dead_letter_open = [row for row in dead_letter_rows if row["status"] == "OPEN"]
+        dead_letter_quarantined = [row for row in dead_letter_rows if row["status"] == "QUARANTINED"]
+
+        return {
+            "generated_at": current_text,
+            "routing": {
+                "pending": len(routing_pending),
+                "processing": len(routing_processing),
+                "dead_letter": sum(
+                    1 for row in dead_letter_open if row["queue_type"] == "routing"
+                ),
+                "lease_expired": len(routing_leases_expired),
+                "oldest_pending_age_seconds": age(min(
+                    (row["created_at"] for row in routing_pending),
+                    default=None,
+                )),
+            },
+            "delivery": {
+                "pending": len(delivery_pending),
+                "retry": len(delivery_retry),
+                "processing": len(delivery_processing),
+                "failed": sum(1 for row in delivery_rows if row["status"] == "FAILED"),
+                "dead_letter": sum(
+                    1 for row in dead_letter_open if row["queue_type"] == "delivery"
+                ),
+                "lease_expired": len(delivery_leases_expired),
+                "oldest_due_age_seconds": age(min(
+                    (row["created_at"] for row in delivery_pending + delivery_retry),
+                    default=None,
+                )),
+            },
+            "attachments": {
+                "scanner_backlog": sum(
+                    1 for row in attachment_rows
+                    if row["scan_status"] in {"not_scanned", "pending", "retry"}
+                ),
+                "deletion_pending": len(deletion_pending),
+                "deletion_retry": len(deletion_retry),
+                "deletion_failed": len(deletion_failed),
+                "oldest_deletion_age_seconds": age(min(
+                    (row["created_at"] for row in deletion_pending + deletion_retry + deletion_failed),
+                    default=None,
+                )),
+            },
+            "dead_letters": {
+                "open": len(dead_letter_open),
+                "quarantined": len(dead_letter_quarantined),
+            },
+        }
+
     def encode_envelope(self, envelope: dict[str, Any]) -> str:
         return self._cipher.encode(envelope)
 
@@ -301,6 +477,9 @@ class Store:
                     test INTEGER NOT NULL DEFAULT 0,
                     vertical TEXT,
                     country_code TEXT,
+                    expires_at TEXT,
+                    consent_expires_at TEXT,
+                    suppressed INTEGER NOT NULL DEFAULT 0,
                     envelope_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -309,6 +488,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS offers (
                     offer_id TEXT PRIMARY KEY,
                     buyer_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    vertical TEXT,
                     active INTEGER NOT NULL DEFAULT 1,
                     offer_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -324,6 +505,8 @@ class Store:
                 );
                 CREATE INDEX IF NOT EXISTS idx_offer_candidate_lookup
                     ON offer_candidate_index(tenant_id, dimension, value, offer_id);
+                CREATE INDEX IF NOT EXISTS idx_offers_discovery
+                    ON offers(active, tenant_id, vertical, offer_id);
                 CREATE TABLE IF NOT EXISTS publisher_mappings (
                     mapping_id TEXT NOT NULL,
                     publisher_id TEXT NOT NULL,
@@ -363,6 +546,7 @@ class Store:
                     scan_engine TEXT NOT NULL DEFAULT 'unknown',
                     scanned_at TEXT NOT NULL DEFAULT '',
                     encryption TEXT NOT NULL DEFAULT 'application_encrypted',
+                    expires_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE(owner_id, idempotency_key)
@@ -462,6 +646,38 @@ class Store:
                     request_count INTEGER NOT NULL,
                     PRIMARY KEY(sender_id, window_start)
                 );
+                CREATE TABLE IF NOT EXISTS lead_suppressions (
+                    lead_id TEXT PRIMARY KEY,
+                    reason TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS attachment_deletion_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    attachment_id TEXT NOT NULL UNIQUE,
+                    storage_ref TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at TEXT NOT NULL,
+                    last_error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    queue_type TEXT NOT NULL,
+                    resource_id TEXT NOT NULL,
+                    lead_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'OPEN',
+                    attempts INTEGER NOT NULL,
+                    last_error TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    quarantined_at TEXT,
+                    replayed_at TEXT,
+                    UNIQUE(queue_type, resource_id)
+                );
                 CREATE TABLE IF NOT EXISTS audit_events (
                     audit_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
@@ -486,11 +702,19 @@ class Store:
                     ON mapping_applications(lead_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_attachments_lead
                     ON attachments(lead_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_attachment_deletion_jobs_due
+                    ON attachment_deletion_jobs(status, next_attempt_at);
                 CREATE INDEX IF NOT EXISTS idx_payable_offer_month
                     ON payable_records(offer_id, month_key, status);
                 """
             )
             self._migrate_sqlite_columns(db)
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_leads_expiry ON leads(status, expires_at)"
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_leads_consent_expiry ON leads(suppressed, consent_expires_at)"
+            )
             self._backfill_offer_candidate_index(db)
 
     def _backfill_offer_candidate_index(self, db: Any) -> None:
@@ -545,6 +769,47 @@ class Store:
         }
         if "tenant_id" not in lead_columns:
             db.execute("ALTER TABLE leads ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        if "expires_at" not in lead_columns:
+            db.execute("ALTER TABLE leads ADD COLUMN expires_at TEXT")
+        if "consent_expires_at" not in lead_columns:
+            db.execute("ALTER TABLE leads ADD COLUMN consent_expires_at TEXT")
+        if "suppressed" not in lead_columns:
+            db.execute("ALTER TABLE leads ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0")
+        for row in db.execute("SELECT lead_id, envelope_json FROM leads").fetchall():
+            try:
+                stored_envelope = self.decode_envelope(row["envelope_json"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            expiry = envelope_expiry(stored_envelope)
+            consent_expiry = envelope_consent_expiry(stored_envelope)
+            db.execute(
+                "UPDATE leads SET expires_at = ?, consent_expires_at = ? WHERE lead_id = ?",
+                (
+                    format_iso_datetime(expiry) if expiry else None,
+                    format_iso_datetime(consent_expiry) if consent_expiry else None,
+                    row["lead_id"],
+                ),
+            )
+        offer_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(offers)").fetchall()
+        }
+        if "tenant_id" not in offer_columns:
+            db.execute("ALTER TABLE offers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        if "vertical" not in offer_columns:
+            db.execute("ALTER TABLE offers ADD COLUMN vertical TEXT")
+        for row in db.execute("SELECT offer_id, offer_json FROM offers").fetchall():
+            try:
+                stored_offer = json.loads(row["offer_json"])
+            except (TypeError, ValueError):
+                continue
+            db.execute(
+                "UPDATE offers SET tenant_id = ?, vertical = ? WHERE offer_id = ?",
+                (
+                    str(stored_offer.get("tenant_id", "default")),
+                    stored_offer.get("vertical"),
+                    row["offer_id"],
+                ),
+            )
         delivery_columns = {
             row[1] for row in db.execute("PRAGMA table_info(deliveries)").fetchall()
         }
@@ -565,6 +830,52 @@ class Store:
             db.execute("ALTER TABLE attachments ADD COLUMN scanned_at TEXT NOT NULL DEFAULT ''")
         if "encryption" not in attachment_columns:
             db.execute("ALTER TABLE attachments ADD COLUMN encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
+        if "expires_at" not in attachment_columns:
+            db.execute("ALTER TABLE attachments ADD COLUMN expires_at TEXT")
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lead_suppressions (
+                lead_id TEXT PRIMARY KEY,
+                reason TEXT NOT NULL,
+                actor_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS attachment_deletion_jobs (
+                job_id TEXT PRIMARY KEY,
+                attachment_id TEXT NOT NULL UNIQUE,
+                storage_ref TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TEXT NOT NULL,
+                last_error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                job_id TEXT PRIMARY KEY,
+                queue_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                lead_id TEXT,
+                status TEXT NOT NULL DEFAULT 'OPEN',
+                attempts INTEGER NOT NULL,
+                last_error TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                quarantined_at TEXT,
+                replayed_at TEXT,
+                UNIQUE(queue_type, resource_id)
+            )
+            """
+        )
 
     # ─── Credentials ──────────────────────────────────────────────────────
 
@@ -648,6 +959,10 @@ class Store:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Persist an audit record without storing consumer payloads or secrets."""
+        audit_metadata = dict(metadata or {})
+        request_id = current_request_id()
+        if request_id is not None:
+            audit_metadata.setdefault("request_id", request_id)
         with self.transaction() as db:
             db.execute(
                 """
@@ -663,7 +978,7 @@ class Store:
                     action,
                     resource_type,
                     resource_id,
-                    json.dumps(metadata or {}, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(audit_metadata, separators=(",", ":"), ensure_ascii=False),
                     now_iso(),
                 ),
             )
@@ -812,8 +1127,8 @@ class Store:
                         (attachment_id, lead_id, owner_id, idempotency_key, purpose,
                          filename, content_type, size_bytes, sha256, storage_ref,
                          status, residency, scan_status, scan_engine, scanned_at, encryption,
-                         created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, ?, ?, ?, ?, ?)
+                         expires_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         metadata["attachment_id"], metadata["lead_id"], metadata["owner_id"],
@@ -822,7 +1137,7 @@ class Store:
                         metadata["storage_ref"], metadata.get("residency", "TEST"),
                         metadata.get("scan_status", "not_scanned"), metadata.get("scan_engine", "unknown"),
                         metadata.get("scanned_at", timestamp), metadata.get("encryption", "application_encrypted"),
-                        timestamp, timestamp,
+                        metadata.get("expires_at"), timestamp, timestamp,
                     ),
                 )
             except sqlite3.IntegrityError:
@@ -841,6 +1156,81 @@ class Store:
             db.execute(
                 "UPDATE attachments SET status = 'REDACTED', updated_at = ? WHERE attachment_id = ?",
                 (now_iso(), attachment_id),
+            )
+
+    def expire_attachment(self, attachment_id: str) -> None:
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT attachment_id, storage_ref, status FROM attachments WHERE attachment_id = ?",
+                (attachment_id,),
+            ).fetchone()
+            if not row or row["status"] != "AVAILABLE":
+                return
+            timestamp = now_iso()
+            db.execute(
+                "UPDATE attachments SET status = 'EXPIRED', updated_at = ? WHERE attachment_id = ?",
+                (timestamp, attachment_id),
+            )
+            self._enqueue_attachment_deletion(db, row["attachment_id"], row["storage_ref"], timestamp)
+
+    def list_expired_attachments(self, at: str | None = None) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM attachments
+                WHERE status = 'AVAILABLE' AND expires_at IS NOT NULL AND expires_at <= ?
+                ORDER BY expires_at, attachment_id
+                """,
+                (at or now_iso(),),
+            ).fetchall()
+
+    def _enqueue_attachment_deletion(self, db: Any, attachment_id: str, storage_ref: str, timestamp: str) -> None:
+        db.execute(
+            """
+            INSERT INTO attachment_deletion_jobs
+                (job_id, attachment_id, storage_ref, status, attempts, next_attempt_at, created_at, updated_at)
+            VALUES (?, ?, ?, 'PENDING', 0, ?, ?, ?)
+            ON CONFLICT(attachment_id) DO UPDATE SET
+                storage_ref=excluded.storage_ref,
+                status=CASE WHEN attachment_deletion_jobs.status = 'DONE' THEN 'DONE' ELSE 'PENDING' END,
+                next_attempt_at=excluded.next_attempt_at,
+                updated_at=excluded.updated_at
+            """,
+            (f"delete_{uuid4().hex}", attachment_id, storage_ref, timestamp, timestamp, timestamp),
+        )
+
+    def enqueue_attachment_deletion(self, attachment_id: str, storage_ref: str) -> None:
+        with self.transaction() as db:
+            self._enqueue_attachment_deletion(db, attachment_id, storage_ref, now_iso())
+
+    def list_due_attachment_deletions(self, at: str | None = None) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM attachment_deletion_jobs
+                WHERE status IN ('PENDING', 'RETRY') AND next_attempt_at <= ?
+                ORDER BY next_attempt_at, created_at
+                """,
+                (at or now_iso(),),
+            ).fetchall()
+
+    def mark_attachment_deletion(
+        self,
+        job_id: str,
+        *,
+        status: str,
+        attempts: int,
+        next_attempt_at: str,
+        last_error: str | None = None,
+    ) -> None:
+        with self.transaction() as db:
+            db.execute(
+                """
+                UPDATE attachment_deletion_jobs
+                SET status = ?, attempts = ?, next_attempt_at = ?, last_error = ?, updated_at = ?
+                WHERE job_id = ?
+                """,
+                (status, attempts, next_attempt_at, last_error, now_iso(), job_id),
             )
 
     # ─── Leads ─────────────────────────────────────────────────────────────
@@ -870,8 +1260,8 @@ class Store:
                     INSERT INTO leads
                         (lead_id, tenant_id, message_id, idempotency_key, sender_id, receiver_id,
                          message_type, status, test, vertical, country_code,
-                         envelope_json, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         expires_at, consent_expires_at, suppressed, envelope_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         lead_id,
@@ -885,6 +1275,9 @@ class Store:
                         int(message.get("test", False)),
                         payload.get("attributes", {}).get("vertical"),
                         payload.get("location", {}).get("country_code"),
+                        format_iso_datetime(expiry) if (expiry := envelope_expiry(envelope)) else None,
+                        format_iso_datetime(consent_expiry) if (consent_expiry := envelope_consent_expiry(envelope)) else None,
+                        0,
                         self.encode_envelope(envelope),
                         timestamp,
                         timestamp,
@@ -902,8 +1295,149 @@ class Store:
                 return False
         return True
 
-    def update_lead_status(self, lead_id: str, status: str) -> None:
+    def is_lead_suppressed(self, lead_id: str) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT suppressed FROM leads WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+        return bool(row and row["suppressed"])
+
+    def list_expired_leads(self, at: str | None = None) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM leads
+                WHERE status IN ('NEW', 'PINGED', 'POSTED')
+                  AND expires_at IS NOT NULL AND expires_at <= ?
+                ORDER BY expires_at, lead_id
+                """,
+                (at or now_iso(),),
+            ).fetchall()
+
+    def list_consent_expired_leads(self, at: str | None = None) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM leads
+                WHERE suppressed = 0
+                  AND status IN ('NEW', 'PINGED', 'POSTED')
+                  AND consent_expires_at IS NOT NULL AND consent_expires_at <= ?
+                ORDER BY consent_expires_at, lead_id
+                """,
+                (at or now_iso(),),
+            ).fetchall()
+
+    def _redact_undelivered_for_lead(self, db: Any, lead_id: str, reason: str, timestamp: str) -> None:
+        rows = db.execute(
+            """
+            SELECT delivery_id, envelope_json FROM deliveries
+            WHERE lead_id = ? AND status IN ('PENDING', 'RETRY', 'PROCESSING')
+            """,
+            (lead_id,),
+        ).fetchall()
+        for row in rows:
+            db.execute(
+                """
+                UPDATE deliveries
+                SET envelope_json = ?, status = 'REDACTED', lease_owner = NULL,
+                    lease_until = NULL, last_error = ?, updated_at = ?
+                WHERE delivery_id = ?
+                """,
+                (self._redact_envelope(row["envelope_json"]), reason[:500], timestamp, row["delivery_id"]),
+            )
+        db.execute(
+            "UPDATE routing_jobs SET status = 'DONE', lease_owner = NULL, lease_until = NULL, updated_at = ? WHERE lead_id = ?",
+            (timestamp, lead_id),
+        )
+
+    def suppress_lead(self, lead_id: str, *, reason: str, actor_id: str) -> bool:
+        """Block future routing/contact without erasing already delivered data."""
         with self.transaction() as db:
+            row = db.execute(
+                "SELECT tenant_id FROM leads WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+            if not row:
+                return False
+            timestamp = now_iso()
+            db.execute(
+                """
+                INSERT INTO lead_suppressions(lead_id, reason, actor_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(lead_id) DO UPDATE SET
+                    reason=excluded.reason, actor_id=excluded.actor_id, updated_at=excluded.updated_at
+                """,
+                (lead_id, reason, actor_id, timestamp, timestamp),
+            )
+            db.execute(
+                "UPDATE leads SET suppressed = 1, updated_at = ? WHERE lead_id = ?",
+                (timestamp, lead_id),
+            )
+            db.execute(
+                "UPDATE pings SET status = 'SUPPRESSED', updated_at = ? WHERE lead_id = ? AND status = 'OPEN'",
+                (timestamp, lead_id),
+            )
+            self._redact_undelivered_for_lead(db, lead_id, reason, timestamp)
+            db.execute(
+                """
+                INSERT INTO audit_events
+                    (audit_id, tenant_id, actor_id, action, resource_type,
+                     resource_id, metadata_json, created_at)
+                VALUES (?, ?, ?, 'lead.suppressed', 'lead', ?, ?, ?)
+                """,
+                (
+                    f"audit_{uuid4().hex}", row["tenant_id"], actor_id, lead_id,
+                    json.dumps({"reason": reason}, separators=(",", ":")), timestamp,
+                ),
+            )
+        return True
+
+    def expire_lead(self, lead_id: str) -> bool:
+        """Move an unaccepted lead to EXPIRED and stop pending delivery."""
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT status FROM leads WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+            if not row:
+                return False
+            if row["status"] not in {"NEW", "PINGED", "POSTED"}:
+                return False
+            timestamp = now_iso()
+            db.execute(
+                "UPDATE leads SET status = 'EXPIRED', updated_at = ? WHERE lead_id = ?",
+                (timestamp, lead_id),
+            )
+            db.execute(
+                "UPDATE pings SET status = 'EXPIRED', updated_at = ? WHERE lead_id = ? AND status = 'OPEN'",
+                (timestamp, lead_id),
+            )
+            self._redact_undelivered_for_lead(db, lead_id, "Lead expired", timestamp)
+        return True
+
+    def update_lead_status(
+        self,
+        lead_id: str,
+        status: str,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT status FROM leads WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+            if not row:
+                raise KeyError(f"Lead not found: {lead_id}")
+            current = str(row["status"])
+            if current == status:
+                return
+            direct_post = current == "NEW" and status == "POSTED" and reason == "direct_delivery"
+            if not direct_post and status not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
+                raise InvalidStatusTransition(
+                    f"Invalid lead status transition {current} -> {status}"
+                )
             db.execute(
                 "UPDATE leads SET status = ?, updated_at = ? WHERE lead_id = ?",
                 (status, now_iso(), lead_id),
@@ -914,7 +1448,7 @@ class Store:
             row = self._connection.execute(
                 "SELECT status FROM routing_jobs WHERE lead_id = ?", (lead_id,)
             ).fetchone()
-        return bool(row and row["status"] != "DONE")
+        return bool(row and row["status"] in {"PENDING", "PROCESSING"})
 
     def complete_routing_job(self, lead_id: str, worker_id: str | None = None) -> None:
         with self.transaction() as db:
@@ -955,24 +1489,187 @@ class Store:
         return rows
 
     def release_routing_job(
-        self, lead_id: str, error: str, worker_id: str | None = None
+        self,
+        lead_id: str,
+        error: str,
+        worker_id: str | None = None,
+        *,
+        max_attempts: int = 5,
     ) -> None:
         with self.transaction() as db:
+            row = db.execute(
+                "SELECT attempts FROM routing_jobs WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+            attempts = int(row["attempts"]) if row else max_attempts
+            status = "DEAD_LETTER" if attempts >= max_attempts else "PENDING"
             if worker_id:
                 db.execute(
                     """
                     UPDATE routing_jobs
-                    SET status = 'PENDING', last_error = ?, lease_owner = NULL,
+                    SET status = ?, last_error = ?, lease_owner = NULL,
                         lease_until = NULL, updated_at = ?
                     WHERE lead_id = ? AND lease_owner = ?
                     """,
-                    (error[:500], now_iso(), lead_id, worker_id),
+                    (status, error[:500], now_iso(), lead_id, worker_id),
                 )
             else:
                 db.execute(
-                    "UPDATE routing_jobs SET status = 'PENDING', last_error = ?, lease_owner = NULL, lease_until = NULL, updated_at = ? WHERE lead_id = ?",
-                    (error[:500], now_iso(), lead_id),
+                    """
+                    UPDATE routing_jobs
+                    SET status = ?, last_error = ?, lease_owner = NULL,
+                        lease_until = NULL, updated_at = ?
+                    WHERE lead_id = ?
+                    """,
+                    (status, error[:500], now_iso(), lead_id),
                 )
+            if status == "DEAD_LETTER":
+                self._record_dead_letter_in_transaction(
+                    db,
+                    queue_type="routing",
+                    resource_id=lead_id,
+                    lead_id=lead_id,
+                    attempts=attempts,
+                    last_error=error,
+                )
+
+    def _record_dead_letter_in_transaction(
+        self,
+        db: Any,
+        *,
+        queue_type: str,
+        resource_id: str,
+        lead_id: str | None,
+        attempts: int,
+        last_error: str,
+    ) -> None:
+        timestamp = now_iso()
+        db.execute(
+            """
+            INSERT INTO dead_letter_jobs
+                (job_id, queue_type, resource_id, lead_id, status, attempts,
+                 last_error, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)
+            ON CONFLICT(queue_type, resource_id) DO UPDATE SET
+                lead_id = excluded.lead_id,
+                status = 'OPEN',
+                attempts = excluded.attempts,
+                last_error = excluded.last_error,
+                updated_at = excluded.updated_at,
+                quarantined_at = NULL,
+                replayed_at = NULL
+            """,
+            (
+                f"dlq_{queue_type}_{resource_id}",
+                queue_type,
+                resource_id,
+                lead_id,
+                max(1, int(attempts)),
+                str(last_error)[:500],
+                timestamp,
+                timestamp,
+            ),
+        )
+
+    def record_dead_letter(
+        self,
+        *,
+        queue_type: str,
+        resource_id: str,
+        lead_id: str | None,
+        attempts: int,
+        last_error: str,
+    ) -> None:
+        if queue_type not in {"delivery", "routing"}:
+            raise ValueError("Unsupported dead-letter queue type")
+        with self.transaction() as db:
+            self._record_dead_letter_in_transaction(
+                db,
+                queue_type=queue_type,
+                resource_id=resource_id,
+                lead_id=lead_id,
+                attempts=attempts,
+                last_error=last_error,
+            )
+
+    def list_dead_letters(self, status: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM dead_letter_jobs"
+        values: list[Any] = []
+        if status:
+            query += " WHERE status = ?"
+            values.append(status)
+        query += " ORDER BY created_at, job_id"
+        with self._lock:
+            rows = self._connection.execute(query, values).fetchall()
+        return [
+            {
+                "job_id": row["job_id"],
+                "queue_type": row["queue_type"],
+                "resource_id": row["resource_id"],
+                "lead_id": row["lead_id"],
+                "status": row["status"],
+                "attempts": row["attempts"],
+                "last_error": row["last_error"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "quarantined_at": row["quarantined_at"],
+                "replayed_at": row["replayed_at"],
+            }
+            for row in rows
+        ]
+
+    def quarantine_dead_letter(self, job_id: str) -> bool:
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                UPDATE dead_letter_jobs
+                SET status = 'QUARANTINED', quarantined_at = ?, updated_at = ?
+                WHERE job_id = ? AND status = 'OPEN'
+                """,
+                (now_iso(), now_iso(), job_id),
+            )
+        return cursor.rowcount == 1
+
+    def replay_dead_letter(self, job_id: str) -> bool:
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT queue_type, resource_id, status FROM dead_letter_jobs WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+            if not row or row["status"] not in {"OPEN", "QUARANTINED"}:
+                return False
+            timestamp = now_iso()
+            if row["queue_type"] == "delivery":
+                cursor = db.execute(
+                    """
+                    UPDATE deliveries
+                    SET status = 'RETRY', next_attempt_at = ?, last_error = NULL,
+                        lease_owner = NULL, lease_until = NULL, updated_at = ?
+                    WHERE delivery_id = ? AND status = 'FAILED'
+                    """,
+                    (timestamp, timestamp, row["resource_id"]),
+                )
+            else:
+                cursor = db.execute(
+                    """
+                    UPDATE routing_jobs
+                    SET status = 'PENDING', last_error = NULL,
+                        lease_owner = NULL, lease_until = NULL, updated_at = ?
+                    WHERE lead_id = ? AND status = 'DEAD_LETTER'
+                    """,
+                    (timestamp, row["resource_id"]),
+                )
+            if cursor.rowcount != 1:
+                return False
+            db.execute(
+                """
+                UPDATE dead_letter_jobs
+                SET status = 'REPLAYED', replayed_at = ?, updated_at = ?
+                WHERE job_id = ?
+                """,
+                (timestamp, timestamp, job_id),
+            )
+        return True
 
     # ─── Offers ────────────────────────────────────────────────────────────
 
@@ -981,10 +1678,13 @@ class Store:
         with self.transaction() as db:
             db.execute(
                 """
-                INSERT INTO offers (offer_id, buyer_id, active, offer_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO offers
+                    (offer_id, buyer_id, tenant_id, vertical, active, offer_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(offer_id) DO UPDATE SET
                     buyer_id=excluded.buyer_id,
+                    tenant_id=excluded.tenant_id,
+                    vertical=excluded.vertical,
                     active=excluded.active,
                     offer_json=excluded.offer_json,
                     updated_at=excluded.updated_at
@@ -992,6 +1692,8 @@ class Store:
                 (
                     offer["offer_id"],
                     offer["buyer_id"],
+                    str(offer.get("tenant_id", "default")),
+                    offer.get("vertical"),
                     int(offer.get("active", True)),
                     json.dumps(offer, separators=(",", ":"), ensure_ascii=False),
                     timestamp,
@@ -1013,10 +1715,10 @@ class Store:
         if active_only:
             clauses.append("active = 1")
         if vertical:
-            clauses.append("json_extract(offer_json, '$.vertical') = ?")
+            clauses.append("vertical = ?")
             values.append(vertical)
         if tenant_id:
-            clauses.append("json_extract(offer_json, '$.tenant_id') = ?")
+            clauses.append("tenant_id = ?")
             values.append(tenant_id)
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
@@ -1477,26 +2179,62 @@ class Store:
             ).fetchone()
         return row is not None
 
+    def has_delivered_post_for_buyer(self, lead_id: str, buyer_id: str) -> bool:
+        """Return whether a buyer received a successfully delivered winning post.
+
+        Ping, event, pending, retry, and failed delivery records must not grant
+        access to full-PII attachment bytes.
+        """
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT 1 FROM deliveries
+                WHERE lead_id = ? AND buyer_id = ?
+                  AND kind = 'post' AND status = 'DELIVERED'
+                LIMIT 1
+                """,
+                (lead_id, buyer_id),
+            ).fetchone()
+        return row is not None
+
     # ─── Lifecycle ─────────────────────────────────────────────────────────
 
-    def insert_event(self, lead_id: str, event_name: str, envelope: dict[str, Any]) -> None:
+    def get_event(self, event_id: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM lifecycle_events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+
+    def insert_event(self, lead_id: str, event_name: str, envelope: dict[str, Any]) -> bool:
         payload = envelope["lcp"]["payload"]
+        event_id = envelope["lcp"]["message"]["id"]
+        encoded = self.encode_envelope(envelope)
         with self.transaction() as db:
+            existing = db.execute(
+                "SELECT lead_id, event_name, envelope_json FROM lifecycle_events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            if existing:
+                same_event = (
+                    existing["lead_id"] == lead_id
+                    and existing["event_name"] == event_name
+                    and self.decode_envelope(existing["envelope_json"]) == envelope
+                )
+                if not same_event:
+                    raise EventIdempotencyConflict(
+                        f"Event message ID was reused with different content: {event_id}"
+                    )
+                return False
             db.execute(
                 """
                 INSERT INTO lifecycle_events
                     (event_id, lead_id, event_name, timestamp, envelope_json)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(event_id) DO NOTHING
                 """,
-                (
-                    envelope["lcp"]["message"]["id"],
-                    lead_id,
-                    event_name,
-                    payload["timestamp"],
-                    self.encode_envelope(envelope),
-                ),
+                (event_id, lead_id, event_name, payload["timestamp"], encoded),
             )
+        return True
 
     def list_events(self, lead_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -1567,6 +2305,18 @@ class Store:
                             f"UPDATE {table} SET envelope_json = ? WHERE {child_key} = ?",
                             (redacted, child[child_key]),
                         )
+            attachments = db.execute(
+                "SELECT attachment_id, storage_ref FROM attachments WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchall()
+            for attachment in attachments:
+                db.execute(
+                    "UPDATE attachments SET status = 'REDACTED', updated_at = ? WHERE attachment_id = ?",
+                    (timestamp, attachment["attachment_id"]),
+                )
+                self._enqueue_attachment_deletion(
+                    db, attachment["attachment_id"], attachment["storage_ref"], timestamp
+                )
             db.execute(
                 "UPDATE routing_jobs SET status = 'DONE', lease_owner = NULL, lease_until = NULL, updated_at = ? WHERE lead_id = ?",
                 (timestamp, lead_id),

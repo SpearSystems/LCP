@@ -1,0 +1,8 @@
+# Shared CI validation pins. Update deliberately and review the resulting lock
+# diff before changing workflow inputs.
+cryptography==50.0.0
+httpx==0.28.1
+jsonschema==4.26.0
+mcp==2.0.0
+psycopg==3.3.4
+referencing==0.37.0

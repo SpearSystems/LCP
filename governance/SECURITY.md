@@ -5,12 +5,18 @@ disclosures are handled with priority proportional to PII exposure risk.
 
 ## Reporting a Vulnerability
 
-**Do not open a public issue for security vulnerabilities.**
+**Do not open a public issue for security vulnerabilities.** Use the private
+GitHub Security Advisory form:
 
-Report vulnerabilities privately:
+<https://github.com/SpearSystems/LCP/security/advisories/new>
 
-1. Email the maintainers with a description of the vulnerability, affected
-   components, and a reproduction or proof of concept.
+That route is monitored by the maintainers and keeps reproductions, affected
+versions, and any sensitive evidence out of the public issue tracker. If the
+advisory form is unavailable, use the private maintainer contact linked from
+[MAINTAINERS.md](../MAINTAINERS.md) rather than opening a public issue.
+
+1. Include the affected component, release/version, impact, and a synthetic
+   reproduction or proof of concept. Never include real consumer data.
 2. You will receive an acknowledgment within 48 hours.
 3. The maintainers will assess severity and coordinate a fix + disclosure
    timeline with you.

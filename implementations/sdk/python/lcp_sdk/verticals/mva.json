@@ -32,56 +32,68 @@
     },
     "injury_present": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Injury indicator is sensitive health/legal data; post-only.",
+      "ping_safe": false
     },
     "injury_severity_band": {
       "type": "string",
       "enum": ["none", "minor", "moderate", "serious", "fatality", "unknown"],
-      "ping_safe": true
+      "description": "Injury severity is sensitive health/legal data; post-only.",
+      "ping_safe": false
     },
     "medical_treatment": {
       "type": "string",
       "enum": ["none", "self_treated", "emergency_room", "hospitalized", "ongoing", "unknown"],
-      "ping_safe": true
+      "description": "Medical treatment is sensitive health data; post-only.",
+      "ping_safe": false
     },
     "emergency_services_called": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Emergency-response information is sensitive incident data; post-only.",
+      "ping_safe": false
     },
     "police_report_available": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Police-report availability is sensitive incident data; post-only.",
+      "ping_safe": false
     },
     "fault_position": {
       "type": "string",
       "enum": ["not_at_fault", "partially_at_fault", "at_fault", "unclear", "unknown"],
-      "ping_safe": true
+      "description": "Fault position is sensitive legal/liability data; post-only.",
+      "ping_safe": false
     },
     "other_driver_identified": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Other-party identification status is sensitive incident data; post-only.",
+      "ping_safe": false
     },
     "other_driver_insured": {
       "type": "string",
       "enum": ["yes", "no", "unknown"],
-      "ping_safe": true
+      "description": "Other-party insurance status is sensitive insurance data; post-only.",
+      "ping_safe": false
     },
     "consumer_insured": {
       "type": "string",
       "enum": ["yes", "no", "unknown"],
-      "ping_safe": true
+      "description": "Consumer insurance status is sensitive insurance data; post-only.",
+      "ping_safe": false
     },
     "represented_by_attorney": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Attorney-representation status is sensitive legal data; post-only.",
+      "ping_safe": false
     },
     "prior_attorney_consultation": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Prior legal consultation is sensitive legal data; post-only.",
+      "ping_safe": false
     },
     "claim_filed": {
       "type": "boolean",
-      "ping_safe": true
+      "description": "Claim status is sensitive legal/insurance data; post-only.",
+      "ping_safe": false
     },
     "vehicle_count_band": {
       "type": "string",

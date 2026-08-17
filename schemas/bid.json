@@ -6,9 +6,7 @@
   "type": "object",
   "required": [
     "ping_id",
-    "decision",
-    "bid_price_cents",
-    "currency"
+    "decision"
   ],
   "properties": {
     "ping_id": {
@@ -51,5 +49,18 @@
       "description": "Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional."
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": { "const": "accept" }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "required": ["bid_price_cents", "currency"]
+      }
+    }
+  ],
   "additionalProperties": false
 }

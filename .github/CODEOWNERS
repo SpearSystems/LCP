@@ -1,0 +1,15 @@
+# LCP repository ownership
+# Keep these owners synchronized with MAINTAINERS.md and the protected branch rules.
+# The repository's current maintainer account is @rbeno; add an independent
+# security reviewer/team before enabling mandatory two-person approval.
+
+/SPEC.md @rbeno
+/schemas/ @rbeno
+/verticals/ @rbeno
+/test-vectors/ @rbeno
+/api/ @rbeno
+/.github/ @rbeno
+/governance/ @rbeno
+/implementations/ @rbeno
+/tools/ @rbeno
+* @rbeno

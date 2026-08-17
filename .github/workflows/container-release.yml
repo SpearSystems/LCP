@@ -20,6 +20,10 @@ jobs:
   publish-sign-verify:
     name: Publish, sign, and verify container
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      tag: ${{ steps.image.outputs.tag }}
+      digest: ${{ steps.push.outputs.digest }}
     permissions:
       contents: read
       id-token: write
@@ -120,3 +124,28 @@ jobs:
             "oci://${IMAGE_REF}@${IMAGE_DIGEST}" \
             --predicate-type "https://cyclonedx.org/bom" \
             --repo "${GITHUB_REPOSITORY}"
+      - name: Write immutable container metadata
+        id: metadata
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.image }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg image "${IMAGE_REF}" \
+            --arg tag "${IMAGE_TAG}" \
+            --arg digest "${IMAGE_DIGEST}" \
+            --arg commit "${GITHUB_SHA}" \
+            --arg workflow_run_id "${GITHUB_RUN_ID}" \
+            '{image: $image, tag: $tag, digest: $digest, reference: ($image + "@" + $digest), commit: $commit, workflow_run_id: $workflow_run_id}' \
+            > lcp-container-release.json
+          test "$(jq -r '.digest' lcp-container-release.json)" = "${IMAGE_DIGEST}"
+          echo "digest=${IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
+      - name: Upload immutable container metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lcp-container-release-metadata
+          path: lcp-container-release.json
+          if-no-files-found: error
+          retention-days: 90

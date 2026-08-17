@@ -56,7 +56,8 @@
     "credit_rating_band": {
       "type": "string",
       "enum": ["excellent", "good", "fair", "poor", "unknown"],
-      "ping_safe": true
+      "description": "Credit classification is sensitive financial data; post-only.",
+      "ping_safe": false
     },
     "employment_status": {
       "type": "string",
@@ -96,7 +97,8 @@
     "veteran_status": {
       "type": "string",
       "enum": ["veteran", "active_duty", "reservist", "non_veteran"],
-      "ping_safe": true
+      "description": "Veteran or military status is sensitive eligibility data; post-only.",
+      "ping_safe": false
     },
     "desired_rate_term": {
       "type": "string",
@@ -135,18 +137,18 @@
     },
     "bankruptcy_history": {
       "type": "boolean",
-      "description": "Has the consumer filed for bankruptcy? Disqualifier for many loan products.",
-      "ping_safe": true
+      "description": "Has the consumer filed for bankruptcy? Sensitive financial data; post-only.",
+      "ping_safe": false
     },
     "foreclosure_history": {
       "type": "boolean",
-      "description": "Has the consumer had a foreclosure? Disqualifier for many loan products.",
-      "ping_safe": true
+      "description": "Has the consumer had a foreclosure? Sensitive financial data; post-only.",
+      "ping_safe": false
     },
     "self_employed_income_verified": {
       "type": "boolean",
-      "description": "For self-employed leads, whether income has been verified (bank statements, tax returns).",
-      "ping_safe": true
+      "description": "For self-employed leads, whether income has been verified; sensitive financial data, post-only.",
+      "ping_safe": false
     },
     "mortgage_product": {
       "type": "object",

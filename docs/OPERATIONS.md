@@ -7,8 +7,11 @@ Use the reference health endpoints through the deployment layer:
 
 - `GET /health/live`: process liveness only.
 - `GET /health/ready`: database connectivity/readiness.
+- `GET /v1/lcp/metrics`: aggregate queue, retry, lease, scanner, deletion, and
+  dead-letter counts. Require `platform:admin`; the response contains no lead,
+  buyer, tenant, URL, or consumer identifiers.
 - Worker health: last successful poll, queue age, and lease expiry health from
-  metrics or a supervisor-specific health check.
+  the metrics endpoint or a supervisor-specific health check.
 
 Do not expose database or credential health details to unauthenticated callers.
 
@@ -34,8 +37,19 @@ Collect labels that do not contain PII:
 
 Alert on sustained auth failures, PII validation failures, queue growth,
 failed deliveries, database saturation, backup failures, unusual volume from a
-tenant, attachment capacity/malware backlog, mapping dead letters, and any
-offer that is materially under-paced toward its monthly payable minimum.
+tenant, attachment capacity/malware backlog, open dead letters, and any offer
+that is materially under-paced toward its monthly payable minimum.
+
+The reference platform exposes only aggregate metrics. Example response shape:
+
+```json
+{
+  "routing": {"pending": 0, "processing": 0, "dead_letter": 0, "lease_expired": 0},
+  "delivery": {"pending": 0, "retry": 0, "failed": 0, "dead_letter": 0},
+  "attachments": {"scanner_backlog": 0, "deletion_pending": 0, "deletion_failed": 0},
+  "dead_letters": {"open": 0, "quarantined": 0}
+}
+```
 
 ## Deployment procedure
 
@@ -57,9 +71,21 @@ offer that is materially under-paced toward its monthly payable minimum.
 4. Stop outbound delivery if PII exposure is suspected.
 5. Determine affected tenants, lead IDs, recipients, timestamps, and regions.
 6. Rotate exposed credentials and encryption keys.
-7. Contain, remediate, and validate with replayed synthetic fixtures.
-8. Follow applicable breach-notification and contractual procedures.
-9. Produce a post-incident report and update the threat model.
+7. Quarantine exhausted work before investigating it, then replay only after
+   the failure cause is understood:
+
+   ```bash
+   lcp-platform-admin dead-letter list --status OPEN
+   lcp-platform-admin dead-letter quarantine --job-id <job-id>
+   lcp-platform-admin dead-letter replay --job-id <job-id>
+   ```
+
+   Replay resets only the durable queue row; it never reconstructs or prints a
+   consumer payload. Preserve the job ID and redacted error in the incident
+   record.
+8. Contain, remediate, and validate with replayed synthetic fixtures.
+9. Follow applicable breach-notification and contractual procedures.
+10. Produce a post-incident report and update the threat model.
 
 Do not put raw consumer payloads into incident tickets or chat systems.
 

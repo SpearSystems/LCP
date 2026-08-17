@@ -35,6 +35,16 @@ def main() -> None:
     erase_lead.add_argument("--lead-id", required=True)
     erase_lead.add_argument("--actor-id", default="operator")
 
+    dead_letter = commands.add_parser("dead-letter", help="Inspect and recover exhausted worker jobs")
+    dead_letter_sub = dead_letter.add_subparsers(dest="dead_letter_command", required=True)
+    list_dead_letter = dead_letter_sub.add_parser("list")
+    list_dead_letter.add_argument(
+        "--status", choices=["OPEN", "QUARANTINED", "REPLAYED"], default=None
+    )
+    for command_name in ("quarantine", "replay"):
+        command = dead_letter_sub.add_parser(command_name)
+        command.add_argument("--job-id", required=True)
+
     mapping = commands.add_parser("mapping", help="Manage publisher form mappings")
     mapping_sub = mapping.add_subparsers(dest="mapping_command", required=True)
     upsert_mapping = mapping_sub.add_parser("upsert")
@@ -70,6 +80,17 @@ def main() -> None:
             if args.privacy_command == "erase-lead":
                 platform.erase_lead(args.lead_id, actor_id=args.actor_id)
                 print(f"Erased lead {args.lead_id}")
+        elif args.command == "dead-letter":
+            if args.dead_letter_command == "list":
+                print(json.dumps(platform.store.list_dead_letters(args.status), indent=2))
+            elif args.dead_letter_command == "quarantine":
+                if not platform.store.quarantine_dead_letter(args.job_id):
+                    raise SystemExit(f"Dead-letter job not found or already closed: {args.job_id}")
+                print(f"Quarantined dead-letter job {args.job_id}")
+            elif args.dead_letter_command == "replay":
+                if not platform.store.replay_dead_letter(args.job_id):
+                    raise SystemExit(f"Dead-letter job cannot be replayed: {args.job_id}")
+                print(f"Replayed dead-letter job {args.job_id}")
         elif args.command == "mapping":
             with args.file.open(encoding="utf-8") as handle:
                 mapping_data = json.load(handle)

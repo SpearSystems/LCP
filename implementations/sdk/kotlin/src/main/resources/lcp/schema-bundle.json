@@ -53,6 +53,26 @@
     "$id": "https://lcp.dev/schemas/bid.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "decision": {
+              "const": "accept"
+            }
+          },
+          "required": [
+            "decision"
+          ]
+        },
+        "then": {
+          "required": [
+            "bid_price_cents",
+            "currency"
+          ]
+        }
+      }
+    ],
     "description": "Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
       "bid_price_cents": {
@@ -97,9 +117,7 @@
     },
     "required": [
       "ping_id",
-      "decision",
-      "bid_price_cents",
-      "currency"
+      "decision"
     ],
     "title": "LCP Bid Message",
     "type": "object"
@@ -2231,14 +2249,14 @@
     "description": "Insurance lead attributes. Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
       "claim_count_band": {
-        "description": "Banded number of claims filed.",
+        "description": "Banded number of claims filed. Sensitive underwriting data; post-only.",
         "enum": [
           "none",
           "one",
           "two",
           "three_or_more"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "coverage_amount_band": {
@@ -2307,23 +2325,23 @@
         "type": "string"
       },
       "gender": {
-        "description": "Gender \u2014 insurance requires this for underwriting rate classification.",
+        "description": "Gender \u2014 sensitive underwriting data; post-only.",
         "enum": [
           "male",
           "female",
           "non_binary",
           "prefer_not_to_say"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "has_claims_history": {
-        "description": "Has the consumer filed any claims?",
-        "ping_safe": true,
+        "description": "Has the consumer filed any claims? Sensitive underwriting data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "health_condition_band": {
-        "description": "Self-reported health condition band for health insurance.",
+        "description": "Self-reported health condition band for health insurance; sensitive health data, post-only.",
         "enum": [
           "excellent",
           "good",
@@ -2331,11 +2349,11 @@
           "poor",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "height_band": {
-        "description": "Banded height for health/life insurance underwriting.",
+        "description": "Banded height for health/life insurance underwriting; sensitive health data, post-only.",
         "enum": [
           "under_5ft",
           "5_5ft5",
@@ -2343,7 +2361,7 @@
           "5ft9_6ft",
           "over_6ft"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "insurance_type": {
@@ -2366,11 +2384,11 @@
           "separated",
           "domestic_partnership"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "occupation_class": {
-        "description": "Occupation risk class for life/disability insurance underwriting.",
+        "description": "Occupation risk class for life/disability insurance underwriting; sensitive employment data, post-only.",
         "enum": [
           "professional",
           "clerical",
@@ -2380,7 +2398,7 @@
           "self_employed",
           "other"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "property_type": {
@@ -2402,8 +2420,8 @@
         "type": "string"
       },
       "smoker": {
-        "description": "Smoking status for health/life insurance underwriting.",
-        "ping_safe": true,
+        "description": "Smoking status for health/life insurance underwriting; sensitive health data, post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "vehicle_type": {
@@ -2427,7 +2445,7 @@
         "type": "string"
       },
       "weight_band": {
-        "description": "Banded weight (lbs) for health/life insurance underwriting.",
+        "description": "Banded weight (lbs) for health/life insurance underwriting; sensitive health data, post-only.",
         "enum": [
           "under_120",
           "120_150",
@@ -2436,7 +2454,7 @@
           "210_250",
           "over_250"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "years_with_current_insurer_band": {
@@ -2466,8 +2484,8 @@
     "description": "Legal lead attributes. Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
       "at_fault": {
-        "description": "Was the consumer at fault? Ping_safe for auto-related cases.",
-        "ping_safe": true,
+        "description": "Was the consumer at fault? Sensitive legal liability data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "case_type": {
@@ -2485,7 +2503,7 @@
         "type": "string"
       },
       "claim_status": {
-        "description": "Current status of the claim.",
+        "description": "Current status of the claim; sensitive legal data, post-only.",
         "enum": [
           "not_filed",
           "filed",
@@ -2494,12 +2512,12 @@
           "settled",
           "in_litigation"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "has_attorney": {
-        "description": "Does the consumer already have an attorney?",
-        "ping_safe": true,
+        "description": "Does the consumer already have an attorney? Legal-representation data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "incident_date": {
@@ -2514,7 +2532,7 @@
         "type": "string"
       },
       "injury_severity": {
-        "description": "Severity of injury sustained.",
+        "description": "Severity of injury sustained; sensitive health/legal data, post-only.",
         "enum": [
           "none",
           "minor",
@@ -2523,7 +2541,7 @@
           "catastrophic",
           "fatal"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "insurance_company": {
@@ -2532,13 +2550,13 @@
         "type": "string"
       },
       "medical_treatment_received": {
-        "description": "Has medical treatment been received?",
-        "ping_safe": true,
+        "description": "Has medical treatment been received? Sensitive health/legal data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "police_report_filed": {
-        "description": "Was a police report filed?",
-        "ping_safe": true,
+        "description": "Was a police report filed? Sensitive incident data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "schema_version": {
@@ -2546,10 +2564,10 @@
         "type": "string"
       },
       "time_to_contact_deadline_days": {
-        "description": "Days remaining to contact before statute of limitations or deadline.",
+        "description": "Days remaining to contact before statute of limitations or deadline; sensitive legal timing, post-only.",
         "maximum": 3650,
         "minimum": 0,
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "integer"
       },
       "vertical": {
@@ -2589,8 +2607,8 @@
         "type": "integer"
       },
       "bankruptcy_history": {
-        "description": "Has the consumer filed for bankruptcy? Disqualifier for many loan products.",
-        "ping_safe": true,
+        "description": "Has the consumer filed for bankruptcy? Sensitive financial data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "cash_out_amount_band": {
@@ -2611,6 +2629,7 @@
         "type": "integer"
       },
       "credit_rating_band": {
+        "description": "Credit classification is sensitive financial data; post-only.",
         "enum": [
           "excellent",
           "good",
@@ -2618,7 +2637,7 @@
           "poor",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "current_lender": {
@@ -2660,8 +2679,8 @@
         "type": "number"
       },
       "foreclosure_history": {
-        "description": "Has the consumer had a foreclosure? Disqualifier for many loan products.",
-        "ping_safe": true,
+        "description": "Has the consumer had a foreclosure? Sensitive financial data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "has_existing_mortgage": {
@@ -2861,8 +2880,8 @@
         "type": "string"
       },
       "self_employed_income_verified": {
-        "description": "For self-employed leads, whether income has been verified (bank statements, tax returns).",
-        "ping_safe": true,
+        "description": "For self-employed leads, whether income has been verified; sensitive financial data, post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "vertical": {
@@ -2870,13 +2889,14 @@
         "type": "string"
       },
       "veteran_status": {
+        "description": "Veteran or military status is sensitive eligibility data; post-only.",
         "enum": [
           "veteran",
           "active_duty",
           "reservist",
           "non_veteran"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       }
     },
@@ -2932,7 +2952,8 @@
         "type": "string"
       },
       "claim_filed": {
-        "ping_safe": true,
+        "description": "Claim status is sensitive legal/insurance data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "claim_stage": {
@@ -2952,16 +2973,18 @@
         "type": "boolean"
       },
       "consumer_insured": {
+        "description": "Consumer insurance status is sensitive insurance data; post-only.",
         "enum": [
           "yes",
           "no",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "emergency_services_called": {
-        "ping_safe": true,
+        "description": "Emergency-response information is sensitive incident data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "evidence_available": {
@@ -2983,6 +3006,7 @@
         "uniqueItems": true
       },
       "fault_position": {
+        "description": "Fault position is sensitive legal/liability data; post-only.",
         "enum": [
           "not_at_fault",
           "partially_at_fault",
@@ -2990,14 +3014,16 @@
           "unclear",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "injury_present": {
-        "ping_safe": true,
+        "description": "Injury indicator is sensitive health/legal data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "injury_severity_band": {
+        "description": "Injury severity is sensitive health/legal data; post-only.",
         "enum": [
           "none",
           "minor",
@@ -3006,7 +3032,7 @@
           "fatality",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "jurisdiction": {
@@ -3015,6 +3041,7 @@
         "type": "string"
       },
       "medical_treatment": {
+        "description": "Medical treatment is sensitive health data; post-only.",
         "enum": [
           "none",
           "self_treated",
@@ -3023,20 +3050,22 @@
           "ongoing",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "other_driver_identified": {
-        "ping_safe": true,
+        "description": "Other-party identification status is sensitive incident data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "other_driver_insured": {
+        "description": "Other-party insurance status is sensitive insurance data; post-only.",
         "enum": [
           "yes",
           "no",
           "unknown"
         ],
-        "ping_safe": true,
+        "ping_safe": false,
         "type": "string"
       },
       "passenger_count_band": {
@@ -3051,15 +3080,18 @@
         "type": "string"
       },
       "police_report_available": {
-        "ping_safe": true,
+        "description": "Police-report availability is sensitive incident data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "prior_attorney_consultation": {
-        "ping_safe": true,
+        "description": "Prior legal consultation is sensitive legal data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "represented_by_attorney": {
-        "ping_safe": true,
+        "description": "Attorney-representation status is sensitive legal data; post-only.",
+        "ping_safe": false,
         "type": "boolean"
       },
       "schema_version": {

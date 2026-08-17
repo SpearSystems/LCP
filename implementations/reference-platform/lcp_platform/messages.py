@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from .auth import signature_for
-from .storage import now_iso
+from .storage import is_expired, now_iso, parse_iso_datetime
 
 
 def _envelope(
@@ -135,6 +135,9 @@ def build_ping(
             "consent": bool(lead.get("compliance", {}).get("consent_evidence")),
             "otp_verified": bool(lead.get("compliance", {}).get("otp_verified")),
             "dnc_checked": bool(lead.get("compliance", {}).get("dnc_checked")),
+            "consent_valid": not is_expired(
+                parse_iso_datetime(lead.get("compliance", {}).get("consent_expires_at"))
+            ),
         },
         "quality_flags": {
             "verified_phone": lead.get("lead_quality", {}).get("verified_phone", False),

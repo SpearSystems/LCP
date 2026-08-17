@@ -16,8 +16,21 @@ impl SchemaValidator {
     pub fn new(schemas: HashMap<String, Value>) -> Self { Self { schemas } }
 
     pub fn from_directory(root: impl AsRef<Path>) -> Result<Self, SchemaValidationError> {
+        let root = root.as_ref();
         let mut schemas = HashMap::new();
-        Self::load_directory(root.as_ref(), &mut schemas)?;
+        Self::load_directory(root, &mut schemas)?;
+        if root.file_name().and_then(|value| value.to_str()) == Some("schemas") {
+            if let Some(parent) = root.parent() {
+                let vertical_root = parent.join("verticals");
+                if vertical_root.is_dir() {
+                    let mut verticals = HashMap::new();
+                    Self::load_directory(&vertical_root, &mut verticals)?;
+                    for (name, value) in verticals {
+                        schemas.insert(format!("verticals/{name}"), value);
+                    }
+                }
+            }
+        }
         Ok(Self::new(schemas))
     }
 
@@ -46,7 +59,50 @@ impl SchemaValidator {
         self.validate("schemas/envelope.json", envelope)?;
         let message_type = envelope.pointer("/lcp/message/type").and_then(Value::as_str).ok_or_else(|| SchemaValidationError("missing lcp.message.type".into()))?;
         let payload = envelope.pointer("/lcp/payload").ok_or_else(|| SchemaValidationError("missing lcp.payload".into()))?;
-        self.validate(&format!("schemas/{message_type}.json"), payload)
+        self.validate(&format!("schemas/{message_type}.json"), payload)?;
+        self.validate_vertical_policy(message_type, payload)
+    }
+
+    fn validate_vertical_policy(&self, message_type: &str, payload: &Value) -> Result<(), SchemaValidationError> {
+        if !matches!(message_type, "lead" | "call" | "post" | "ping") {
+            return Ok(());
+        }
+        let attributes = match payload.get("attributes").and_then(Value::as_object) {
+            Some(value) => value,
+            None => return Ok(()),
+        };
+        let vertical = if message_type == "ping" {
+            payload.get("vertical").and_then(Value::as_str)
+        } else {
+            attributes.get("vertical").and_then(Value::as_str)
+        };
+        let Some(vertical) = vertical else { return Ok(()); };
+        let schema_name = format!("verticals/{vertical}.json");
+        let key = self.find_key(&schema_name).ok_or_else(|| {
+            SchemaValidationError(format!("vertical schema '{vertical}' not found"))
+        })?;
+        let schema = self.schemas[key].as_object().ok_or_else(|| {
+            SchemaValidationError(format!("vertical schema '{vertical}' is not an object"))
+        })?;
+        let mut vertical_attributes = attributes.clone();
+        if message_type == "ping" {
+            vertical_attributes.entry("vertical".to_string()).or_insert_with(|| Value::String(vertical.to_string()));
+            if !vertical_attributes.contains_key("schema_version") {
+                if let Some(version) = schema.get("properties")
+                    .and_then(Value::as_object)
+                    .and_then(|properties| properties.get("schema_version"))
+                    .and_then(Value::as_object)
+                    .and_then(|definition| definition.get("const"))
+                {
+                    vertical_attributes.insert("schema_version".to_string(), version.clone());
+                }
+            }
+        }
+        self.validate(&schema_name, &Value::Object(vertical_attributes))?;
+        if message_type == "ping" {
+            validate_ping_safe_fields(attributes, schema, "attributes")?;
+        }
+        Ok(())
     }
 
     pub fn validate_offer(&self, offer: &Value) -> Result<(), SchemaValidationError> { self.validate("schemas/offer.json", offer) }
@@ -59,6 +115,38 @@ impl SchemaValidator {
             candidate == normalized || candidate.ends_with(&normalized)
         })
     }
+}
+
+fn validate_ping_safe_fields(
+    value: &serde_json::Map<String, Value>,
+    schema: &serde_json::Map<String, Value>,
+    path: &str,
+) -> Result<(), SchemaValidationError> {
+    let properties = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for (field, child) in value {
+        if path == "attributes" && (field == "vertical" || field == "schema_version") {
+            continue;
+        }
+        let definition = properties.get(field).and_then(Value::as_object);
+        if definition.and_then(|item| item.get("ping_safe")).and_then(Value::as_bool) != Some(true) {
+            return Err(SchemaValidationError(format!(
+                "{path}.{field} is not tagged ping_safe: true"
+            )));
+        }
+        if let Some(child_properties) = definition
+            .and_then(|item| item.get("properties"))
+            .and_then(Value::as_object)
+        {
+            if let Some(child_object) = child.as_object() {
+                validate_ping_safe_fields(child_object, child_properties, &format!("{path}.{field}"))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn inline_core_refs(node: &mut Value, core: Option<&Value>) {

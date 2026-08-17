@@ -24,7 +24,6 @@
         "loan_amount_band": "500k_750k",
         "property_type": "single_family",
         "property_value_band": "800k_1m",
-        "credit_rating_band": "excellent",
         "employment_status": "employed",
         "annual_income_band": "100k_150k",
         "ltv_ratio_band": "70_80",

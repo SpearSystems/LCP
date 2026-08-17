@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test dependencies
-        run: python -m pip install jsonschema referencing httpx cryptography 'psycopg[binary]'
+        run: python -m pip install --constraint requirements-ci.txt jsonschema referencing httpx cryptography 'psycopg[binary]'
       - name: Validate coordinated tag
         run: |
           python tools/check_sdk_versions.py --check

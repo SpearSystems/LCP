@@ -30,6 +30,13 @@ module LcpSdk
         name = path.delete_prefix("#{root}/")
         documents[name] = JSON.parse(File.read(path))
       end
+      if File.basename(root.to_s) == "schemas"
+        vertical_root = File.join(File.dirname(root), "verticals")
+        Dir.glob(File.join(vertical_root, "**", "*.json")).each do |path|
+          name = path.delete_prefix("#{vertical_root}/")
+          documents["verticals/#{name}"] = JSON.parse(File.read(path))
+        end
+      end
       new(documents)
     end
 
@@ -50,7 +57,41 @@ module LcpSdk
       validate("schemas/envelope.json", envelope)
       type = envelope.dig("lcp", "message", "type")
       raise SchemaValidationError, "missing lcp.message.type" unless type.is_a?(String)
-      validate("schemas/#{type}.json", envelope.dig("lcp", "payload"))
+      payload = envelope.dig("lcp", "payload")
+      validate("schemas/#{type}.json", payload)
+      validate_vertical_policy(type, payload)
+    end
+
+    def validate_vertical_policy(type, payload)
+      return unless %w[lead call post ping].include?(type) && payload.is_a?(Hash)
+      attributes = payload["attributes"]
+      return unless attributes.is_a?(Hash)
+      vertical = type == "ping" ? payload["vertical"] : attributes["vertical"]
+      return unless vertical.is_a?(String) && !vertical.empty?
+      schema = @documents[normalize("verticals/#{vertical}.json")] ||
+        @documents["verticals/#{vertical}.json"] ||
+        @documents["#{vertical}.json"]
+      raise SchemaValidationError, "Vertical schema '#{vertical}' not found" unless schema.is_a?(Hash)
+      vertical_attributes = JSON.parse(JSON.generate(attributes))
+      if type == "ping"
+        vertical_attributes["vertical"] ||= vertical
+        vertical_attributes["schema_version"] ||= schema.dig("properties", "schema_version", "const") || "1.0.0"
+      end
+      validate_vertical(vertical, vertical_attributes)
+      validate_ping_safe(vertical, attributes, schema, "attributes") if type == "ping"
+    end
+
+    def validate_ping_safe(vertical, value, schema, path)
+      return unless value.is_a?(Hash)
+      properties = schema.fetch("properties", {})
+      value.each do |name, child|
+        next if path == "attributes" && %w[vertical schema_version].include?(name)
+        definition = properties[name]
+        unless definition.is_a?(Hash) && definition["ping_safe"] == true
+          raise SchemaValidationError, "#{path}.#{name} is not tagged ping_safe: true in vertical '#{vertical}'"
+        end
+        validate_ping_safe(vertical, child, definition, "#{path}.#{name}") if child.is_a?(Hash) && definition["properties"].is_a?(Hash)
+      end
     end
 
     def validate_offer(offer)

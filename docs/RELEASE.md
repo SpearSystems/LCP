@@ -2,10 +2,11 @@
 
 > **Release page · Page 3 of 6**
 
-> **Current candidate:** coordinated `v1.0.1` metadata is prepared on `main`
-> for a patch release of the published reference-platform extensions. No
-> immutable tag, package publication, container publication, or GitHub release
-> has been created by this preparation change.
+> **Current release:** `v1.0.1` was published on 2026-08-17 from signed tag
+> `v1.0.1`, resolving to commit
+> `61886511d2c9424ffb197d0788b049216a4645a2`. The GitHub release and its signed
+> evidence assets are available at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.1>.
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -17,10 +18,10 @@ A tag such as `v1.0.0` starts the coordinated release process. The tag is
 accepted only when it matches `SDK_VERSION` and the package metadata checked by
 `tools/check_sdk_versions.py`.
 
-Before the first release, or when provisioning a new repository, configure the protected GitHub release environments
+Before a release, or when provisioning a new repository, configure the protected GitHub release environments
 (`release`, `release-python-mcp`, and `release-python-reference`), branch rules,
 and registry trusted publishers using the [maintainer release
-setup](MAINTAINER-RELEASE-SETUP.md). The v1.0.0 release completed this flow
+setup](MAINTAINER-RELEASE-SETUP.md). The v1.0.1 release completed this flow
 successfully; future releases repeat it with a new immutable version tag. The
 final GitHub release record is created by a separate environment-protected job,
 so package publication and release creation require explicit approval.
@@ -65,8 +66,8 @@ npm, crates.io, or RubyGems versions.
 4. Push a tag whose name is exactly `v<SDK_VERSION>`:
 
    ```bash
-   git tag -a v1.0.0 -m "LCP v1.0.0"
-   git push origin v1.0.0
+   git tag -a "v${SDK_VERSION}" -m "LCP ${SDK_VERSION}"
+   git push origin "v${SDK_VERSION}"
    ```
 
    A signed Git tag is recommended for maintainer provenance, but the release
@@ -88,12 +89,13 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
-## v1.0.1 candidate dry run
+## v1.0.1 release evidence
 
-The current candidate is a coordinated patch release because it adds
-implementation-level candidate indexing and benchmark tooling without changing
-schemas, message types, or the universal wire contract. Before creating the
-immutable tag, run the non-publishing workflow against the pushed candidate:
+The published patch release added implementation-level candidate indexing and
+benchmark tooling without changing schemas, message types, or the universal
+wire contract. Its immutable tag and commit are recorded above. Download the
+release manifest and evidence assets before consuming packages or the
+reference image:
 
 ```bash
 gh workflow run release.yml \
@@ -103,13 +105,15 @@ gh workflow run release.yml \
   -f target_sha="$(git rev-parse HEAD)"
 ```
 
-The workflow must report the coordinated `SDK_VERSION` as `1.0.1`, pass schema
-and conformance gates, and upload the signed dry-run evidence artifact. Review
-that artifact offline before approving a real `v1.0.1` tag.
+For the published release, download `release-manifest.json` and its
+`.sigstore.json` bundle from the GitHub release page and verify them with the
+offline command below. The workflow command above is only a repeatable
+rehearsal for future release candidates; it must not be treated as evidence
+that a new release was published.
 
 ## Non-publishing release dry run
 
-Before creating a real tag, run the release workflow manually against the
+For a future patch, run the release workflow manually against the exact
 candidate commit:
 
 ```bash
@@ -162,9 +166,9 @@ python3 tools/verify_release_evidence.py ./release-assets \
   --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/heads/main" \
   --issuer "https://token.actions.githubusercontent.com"
 
-# Tagged release evidence generated from refs/tags/v1.0.0:
+# Tagged release evidence generated from refs/tags/v1.0.1:
 python3 tools/verify_release_evidence.py ./release-assets \
-  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v1.0.0" \
+  --identity "https://github.com/SpearSystems/LCP/.github/workflows/release.yml@refs/tags/v1.0.1" \
   --issuer "https://token.actions.githubusercontent.com"
 ```
 
@@ -196,9 +200,9 @@ that repository before retrying the publication. The Rust bootstrap version is
 not part of the v1 release; the `1.0.0` publication came through the configured crates.io OIDC publisher.
 RubyGems now uses its active OIDC publisher for subsequent versions.
 
-The v1.0.0 release is the first published LCP release; its signed tag and
-release manifest are immutable. The release manifest is the authoritative list
-for a specific tag. Package
+The v1.0.1 release is the current published LCP release; its signed tag and
+release manifest identify the exact source commit and package evidence. The
+release manifest is the authoritative list for a specific tag. Package
 registries can take time to index a new version; verify the package's version
 and checksum through the registry before using it in a production lockfile.
 
@@ -218,7 +222,7 @@ Download `release-manifest.json`, `release-notes.md`, and their corresponding
 official, verified distribution and set the expected release workflow identity:
 
 ```bash
-export VERSION='1.0.0'
+export VERSION='1.0.1'
 export REPOSITORY='SpearSystems/LCP'
 export TAG="v${VERSION}"
 export WORKFLOW_IDENTITY="https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
@@ -245,14 +249,20 @@ cosign verify-blob \
 
 The identity must match the exact repository, workflow path, and tag. Do not
 accept a valid Sigstore signature from an unrelated workflow or repository.
-Inspect the manifest's commit and schema-manifest digest before consuming the
-release.
+Inspect the manifest's commit, schema-manifest digest, and container object
+before consuming the release.
 
 ## Verify the reference container
 
-The container workflow publishes a digest-addressed GHCR image and attaches
-GitHub provenance and CycloneDX SBOM attestations. Resolve the tag to a digest,
-then verify all controls before admission:
+The container workflow publishes a digest-addressed GHCR image, attaches
+GitHub provenance and CycloneDX SBOM attestations, and uploads
+`lcp-container-release.json` binding the image, mutable tag, immutable digest,
+commit, and workflow run. The release workflow downloads that verified
+metadata and records it as the manifest's `container` object; the offline
+verifier rejects a manifest whose container reference, digest, commit, or
+metadata file does not match. Deploy only the digest recorded there.
+
+Resolve the tag to a digest, then verify all controls before admission:
 
 ```bash
 export IMAGE='ghcr.io/spearsystems/lcp-reference-platform@sha256:<digest>'
@@ -269,7 +279,9 @@ gh attestation verify "oci://${IMAGE}" \
   --repo SpearSystems/LCP
 ```
 
-Deploy the digest, not the tag. For Kubernetes enforcement, use the
+Deploy the digest, not the tag. The signed manifest's `container.digest` and
+`container.reference` are the authoritative immutable coordinates; do not infer
+the image from its mutable tag. For Kubernetes enforcement, use the
 [Kyverno example](../implementations/reference-platform/kubernetes/verify-images-kyverno.example.yaml)
 and follow the [container supply-chain guide](CONTAINER-SUPPLY-CHAIN.md).
 

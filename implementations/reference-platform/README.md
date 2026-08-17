@@ -193,11 +193,26 @@ multiple nodes or high throughput.
 | `GET` | `/v1/lcp/leads/{lead_id}` | Lead status and lifecycle |
 | `GET` | `/health/live` | Unauthenticated process liveness |
 | `GET` | `/health/ready` | Database-backed readiness |
+| `GET` | `/v1/lcp/metrics` | Admin-scoped aggregate worker and retention metrics |
 | `GET` | `/v1/lcp/capabilities` | Capability discovery |
 | `GET` | `/v1/lcp/offers` | Active offer discovery |
 | `GET` | `/v1/lcp/schemas/{name}` | Schema discovery |
 
 The complete transport contract is [api/lcp-openapi.yaml](../../api/lcp-openapi.yaml).
+
+`/v1/lcp/metrics` requires the `platform:admin` scope in an authenticated
+production deployment. It returns queue age, retry depth, lease expiry,
+attachment scanner/deletion backlog, and dead-letter counts only; it never
+returns lead IDs, buyer IDs, tenant IDs, URLs, or consumer payloads.
+
+Exhausted delivery and routing jobs are durable dead letters. Operators can
+inspect and recover them without reading payloads:
+
+```bash
+lcp-platform-admin dead-letter list --status OPEN
+lcp-platform-admin dead-letter quarantine --job-id <job-id>
+lcp-platform-admin dead-letter replay --job-id <job-id>
+```
 
 ## Tenant and credential model
 

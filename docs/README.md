@@ -71,7 +71,7 @@
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
   gates, published SDK coordinates, signed release records, SBOMs, and adopter
   verification commands.
-- [v1.0.1 release candidate record](RELEASE-TICKET-1.0.1.md) — pending patch
+- [v1.0.1 release record](RELEASE-TICKET-1.0.1.md) — published patch and evidence
   release gates, performance evidence, and approval checklist.
 - [Implementation decisions](IMPLEMENTATION-DECISIONS.md) — approved
   production reference profile and rationale.

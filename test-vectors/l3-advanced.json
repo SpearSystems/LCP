@@ -129,8 +129,7 @@
             "vertical": "mortgage",
             "attributes": {
               "loan_type": "purchase",
-              "loan_amount_band": "500k_750k",
-              "credit_rating_band": "good"
+              "loan_amount_band": "500k_750k"
             },
             "compliance_flags": {
               "consent": true,
@@ -296,7 +295,7 @@
         "lcp": {
           "version": "1.0.0",
           "message": {
-            "id": "00e8400-e29b-41d4-a716-446655440015",
+            "id": "550e8400-e29b-41d4-a716-446655440015",
             "type": "lead",
             "timestamp": "2026-08-15T09:00:00Z",
             "sender_id": "pub_789",

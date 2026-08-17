@@ -34,7 +34,16 @@ from .messages import (
     webhook_headers,
 )
 from .security import SecurityPolicyError, validate_egress_host, validate_webhook_url
-from .storage import Store, now_iso
+from .storage import (
+    EventIdempotencyConflict,
+    InvalidStatusTransition,
+    Store,
+    envelope_expiry,
+    format_iso_datetime,
+    is_expired,
+    now_iso,
+    parse_iso_datetime,
+)
 from .validation import ValidationError, SchemaValidator
 
 
@@ -52,6 +61,34 @@ class RequestError(ValueError):
         self.status_code = status_code
         self.details = details
         super().__init__(message)
+
+
+_EVENT_STATUS_TARGETS = {
+    "ACCEPTED": "ACCEPTED",
+    "REJECTED": "REJECTED",
+    "DISPUTED": "DISPUTED",
+    "REFUNDED": "REFUNDED",
+    "CONVERTED": "CONVERTED",
+    "ARCHIVED": "ARCHIVED",
+    "EXPIRED": "EXPIRED",
+}
+_PUBLISHER_EVENT_TYPES = {
+    "REJECTED",
+    "DISPUTED",
+    "CONSENT_WITHDRAWN",
+    "ERASURE_REQUEST",
+}
+_BUYER_EVENT_TYPES = {
+    "DELIVERED",
+    "ACCEPTED",
+    "REJECTED",
+    "DISPUTED",
+    "CONVERTED",
+    "CALL_OFFERED",
+    "CALL_CONNECTED",
+    "CALL_ENDED",
+    "CALL_OUTCOME",
+}
 
 
 class Platform:
@@ -221,7 +258,8 @@ class Platform:
             )
 
         payload = envelope["lcp"]["payload"]
-        offers = self.store.list_offer_candidates(
+        lead_expired = is_expired(envelope_expiry(envelope))
+        offers = [] if lead_expired else self.store.list_offer_candidates(
             payload,
             tenant_id=self.config.routing_tenant_id,
         )
@@ -244,7 +282,8 @@ class Platform:
             else:
                 matching_offers = direct_offers[: max(1, int(lead_exclusivity.get("max_buyers", 1)))]
         sender_tenant = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
-        if not self.store.insert_lead(envelope, status="NEW", tenant_id=sender_tenant):
+        initial_status = "EXPIRED" if lead_expired else "NEW"
+        if not self.store.insert_lead(envelope, status=initial_status, tenant_id=sender_tenant):
             existing = self.store.get_lead_by_idempotency(sender_id, message["idempotency_key"])
             return build_ack(
                 envelope,
@@ -264,14 +303,17 @@ class Platform:
 
         created_pings = 0
         created_direct_posts = 0
-        for offer in matching_offers:
-            if offer.get("routing_mode", "auction") == "direct":
-                if self._create_direct_post(envelope, offer):
-                    created_direct_posts += 1
-            elif self._create_ping(envelope, offer):
-                created_pings += 1
+        if not lead_expired:
+            for offer in matching_offers:
+                if offer.get("routing_mode", "auction") == "direct":
+                    if self._create_direct_post(envelope, offer):
+                        created_direct_posts += 1
+                elif self._create_ping(envelope, offer):
+                    created_pings += 1
         if created_direct_posts:
-            self.store.update_lead_status(payload["lead_id"], "POSTED")
+            self.store.update_lead_status(
+                payload["lead_id"], "POSTED", reason="direct_delivery"
+            )
         elif created_pings:
             self.store.update_lead_status(payload["lead_id"], "PINGED")
         self.store.complete_routing_job(payload["lead_id"])
@@ -352,11 +394,28 @@ class Platform:
                 self._route_pending_lead(lead_id)
                 self.store.complete_routing_job(lead_id, self.worker_id)
             except Exception as exc:
-                self.store.release_routing_job(lead_id, str(exc), self.worker_id)
+                self.store.release_routing_job(
+                    lead_id,
+                    str(exc),
+                    self.worker_id,
+                    max_attempts=len(self._retry_delays),
+                )
 
     def _route_pending_lead(self, lead_id: str) -> None:
         row = self.store.get_lead(lead_id)
         if not row or row["status"] != "NEW":
+            return
+        if self.store.is_lead_suppressed(lead_id):
+            return
+        if is_expired(parse_iso_datetime(row["expires_at"])):
+            self.store.expire_lead(lead_id)
+            return
+        if is_expired(parse_iso_datetime(row["consent_expires_at"])):
+            self.store.suppress_lead(
+                lead_id,
+                reason="Consent expired",
+                actor_id=self.config.platform_id,
+            )
             return
         envelope = self.store.decode_envelope(row["envelope_json"])
         payload = envelope["lcp"]["payload"]
@@ -398,14 +457,26 @@ class Platform:
                 if self._create_ping(envelope, offer):
                     created_pings += 1
         if created_posts:
-            self.store.update_lead_status(lead_id, "POSTED")
+            self.store.update_lead_status(lead_id, "POSTED", reason="direct_delivery")
         elif created_pings:
             self.store.update_lead_status(lead_id, "PINGED")
 
     def process_once(self) -> None:
-        """Process durable routing jobs, webhook attempts, and auction expiry."""
+        """Process retention, durable routing jobs, webhooks, and auction expiry."""
+        for lead in self.store.list_expired_leads():
+            self.store.expire_lead(lead["lead_id"])
+        for lead in self.store.list_consent_expired_leads():
+            self.store.suppress_lead(
+                lead["lead_id"],
+                reason="Consent expired",
+                actor_id=self.config.platform_id,
+            )
+        for attachment in self.store.list_expired_attachments():
+            self.store.expire_attachment(attachment["attachment_id"])
+        self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
+        self._process_attachment_deletions()
         for ping in self.store.list_expired_open_pings():
             self.store.expire_ping(ping["ping_id"])
             if self.store.all_pings_terminal(ping["lead_id"]):
@@ -565,6 +636,18 @@ class Platform:
         row = self.store.get_lead(lead_id)
         if not row or row["status"] in {"ACCEPTED", "REJECTED", "EXPIRED", "DUPLICATE", "ERASED"}:
             return
+        if self.store.is_lead_suppressed(lead_id):
+            return
+        if is_expired(parse_iso_datetime(row["expires_at"])):
+            self.store.expire_lead(lead_id)
+            return
+        if is_expired(parse_iso_datetime(row["consent_expires_at"])):
+            self.store.suppress_lead(
+                lead_id,
+                reason="Consent expired",
+                actor_id=self.config.platform_id,
+            )
+            return
         bids = self.store.list_bids_for_lead(lead_id)
         pings = {ping["ping_id"]: ping for ping in self.store.list_pings(lead_id)}
         candidates: list[tuple[sqlite3_row, sqlite3_row, dict[str, Any]]] = []
@@ -634,6 +717,36 @@ class Platform:
                 delivered += 1
         self.store.update_lead_status(lead_id, "POSTED" if delivered else "EXPIRED")
 
+    def _process_attachment_deletions(self) -> None:
+        for job in self.store.list_due_attachment_deletions():
+            attempts = int(job["attempts"]) + 1
+            try:
+                self.attachments.delete(job["storage_ref"])
+            except Exception as exc:  # deletion is durable; retry without exposing storage details
+                if attempts >= self.config.max_delivery_attempts:
+                    status = "FAILED"
+                    next_attempt = now_iso()
+                else:
+                    status = "RETRY"
+                    delay = self._retry_delays[min(attempts - 1, len(self._retry_delays) - 1)]
+                    next_attempt = format_iso_datetime(
+                        datetime.now(timezone.utc) + timedelta(seconds=delay)
+                    )
+                self.store.mark_attachment_deletion(
+                    job["job_id"],
+                    status=status,
+                    attempts=attempts,
+                    next_attempt_at=next_attempt,
+                    last_error=f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                self.store.mark_attachment_deletion(
+                    job["job_id"],
+                    status="DONE",
+                    attempts=attempts,
+                    next_attempt_at=now_iso(),
+                )
+
     def _process_deliveries(self) -> None:
         for delivery in self.store.claim_due_deliveries(self.worker_id):
             self._deliver(delivery)
@@ -643,13 +756,21 @@ class Platform:
         secret = self.auth.secret_for(delivery["buyer_id"])
         attempts = int(delivery["attempts"]) + 1
         if not secret:
+            error = "No active buyer HMAC secret"
             self.store.mark_delivery(
                 delivery["delivery_id"],
                 status="FAILED",
                 attempts=attempts,
                 next_attempt_at=now_iso(),
-                last_error="No active buyer HMAC secret",
+                last_error=error,
                 worker_id=self.worker_id,
+            )
+            self.store.record_dead_letter(
+                queue_type="delivery",
+                resource_id=delivery["delivery_id"],
+                lead_id=delivery["lead_id"],
+                attempts=attempts,
+                last_error=error,
             )
             return
         try:
@@ -707,6 +828,14 @@ class Platform:
             last_error=error,
             worker_id=self.worker_id,
         )
+        if status == "FAILED":
+            self.store.record_dead_letter(
+                queue_type="delivery",
+                resource_id=delivery["delivery_id"],
+                lead_id=delivery["lead_id"],
+                attempts=attempts,
+                last_error=error,
+            )
 
     def _queue_delivery_event(self, delivery: Any, post: dict[str, Any]) -> None:
         event = build_event(
@@ -719,7 +848,8 @@ class Platform:
             test=post["lcp"]["message"].get("test", False),
         )
         self.validator.require_valid_envelope(event)
-        self.store.insert_event(delivery["lead_id"], "DELIVERED", event)
+        if not self.store.insert_event(delivery["lead_id"], "DELIVERED", event):
+            return
         self.store.insert_delivery(
             lead_id=delivery["lead_id"],
             ping_id=delivery["ping_id"],
@@ -801,23 +931,78 @@ class Platform:
         row = self.store.get_lead(payload["lead_id"])
         if not row:
             raise RequestError("Lead not found", "LCP-003", 404)
+        event_name = payload["event"]
         deliveries = self.store.deliveries_for_lead(payload["lead_id"])
-        authorized = sender_id == row["sender_id"] or self.auth.has_scope(sender_id, "platform:admin")
-        if not authorized:
-            authorized = any(
-                delivery["buyer_id"] == sender_id and delivery["kind"] == "post"
-                for delivery in deliveries
-            )
+        is_admin = self.auth.has_scope(sender_id, "platform:admin")
+        is_publisher = sender_id == row["sender_id"]
+        is_delivered_buyer = self.store.has_delivered_post_for_buyer(
+            payload["lead_id"], sender_id
+        )
+        authorized = (
+            is_admin
+            or (is_publisher and event_name in _PUBLISHER_EVENT_TYPES)
+            or (is_delivered_buyer and event_name in _BUYER_EVENT_TYPES)
+        )
         if not authorized:
             raise RequestError("Sender is not authorized for this lead event", "LCP-002", 401)
-        self.store.insert_event(payload["lead_id"], payload["event"], envelope)
+
+        existing_event = self.store.get_event(message["id"])
+        if existing_event:
+            try:
+                same_event = (
+                    existing_event["lead_id"] == payload["lead_id"]
+                    and existing_event["event_name"] == event_name
+                    and self.store.decode_envelope(existing_event["envelope_json"]) == envelope
+                )
+            except (KeyError, TypeError, ValueError):
+                same_event = False
+            if not same_event:
+                raise RequestError(
+                    "Event message ID was reused with different content",
+                    "LCP-005",
+                    409,
+                )
+            return build_ack(
+                envelope,
+                sender_id=self.config.platform_id,
+                status="DUPLICATE",
+                lead_id=payload["lead_id"],
+            )
+
+        target_status = _EVENT_STATUS_TARGETS.get(event_name)
+        if target_status:
+            try:
+                self.store.update_lead_status(payload["lead_id"], target_status)
+            except InvalidStatusTransition as exc:
+                raise RequestError(str(exc), "LCP-004", 422) from exc
+
+        try:
+            inserted_event = self.store.insert_event(payload["lead_id"], event_name, envelope)
+        except EventIdempotencyConflict as exc:
+            raise RequestError(str(exc), "LCP-005", 409) from exc
+        if not inserted_event:
+            return build_ack(
+                envelope,
+                sender_id=self.config.platform_id,
+                status="DUPLICATE",
+                lead_id=payload["lead_id"],
+            )
+
+        if event_name == "CONSENT_WITHDRAWN":
+            self.store.suppress_lead(
+                payload["lead_id"],
+                reason="Consent withdrawn",
+                actor_id=sender_id,
+            )
+        elif event_name == "ERASURE_REQUEST":
+            self.erase_lead(payload["lead_id"], actor_id=sender_id)
 
         details = payload.get("details", {})
         offer_id = details.get("offer_id") if isinstance(details, dict) else None
         post_delivery = next(
             (delivery for delivery in deliveries
              if delivery["kind"] == "post" and (not offer_id or delivery["offer_id"] == offer_id)
-             and (sender_id == delivery["buyer_id"] or sender_id == row["sender_id"])),
+             and (is_admin or sender_id == delivery["buyer_id"] or sender_id == row["sender_id"])),
             None,
         )
         if post_delivery:
@@ -827,7 +1012,6 @@ class Platform:
                 status = None
                 reason = None
                 seconds = None
-                event_name = payload["event"]
                 if event_name in {"DISPUTED", "REFUNDED"}:
                     status, reason = event_name.lower(), f"lifecycle_{event_name.lower()}"
                 elif event_name in {"CALL_OUTCOME", "CALL_ENDED", "CALL_CONNECTED"}:
@@ -860,6 +1044,12 @@ class Platform:
         filename = header(headers, "X-LCP-Filename") or "attachment.bin"
         content_type = (header(headers, "Content-Type") or "").split(";", 1)[0].strip().lower()
         digest = (header(headers, "X-LCP-Content-SHA256") or "").lower()
+        expires_header = header(headers, "X-LCP-Attachment-Expires-At")
+        expires_value = parse_iso_datetime(expires_header) if expires_header else None
+        if expires_header and expires_value is None:
+            raise RequestError("Attachment expiry must be an RFC 3339 date-time", "LCP-100")
+        if expires_value is not None and expires_value <= datetime.now(timezone.utc):
+            raise RequestError("Attachment expiry must be in the future", "LCP-100")
         if not owner_id or not idempotency_key or not lead_id or not digest:
             raise RequestError("Attachment identity, lead, idempotency, and content hash headers are required", "LCP-003")
         self.auth.authenticate(
@@ -935,6 +1125,7 @@ class Platform:
             "storage_ref": storage_ref, "residency": residency,
             "scan_status": scan.status, "scan_engine": scan.engine, "scanned_at": scan.scanned_at,
             "encryption": self.attachments.encryption,
+            "expires_at": format_iso_datetime(expires_value) if expires_value else None,
         }
         if not self.store.insert_attachment(metadata):
             existing = self.store.get_attachment_by_idempotency(owner_id, idempotency_key)
@@ -956,7 +1147,7 @@ class Platform:
 
     @staticmethod
     def _attachment_metadata(row: Any) -> dict[str, Any]:
-        return {
+        metadata: dict[str, Any] = {
             "attachment_id": row["attachment_id"],
             "purpose": row["purpose"], "filename": row["filename"],
             "content_type": row["content_type"], "size_bytes": row["size_bytes"],
@@ -969,14 +1160,42 @@ class Platform:
             },
             "encryption": row["encryption"],
         }
+        if row["expires_at"] is not None:
+            metadata["expires_at"] = row["expires_at"]
+        return metadata
 
     def download_attachment(self, attachment_id: str, *, headers: dict[str, str]) -> tuple[bytes, dict[str, str]]:
         row = self.store.get_attachment(attachment_id)
         if not row or row["status"] != "AVAILABLE":
             raise RequestError("Attachment not found", "LCP-003", 404)
-        sender_id = self.auth.authenticate(sender_id=header(headers, "X-LCP-Sender-Id"), headers=headers, body=b"", mutating=False)
-        if not (sender_id == row["owner_id"] or self.auth.has_scope(sender_id, "platform:admin") or self.store.has_delivery_for_buyer(row["lead_id"], sender_id)):
+        if is_expired(parse_iso_datetime(row["expires_at"])):
+            self.store.expire_attachment(attachment_id)
+            self._process_attachment_deletions()
             raise RequestError("Attachment not found", "LCP-003", 404)
+        sender_id = self.auth.authenticate(sender_id=header(headers, "X-LCP-Sender-Id"), headers=headers, body=b"", mutating=False)
+        authorized = (
+            sender_id == row["owner_id"]
+            or self.auth.has_scope(sender_id, "platform:admin")
+            or self.store.has_delivered_post_for_buyer(row["lead_id"], sender_id)
+        )
+        if not authorized:
+            self.store.insert_audit(
+                tenant_id=self.auth.tenant_for(row["owner_id"]) or self.config.routing_tenant_id,
+                actor_id=sender_id,
+                action="attachment.download_denied",
+                resource_type="attachment",
+                resource_id=attachment_id,
+                metadata={"lead_id": row["lead_id"]},
+            )
+            raise RequestError("Attachment not found", "LCP-003", 404)
+        self.store.insert_audit(
+            tenant_id=self.auth.tenant_for(row["owner_id"]) or self.config.routing_tenant_id,
+            actor_id=sender_id,
+            action="attachment.downloaded",
+            resource_type="attachment",
+            resource_id=attachment_id,
+            metadata={"lead_id": row["lead_id"]},
+        )
         try:
             content = self.attachments.read(row["storage_ref"], expected_sha256=row["sha256"])
         except AttachmentError as exc:
@@ -994,12 +1213,11 @@ class Platform:
     # ─── Read APIs ─────────────────────────────────────────────────────────
 
     def erase_lead(self, lead_id: str, *, actor_id: str = "operator") -> None:
-        attachments = self.store.list_attachments(lead_id)
         if not self.store.erase_lead(lead_id, actor_id=actor_id):
             raise RequestError("Lead not found", "LCP-003", 404)
-        for attachment in attachments:
-            self.attachments.delete(attachment["storage_ref"])
-            self.store.mark_attachment_redacted(attachment["attachment_id"])
+        # Deletion is best effort here but durable in attachment_deletion_jobs;
+        # the worker retries failures on subsequent process_once calls.
+        self._process_attachment_deletions()
 
     def authorize_lead_read(self, lead_id: str, sender_id: str) -> None:
         row = self.store.get_lead(lead_id)
@@ -1009,24 +1227,68 @@ class Platform:
             return
         if self.auth.has_scope(sender_id, "platform:admin"):
             return
-        if self.store.has_delivery_for_buyer(lead_id, sender_id):
+        # A ping, event, pending post, or failed delivery never grants a read
+        # view over the lead's commercial or attachment metadata.
+        if self.store.has_delivered_post_for_buyer(lead_id, sender_id):
             return
         raise RequestError("Lead not found", "LCP-003", 404)
 
-    def lead_status(self, lead_id: str) -> dict[str, Any]:
+    def lead_status(self, lead_id: str, requester_id: str | None = None) -> dict[str, Any]:
         row = self.store.get_lead(lead_id)
         if not row:
             raise RequestError("Lead not found", "LCP-003", 404)
         envelope = self.store.decode_envelope(row["envelope_json"])
-        return {
+        role = "internal"
+        if requester_id is not None:
+            if requester_id == row["sender_id"]:
+                role = "publisher"
+            elif self.auth.has_scope(requester_id, "platform:admin"):
+                role = "admin"
+            elif self.store.has_delivered_post_for_buyer(lead_id, requester_id):
+                role = "buyer"
+            else:
+                raise RequestError("Lead not found", "LCP-003", 404)
+
+        events = self.store.list_events(lead_id)
+        decisions = self.store.list_match_decisions(lead_id)
+        payables = self.store.payable_for_lead(lead_id)
+        attachments = self.store.list_attachments(lead_id)
+        if role == "buyer":
+            winning_offer_ids = {
+                delivery["offer_id"]
+                for delivery in self.store.deliveries_for_lead(lead_id)
+                if delivery["kind"] == "post"
+                and delivery["buyer_id"] == requester_id
+                and delivery["status"] == "DELIVERED"
+            }
+            decisions = [decision for decision in decisions if decision["buyer_id"] == requester_id]
+            payables = [payable for payable in payables if payable["buyer_id"] == requester_id]
+            filtered_events = []
+            for event in events:
+                payload = event["lcp"].get("payload", {})
+                details = payload.get("details", {})
+                sender = event["lcp"].get("message", {}).get("sender_id")
+                if sender == requester_id or details.get("offer_id") in winning_offer_ids:
+                    filtered_events.append(payload)
+            events_view = filtered_events
+        else:
+            events_view = [event["lcp"]["payload"] for event in events]
+
+        result: dict[str, Any] = {
             "lead_id": lead_id,
             "status": row["status"],
             "channel": envelope["lcp"]["payload"].get("channel"),
-            "events": [event["lcp"]["payload"] for event in self.store.list_events(lead_id)],
-            "match_decisions": self.store.list_match_decisions(lead_id),
-            "payable_records": self.store.payable_for_lead(lead_id),
-            "attachments": [self._attachment_metadata(attachment) for attachment in self.store.list_attachments(lead_id)],
+            "view": role,
+            "events": events_view,
+            "match_decisions": decisions,
+            "payable_records": payables,
+            "attachments": [self._attachment_metadata(attachment) for attachment in attachments],
         }
+        if row["expires_at"] is not None:
+            result["expires_at"] = row["expires_at"]
+        if row["consent_expires_at"] is not None:
+            result["consent_expires_at"] = row["consent_expires_at"]
+        return result
 
     def capabilities(self) -> dict[str, Any]:
         return {

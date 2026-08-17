@@ -16,7 +16,7 @@ from verify_release_evidence import (  # noqa: E402
 )
 
 
-def build_fixture_release(root: Path, *, tamper_manifest_digest: bool = False) -> Path:
+def build_fixture_release(root: Path, *, tamper_manifest_digest: bool = False, dry_run: bool = True) -> Path:
     """Create a minimal but structurally complete release-evidence bundle."""
     manifest_dir = root / "release"
     manifest_dir.mkdir(parents=True)
@@ -111,11 +111,23 @@ def build_fixture_release(root: Path, *, tamper_manifest_digest: bool = False) -
             }
         )
 
+    container_metadata = {
+        "image": "ghcr.io/spearsystems/lcp-reference-platform",
+        "tag": "v0.1.0",
+        "digest": "sha256:" + "d" * 64,
+        "reference": "ghcr.io/spearsystems/lcp-reference-platform@sha256:" + "d" * 64,
+        "commit": "c" * 40,
+        "workflow_run_id": "123456",
+        "dry_run": dry_run,
+    }
+    (manifest_dir / "lcp-container-release.json").write_text(
+        json.dumps(container_metadata, indent=2, sort_keys=True) + "\n"
+    )
     manifest = {
         "protocol": "LCP",
         "release_tag": "v0.1.0",
         "commit": "c" * 40,
-        "dry_run": True,
+        "dry_run": dry_run,
         "sdk_version": "0.1.0",
         "schema_manifest_sha256": "a" * 64,
         "release_workflow": "https://github.com/SpearSystems/LCP/actions/workflows/release.yml",
@@ -124,7 +136,7 @@ def build_fixture_release(root: Path, *, tamper_manifest_digest: bool = False) -
             "signature": "lcp-source-sbom.cdx.json.sigstore.json",
         },
         "package_evidence": packages,
-        "container": "ghcr.io/spearsystems/lcp-reference-platform:v0.1.0",
+        "container": {**container_metadata, "metadata": "lcp-container-release.json"},
     }
     (manifest_dir / "release-manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n"
@@ -160,6 +172,18 @@ class VerifyReleaseEvidenceTests(unittest.TestCase):
             manifest_dir = build_fixture_release(Path(tmp), tamper_manifest_digest=True)
             errors = verify_manifest(manifest_dir / "release-manifest.json", manifest_dir)
             self.assertTrue(any("digest mismatch" in error for error in errors))
+
+    def test_real_release_container_metadata_is_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_dir = build_fixture_release(Path(tmp), dry_run=False)
+            self.assertEqual(verify_manifest(manifest_dir / "release-manifest.json", manifest_dir), [])
+
+    def test_real_release_requires_container_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_dir = build_fixture_release(Path(tmp), dry_run=False)
+            (manifest_dir / "lcp-container-release.json").unlink()
+            errors = verify_manifest(manifest_dir / "release-manifest.json", manifest_dir)
+            self.assertTrue(any("container metadata is missing" in error for error in errors))
 
     def test_missing_manifest_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -104,6 +105,47 @@ def verify_manifest(manifest_path: Path, root: Path) -> list[str]:
                 signature_path = root / source_sbom["signature"]
                 if not signature_path.is_file():
                     errors.append(f"source SBOM signature is missing: {source_sbom['signature']}")
+
+    container = manifest.get("container")
+    dry_run = manifest.get("dry_run") is True
+    if not isinstance(container, dict):
+        errors.append("release manifest field 'container' must be an object bound to an image digest")
+    else:
+        for field in ("image", "tag", "digest", "reference", "commit"):
+            if field not in container:
+                errors.append(f"release manifest 'container.{field}' is missing")
+        if not dry_run:
+            for field in ("metadata", "workflow_run_id"):
+                if field not in container:
+                    errors.append(f"release manifest 'container.{field}' is missing")
+        digest = container.get("digest")
+        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            errors.append("release manifest 'container.digest' must be a sha256 digest")
+        if isinstance(container.get("image"), str) and isinstance(digest, str):
+            expected_reference = f"{container['image']}@{digest}"
+            if container.get("reference") != expected_reference:
+                errors.append("release manifest container reference does not match image and digest")
+        if container.get("commit") != manifest.get("commit"):
+            errors.append("release manifest container commit does not match release commit")
+        if dry_run:
+            if container.get("dry_run") is not True:
+                errors.append("release manifest dry-run container must be marked 'dry_run': true")
+        else:
+            metadata_name = container.get("metadata")
+            if not isinstance(metadata_name, str) or not metadata_name or Path(metadata_name).name != metadata_name:
+                errors.append("release manifest 'container.metadata' must name a file beside the manifest")
+            else:
+                metadata_path = root / metadata_name
+                if not metadata_path.is_file():
+                    errors.append(f"container metadata is missing: {metadata_name}")
+                else:
+                    try:
+                        metadata = load_json(metadata_path, "container metadata")
+                        for field in ("image", "tag", "digest", "reference", "commit", "workflow_run_id"):
+                            if metadata.get(field) != container.get(field):
+                                errors.append(f"container metadata field '{field}' does not match the manifest")
+                    except EvidenceError as error:
+                        errors.append(str(error))
 
     packages = manifest.get("package_evidence")
     if not isinstance(packages, list):

@@ -7,6 +7,7 @@ process supervisor as the WSGI server.
 from __future__ import annotations
 
 import json
+from urllib.parse import urlsplit
 
 from .config import PlatformConfig
 from .router import Platform
@@ -25,7 +26,13 @@ def application(environ: dict, start_response):
         length = int(raw_length) if raw_length else 0
     except ValueError:
         length = -1
-    if length < 0 or length > _platform.config.max_body_bytes:
+    route = urlsplit(path).path.rstrip("/") or "/"
+    max_body_bytes = (
+        _platform.config.max_attachment_bytes
+        if method == "POST" and route == "/v1/lcp/attachments"
+        else _platform.config.max_body_bytes
+    )
+    if length < 0 or length > max_body_bytes:
         payload = {"errors": [{"code": "LCP-001", "message": "Request body is too large"}]}
         encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         start_response("413 ERROR", [("Content-Type", "application/json"), ("Content-Length", str(len(encoded)))])
@@ -42,9 +49,15 @@ def application(environ: dict, start_response):
     status, response_headers, payload = _service.dispatch(
         method, full_path, headers=headers, body=body
     )
-    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    if isinstance(payload, bytes):
+        encoded = payload
+    else:
+        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    response_headers = list(response_headers.items())
+    if not any(key.lower() == "content-length" for key, _ in response_headers):
+        response_headers.append(("Content-Length", str(len(encoded))))
     start_response(
         f"{status} {'OK' if status < 400 else 'ERROR'}",
-        list(response_headers.items()) + [("Content-Length", str(len(encoded)))],
+        response_headers,
     )
     return [encoded]

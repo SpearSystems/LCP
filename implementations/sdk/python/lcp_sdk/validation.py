@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
@@ -47,11 +47,16 @@ class SchemaValidator:
             uri="https://lcp.dev/schemas/core.json", resource=core_resource
         ).with_resource(uri="core.json", resource=core_resource)
         self._registry = registry
+        self._format_checker = FormatChecker()
         self._schemas: dict[str, dict[str, Any]] = {
             name: self._load(name) for name in ("core", "envelope", "offer", *MESSAGE_TYPES)
         }
         self._validators = {
-            name: Draft202012Validator(schema, registry=registry)
+            name: Draft202012Validator(
+                schema,
+                registry=registry,
+                format_checker=self._format_checker,
+            )
             for name, schema in self._schemas.items()
             if name != "core"
         }
@@ -61,7 +66,9 @@ class SchemaValidator:
         if self.vertical_root.exists():
             for path in self.vertical_root.glob("*.json"):
                 self._verticals[path.stem] = Draft202012Validator(
-                    json.loads(path.read_text(encoding="utf-8")), registry=registry
+                    json.loads(path.read_text(encoding="utf-8")),
+                    registry=registry,
+                    format_checker=self._format_checker,
                 )
 
     def _load(self, name: str) -> dict[str, Any]:
@@ -86,20 +93,29 @@ class SchemaValidator:
         resource = Resource(contents=core, specification=DRAFT202012)
         registry = Registry().with_resource(uri="https://lcp.dev/schemas/core.json", resource=resource).with_resource(uri="core.json", resource=resource)
         instance._registry = registry
+        instance._format_checker = FormatChecker()
         instance._schemas = {
             key.removeprefix("schemas/").removesuffix(".json"): value
             for key, value in bundle.items()
             if key.startswith("schemas/")
         }
         instance._validators = {
-            name: Draft202012Validator(schema, registry=registry)
+            name: Draft202012Validator(
+                schema,
+                registry=registry,
+                format_checker=instance._format_checker,
+            )
             for name, schema in instance._schemas.items()
             if name != "core"
         }
         instance._envelope = instance._validators["envelope"]
         instance._offer = instance._validators["offer"]
         instance._verticals = {
-            key.removeprefix("verticals/").removesuffix(".json"): Draft202012Validator(value, registry=registry)
+            key.removeprefix("verticals/").removesuffix(".json"): Draft202012Validator(
+                value,
+                registry=registry,
+                format_checker=instance._format_checker,
+            )
             for key, value in bundle.items()
             if key.startswith("verticals/")
         }
@@ -132,8 +148,30 @@ class SchemaValidator:
             self._format_error(error)
             for error in self._validators[message_type].iter_errors(payload)
         )
-        if message_type == "ping":
-            errors.extend(self._ping_safe_errors(payload))
+        if message_type in {"lead", "call", "post", "ping"}:
+            attributes = payload.get("attributes")
+            vertical = payload.get("vertical") if message_type == "ping" else (
+                attributes.get("vertical") if isinstance(attributes, dict) else None
+            )
+            if isinstance(vertical, str) and isinstance(attributes, dict):
+                vertical_validator = self._verticals.get(vertical)
+                if vertical_validator is None:
+                    suffix = " for ping-safe validation" if message_type == "ping" else ""
+                    errors.append(f"vertical schema '{vertical}' not found{suffix}")
+                else:
+                    vertical_attributes = dict(attributes)
+                    if message_type == "ping":
+                        vertical_attributes.setdefault("vertical", vertical)
+                        version_schema = vertical_validator.schema.get("properties", {}).get("schema_version", {})
+                        vertical_attributes.setdefault(
+                            "schema_version", version_schema.get("const", "1.0.0")
+                        )
+                    errors.extend(
+                        self._format_error(error)
+                        for error in vertical_validator.iter_errors(vertical_attributes)
+                    )
+                    if message_type == "ping":
+                        errors.extend(self._ping_safe_errors(payload, vertical_validator.schema))
         return errors
 
     def require_valid_envelope(self, envelope: dict[str, Any]) -> None:
@@ -149,24 +187,39 @@ class SchemaValidator:
         if errors:
             raise ValidationError(errors)
 
-    def _ping_safe_errors(self, payload: dict[str, Any]) -> list[str]:
+    def _ping_safe_errors(
+        self,
+        payload: dict[str, Any],
+        schema: dict[str, Any] | None = None,
+    ) -> list[str]:
         attributes = payload.get("attributes", {})
         vertical = payload.get("vertical")
-        if not attributes or not vertical:
+        if not isinstance(attributes, dict) or not isinstance(vertical, str):
             return []
-        # Resolve the vertical against the preloaded validator map only. The
-        # vertical name is attacker-controlled and must never be interpolated
-        # into a filesystem path.
-        validator = self._verticals.get(vertical)
-        if validator is None:
-            return [f"vertical schema '{vertical}' not found for ping-safe validation"]
-        schema = validator.schema
+        if schema is None:
+            validator = self._verticals.get(vertical)
+            if validator is None:
+                return [f"vertical schema '{vertical}' not found for ping-safe validation"]
+            schema = validator.schema
+
         errors: list[str] = []
-        for field_name in attributes:
-            definition = schema.get("properties", {}).get(field_name, {})
-            if definition.get("ping_safe") is not True:
-                errors.append(
-                    f"attributes.{field_name} is not tagged ping_safe: true "
-                    f"in vertical '{vertical}'"
-                )
+
+        def walk(value: Any, definition: dict[str, Any], path: str) -> None:
+            if not isinstance(value, dict):
+                return
+            properties = definition.get("properties", {})
+            for field_name, field_value in value.items():
+                if path == "attributes" and field_name in {"vertical", "schema_version"}:
+                    continue
+                field_definition = properties.get(field_name)
+                field_path = f"{path}.{field_name}"
+                if not isinstance(field_definition, dict) or field_definition.get("ping_safe") is not True:
+                    errors.append(
+                        f"{field_path} is not tagged ping_safe: true in vertical '{vertical}'"
+                    )
+                    continue
+                if isinstance(field_definition.get("properties"), dict):
+                    walk(field_value, field_definition, field_path)
+
+        walk(attributes, schema, "attributes")
         return errors

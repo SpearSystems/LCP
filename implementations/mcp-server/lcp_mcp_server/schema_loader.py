@@ -29,19 +29,39 @@ def list_schemas() -> list[str]:
     return sorted(names)
 
 
+def _safe_schema_path(base: Path, relative_name: str) -> Path | None:
+    """Resolve a schema path without allowing traversal or symlink escapes."""
+    if not relative_name or "\x00" in relative_name or "\\" in relative_name:
+        return None
+    relative = Path(relative_name)
+    if relative.is_absolute():
+        return None
+    try:
+        base_resolved = base.resolve()
+        path = (base_resolved / relative).resolve()
+    except OSError:
+        return None
+    if path.suffix.lower() != ".json" or base_resolved not in path.parents:
+        return None
+    return path if path.is_file() else None
+
+
 def load_schema(name: str) -> dict[str, Any] | None:
-    """Load a schema by name. Returns None if not found.
+    """Load a schema by name while enforcing the local repository boundary.
 
     Core/message schemas: name -> schemas/{name}.json
     Vertical schemas: verticals/{name} -> verticals/{name}.json
     """
+    if not isinstance(name, str) or not name:
+        return None
     if name.startswith("verticals/"):
-        path = VERTICALS_DIR / f"{name.removeprefix('verticals/')}.json"
+        relative_name = name.removeprefix("verticals/")
+        path = _safe_schema_path(VERTICALS_DIR, f"{relative_name}.json")
     else:
-        path = SCHEMAS_DIR / f"{name}.json"
-
-    if not path.exists():
+        relative_name = name.removeprefix("schemas/")
+        path = _safe_schema_path(SCHEMAS_DIR, f"{relative_name}.json")
+    if path is None:
         return None
 
-    with open(path) as f:
-        return json.load(f)
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)

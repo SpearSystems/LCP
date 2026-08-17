@@ -26,29 +26,29 @@
     },
     "has_attorney": {
       "type": "boolean",
-      "description": "Does the consumer already have an attorney?",
-      "ping_safe": true
+      "description": "Does the consumer already have an attorney? Legal-representation data; post-only.",
+      "ping_safe": false
     },
     "injury_severity": {
       "type": "string",
       "enum": ["none", "minor", "moderate", "severe", "catastrophic", "fatal"],
-      "description": "Severity of injury sustained.",
-      "ping_safe": true
+      "description": "Severity of injury sustained; sensitive health/legal data, post-only.",
+      "ping_safe": false
     },
     "medical_treatment_received": {
       "type": "boolean",
-      "description": "Has medical treatment been received?",
-      "ping_safe": true
+      "description": "Has medical treatment been received? Sensitive health/legal data; post-only.",
+      "ping_safe": false
     },
     "at_fault": {
       "type": "boolean",
-      "description": "Was the consumer at fault? Ping_safe for auto-related cases.",
-      "ping_safe": true
+      "description": "Was the consumer at fault? Sensitive legal liability data; post-only.",
+      "ping_safe": false
     },
     "police_report_filed": {
       "type": "boolean",
-      "description": "Was a police report filed?",
-      "ping_safe": true
+      "description": "Was a police report filed? Sensitive incident data; post-only.",
+      "ping_safe": false
     },
     "insurance_company": {
       "type": "string",
@@ -58,15 +58,15 @@
     "claim_status": {
       "type": "string",
       "enum": ["not_filed", "filed", "under_review", "denied", "settled", "in_litigation"],
-      "description": "Current status of the claim.",
-      "ping_safe": true
+      "description": "Current status of the claim; sensitive legal data, post-only.",
+      "ping_safe": false
     },
     "time_to_contact_deadline_days": {
       "type": "integer",
       "minimum": 0,
       "maximum": 3650,
-      "description": "Days remaining to contact before statute of limitations or deadline.",
-      "ping_safe": true
+      "description": "Days remaining to contact before statute of limitations or deadline; sensitive legal timing, post-only.",
+      "ping_safe": false
     }
   },
   "additionalProperties": false

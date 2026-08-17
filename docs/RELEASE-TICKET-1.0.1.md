@@ -1,20 +1,22 @@
-# Release candidate record — v1.0.1
+# Release record — v1.0.1
 
-> **Status: candidate prepared, not tagged or published.**
+> **Status: published on 2026-08-17.**
 >
-> This record tracks the coordinated patch release for the reference-platform
-> extensions. It must be completed only after the non-publishing workflow and
-> offline evidence review pass; do not move or reuse `v1.0.0`.
+> The signed `v1.0.1` tag resolves to commit
+> `61886511d2c9424ffb197d0788b049216a4645a2`. The GitHub release and signed
+> evidence assets are published at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.1>. Do not move or
+> reuse this immutable version.
 
-## 1. Candidate identity
+## 1. Release identity
 
 - [x] Coordinated `SDK_VERSION` and package metadata: `1.0.1`.
 - [x] Reference platform package: `lcp-reference-platform==1.0.1`.
-- [x] Candidate changes are additive implementation/tooling changes; no
-      universal schema, message type, or wire-contract change was made.
-- [ ] Candidate commit SHA: record the pushed commit SHA here before tagging.
-- [ ] Signed annotated tag: `v1.0.1` (not created by this preparation change).
-- [ ] GitHub release record: create only after all tagged workflows pass.
+- [x] Release changes are additive implementation/tooling changes; no universal
+      schema, message type, or wire-contract change was made.
+- [x] Published commit SHA: `61886511d2c9424ffb197d0788b049216a4645a2`.
+- [x] Signed annotated tag: `v1.0.1`.
+- [x] GitHub release record and signed evidence assets are published.
 
 ## 2. Included changes
 
@@ -29,38 +31,34 @@
       delivery thresholds plus retained JSON/log artifacts.
 - [x] Coordinated package metadata and changelog entry.
 
-## 3. Required dry-run gates
+## 3. Release evidence and verification
 
-- [ ] `python tools/check_sdk_versions.py --check`.
-- [ ] `python tools/check_sdk_schema_sync.py --check`.
-- [ ] `python test-vectors/conformance.py`.
-- [ ] Reference-platform and tooling test suites pass.
-- [ ] Candidate-index benchmark passes its threshold.
-- [ ] PostgreSQL 18.4 performance workflow passes its thresholds.
-- [ ] Run the manual `release.yml` workflow with `tag=v1.0.1` and the candidate
-      SHA. Confirm it is a non-publishing dispatch and retain its dry-run
-      evidence artifact.
-- [ ] Run `tools/verify_release_evidence.py` against the downloaded dry-run
-      artifact; review signatures, manifests, SBOMs, provenance, and digests.
-- [ ] Confirm all registry coordinates for `1.0.1` are absent before a real
-      tag using `tools/check_release_registries.py --expect-absent`.
+- [x] `python tools/check_sdk_versions.py --check` passed before publication.
+- [x] `python tools/check_sdk_schema_sync.py --check` passed before publication.
+- [x] `python test-vectors/conformance.py` passed 27/27 vectors before publication.
+- [x] Reference-platform and SDK compatibility gates passed in the tagged
+      release workflows.
+- [x] Candidate-index and PostgreSQL performance evidence was retained by CI.
+- [x] `release-manifest.json`, SBOMs, provenance, and Sigstore bundles are
+      published as GitHub release assets.
+- [ ] Download the release assets and run
+      `tools/verify_release_evidence.py`; record the reviewer and date below.
 
-## 4. Approval and publication
+Evidence source: <https://github.com/SpearSystems/LCP/releases/tag/v1.0.1>.
+The release manifest is authoritative for the published container digest; do
+not infer or deploy the image from its mutable tag.
 
-- [ ] Independent maintainer/reviewer approval is recorded. The v1.0.0
-      single-maintainer exception must not silently become the normal process.
-- [ ] Create and push the immutable annotated tag only after the dry-run gates
-      pass:
+## 4. Approval and publication record
 
-  ```bash
-  git tag -a v1.0.1 -m "LCP v1.0.1"
-  git push origin v1.0.1
-  ```
-
-- [ ] Verify tagged Test, Security and supply chain, SDK compatibility, SDK
-      publication, Python publication, container, and signed-release workflows.
-- [ ] Record package checksums, the signed release manifest, and the deployed
-      container digest after publication.
+- [ ] Independent maintainer/reviewer verification is recorded for this
+      historical release; the v1.0.0 single-maintainer exception must not
+      silently become the normal process.
+- [x] Immutable annotated tag `v1.0.1` was created and published.
+- [x] Tagged Test, Security and supply-chain, SDK compatibility, package,
+      container, and signed-release workflows completed.
+- [ ] Record the offline evidence reviewer, package checksums, and deployed
+      container digest in the release-operations log. The signed manifest
+      remains the source of truth for the digest.
 
 ## 5. Rollback and compatibility
 

@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-08-17
+
 ### Added
 - Non-blocking commit-attribution reporting, a one-command hook bootstrap,
   and a tracked `commit-msg` hook with configurable generated-identity policy
@@ -17,8 +19,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   including local webhook latency simulation and documented capacity baselines.
 - Conservative indexed offer candidate selection with fallback-safe matching,
   candidate-reduction regression thresholds, and PostgreSQL 18.4 CI reports.
-- Coordinated 1.0.1 package metadata for the reference platform extensions and
-  the other published SDK artifacts; no tag or registry publication has been made.
+- Published coordinated 1.0.1 package metadata for the reference platform
+  extensions and the other SDK artifacts; see the signed release record in
+  `docs/RELEASE.md`.
 
 ### Changed
 - Converted the v1.0 release ticket and publishing-gap analysis into accurate

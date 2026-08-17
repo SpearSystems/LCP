@@ -130,6 +130,22 @@ class PostgresStore(Store):
         db.execute(
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
         )
+        db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS expires_at TEXT")
+        db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS consent_expires_at TEXT")
+        db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS suppressed INTEGER NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'")
+        db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS vertical TEXT")
+        for row in db.execute("SELECT offer_id, offer_json FROM offers").fetchall():
+            stored_offer = json.loads(_decode_text(row["offer_json"]))
+            db.execute(
+                "UPDATE offers SET tenant_id = ?, vertical = ? WHERE offer_id = ?",
+                (
+                    str(stored_offer.get("tenant_id", "default")),
+                    stored_offer.get("vertical"),
+                    row["offer_id"],
+                ),
+            )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_offers_discovery ON offers(active, tenant_id, vertical, offer_id)")
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_owner TEXT")
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_until TEXT")
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'")
@@ -137,6 +153,7 @@ class PostgresStore(Store):
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'")
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''")
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
+        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -150,17 +167,22 @@ class PostgresStore(Store):
         active_only: bool = True,
     ) -> list[dict[str, Any]]:
         query = "SELECT offer_json FROM offers"
+        clauses: list[str] = []
+        values: list[Any] = []
         if active_only:
-            query += " WHERE active = 1"
+            clauses.append("active = 1")
+        if vertical:
+            clauses.append("vertical = ?")
+            values.append(vertical)
+        if tenant_id:
+            clauses.append("tenant_id = ?")
+            values.append(tenant_id)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY offer_id"
         with self._lock:
-            rows = self._connection.execute(query, ()).fetchall()
-        offers = [json.loads(row["offer_json"]) for row in rows]
-        if vertical:
-            offers = [offer for offer in offers if offer.get("vertical") == vertical]
-        if tenant_id:
-            offers = [offer for offer in offers if offer.get("tenant_id") == tenant_id]
-        return offers
+            rows = self._connection.execute(query, values).fetchall()
+        return [json.loads(_decode_text(row["offer_json"])) for row in rows]
 
     def claim_routing_jobs(
         self,

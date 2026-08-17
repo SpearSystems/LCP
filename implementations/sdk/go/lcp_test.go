@@ -26,19 +26,21 @@ func TestSharedHMACVector(t *testing.T) {
 func TestFullSchemaValidation(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	schemas := map[string][]byte{}
-	entries, err := os.ReadDir(filepath.Join(root, "schemas"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) != ".json" {
-			continue
+	for _, directory := range []string{"schemas", "verticals"} {
+		entries, err := os.ReadDir(filepath.Join(root, directory))
+		if err != nil {
+			t.Fatal(err)
 		}
-		raw, readErr := os.ReadFile(filepath.Join(root, "schemas", entry.Name()))
-		if readErr != nil {
-			t.Fatal(readErr)
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			raw, readErr := os.ReadFile(filepath.Join(root, directory, entry.Name()))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			schemas[directory+"/"+entry.Name()] = raw
 		}
-		schemas["schemas/"+entry.Name()] = raw
 	}
 	raw, err := os.ReadFile(filepath.Join(root, "examples", "lead.json"))
 	if err != nil {

@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .offer_extensions import evaluate_offer_extensions
+from .storage import parse_iso_datetime
 
 
 _COMPLETENESS = {"minimal": 1, "standard": 2, "rich": 3}
@@ -50,15 +51,37 @@ def _in_window(window: dict[str, Any], now: datetime) -> bool:
     return current >= start or current <= end
 
 
-def offer_is_available(offer: dict[str, Any], now: datetime | None = None) -> MatchResult:
-    """Check active status and configured delivery windows."""
+def offer_is_available(
+    offer: dict[str, Any],
+    now: datetime | None = None,
+    *,
+    vertical: str | None = None,
+    channel: str | None = None,
+) -> MatchResult:
+    """Check active status and configured delivery windows.
+
+    A delivery window may narrow an offer to particular verticals or channels.
+    Missing lead criteria cannot satisfy a restricted window; this keeps
+    matching fail-closed when a publisher omits a field that the buyer used to
+    constrain availability.
+    """
     reasons: list[str] = []
     if offer.get("active", True) is not True:
         reasons.append("offer_inactive")
     windows = offer.get("delivery_windows", [])
     if windows:
         current = now or datetime.now(timezone.utc)
-        if not any(_in_window(window, current) for window in windows):
+        matching_windows = []
+        for window in windows:
+            allowed_verticals = window.get("verticals")
+            allowed_channels = window.get("channels")
+            criteria_match = (
+                (not allowed_verticals or vertical in allowed_verticals)
+                and (not allowed_channels or channel in allowed_channels)
+            )
+            if criteria_match and _in_window(window, current):
+                matching_windows.append(window)
+        if not matching_windows:
             reasons.append("outside_delivery_window")
     return MatchResult(not reasons, tuple(reasons))
 
@@ -78,8 +101,32 @@ def match_offer(
     compliance = payload.get("compliance", {})
     quality = payload.get("lead_quality", {})
 
-    available = offer_is_available(offer, now)
+    current = now or datetime.now(timezone.utc)
+    available = offer_is_available(
+        offer,
+        current,
+        vertical=attributes.get("vertical"),
+        channel=payload.get("channel"),
+    )
     reasons.extend(available.reasons)
+
+    consent_expires_at = parse_iso_datetime(compliance.get("consent_expires_at"))
+    if consent_expires_at is not None and consent_expires_at <= current:
+        reasons.append("consent_expired")
+    extensions = offer.get("extensions", {})
+    if isinstance(extensions, dict):
+        required_purposes = extensions.get("lcp.platform.required_consent_purposes", [])
+        contact_purpose = extensions.get("lcp.platform.contact_purpose")
+        if contact_purpose and contact_purpose not in required_purposes:
+            required_purposes = [*required_purposes, contact_purpose] if isinstance(required_purposes, list) else [contact_purpose]
+        if required_purposes:
+            purposes = compliance.get("consent_purposes", [])
+            if not isinstance(required_purposes, list) or not isinstance(purposes, list):
+                reasons.append("consent_purpose_policy_invalid")
+            else:
+                missing = sorted({str(purpose) for purpose in required_purposes} - set(purposes))
+                if missing:
+                    reasons.append("consent_purpose_missing:" + ",".join(missing))
 
     if attributes.get("vertical") != offer.get("vertical"):
         reasons.append("vertical_mismatch")

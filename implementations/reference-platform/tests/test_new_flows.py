@@ -11,7 +11,7 @@ import unittest
 from lcp_platform.attachments import AttachmentError, ClamAVMalwareScanner, S3ObjectStorageAttachmentStore
 from lcp_platform.config import PlatformConfig
 from lcp_platform.messages import _envelope
-from lcp_platform.router import Platform
+from lcp_platform.router import Platform, RequestError
 from lcp_platform.service import PlatformService
 
 
@@ -146,6 +146,157 @@ class NewFlowTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(response_headers["Content-Type"], "application/pdf")
+        self.assertEqual(downloaded, content)
+
+    def test_attachment_expiry_retires_bytes_and_metadata(self) -> None:
+        content = b"synthetic expiring attachment"
+        digest = sha256(content).hexdigest()
+        attachment = self.platform.upload_attachment(
+            headers={
+                "X-LCP-Test": "true",
+                "X-LCP-Sender-Id": "publisher_expiry",
+                "X-LCP-Lead-Id": "expiry-lead-001",
+                "X-LCP-Attachment-Id": "att_expiry_001",
+                "X-LCP-Filename": "expiring.pdf",
+                "Content-Type": "application/pdf",
+                "X-LCP-Content-SHA256": digest,
+                "X-LCP-Idempotency-Key": "publisher-expiry-attachment-001",
+                "X-LCP-Attachment-Expires-At": "2030-01-01T00:00:00Z",
+            },
+            body=content,
+        )
+        self.assertEqual(attachment["expires_at"], "2030-01-01T00:00:00Z")
+        path = Path(self.tempdir.name) / "attachments" / "att_expiry_001.bin"
+        self.assertTrue(path.exists())
+        self.platform.store._connection.execute(
+            "UPDATE attachments SET expires_at = '2020-01-01T00:00:00Z' WHERE attachment_id = ?",
+            ("att_expiry_001",),
+        )
+        with self.assertRaises(RequestError):
+            self.platform.download_attachment(
+                "att_expiry_001", headers={"X-LCP-Sender-Id": "publisher_expiry"}
+            )
+        row = self.platform.store.get_attachment("att_expiry_001")
+        self.assertEqual(row["status"], "EXPIRED")
+        job = self.platform.store._connection.execute(
+            "SELECT status FROM attachment_deletion_jobs WHERE attachment_id = ?",
+            ("att_expiry_001",),
+        ).fetchone()
+        self.assertEqual(job["status"], "DONE")
+        self.assertFalse(path.exists())
+
+    def test_erasure_deletion_retries_after_storage_failure(self) -> None:
+        lead = _mva_call("deletion-lead-001")
+        self.assertTrue(self.platform.store.insert_lead(lead, status="NEW"))
+        content = b"synthetic retry attachment"
+        digest = sha256(content).hexdigest()
+        self.platform.upload_attachment(
+            headers={
+                "X-LCP-Test": "true",
+                "X-LCP-Sender-Id": "publisher_retry",
+                "X-LCP-Lead-Id": "deletion-lead-001",
+                "X-LCP-Attachment-Id": "att_retry_001",
+                "X-LCP-Filename": "retry.pdf",
+                "Content-Type": "application/pdf",
+                "X-LCP-Content-SHA256": digest,
+                "X-LCP-Idempotency-Key": "publisher-retry-attachment-001",
+            },
+            body=content,
+        )
+        original_store = self.platform.attachments
+
+        class FailingStore:
+            def delete(self, storage_ref: str) -> None:
+                raise AttachmentError("synthetic object-store outage")
+
+        self.platform.attachments = FailingStore()  # type: ignore[assignment]
+        self.platform.erase_lead("deletion-lead-001", actor_id="privacy_operator")
+        retry = self.platform.store._connection.execute(
+            "SELECT status FROM attachment_deletion_jobs WHERE attachment_id = ?",
+            ("att_retry_001",),
+        ).fetchone()
+        self.assertEqual(retry["status"], "RETRY")
+        self.platform.store._connection.execute(
+            "UPDATE attachment_deletion_jobs SET next_attempt_at = '2000-01-01T00:00:00Z' WHERE attachment_id = ?",
+            ("att_retry_001",),
+        )
+        self.platform.attachments = original_store
+        self.platform._process_attachment_deletions()
+        completed = self.platform.store._connection.execute(
+            "SELECT status FROM attachment_deletion_jobs WHERE attachment_id = ?",
+            ("att_retry_001",),
+        ).fetchone()
+        self.assertEqual(completed["status"], "DONE")
+
+    def test_ping_or_pending_post_cannot_download_attachment(self) -> None:
+        self.platform.upsert_credential("buyer_mva", hmac_secret="buyer-mva-secret", scopes=[])
+        content = b"synthetic access-controlled attachment"
+        digest = sha256(content).hexdigest()
+        attachment = self.platform.upload_attachment(
+            headers={
+                "X-LCP-Test": "true",
+                "X-LCP-Sender-Id": "publisher_access",
+                "X-LCP-Lead-Id": "access-lead-001",
+                "X-LCP-Attachment-Id": "att_access_001",
+                "X-LCP-Filename": "evidence.pdf",
+                "Content-Type": "application/pdf",
+                "X-LCP-Content-SHA256": digest,
+                "X-LCP-Idempotency-Key": "publisher-access-attachment-001",
+            },
+            body=content,
+        )
+        ping = _envelope(
+            "ping",
+            "spx_platform",
+            "buyer_mva",
+            {"ping_id": "ping-access-001", "lead_id": "access-lead-001"},
+            test=True,
+        )
+        self.platform.store.insert_delivery(
+            lead_id="access-lead-001",
+            ping_id="ping-access-001",
+            offer_id="offer-access-001",
+            buyer_id="buyer_mva",
+            kind="ping",
+            envelope=ping,
+            webhook_url="http://127.0.0.1:9/ping",
+        )
+        with self.assertRaises(RequestError):
+            self.platform.download_attachment(
+                attachment["attachment_id"],
+                headers={"X-LCP-Sender-Id": "buyer_mva"},
+            )
+
+        post = _envelope(
+            "post",
+            "spx_platform",
+            "buyer_mva",
+            {"lead_id": "access-lead-001", "offer_id": "offer-access-001"},
+            test=True,
+        )
+        self.platform.store.insert_delivery(
+            lead_id="access-lead-001",
+            ping_id="ping-access-001",
+            offer_id="offer-access-001",
+            buyer_id="buyer_mva",
+            kind="post",
+            envelope=post,
+            webhook_url="http://127.0.0.1:9/post",
+        )
+        with self.assertRaises(RequestError):
+            self.platform.download_attachment(
+                attachment["attachment_id"],
+                headers={"X-LCP-Sender-Id": "buyer_mva"},
+            )
+
+        self.platform.store._connection.execute(
+            "UPDATE deliveries SET status = 'DELIVERED' WHERE message_id = ?",
+            (post["lcp"]["message"]["id"],),
+        )
+        downloaded, _ = self.platform.download_attachment(
+            attachment["attachment_id"],
+            headers={"X-LCP-Sender-Id": "buyer_mva"},
+        )
         self.assertEqual(downloaded, content)
 
     def test_mva_attachment_upload_is_encrypted_access_controlled_and_posted(self) -> None:
@@ -341,6 +492,105 @@ class NewFlowTests(unittest.TestCase):
         infected = ClamAVMalwareScanner(client=FakeClamAV(("FOUND", "Eicar-Test-Signature")))
         with self.assertRaises(AttachmentError):
             infected.scan(b"malware", filename="x.pdf", content_type="application/pdf")
+
+    def test_dead_letters_are_durable_replayable_and_visible_in_safe_metrics(self) -> None:
+        lead = _mva_call("dead-letter-lead-001")
+        self.assertTrue(self.platform.store.insert_lead(lead, status="NEW"))
+        self.assertEqual(len(self.platform.store.claim_routing_jobs("worker-dlq")), 1)
+        self.platform.store.release_routing_job(
+            "dead-letter-lead-001",
+            "synthetic routing failure",
+            "worker-dlq",
+            max_attempts=1,
+        )
+        routing_jobs = self.platform.store.list_dead_letters("OPEN")
+        self.assertEqual(routing_jobs[0]["queue_type"], "routing")
+        self.assertTrue(self.platform.store.replay_dead_letter(routing_jobs[0]["job_id"]))
+        routing_row = self.platform.store._connection.execute(
+            "SELECT status FROM routing_jobs WHERE lead_id = ?",
+            ("dead-letter-lead-001",),
+        ).fetchone()
+        self.assertEqual(routing_row["status"], "PENDING")
+
+        post = _envelope(
+            "post",
+            "spx_platform",
+            "buyer_mva",
+            {"lead_id": "dead-letter-lead-001", "offer_id": "offer-dlq-001"},
+            test=True,
+        )
+        self.assertTrue(self.platform.store.insert_delivery(
+            lead_id="dead-letter-lead-001",
+            ping_id=None,
+            offer_id="offer-dlq-001",
+            buyer_id="buyer_mva",
+            kind="post",
+            envelope=post,
+            webhook_url="http://127.0.0.1:9/dead-letter",
+        ))
+        self.platform.store.mark_delivery(
+            post["lcp"]["message"]["id"],
+            status="FAILED",
+            attempts=5,
+            next_attempt_at="2099-01-01T00:00:00Z",
+            last_error="synthetic delivery failure",
+        )
+        self.platform.store.record_dead_letter(
+            queue_type="delivery",
+            resource_id=post["lcp"]["message"]["id"],
+            lead_id="dead-letter-lead-001",
+            attempts=5,
+            last_error="synthetic delivery failure",
+        )
+        delivery_jobs = [
+            item for item in self.platform.store.list_dead_letters("OPEN")
+            if item["queue_type"] == "delivery"
+        ]
+        self.assertEqual(len(delivery_jobs), 1)
+        self.assertTrue(self.platform.store.quarantine_dead_letter(delivery_jobs[0]["job_id"]))
+        self.assertTrue(self.platform.store.replay_dead_letter(delivery_jobs[0]["job_id"]))
+        delivery_row = self.platform.store._connection.execute(
+            "SELECT status FROM deliveries WHERE delivery_id = ?",
+            (post["lcp"]["message"]["id"],),
+        ).fetchone()
+        self.assertEqual(delivery_row["status"], "RETRY")
+
+        service = PlatformService(self.platform)
+        status, response_headers, metrics = service.dispatch(
+            "GET",
+            "/v1/lcp/metrics",
+            headers={"X-LCP-Sender-Id": "operator", "X-LCP-Request-Id": "trace-dlq-001"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(response_headers["X-LCP-Request-Id"], "trace-dlq-001")
+        self.assertIn("dead_letters", metrics)
+        self.assertIn("routing", metrics)
+        self.assertNotIn("dead-letter-lead-001", json.dumps(metrics))
+
+    def test_request_id_is_added_to_audit_without_consumer_data(self) -> None:
+        content = b"synthetic traced attachment"
+        digest = sha256(content).hexdigest()
+        service = PlatformService(self.platform)
+        status, _, _ = service.dispatch(
+            "POST",
+            "/v1/lcp/attachments",
+            headers={
+                "X-LCP-Test": "true",
+                "X-LCP-Request-Id": "trace-attachment-001",
+                "X-LCP-Sender-Id": "publisher_trace",
+                "X-LCP-Lead-Id": "trace-lead-001",
+                "X-LCP-Attachment-Id": "att_trace_001",
+                "X-LCP-Filename": "trace.pdf",
+                "Content-Type": "application/pdf",
+                "X-LCP-Content-SHA256": digest,
+                "X-LCP-Idempotency-Key": "publisher-trace-attachment-001",
+            },
+            body=content,
+        )
+        self.assertEqual(status, 201)
+        audit = self.platform.store.list_audit_events("attachment", "att_trace_001")
+        self.assertEqual(audit[0]["metadata"]["request_id"], "trace-attachment-001")
+        self.assertNotIn(content.decode(), json.dumps(audit))
 
 
 def _mva_call(lead_id: str) -> dict:

@@ -1,0 +1,26 @@
+name: Contributor License Agreement
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, edited, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cla:
+    name: Verify CLA acknowledgment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check pull-request CLA acknowledgment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const acknowledged = /- \[[xX]\] I have read and agree to the \[Contributor License Agreement\]/.test(body);
+            if (!acknowledged) {
+              core.setFailed('Check the Contributor License Agreement box in the pull-request template before requesting review. Private security reports belong in GitHub Security Advisories and are not blocked by this check.');
+              return;
+            }
+            core.info('CLA acknowledgment found in the pull-request body.');

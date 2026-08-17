@@ -28,6 +28,7 @@
       "name": "missing_idempotency_key",
       "expect": "fail",
       "error_code": "LCP-003",
+      "error_contains": "idempotency_key",
       "payload": {
         "lcp": {
           "version": "1.0.0",
@@ -48,6 +49,7 @@
       "name": "missing_version",
       "expect": "fail",
       "error_code": "LCP-003",
+      "error_contains": "version",
       "payload": {
         "lcp": {
           "message": {
@@ -68,6 +70,7 @@
       "name": "invalid_uuid_message_id",
       "expect": "fail",
       "error_code": "LCP-001",
+      "error_contains": "id",
       "payload": {
         "lcp": {
           "version": "1.0.0",
@@ -87,14 +90,15 @@
     {
       "id": "L1-007",
       "name": "unknown_message_type",
-      "expect": "fail",
-      "error_code": "LCP-006",
+      "expect": "fail",      "error_code": "LCP-006",
+      "error_contains": "type",
       "payload": {
-        "lcp": {
+          "lcp": {
+
           "version": "1.0.0",
           "message": {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "type": "bid",
+            "type": "unknown",
             "timestamp": "2026-08-15T10:20:00Z",
             "sender_id": "pub_123",
             "receiver_id": "platform_001",
@@ -110,6 +114,7 @@
       "name": "invalid_timestamp_format",
       "expect": "fail",
       "error_code": "LCP-001",
+      "error_contains": "timestamp",
       "payload": {
         "lcp": {
           "version": "1.0.0",

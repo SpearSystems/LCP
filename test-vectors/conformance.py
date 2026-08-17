@@ -18,15 +18,17 @@ Usage:
 """
 
 import argparse
+from datetime import datetime
 import json
 import os
 import sys
+from uuid import UUID
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     import jsonschema
-    from jsonschema import Draft202012Validator
+    from jsonschema import Draft202012Validator, FormatChecker
     from referencing import Registry, Resource
     from referencing.jsonschema import DRAFT202012
 except ImportError:
@@ -71,9 +73,16 @@ _registry = Registry().with_resource(
 )
 
 
+_format_checker = FormatChecker()
+
+
 def make_validator(schema: dict) -> Draft202012Validator:
-    """Create a validator that resolves $ref to core.json definitions."""
-    return Draft202012Validator(schema, registry=_registry)
+    """Create a validator that resolves refs and asserts declared formats."""
+    return Draft202012Validator(
+        schema,
+        registry=_registry,
+        format_checker=_format_checker,
+    )
 
 
 # --- Message schema registry -------------------------------------------------
@@ -83,13 +92,19 @@ for _msg_type in ["lead", "call", "ping", "post", "ack", "event", "bid"]:
     _validators[_msg_type] = make_validator(load_schema(_msg_type))
 
 _envelope_validator = make_validator(load_schema("envelope"))
+_vertical_schemas: Dict[str, dict] = {
+    path.stem: load_json(path) for path in VERTICALS_DIR.glob("*.json")
+}
+_vertical_validators: Dict[str, Draft202012Validator] = {
+    name: make_validator(schema) for name, schema in _vertical_schemas.items()
+}
 
 # --- Ping-safe enforcement ---------------------------------------------------
 
 
 def get_ping_safe_fields(vertical_name: str) -> Tuple[Set[str], Set[str]]:
-    """Return (safe_fields, unsafe_fields) from a vertical schema."""
-    vschema = load_vertical(vertical_name)
+    """Return top-level (safe_fields, unsafe_fields) from a loaded schema."""
+    vschema = _vertical_schemas.get(vertical_name, {})
     props = vschema.get("properties", {})
     safe: Set[str] = set()
     unsafe: Set[str] = set()
@@ -103,37 +118,39 @@ def get_ping_safe_fields(vertical_name: str) -> Tuple[Set[str], Set[str]]:
     return safe, unsafe
 
 
-def check_ping_safe(payload: dict) -> List[str]:
-    """Check that ping attributes only contain ping_safe fields.
-
-    Returns list of violation messages (empty = pass).
-    """
+def _nested_ping_safe_errors(value: Any, schema: dict, path: str) -> List[str]:
+    """Recursively enforce ping_safe tags, including nested objects."""
+    if not isinstance(value, dict):
+        return []
     violations: List[str] = []
-    attrs = payload.get("attributes", {})
-    vertical = payload.get("vertical", "")
-    if not vertical or not attrs:
-        return violations  # nothing to check
-
-    vertical_file = VERTICALS_DIR / f"{vertical}.json"
-    if not vertical_file.exists():
-        violations.append(
-            f"PII_IN_PING: vertical schema '{vertical}' not found — cannot validate ping_safe"
-        )
-        return violations
-
-    safe, unsafe = get_ping_safe_fields(vertical)
-    for field_name in attrs:
-        if field_name in unsafe:
+    properties = schema.get("properties", {})
+    for field_name, field_value in value.items():
+        if field_name in ("vertical", "schema_version") and path == "attributes":
+            continue
+        definition = properties.get(field_name)
+        field_path = f"{path}.{field_name}"
+        if not isinstance(definition, dict) or definition.get("ping_safe") is not True:
             violations.append(
-                f"PII_IN_PING: attributes.{field_name} is tagged ping_safe: false "
-                f"in vertical '{vertical}' (LCP-008)"
+                f"PII_IN_PING: {field_path} is not tagged ping_safe: true (LCP-008)"
             )
-        elif field_name not in safe:
-            violations.append(
-                f"PII_IN_PING: attributes.{field_name} is not tagged ping_safe "
-                f"in vertical '{vertical}' (LCP-008)"
-            )
+            continue
+        if isinstance(definition.get("properties"), dict):
+            violations.extend(_nested_ping_safe_errors(field_value, definition, field_path))
     return violations
+
+
+def check_ping_safe(payload: dict) -> List[str]:
+    """Check that ping attributes only contain recursively ping-safe fields."""
+    attrs = payload.get("attributes", {})
+    vertical = payload.get("vertical")
+    if not isinstance(vertical, str) or not isinstance(attrs, dict):
+        return []
+    schema = _vertical_schemas.get(vertical)
+    if schema is None:
+        return [
+            f"PII_IN_PING: vertical schema '{vertical}' not found — cannot validate ping_safe"
+        ]
+    return _nested_ping_safe_errors(attrs, schema, "attributes")
 
 
 # --- Status transition graph -------------------------------------------------
@@ -185,9 +202,27 @@ def validate_message(envelope: dict) -> List[str]:
     """Validate a full LCP envelope + payload. Returns list of error strings."""
     errors: List[str] = []
 
-    # 1. Validate envelope structure
+    # 1. Validate envelope structure and the formats whose semantics must be
+    # identical across language runtimes.
     for err in _envelope_validator.iter_errors(envelope):
         errors.append(f"envelope: {err.message} at {_format_path(err.path)}")
+    message = envelope.get("lcp", {}).get("message", {})
+    message_id = message.get("id")
+    if isinstance(message_id, str):
+        try:
+            parsed_id = UUID(message_id)
+            if parsed_id.version != 4:
+                errors.append("envelope: message.id must be a UUID v4 at lcp/message/id")
+        except ValueError:
+            errors.append("envelope: message.id must be a UUID at lcp/message/id")
+    timestamp = message.get("timestamp")
+    if isinstance(timestamp, str):
+        try:
+            parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if parsed_timestamp.tzinfo is None or "T" not in timestamp:
+                raise ValueError
+        except ValueError:
+            errors.append("envelope: message.timestamp must be an RFC3339 date-time at lcp/message/timestamp")
 
     if errors:
         return errors  # Can't validate payload if envelope is broken
@@ -200,10 +235,34 @@ def validate_message(envelope: dict) -> List[str]:
         for err in _validators[msg_type].iter_errors(payload):
             errors.append(f"{msg_type}: {err.message} at {_format_path(err.path)}")
 
-    # 3. Ping-specific PII checks
-    if msg_type == "ping":
-        ping_safe_violations = check_ping_safe(payload)
-        errors.extend(ping_safe_violations)
+    # 3. Validate the selected vertical for every message carrying attributes.
+    if msg_type in {"lead", "call", "post", "ping"}:
+        attributes = payload.get("attributes")
+        vertical = payload.get("vertical") if msg_type == "ping" else (
+            attributes.get("vertical") if isinstance(attributes, dict) else None
+        )
+        if isinstance(vertical, str) and isinstance(attributes, dict):
+            vertical_validator = _vertical_validators.get(vertical)
+            if vertical_validator is None:
+                errors.append(f"vertical: unknown vertical schema '{vertical}'")
+            else:
+                vertical_attributes = dict(attributes)
+                if msg_type == "ping":
+                    version_definition = vertical_validator.schema.get("properties", {}).get("schema_version", {})
+                    vertical_attributes.setdefault(
+                        "vertical",
+                        vertical,
+                    )
+                    vertical_attributes.setdefault(
+                        "schema_version",
+                        version_definition.get("const", "1.0.0"),
+                    )
+                errors.extend(
+                    f"vertical: {error.message} at {_format_path(error.path)}"
+                    for error in vertical_validator.iter_errors(vertical_attributes)
+                )
+        if msg_type == "ping":
+            errors.extend(check_ping_safe(payload))
 
     return errors
 
@@ -250,6 +309,18 @@ def run_vector(vector: dict) -> TestResult:
     elif expect == "fail":
         if not errors:
             return TestResult(vid, name, False, ["expected failure but message validated successfully"])
+        expected_text = vector.get("error_contains")
+        if expected_text:
+            expected_values = [expected_text] if isinstance(expected_text, str) else expected_text
+            combined = " ".join(errors)
+            missing = [value for value in expected_values if value not in combined]
+            if missing:
+                return TestResult(
+                    vid,
+                    name,
+                    False,
+                    [f"expected error text not found: {value}" for value in missing] + errors,
+                )
         return TestResult(vid, name, True)
     else:
         return TestResult(vid, name, False, [f"unknown expect value: {expect}"])

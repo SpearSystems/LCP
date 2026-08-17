@@ -24,12 +24,15 @@ export class LcpSchemaValidationError extends Error {
 export class LcpSchemaValidator {
   private readonly ajv: any;
   private readonly validators = new Map<string, ValidateFunction>();
+  private readonly documents = new Map<string, object>();
 
   constructor(schemas: SchemaBundle) {
     this.ajv = new Ajv2020({ allErrors: true, strict: false, schemas: Object.values(schemas) as any });
     addFormats(this.ajv);
     for (const [name, schema] of Object.entries(schemas)) {
       const id = typeof (schema as { $id?: unknown }).$id === "string" ? (schema as { $id: string }).$id : name;
+      this.documents.set(name, schema);
+      this.documents.set(id, schema);
       this.validators.set(name, this.ajv.compile(schema as any));
       this.validators.set(id, this.ajv.getSchema(id) ?? this.ajv.compile(schema as any));
     }
@@ -65,7 +68,52 @@ export class LcpSchemaValidator {
 
   validateEnvelope(envelope: unknown): void {
     this.validate("schemas/envelope.json", envelope);
-    const typed = envelope as { lcp: { message: { type: string }; payload: unknown } };
-    this.validate(`schemas/${typed.lcp.message.type}.json`, typed.lcp.payload);
+    const typed = envelope as { lcp: { message: { type: string }; payload: any } };
+    const messageType = typed.lcp.message.type;
+    this.validate(`schemas/${messageType}.json`, typed.lcp.payload);
+    if (!["lead", "call", "post", "ping"].includes(messageType)) return;
+
+    const attributes = typed.lcp.payload?.attributes;
+    const vertical = messageType === "ping"
+      ? typed.lcp.payload?.vertical
+      : attributes?.vertical;
+    if (typeof vertical !== "string" || !attributes || typeof attributes !== "object") return;
+
+    const verticalAttributes = { ...attributes } as Record<string, unknown>;
+    if (messageType === "ping") {
+      verticalAttributes.vertical ??= vertical;
+      const schema = this.documents.get(`verticals/${vertical}.json`) as any;
+      verticalAttributes.schema_version ??= schema?.properties?.schema_version?.const ?? "1.0.0";
+    }
+    this.validateVertical(vertical, verticalAttributes);
+    if (messageType === "ping") this.validatePingSafe(vertical, attributes);
+  }
+
+  private validatePingSafe(vertical: string, attributes: Record<string, unknown>): void {
+    const schema = this.documents.get(`verticals/${vertical}.json`) as any;
+    if (!schema) throw new Error(`Vertical schema '${vertical}' not found for ping-safe validation`);
+    const errors: ErrorObject[] = [];
+    const walk = (value: unknown, definition: any, path: string): void => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const properties = definition?.properties ?? {};
+      for (const [field, child] of Object.entries(value as Record<string, unknown>)) {
+        if (path === "attributes" && (field === "vertical" || field === "schema_version")) continue;
+        const childDefinition = properties[field] as any;
+        const instancePath = `${path}.${field}`;
+        if (!childDefinition || childDefinition.ping_safe !== true) {
+          errors.push({
+            instancePath,
+            schemaPath: "#/properties/ping_safe",
+            keyword: "ping_safe",
+            params: {},
+            message: "field is not tagged ping_safe: true",
+          });
+          continue;
+        }
+        if (childDefinition.properties) walk(child, childDefinition, instancePath);
+      }
+    };
+    walk(attributes, schema, "attributes");
+    if (errors.length) throw new LcpSchemaValidationError(`verticals/${vertical}.json`, errors);
   }
 }
