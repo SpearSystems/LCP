@@ -2,7 +2,7 @@
 
 > **Developer page · Page 3 of 6**
 >
-> **Status: v1.0 protocol; current implementation release v1.0.1.** This is a navigational field reference for implementers.
+> **Status: v1.0 protocol; current implementation release v1.0.2.** This is a navigational field reference for implementers.
 > The JSON Schemas in [`schemas/`](../schemas/) are normative for types,
 > requiredness, formats, limits, and `additionalProperties` behavior. If this
 > page and a schema disagree, the schema wins and this page should be corrected.

@@ -8,6 +8,10 @@
 > evidence assets are available at
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.0.1>.
 >
+> **Next release:** `v1.0.2` is prepared (SDK_VERSION and all package metadata
+> bumped, changelog and release ticket updated). The maintainer creates the
+> signed tag when the final gate re-run is green.
+>
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
 > the reference container.

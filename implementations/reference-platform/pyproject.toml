@@ -1,6 +1,6 @@
 [project]
 name = "lcp-reference-platform"
-version = "1.0.1"
+version = "1.0.2"
 description = "Production-oriented reference platform and router for LCP Lead Context Protocol deployments."
 license = "Apache-2.0"
 requires-python = ">=3.10"

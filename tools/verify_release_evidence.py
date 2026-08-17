@@ -58,6 +58,7 @@ STALE_STATE_DOCS = (
     "docs/README.md",
     "docs/RELEASE.md",
     "docs/RELEASE-TICKET-1.0.1.md",
+    "docs/RELEASE-TICKET-1.0.2.md",
     "CHANGELOG.md",
 )
 

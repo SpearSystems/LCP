@@ -14,4 +14,4 @@ __all__ = [
     "PublisherNormalizer",
     "RequestError",
 ]
-__version__ = "1.0.1"
+__version__ = "1.0.2"

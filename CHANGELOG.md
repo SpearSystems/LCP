@@ -6,6 +6,85 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-08-18
+
+### Security and hardening (repository audit remediation)
+
+- Attachment authorization boundary: only the attachment owner, a
+  `platform:admin`, or a buyer with a delivered winning `post` may download
+  attachment bytes or metadata; ping-only buyers are denied with a uniform
+  non-enumerating 404, and authorization decisions are audited without PII.
+- WSGI binary attachment upload/download parity with the local threaded
+  server: per-route body limits selected before `wsgi.input` is read, byte
+  payloads bypass `json.dumps`, and binary response headers are forwarded.
+- PostgreSQL offer discovery and filtering: relational `tenant_id`/`vertical`
+  columns with backfill, `idx_offers_discovery` index, and portable candidate
+  index queries; verified against a real Postgres 16 instance.
+- Runtime lifecycle transition enforcement: a shared legal-transition table
+  (tested against the conformance graph), LCP-004 rejection of invalid edges,
+  terminal states including `ERASED`, role-scoped event permissions,
+  message-ID idempotency, and audit records for every applied transition.
+- Equivalent validators across all ten SDKs: envelope + message-type dispatch
+  + vertical validation + recursive `ping_safe` enforcement + offer
+  validation + offline `$ref` resolution + format assertions, driven by a
+  shared 14-fixture cross-language validation corpus with per-SDK harnesses
+  wired into CI.
+- Sensitive vertical ping policy: ~33 fields flipped to post-only with
+  documented privacy rationale; new negative ping vectors for insurance,
+  legal, and MVA fields; `docs/PRIVACY-DATA-GOVERNANCE.md` data-minimization
+  guidance.
+- Expiry, consent, withdrawal, and erasure lifecycle: canonical `expiry`
+  object (absolute/relative), lead/consent expiry enforced before matching
+  and delivery, `CONSENT_WITHDRAWN` suppression, idempotent
+  `ERASURE_REQUEST`, attachment expiry cleanup, and durable retryable object
+  deletion.
+- MCP adapter hardening: configurable `LCP_PLATFORM_ID` receiver, path
+  traversal-guarded schema fallback, percent-encoded identifiers, and
+  pre-send SDK validation of every tool-created envelope.
+- Role-specific lead-status projections: publisher, buyer, and administrator
+  views with per-role data exposure and uniform 404 for unauthorized callers.
+- Offer delivery-window vertical/channel enforcement and conditional bid
+  fields: `if/then` schema (price/currency required only for `accept`),
+  matching OpenAPI 3.1, generated models, and under-floor accept rejection.
+- Release metadata and evidence: synchronized runtime `__version__` values,
+  immutable container digest binding in `release-manifest.json`, and a
+  stale-release-state gate that fails the release workflow on outdated
+  pre-release language in release-facing docs.
+- Governance and operational hardening: CODEOWNERS, private security
+  advisory route, CLA verification, request IDs, durable dead letters with
+  replay/quarantine, structured worker metrics, and `npm ci` in CI.
+- Documentation consistency: broken anchors fixed, a fence-aware link checker
+  in CI, and copy-paste examples for WSGI attachments, Postgres offer
+  discovery, lifecycle events, and role-scoped reads.
+
+### Fixed
+
+- Kotlin SDK compile failure: `SchemaValidator` migrated to the Jackson 3 API
+  (`fields()` → `properties()`, non-generic `set()`, explicit list typing);
+  the Kotlin SDK had never compiled against the networknt 3.x / Jackson 3
+  pins and its CI job failed on every run.
+- 16 Dependabot alerts: `python-multipart` pinned to 0.0.32 (the release
+  containing every fix for CVE-2024-53981, CVE-2026-24486/40347/42561/
+  53537/53538/53539/53540), resolving the transitive dependency of `mcp`.
+- CI tooling job: `httpx` added to the tooling test dependencies so
+  `test_validation_corpus` (which imports `lcp_sdk`) can import.
+- Load benchmarks: both `benchmark_postgres_platform.py` and
+  `benchmark_reference_platform.py` now generate a fresh absolute
+  `expires_at` per record. The templates previously copied
+  `examples/lead.json`'s fixed past dates, so every generated lead was born
+  EXPIRED and the deliver-mode benchmark delivered zero webhooks on every
+  CI run since it was added.
+
+### Added
+
+- LEP process adoption: `governance/LEP.md` operationalized via
+  `governance/LEP-PROCESS-PLAN.md` (storage, numbering, review roles,
+  14-day window, status lifecycle, roadmap tracking) and draft
+  `LEP-0001` (batch submission and event subscriptions) filed for future
+  adoption-scale work.
+- Coordinated `SDK_VERSION` and package metadata bumped to 1.0.2 across all
+  ten SDKs and the reference platform.
+
 ## [1.0.1] — 2026-08-17
 
 ### Added

@@ -6,7 +6,7 @@
     <RootNamespace>LcpSdk</RootNamespace>
     <AssemblyName>LcpSdk</AssemblyName>
     <PackageId>LcpSdk</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Description>LCP Lead Context Protocol SDK for .NET</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>systems.spear</groupId>
   <artifactId>lcp-sdk</artifactId>
-  <version>1.0.1</version>
+  <version>1.0.2</version>
   <name>LCP Java SDK</name>
   <description>LCP Lead Context Protocol SDK</description>
   <url>https://github.com/SpearSystems/LCP</url>
