@@ -20,7 +20,7 @@ schemas/           JSON Schema for the envelope, core, message, and offer types
 verticals/         Per-vertical attribute schemas
 examples/          Sample payloads (lead, call, ping, post, ack, event, sandbox)
 test-vectors/      Conformance fixtures (L1/L2/L3)
-governance/        CONTRIBUTING, CLA, extension registry
+governance/        CONTRIBUTING, CLA, LEP process/registry, extension registry
 implementations/   Multi-language SDKs, reference platform/router, and MCP adapter
 docs/              Integration guides, implementation decisions, and research
 ```
@@ -69,6 +69,31 @@ docs/              Integration guides, implementation decisions, and research
   different enums), a separate vertical file MAY be created, but this
   requires a design discussion. New verticals MUST justify their
   country-scoping strategy in their schema description.
+
+## Mandatory LEP routing
+
+Before making a material change, read [`governance/LEP.md`](governance/LEP.md),
+[`governance/LEP-REGISTRY.md`](governance/LEP-REGISTRY.md), and
+[`governance/LEP-PROCESS-PLAN.md`](governance/LEP-PROCESS-PLAN.md).
+
+- Changes to the envelope, message types, error taxonomy, protocol/versioning,
+  security or privacy boundaries, lifecycle, vertical schemas, registered
+  extensions, conformance vectors, OpenAPI/MCP contracts, or all SDKs require
+  an LEP.
+- If no accepted LEP covers the material change, stop before implementation:
+  open or update the numbered proposal and move it through Discuss → Draft →
+  Review → Decision. Draft or Review status does not authorize runtime,
+  schema, SDK, vector, OpenAPI, or MCP implementation.
+- An accepted LEP must be linked from the implementation PR/commit and the
+  registry must be updated with the implementation and verification evidence.
+- The default public review window is 14 days; material scope, wire-shape,
+  privacy, or compatibility changes restart the window.
+- Documentation-only clarifications, ordinary bug fixes that restore published
+  behavior, and private deployment extensions are normally exempt. When the
+  boundary is uncertain, treat the change as LEP material and record the
+  exemption in the PR.
+- Run `python tools/check_lep_registry.py` when changing LEP records. Never
+  mark a proposal Accepted or bypass independent review on behalf of maintainers.
 
 ## Quality gate
 

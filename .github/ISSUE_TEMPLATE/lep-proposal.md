@@ -7,9 +7,22 @@ labels: enhancement
 
 ## Proposal status
 
-- [ ] Discussion
-- [ ] Draft
-- [ ] Ready for review
+- [ ] Discuss — public problem/evidence discussion; no implementation
+- [ ] Draft — numbered record exists in `governance/LEPs/`
+- [ ] Review — 14-day public review is open
+
+> Draft or Review status does not authorize runtime, schema, SDK, vector,
+> OpenAPI, or MCP implementation. Acceptance requires an independent
+> maintainer decision recorded in `governance/LEP-REGISTRY.md`.
+
+## Record metadata
+
+- Proposed LEP number (maintainers assign; never reuse):
+- Target protocol/schema version:
+- Author(s):
+- Shepherd:
+- Proposed review deadline (if entering Review):
+- Security/privacy reviewer (if applicable):
 
 ## Problem and evidence
 
@@ -35,6 +48,12 @@ labels: enhancement
 ## Compatibility and rollout
 
 <!-- Explain versions, deprecation, migration, rollout, observability, and rollback. -->
+
+## Decision and traceability
+
+<!-- Maintainers record Accepted, Rejected, or Deferred with rationale, date,
+reviewers, and conditions. Link schemas, examples, vectors, SDKs, OpenAPI/MCP,
+changelog, and release evidence after implementation. -->
 
 ## Alternatives and deferral
 

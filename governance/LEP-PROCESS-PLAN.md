@@ -1,98 +1,109 @@
 # LEP process adoption plan
 
 - **Date:** 2026-08-18
-- **Status:** **Draft for review** — no process changes are implemented yet
-- **Related:** `governance/LEP.md` (process definition, shipped at baseline
-  `c9d8d1a`), `docs/V1.1-ROADMAP.md` Phase 1 (use the LEP process for external
-  proposals), plan item 15 of the audit remediation plan
+- **Status:** **Adopted** — process controls recorded in `governance/LEP.md`
+  and validated by `tools/check_lep_registry.py`
+- **Related:** [`governance/LEP.md`](LEP.md),
+  [`governance/LEP-REGISTRY.md`](LEP-REGISTRY.md),
+  [`docs/V1.1-ROADMAP.md`](../docs/V1.1-ROADMAP.md), and the LEP section of
+  `AGENTS.md`
 
-## Why this exists
+## Purpose
 
-`governance/LEP.md` already defines *what* an LEP is and the six stages
-(discuss → draft → review → decision → implement → deprecate/supersede), but
-the process has not yet been exercised through a completed
-Discuss → Draft → Review → Decision cycle. LEP-0001 is now the first numbered
-draft and the natural pilot for this plan. This document operationalizes the
-review path; it is not a change to the published protocol.
+This plan operationalizes the LEP process for the first material changes after
+v1.0. The process is now adopted for material protocol, schema, extension,
+security, privacy, lifecycle, and cross-language changes. It does **not**
+accept LEP-0001 or authorize batch/subscription implementation.
 
-## Goal and acceptance
+## Adopted decisions
 
-**Goal:** the first external or material change goes through the published LEP
-process, and the roadmap tracks LEP status.
+1. **Record storage:** numbered Markdown records live under
+   `governance/LEPs/`; [`LEP-REGISTRY.md`](LEP-REGISTRY.md) is the canonical
+   numbered index. Public issue discussions are linked but do not replace the
+   durable record.
+2. **Numbering:** `LEP-0001` onward, sequential and never reused. Rejected,
+   deferred, deprecated, and superseded proposals retain their numbers.
+3. **Review roles:** the author and shepherd maintain the proposal; affected
+   implementers, publishers, buyers, and security/privacy reviewers are
+   invited; a second maintainer independently reviews material decisions.
+4. **Review window:** material proposals receive a 14-day public review by
+   default. A material change to scope, wire shape, privacy, or compatibility
+   restarts the window.
+5. **Status lifecycle:** `Discuss → Draft → Review → Accepted/Rejected/Deferred
+   → Implemented → Deprecated/Superseded`. The registry and proposal status
+   must agree; terminal decisions require a rationale and date.
+6. **Traceability:** accepted LEPs are linked from implementation PRs/commits,
+   affected schemas, vectors, SDK artifacts, OpenAPI/MCP changes, changelog,
+   and release evidence as applicable.
+7. **Core-change gate:** new universal message types require independent
+   adopter evidence or documented interoperability necessity, an extension
+   feasibility analysis, the universal-core audit, and the required SemVer
+   bump.
+8. **Independent decisions:** an umbrella discussion may cover related work,
+   but capabilities with different semantics must have independent acceptance
+   criteria and may be accepted or deferred separately.
 
-**Acceptance (future):**
+## Implemented controls
 
-- LEP-0001 exists as a numbered draft under `governance/LEPs/` and has moved
-  through at least Discuss → Draft → Review.
-- `governance/LEP-REGISTRY.md` lists every LEP with number, title, status, and
-  decision date.
-- The roadmap carries an LEP status column/table.
-- An independent reviewer (second maintainer) has signed off a decision, per
-  the roadmap's Phase 1 high-priority item.
+- `governance/LEP.md` is the normative process document.
+- `governance/LEP-REGISTRY.md` records LEP-0001 and defines registry rules.
+- `tools/check_lep_registry.py` validates numbering, proposal links,
+  metadata, required sections, and registry/document status agreement.
+- `tools/tests/test_lep_registry.py` covers the current registry and malformed
+  fixture cases.
+- The tooling CI job runs the registry validator and its unit tests.
+- `AGENTS.md` routes future agents to the LEP process before material edits and
+  requires an accepted LEP before implementation.
+- `.github/ISSUE_TEMPLATE/lep-proposal.md` and
+  `.github/PULL_REQUEST_TEMPLATE.md` identify the required LEP workflow.
+- `governance/CONTRIBUTING.md` routes human contributors through the same
+  material-change gate and records exemptions in the pull request.
+- `docs/V1.1-ROADMAP.md` contains the current LEP status table.
 
-## Decisions to make during the review pass
+## Acceptance state
 
-1. **Record storage.** Draft default: numbered markdown documents under
-   `governance/LEPs/LEP-NNNN-<slug>.md`, plus a registry table in
-   `governance/LEP-REGISTRY.md`. Alternative: issue-tracked proposals with the
-   document linked. Decide once, document in `governance/LEP.md`.
-2. **Numbering.** `LEP-0001` onward, sequential, never reused; a rejected or
-   deferred LEP keeps its number and its decision record.
-3. **Review roles.** Author, invited reviewers (affected implementers,
-   publishers, buyers, security/privacy), decision by maintainers. The
-   roadmap's second-maintainer/independent-release-approval work is a
-   prerequisite for independent LEP decisions.
-4. **Review window.** Draft default: 14-day comment window for material
-   proposals; shorter for urgent security decisions (single maintainer, with
-   the reason recorded and a second review afterward — already in LEP.md).
-5. **Status lifecycle.** Map the registry statuses to LEP.md's stages
-   (Discuss → Draft → Review → Accepted/Rejected/Deferred → Implemented →
-   Deprecated/Superseded). One status per LEP, tracked in the registry.
-6. **Traceability to code.** Accepted LEPs are referenced from the schemas /
-   vectors / SDK changes they produce (changelog entry + decision record), so
-   a conformance vector or SDK model can be traced back to its proposal.
-7. **Roadmap coupling.** Add the LEP status table to `docs/V1.1-ROADMAP.md`
-   once the first LEP is opened, per the roadmap's "no roadmap item silently
-   changes the published contract" rule.
+The process adoption acceptance conditions are complete:
 
-## Review checklist for `governance/LEP.md` itself
+- [x] Numbered Markdown storage and a canonical registry are established.
+- [x] Sequential, never-reused numbering is documented and checked.
+- [x] Roles, independent review, and the 14-day window are documented.
+- [x] Status lifecycle and decision-record requirements are documented.
+- [x] Traceability and implementation gates are documented.
+- [x] The roadmap carries LEP status.
+- [x] LEP-0001 is registered as a draft and remains unaccepted/unimplemented.
 
-- Template/required-content checklist covers: problem + evidence, scope,
-  wire shape with valid/invalid examples, privacy/security/universal-core
-  audit, compatibility/versioning, SDK/OpenAPI/MCP/conformance/ops impact,
-  alternatives, rollout/migration/observability/rollback, deferred questions
-  with revisit triggers. (LEP-0001 was drafted against this list — it fits.)
-- Cross-checked against the universal-core rules in `AGENTS.md` (simplicity
-  budget, core-vs-extension, N+2 deprecation, PII discipline) and
-  `SPEC.md` §12.
-- Confirm the decision rules stay anti-capture: no ownership, fees, approval
-  rights, or veto over the open extension registry.
+Adoption of the process is separate from acceptance of any protocol proposal.
 
 ## Pilot: LEP-0001
 
-The first live use of the process is LEP-0001 (batch submission + event
-subscriptions, drafted 2026-08-18). The pilot should:
+LEP-0001 is an umbrella draft for bounded batch submission and event
+subscriptions. Its two tracks are independently decidable: batch may be
+accepted while subscriptions are deferred, or vice versa. Before formal
+Review:
 
-1. Move LEP-0001 from Draft to Review with the affected implementers
-   (reference platform, all SDKs, MCP) and a security/privacy reviewer.
-2. Surface any friction in the process itself (missing template fields,
-   unclear review window) and fold fixes back into `governance/LEP.md`.
-3. Produce the decision record (accept/reject/defer with rationale) and the
-   first registry row.
+1. open the public `[LEP]` discussion and collect adopter evidence;
+2. identify the affected reference-platform, SDK, MCP, operations,
+   security/privacy, publisher, and buyer reviewers;
+3. decide whether the two tracks should remain one numbered record with
+   separate decision sections or become linked subrecords without reusing a
+   number;
+4. document the extension feasibility analysis before approving new universal
+   message types.
 
-## Sequencing
+During Review, the batch track must resolve item limits, per-item idempotency,
+partial failure, ordering, backpressure, and benchmark evidence. The
+subscription track must resolve event allowlisting, tenant authorization,
+privacy-safe filters, signing, at-least-once delivery, cursor replay, ordering,
+retention, retry, and dead-letter behavior.
 
-1. Post-v1.0.2: review this plan + `governance/LEP.md` with the second
-   maintainer; confirm storage, numbering, and review-window decisions.
-2. Create `governance/LEP-REGISTRY.md` and the roadmap LEP status table.
-3. Open LEP-0001 for review (already drafted) and run it through the stages.
-4. Thereafter: external proposals enter via the `[LEP]` issue template, with
-   the registry updated at each status change.
+No runtime, schema, SDK, OpenAPI, MCP, or conformance implementation for either
+track may merge while the registry status is `Draft` or `Review`.
 
-## Deferred questions
+## Ongoing governance
 
-- Whether hosted conformance/certification (Phase 1 medium priority) needs its
-  own LEP-adjacent process — revisit when the hosted service is scoped.
-- Whether a standards-community SIG or external-maintainer role is needed if
-  adoption grows — revisit on adopter signals, per the roadmap's monthly
-  review cadence.
+- Maintainers update the registry at every status transition.
+- Material review changes restart the review deadline.
+- The pilot is followed by a short process retrospective; any process change
+  updates `LEP.md`, this plan, the registry rules, and the checker together.
+- A second-maintainer decision record is required before the first accepted
+  core or cross-language change.

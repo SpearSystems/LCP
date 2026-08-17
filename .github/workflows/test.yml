@@ -79,6 +79,8 @@ jobs:
           install -m 0755 kyverno "${HOME}/.kyverno/kyverno"
           echo "${HOME}/.kyverno" >> "${GITHUB_PATH}"
           "${HOME}/.kyverno/kyverno" version
+      - name: Validate LEP registry
+        run: python tools/check_lep_registry.py
       - name: Test reviewed SARIF tooling
         run: python -m unittest discover -s tools/tests -v
       - name: Test image verification fixtures

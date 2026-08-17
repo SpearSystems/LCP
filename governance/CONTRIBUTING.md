@@ -11,6 +11,17 @@ request. No membership, dues, or approval required.
    contributions under Apache 2.0.
 3. Open a pull request.
 
+## Material-change LEP gate
+
+Before proposing or implementing a material protocol, schema, extension,
+security, privacy, lifecycle, conformance, OpenAPI/MCP, or cross-language
+change, read the [LEP process](LEP.md), [LEP registry](LEP-REGISTRY.md), and
+[adoption plan](LEP-PROCESS-PLAN.md). Open or update a numbered LEP and wait
+for an `Accepted` decision before implementation. Draft or Review status is not
+an implementation authorization. For an exempt typo, documentation
+clarification, ordinary published-behavior bug fix, or private deployment
+extension, state the exemption in the pull request.
+
 ## What belongs in the core vs. extensions
 
 - **Core** changes (envelope, canonical core, message types, error
