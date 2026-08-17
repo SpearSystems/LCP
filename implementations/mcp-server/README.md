@@ -36,6 +36,22 @@ The adapter delegates HTTP, HMAC signing, retries, and raw-body security
 primitives to `lcp-sdk`; it only provides the MCP tool binding and local schema
 fallback.
 
+### Safety behavior
+
+- **Local validation before send.** Every tool-created envelope (lead, call,
+  bid) is validated with the bundled `lcp-sdk` schema validator before any
+  request is made. Malformed payloads fail with `LCP-100` and never reach the
+  network.
+- **Schema lookup.** `get_schema` queries the REST endpoint first. If the
+  endpoint is unreachable (transport error), it falls back to the repository's
+  `schemas/` and `verticals/` directories; when the endpoint answers with an
+  HTTP error (for example 401 or 404), that error is surfaced instead of being
+  masked by the local fallback. Local schema resolution is confined to the
+  approved directories — traversal and symlink escapes are rejected.
+- **Encoded identifiers.** Lead IDs and schema names are percent-encoded per
+  path segment before they are interpolated into URLs, so `?`, `#`, and `..`
+  cannot alter the request.
+
 ## Configuration
 
 The server reads its target endpoint from environment variables:

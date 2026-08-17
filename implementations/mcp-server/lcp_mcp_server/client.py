@@ -10,9 +10,28 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import quote
 
 from lcp_sdk import LCPClient as SDKLCPClient
 from lcp_sdk import LCPHTTPError
+
+
+def _quote_path_segment(value: str) -> str:
+    """Percent-encode a URL path segment, neutralizing traversal and query chars.
+
+    ``urllib.parse.quote`` leaves ``.`` and ``..`` unencoded, so ``..`` is
+    escaped explicitly to keep ``/../`` from surviving into the request path.
+    """
+    return quote(str(value), safe="").replace("..", "%2E%2E")
+
+
+def _quote_multi_segment(value: str) -> str:
+    """Encode a slash-separated name (e.g. ``verticals/mortgage``) segment-wise.
+
+    Legitimate schema names keep their ``/`` separators; every other character
+    (including ``..``, ``?``, and ``#``) is percent-encoded.
+    """
+    return "/".join(_quote_path_segment(part) for part in str(value).split("/"))
 
 
 class LCPClient:
@@ -67,10 +86,10 @@ class LCPClient:
         return self.post("/v1/lcp/calls", envelope)
 
     def query_lead_status(self, lead_id: str) -> dict[str, Any]:
-        return self.get(f"/v1/lcp/leads/{lead_id}")
+        return self.get(f"/v1/lcp/leads/{_quote_path_segment(lead_id)}")
 
     def get_schema(self, name: str) -> dict[str, Any]:
-        return self.get(f"/v1/lcp/schemas/{name}")
+        return self.get(f"/v1/lcp/schemas/{_quote_multi_segment(name)}")
 
     def get_capabilities(self) -> dict[str, Any]:
         return self.get("/v1/lcp/capabilities")

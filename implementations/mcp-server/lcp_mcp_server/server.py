@@ -21,6 +21,7 @@ import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from lcp_sdk import build_envelope
+from lcp_sdk.validation import SchemaValidator, ValidationError
 
 from .client import LCPClient
 from .schema_loader import list_schemas, load_schema
@@ -40,6 +41,30 @@ def _platform_receiver_id() -> str:
 def _tool_result(data: dict[str, Any]) -> list[types.TextContent]:
     """Format a dict as an MCP text content response."""
     return [types.TextContent(type="text", text=json.dumps(data, indent=2))]
+
+
+def _validated_envelope(
+    msg_type: str,
+    sender_id: str | None,
+    receiver_id: str,
+    payload: Any,
+) -> tuple[dict[str, Any] | None, list[types.TextContent] | None]:
+    """Build and locally validate a tool-created envelope before it is sent.
+
+    Returns ``(envelope, None)`` on success or ``(None, error_result)`` so the
+    tool handler can return the error without ever reaching the network.
+    """
+    if not isinstance(payload, dict):
+        return None, _error_result("Tool payload must be a JSON object", code="LCP-100")
+    envelope = _make_envelope(msg_type, sender_id, receiver_id, payload)
+    try:
+        SchemaValidator().require_valid_envelope(envelope)
+    except ValidationError as exc:
+        return None, _error_result(
+            f"Tool payload failed local LCP validation: {'; '.join(exc.errors[:3])}",
+            code="LCP-100",
+        )
+    return envelope, None
 
 
 def _error_result(message: str, code: str = "LCP-500") -> list[types.TextContent]:
@@ -155,14 +180,18 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
     if name == "submit_lead":
         receiver_id = arguments.get("receiver_id", "")
         payload = arguments.get("payload", {})
-        envelope = _make_envelope("lead", client.sender_id, receiver_id, payload)
+        envelope, error = _validated_envelope("lead", client.sender_id, receiver_id, payload)
+        if error is not None:
+            return error
         result = client.submit_lead(envelope)
         return _tool_result(result)
 
     elif name == "submit_call":
         receiver_id = arguments.get("receiver_id", "")
         payload = arguments.get("payload", {})
-        envelope = _make_envelope("call", client.sender_id, receiver_id, payload)
+        envelope, error = _validated_envelope("call", client.sender_id, receiver_id, payload)
+        if error is not None:
+            return error
         result = client.submit_call(envelope)
         return _tool_result(result)
 
@@ -173,13 +202,23 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
 
     elif name == "get_schema":
         schema_name = arguments.get("name", "")
-        # Try the REST endpoint first
+        # Try the REST endpoint first. Fall back to local repo files only when
+        # the endpoint is unreachable; when it answers (any HTTP status), its
+        # error is surfaced instead of being masked by the local fallback.
+        result = None
         try:
             result = client.get_schema(schema_name)
+        except Exception:
+            result = None  # transport error -> local fallback
+        if result is not None:
             if result.get("_ok"):
                 return _tool_result(result)
-        except Exception:
-            pass  # Fall back to local repo
+            status = result.get("_status_code")
+            body_text = str(result.get("error") or result.get("raw") or result)[:300]
+            return _error_result(
+                f"LCP endpoint rejected schema request (HTTP {status}): {body_text}",
+                code=str(result.get("code") or "LCP-500"),
+            )
         # Fall back to local repo files
         schema = load_schema(schema_name)
         if schema:
@@ -214,7 +253,9 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
             if opt_field in arguments:
                 payload[opt_field] = arguments[opt_field]
         receiver_id = _platform_receiver_id()  # bids go to the platform, not a buyer
-        envelope = _make_envelope("bid", client.sender_id, receiver_id, payload)
+        envelope, error = _validated_envelope("bid", client.sender_id, receiver_id, payload)
+        if error is not None:
+            return error
         result = client.post("/v1/lcp/bids", envelope)
         return _tool_result(result)
 
