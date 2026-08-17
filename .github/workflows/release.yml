@@ -430,6 +430,9 @@ jobs:
                   != f"{container_metadata.get('image')}@{container_metadata.get('digest')}"
               ):
                   raise SystemExit("container metadata is not bound to the release commit and digest")
+              # The offline verifier requires the manifest to name the metadata
+              # file beside it and to carry the container workflow run id.
+              container_metadata["metadata"] = "lcp-container-release.json"
           manifest = {
               "protocol": "LCP",
               "release_tag": os.environ["RELEASE_TAG"],
