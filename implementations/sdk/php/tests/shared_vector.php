@@ -10,4 +10,27 @@ Lcp\Signing::verify('sdk-shared-secret', $signature, '2026-08-15T10:20:00Z', 'sd
 $root = __DIR__ . '/../../../..';
 $validator = Lcp\SchemaValidator::fromDirectory($root . '/schemas');
 $validator->validateEnvelope(json_decode(file_get_contents($root . '/examples/lead.json'), true));
+$corpus = json_decode(file_get_contents($root . '/test-vectors/sdk/validation-corpus.json'), true);
+$failures = [];
+foreach ($corpus['fixtures'] as $fixture) {
+    $isOffer = isset($fixture['offer']);
+    $document = $isOffer ? $fixture['offer'] : $fixture['envelope'];
+    $passed = true;
+    try {
+        if ($isOffer) {
+            $validator->validateOffer($document);
+        } else {
+            $validator->validateEnvelope($document);
+        }
+    } catch (RuntimeException $e) {
+        $passed = false;
+    }
+    if ($passed !== ($fixture['expect'] === 'pass')) {
+        $failures[] = $fixture['id'] . ' (' . $fixture['rule'] . '): expected ' . $fixture['expect'];
+    }
+}
+if ($failures) {
+    throw new RuntimeException('Shared validation corpus mismatches: ' . implode(', ', $failures));
+}
 echo "PHP SDK HMAC and full JSON Schema vectors passed\n";
+echo "PHP SDK shared validation corpus passed\n";

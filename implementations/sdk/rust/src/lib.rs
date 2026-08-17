@@ -98,6 +98,52 @@ mod tests {
     }
 
     #[test]
+    fn shared_validation_corpus() {
+        use std::collections::HashMap;
+        use std::path::Path;
+        let root = Path::new("../../..");
+        let mut schemas = HashMap::new();
+        for directory in ["schemas", "verticals"] {
+            let dir = root.join(directory);
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                    continue;
+                }
+                let name = format!("{directory}/{}", path.file_name().unwrap().to_string_lossy());
+                schemas.insert(
+                    name,
+                    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap(),
+                );
+            }
+        }
+        let validator = SchemaValidator::new(schemas);
+        let corpus: Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("test-vectors/sdk/validation-corpus.json")).unwrap(),
+        )
+        .unwrap();
+        let mut mismatches: Vec<String> = Vec::new();
+        for fixture in corpus["fixtures"].as_array().unwrap() {
+            let id = fixture["id"].as_str().unwrap();
+            let rule = fixture["rule"].as_str().unwrap();
+            let expect_pass = fixture["expect"].as_str() == Some("pass");
+            let is_offer = fixture.get("offer").is_some();
+            let document = if is_offer { &fixture["offer"] } else { &fixture["envelope"] };
+            let result = if is_offer {
+                validator.validate_offer(document)
+            } else {
+                validator.validate_envelope(document)
+            };
+            let passed = result.is_ok();
+            if passed != expect_pass {
+                let detail = result.err().map(|e| e.to_string()).unwrap_or_default();
+                mismatches.push(format!("{id} ({rule}): expected pass={expect_pass}, got {detail}"));
+            }
+        }
+        assert!(mismatches.is_empty(), "corpus mismatches: {mismatches:?}");
+    }
+
+    #[test]
     fn reject_bid_without_price_serializes_and_validates() {
         use std::collections::HashMap;
         let bid = generated_models::BidPayload {

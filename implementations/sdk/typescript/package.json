@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/hmac.test.mjs"
+    "test": "npm run build && node test/hmac.test.mjs && node test/validation-corpus.test.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

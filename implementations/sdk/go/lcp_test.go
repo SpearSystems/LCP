@@ -59,6 +59,65 @@ func TestFullSchemaValidation(t *testing.T) {
 	}
 }
 
+func TestSharedValidationCorpus(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	schemas := map[string][]byte{}
+	for _, directory := range []string{"schemas", "verticals"} {
+		entries, err := os.ReadDir(filepath.Join(root, directory))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			raw, readErr := os.ReadFile(filepath.Join(root, directory, entry.Name()))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			schemas[directory+"/"+entry.Name()] = raw
+		}
+	}
+	corpusRaw, err := os.ReadFile(filepath.Join(root, "test-vectors", "sdk", "validation-corpus.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var corpus struct {
+		Fixtures []struct {
+			ID       string         `json:"id"`
+			Rule     string         `json:"rule"`
+			Expect   string         `json:"expect"`
+			Envelope map[string]any `json:"envelope"`
+			Offer    map[string]any `json:"offer"`
+		} `json:"fixtures"`
+	}
+	if err := json.Unmarshal(corpusRaw, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range corpus.Fixtures {
+		isOffer := fixture.Envelope == nil
+		document := fixture.Envelope
+		if isOffer {
+			document = fixture.Offer
+		}
+		raw, err := json.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var validateErr error
+		if isOffer {
+			validateErr = ValidateOffer(schemas, raw)
+		} else {
+			validateErr = ValidateEnvelopeBundle(schemas, raw)
+		}
+		passed := validateErr == nil
+		expected := fixture.Expect == "pass"
+		if passed != expected {
+			t.Errorf("fixture %s (%s): expected %s, got %v", fixture.ID, fixture.Rule, fixture.Expect, validateErr)
+		}
+	}
+}
+
 func TestVerifyHTTPHeadersRequiresRawAuthentication(t *testing.T) {
 	headers := http.Header{}
 	headers.Set("X-LCP-Signature", SignHMAC("secret", "2026-08-15T10:20:00Z", "key", []byte(`{"hello":"world"}`)))

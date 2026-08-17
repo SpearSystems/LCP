@@ -18,4 +18,28 @@ var repositoryRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,
 var schemaValidator = LcpSchemaValidator.FromDirectory(Path.Combine(repositoryRoot, "schemas"));
 var leadFixture = JsonNode.Parse(File.ReadAllText(Path.Combine(repositoryRoot, "examples", "lead.json")))!;
 schemaValidator.ValidateEnvelope(leadFixture);
+var corpus = JsonNode.Parse(File.ReadAllText(Path.Combine(repositoryRoot, "test-vectors", "sdk", "validation-corpus.json")))!;
+var corpusFailures = new List<string>();
+foreach (var fixtureNode in corpus["fixtures"]!.AsArray())
+{
+    var fixture = fixtureNode!.AsObject();
+    var id = (string)fixture["id"]!;
+    var rule = (string)fixture["rule"]!;
+    var expectPass = (string)fixture["expect"]! == "pass";
+    var offerNode = fixture["offer"];
+    var isOffer = offerNode != null;
+    var document = isOffer ? offerNode : fixture["envelope"];
+    var passed = true;
+    try
+    {
+        if (isOffer) schemaValidator.ValidateOffer(document!);
+        else schemaValidator.ValidateEnvelope(document!);
+    }
+    catch { passed = false; }
+    if (passed != expectPass)
+        corpusFailures.Add($"{id} ({rule}): expected pass={expectPass}");
+}
+if (corpusFailures.Count > 0)
+    throw new Exception("Shared validation corpus mismatches: " + string.Join("; ", corpusFailures));
 Console.WriteLine("C# SDK HMAC and full JSON Schema vectors passed");
+Console.WriteLine("C# SDK shared validation corpus passed");

@@ -1,0 +1,423 @@
+{
+  "description": "Shared cross-language SDK validation corpus. Every SDK validator must agree on the pass/fail outcome of every fixture. Assertions are boolean (pass/fail) only; error text varies across validator libraries. Rules mirror the language-neutral validation contract: envelope, message dispatch, payload required fields, vertical validation, strict ping allowlist + ping_safe, offer validation, and uuid/date-time/date/email/uri format assertions.",
+  "protocol_version": "1.0.0",
+  "fixtures": [
+    {
+      "id": "sdk-001",
+      "rule": "envelope",
+      "expect": "pass",
+      "description": "Valid full lead envelope (example shape, no expiry/exclusivity).",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+              "consent_evidence": [
+                { "type": "verified_consent", "provider": "internal", "token_or_url": "evd_abc123def456" }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "campaign_id": "camp_mortgage_nsw_2026"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-002",
+      "rule": "ping_allowlist",
+      "expect": "pass",
+      "description": "Valid ping with only ping-safe fields (HMAC phone hash, banded attributes).",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "cc0e8400-e29b-41d4-a716-446655440011",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-001-ping-dedup-001"
+          },
+          "payload": {
+            "ping_id": "ping_dedup_001",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "purchase",
+              "loan_amount_band": "500k_750k"
+            },
+            "compliance_flags": { "consent": true, "otp_verified": false },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-003",
+      "rule": "envelope_version",
+      "expect": "fail",
+      "description": "Envelope missing lcp.version.",
+      "envelope": {
+        "lcp": {
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-version"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "jane.smith@example.com", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-004",
+      "rule": "message_dispatch",
+      "expect": "fail",
+      "description": "Unknown message type must be rejected with a structured error.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440021",
+            "type": "teleport",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-teleport-001"
+          },
+          "payload": {}
+        }
+      }
+    },
+    {
+      "id": "sdk-005",
+      "rule": "uuid_format",
+      "expect": "fail",
+      "description": "Message id is not a UUID.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "not-a-uuid",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-uuid"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "jane.smith@example.com", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-006",
+      "rule": "datetime_format",
+      "expect": "fail",
+      "description": "Message timestamp is not ISO 8601 date-time.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440022",
+            "type": "lead",
+            "timestamp": "2026-08-15 10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-timestamp"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "jane.smith@example.com", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-007",
+      "rule": "email_format",
+      "expect": "fail",
+      "description": "Consumer email is not a valid email address.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440023",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-email"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "not-an-email", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-008",
+      "rule": "date_format",
+      "expect": "fail",
+      "description": "Consumer dob is not an ISO 8601 date.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440024",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-dob"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "dob": "15/08/1990"
+            },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-009",
+      "rule": "uri_format",
+      "expect": "fail",
+      "description": "Consent source URL is not a valid URI.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440025",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-uri"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "jane.smith@example.com", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "not a uri",
+              "consent_purposes": ["calls"]
+            },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-010",
+      "rule": "payload_required_fields",
+      "expect": "fail",
+      "description": "Lead consumer has no name, email, or phone — violates the contact anyOf requirement.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440026",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-no-contact"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "dob": "1990-01-01" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-011",
+      "rule": "vertical_validation",
+      "expect": "fail",
+      "description": "Mortgage attributes use a loan_type outside the vertical enum.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440027",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-bad-enum"
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Jane", "email": "jane.smith@example.com", "phone": "+61412345678" },
+            "location": { "country_code": "AU" },
+            "attributes": { "vertical": "mortgage", "loan_type": "reverse" }
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-012",
+      "rule": "ping_safe",
+      "expect": "fail",
+      "description": "Ping attributes carry loan_amount_cents which is ping_safe: false — must not cross the ping boundary.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "cc0e8400-e29b-41d4-a716-446655440012",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-001-ping-bad-pingsafe"
+          },
+          "payload": {
+            "ping_id": "ping_bad_pingsafe",
+            "lead_reference": "ref_bad_pingsafe",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "purchase",
+              "loan_amount_cents": 65000000
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    {
+      "id": "sdk-013",
+      "rule": "offer_required_fields",
+      "expect": "fail",
+      "description": "Offer missing floor_price_cents and currency.",
+      "offer": {
+        "offer_id": "mortgage-au-incomplete",
+        "buyer_id": "buyer_001",
+        "vertical": "mortgage",
+        "countries": ["AU"]
+      }
+    },
+    {
+      "id": "sdk-014",
+      "rule": "offer_validation",
+      "expect": "pass",
+      "description": "Valid offer.",
+      "offer": {
+        "offer_id": "mortgage-au",
+        "buyer_id": "buyer_001",
+        "active": true,
+        "vertical": "mortgage",
+        "countries": ["AU"],
+        "floor_price_cents": 1500,
+        "currency": "AUD",
+        "require_consent_evidence": true,
+        "webhook_url": "http://127.0.0.1:9999/buyer",
+        "ping_timeout_seconds": 30
+      }
+    }
+  ]
+}
