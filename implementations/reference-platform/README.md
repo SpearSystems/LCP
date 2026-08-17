@@ -171,6 +171,26 @@ gunicorn --bind 0.0.0.0:8080 --workers 3 --threads 4 \
   --access-logfile - lcp_platform.wsgi:application
 ```
 
+The WSGI path handles binary attachments with the same behavior as the local
+server: the attachment body limit (`LCP_MAX_ATTACHMENT_BYTES`) is selected
+before `wsgi.input` is read, downloads stream raw encrypted bytes (never
+`json.dumps`), and binary headers (`Content-Type`, `Content-Disposition`,
+`Content-Length`) are forwarded. Upload and download with curl:
+
+```bash
+# Upload: Bearer-authenticated, application/octet-stream; the route's body
+# limit applies before wsgi.input is read.
+curl -sS -X POST "$LCP_ENDPOINT/v1/lcp/attachments" \
+  -H "Authorization: Bearer $LCP_API_KEY" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @scanned-evidence.bin
+
+# Download: bytes are returned unchanged with the original content headers.
+curl -sS "$LCP_ENDPOINT/v1/lcp/attachments/<attachment_id>" \
+  -H "Authorization: Bearer $LCP_API_KEY" \
+  -o evidence.bin
+```
+
 Run `lcp-platform-worker` as a separate supervised process. Place the
 application behind TLS; the included threaded server is intended for local
 operation and smoke tests.
@@ -212,6 +232,23 @@ inspect and recover them without reading payloads:
 lcp-platform-admin dead-letter list --status OPEN
 lcp-platform-admin dead-letter quarantine --job-id <job-id>
 lcp-platform-admin dead-letter replay --job-id <job-id>
+```
+
+Lifecycle events are role-scoped and idempotent. A delivered buyer reports
+`ACCEPTED`/`REJECTED`/`DISPUTED`; the publisher reports `CONSENT_WITHDRAWN`
+and `ERASURE_REQUEST`; every applied transition writes an audit record with
+actor, event, and previous status. Status reads are projected by role — a
+buyer sees only its own match decisions, payables, and events:
+
+```bash
+# Buyer confirms the delivered lead (event -> audit row lead.accepted).
+curl -sS -X POST "$LCP_ENDPOINT/v1/lcp/events" \
+  -H "Content-Type: application/json" \
+  -d '{"lcp":{"version":"1.0.0","message":{"type":"event","id":"<uuid>","timestamp":"2026-08-18T00:00:00Z","sender_id":"buyer_001","receiver_id":"platform_001"},"payload":{"lead_id":"<lead_id>","event":"ACCEPTED","timestamp":"2026-08-18T00:00:00Z"}}}'
+
+# Publisher reads status; the response contains only publisher-scoped data.
+curl -sS "$LCP_ENDPOINT/v1/lcp/leads/<lead_id>" \
+  -H "Authorization: Bearer $LCP_API_KEY"
 ```
 
 ## Tenant and credential model

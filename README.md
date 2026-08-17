@@ -29,7 +29,7 @@
 - **Developer:** [SDK index](implementations/sdk/) → [SDK contract and code generation](docs/SDK-ROADMAP.md) → [conformance vectors](test-vectors/)
 - **Operator/security reviewer:** [deployment](docs/DEPLOYMENT.md) → [security architecture](docs/SECURITY-ARCHITECTURE.md) → [operations](docs/OPERATIONS.md)
 - **Maintainer/release approver:** [branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md) → [release verification](docs/RELEASE.md)
-- **AI-agent builder:** [MCP adapter](implementations/mcp-server/) → [SDK relationship](docs/SDK-ROADMAP.md#relationship-to-mcp)
+- **AI-agent builder:** [MCP adapter](implementations/mcp-server/) → [SDK relationship](docs/SDK-ROADMAP.md#mcp-relationship)
 
 </details>
 

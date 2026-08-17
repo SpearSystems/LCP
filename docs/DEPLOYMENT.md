@@ -51,6 +51,24 @@ Production startup fails closed unless
 `LCP_PII_ENCRYPTION_KEY` is configured; it is a URL-safe base64 32-byte AES-GCM
 key used to protect persisted envelopes.
 
+Offer discovery, quota lookup, and candidate routing run on the relational
+`tenant_id`/`vertical`/`active` columns (kept in sync with `offer_json`), so no
+SQLite-specific SQL reaches the production backend:
+
+```bash
+# Active offers for a tenant, optionally filtered by vertical.
+curl -sS "$LCP_ENDPOINT/v1/lcp/offers?vertical=mortgage" \
+  -H "Authorization: Bearer $LCP_API_KEY"
+
+# Monthly quota/pacing for one offer.
+curl -sS "$LCP_ENDPOINT/v1/lcp/offers/<offer_id>/quota" \
+  -H "Authorization: Bearer $LCP_API_KEY"
+```
+
+Tenant isolation is enforced in the query shape (`WHERE active AND tenant_id =
+? [AND vertical = ?]`); the integration suite runs the same discovery, quota,
+and candidate-selection assertions against a real Postgres service.
+
 ## Secrets
 
 Prefer a mounted secret-manager file over database-stored HMAC secrets:

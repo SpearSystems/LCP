@@ -13,14 +13,14 @@
 | I want to… | Start here | Then read |
 |---|---|---|
 | Send leads as a publisher | [Publisher onboarding](PUBLISHER-ONBOARDING.md) | [Integration examples](../examples/integrations/) → [SDK index](../implementations/sdk/) |
-| Buy or receive leads | [Buyer onboarding](BUYER-ONBOARDING.md) | [Offer criteria](BUYER-ONBOARDING.md#offer-criteria) → [Platform integration](PLATFORM-INTEGRATION.md) |
+| Buy or receive leads | [Buyer onboarding](BUYER-ONBOARDING.md) | [Offer criteria](BUYER-ONBOARDING.md#3-publish-an-offer) → [Platform integration](PLATFORM-INTEGRATION.md) |
 | Run an LCP platform | [Platform integration](PLATFORM-INTEGRATION.md) | [Reference platform](../implementations/reference-platform/README.md) → [Deployment](DEPLOYMENT.md) |
 | Build an application | [SDK index](../implementations/sdk/) | [SDK support policy](SDK-ROADMAP.md) → your language README |
 | Publish or verify a release | [Release guide](RELEASE.md) | [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) → [Container verification](CONTAINER-SUPPLY-CHAIN.md) |
 | Configure protected releases | [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) | [Release guide](RELEASE.md) → [Supply-chain security](SUPPLY-CHAIN-SECURITY.md) |
 | Deploy securely | [Deployment](DEPLOYMENT.md) | [Security profiles](SECURITY-PROFILES.md) → [Operations](OPERATIONS.md) |
 | Understand the protocol | [Canonical specification](../SPEC.md) | [Schemas](../schemas/) → [Conformance vectors](../test-vectors/) |
-| Connect an AI agent | [MCP adapter](../implementations/mcp-server/README.md) | [SDK contract](SDK-ROADMAP.md#relationship-to-mcp) |
+| Connect an AI agent | [MCP adapter](../implementations/mcp-server/README.md) | [SDK contract](SDK-ROADMAP.md#mcp-relationship) |
 
 </details>
 
