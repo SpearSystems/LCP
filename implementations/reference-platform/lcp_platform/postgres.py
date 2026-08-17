@@ -16,6 +16,11 @@ from typing import Any, Iterator
 from .crypto import EnvelopeCipher
 from .storage import Store, now_iso
 
+# Advisory lock key serializing schema bootstrap across concurrent workers.
+# Any fixed value works; it only needs to be shared by every worker of this
+# platform against the same database. Must fit a signed 64-bit bigint.
+_SCHEMA_LOCK_KEY = 0x4C435053  # "LCPS"
+
 
 def _decode_text(value: Any) -> Any:
     """Normalize psycopg binary text results across psycopg/libpq builds."""
@@ -158,6 +163,25 @@ class PostgresStore(Store):
     def close(self) -> None:
         with self._lock:
             self._raw.close()
+
+    def initialize(self) -> None:
+        """Create the schema idempotently, serialized across concurrent workers.
+
+        Every worker runs ``CREATE TABLE IF NOT EXISTS`` plus the
+        ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` migration chain on
+        startup. Without serialization, interleaved ``AccessExclusiveLock``
+        acquisition on different tables deadlocks (observed in the concurrent
+        Postgres benchmark: three workers each holding one table lock and
+        waiting on another, with an ingest read caught in the cycle). A
+        session-level advisory lock makes one worker run the DDL at a time;
+        the others block until it finishes, then proceed to ingest.
+        """
+        with self._lock:
+            self._raw.execute("SELECT pg_advisory_lock(%s)", (_SCHEMA_LOCK_KEY,))
+            try:
+                super().initialize()
+            finally:
+                self._raw.execute("SELECT pg_advisory_unlock(%s)", (_SCHEMA_LOCK_KEY,))
 
     def list_offers(
         self,
