@@ -15,3 +15,7 @@ __pycache__/
 .venv/
 data/
 *.sqlite3
+
+# SDK build artifacts (Maven/Gradle) — never published
+implementations/sdk/java/target/
+implementations/sdk/kotlin/.gradle/
