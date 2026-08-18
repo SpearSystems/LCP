@@ -1,9 +1,12 @@
 # Release record — v1.0.2
 
-> **Status: prepared for publication.** This record tracks the v1.0.2
-> candidate. The signed `v1.0.2` tag and GitHub release are created by the
-> maintainer after the final gate re-run; the tag must match `SDK_VERSION`
-> (1.0.2) or the release workflow fails at coordinated-metadata validation.
+> **Status: published on 2026-08-18.**
+>
+> The signed `v1.0.2` tag resolves to commit
+> `7ea57f1aabd0ac583e40541360119468779940c7`. The GitHub release and signed
+> evidence assets are published at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.2>. Do not move or
+> reuse this immutable version.
 
 ## 1. Release identity
 
@@ -11,9 +14,9 @@
 - [x] Reference platform package: `lcp-reference-platform==1.0.2`.
 - [x] Release changes are additive implementation/tooling changes; no universal
       schema, message type, or wire-contract change was made.
-- [ ] Published commit SHA: filled in at tag time.
-- [ ] Signed annotated tag: `v1.0.2`.
-- [ ] GitHub release record and signed evidence assets are published.
+- [x] Published commit SHA: `7ea57f1aabd0ac583e40541360119468779940c7`.
+- [x] Signed annotated tag: `v1.0.2`.
+- [x] GitHub release record and signed evidence assets are published.
 
 ## 2. Included changes
 
@@ -38,10 +41,10 @@
 - [x] `python test-vectors/conformance.py` passed: 30/30.
 - [x] Reference-platform suite passed: 57 tests (incl. real Postgres 16).
 - [x] Tooling suite passed: 44 tests (incl. link checker and stale-state check).
-- [x] All seven CI workflows green on the release candidate commit
+- [x] All seven CI workflows green on the release commit
       (Test, SDK compatibility, Security and supply chain, Performance,
       Publish/sign/attest, Attribution policy, NuGet submission).
-- [ ] Tag-triggered release workflows pass (Test, Security, SDK compatibility,
+- [x] Tag-triggered release workflows passed (Test, Security, SDK compatibility,
       Publish SDKs, Publish Python, container, signed release).
 - [ ] Download the release assets and run
       `tools/verify_release_evidence.py`; record the reviewer and date below.
@@ -54,9 +57,11 @@ not infer or deploy the image from its mutable tag.
 
 - [x] Single-maintainer approval (user decision 2026-08-18; no second
       reviewer required for this patch).
-- [ ] Immutable annotated tag `v1.0.2` created and published.
-- [ ] Tagged Test, Security and supply-chain, SDK compatibility, package,
+- [x] Immutable annotated tag `v1.0.2` created and published.
+- [x] Tagged Test, Security and supply-chain, SDK compatibility, package,
       container, and signed-release workflows completed.
+- [x] All 12 packages published to their registries (PyPI, npm, NuGet, Maven
+      Central ×2, crates.io, RubyGems, Packagist/Go/Swift via tag).
 - [ ] Record the offline evidence reviewer, package checksums, and deployed
       container digest in the release-operations log. The signed manifest
       remains the source of truth for the digest.

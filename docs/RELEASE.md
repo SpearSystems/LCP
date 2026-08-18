@@ -2,15 +2,11 @@
 
 > **Release page · Page 3 of 6**
 
-> **Current release:** `v1.0.1` was published on 2026-08-17 from signed tag
-> `v1.0.1`, resolving to commit
-> `61886511d2c9424ffb197d0788b049216a4645a2`. The GitHub release and its signed
+> **Current release:** `v1.0.2` was published on 2026-08-18 from signed tag
+> `v1.0.2`, resolving to commit
+> `7ea57f1aabd0ac583e40541360119468779940c7`. The GitHub release and its signed
 > evidence assets are available at
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.1>.
->
-> **Next release:** `v1.0.2` is prepared (SDK_VERSION and all package metadata
-> bumped, changelog and release ticket updated). The maintainer creates the
-> signed tag when the final gate re-run is green.
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.2>.
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -93,24 +89,27 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
-## v1.0.1 release evidence
+## v1.0.2 release evidence
 
-The published patch release added implementation-level candidate indexing and
-benchmark tooling without changing schemas, message types, or the universal
-wire contract. Its immutable tag and commit are recorded above. Download the
-release manifest and evidence assets before consuming packages or the
-reference image:
+The published patch release carried the repository-audit remediation
+(attachment authorization, lifecycle transition enforcement, equivalent
+ten-SDK validators, sensitive-vertical ping policy, MCP adapter hardening,
+and more) plus the Kotlin SDK Jackson 3 compile fix, dependency pins, and
+load-benchmark fixes, without changing schemas, message types, or the
+universal wire contract. Its immutable tag and commit are recorded above.
+Download the release manifest and evidence assets before consuming packages
+or the reference image:
 
 ```bash
 mkdir -p release-assets
-gh release download v1.0.1 \
+gh release download v1.0.2 \
   --repo SpearSystems/LCP \
   --dir release-assets \
   --clobber
 python3 tools/verify_release_evidence.py release-assets
 ```
 
-The published release assets are the evidence for `v1.0.1`; do not rerun a
+The published release assets are the evidence for `v1.0.2`; do not rerun a
 release dry run with an already-occupied version. Use the non-publishing dry
 run below only for a new version after updating `SDK_VERSION` and package
 metadata.
@@ -118,13 +117,13 @@ metadata.
 ## Non-publishing release dry run
 
 For the next patch, first update `SDK_VERSION` and every package manifest to
-`1.0.2`, then run the workflow against the exact candidate commit:
+`1.0.3`, then run the workflow against the exact candidate commit:
 
 ```bash
 gh workflow run release.yml \
   --repo SpearSystems/LCP \
   --ref main \
-  -f tag=v1.0.2 \
+  -f tag=v1.0.3 \
   -f target_sha="$(git rev-parse HEAD)"
 ```
 
@@ -204,7 +203,7 @@ that repository before retrying the publication. The Rust bootstrap version is
 not part of the v1 release; the `1.0.0` publication came through the configured crates.io OIDC publisher.
 RubyGems now uses its active OIDC publisher for subsequent versions.
 
-The v1.0.1 release is the current published LCP release; its signed tag and
+The v1.0.2 release is the current published LCP release; its signed tag and
 release manifest identify the exact source commit and package evidence. The
 release manifest is the authoritative list for a specific tag. Package
 registries can take time to index a new version; verify the package's version
@@ -226,7 +225,7 @@ Download `release-manifest.json`, `release-notes.md`, and their corresponding
 official, verified distribution and set the expected release workflow identity:
 
 ```bash
-export VERSION='1.0.1'
+export VERSION='1.0.2'
 export REPOSITORY='SpearSystems/LCP'
 export TAG="v${VERSION}"
 export WORKFLOW_IDENTITY="https://github.com/${REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
