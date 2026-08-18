@@ -6,6 +6,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security and hardening
+
+- Rust SDK: bump `h2` 0.4.15 → 0.4.16 (RUSTSEC-2026-0258, low-severity
+  unbounded empty DATA frames DoS). Folded into v1.1 — no patch release
+  for the published 1.0.2 crate; the fix ships with the next release.
+
 ## [1.0.2] — 2026-08-18
 
 ### Security and hardening (repository audit remediation)
