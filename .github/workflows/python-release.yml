@@ -74,7 +74,7 @@ jobs:
           # editables as an audit failure. Vulnerabilities still return nonzero.
           pip-audit --skip-editable
       - name: Generate source SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: .
           format: cyclonedx-json
@@ -89,7 +89,7 @@ jobs:
           tags: lcp-reference-platform:release-check
           load: true
       - name: Generate release container SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: lcp-reference-platform:release-check
           format: cyclonedx-json
