@@ -3,10 +3,36 @@
 - **Title:** Canonical timestamp generation and cross-SDK signature interop
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
-- **Status:** **Draft** — not accepted, not implemented
+- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized
 - **Target version:** v1.1.0 (documentation clarification; no wire-contract change)
-- **Evidence corrections applied:** evidence-table and derived-count fixes
-  per ARB retro-audit at `dee5584` (no status change; remains Draft)
+
+## Decision (maintainer, 2026-11-03)
+
+**Accepted.** Recorded by the maintainer (randybeno) under the per-decision
+sign-off model. Decision basis: the independent ARB L-Spec review dossier
+(<https://github.com/SpearSystems/LCP/issues/121#issuecomment-6578306330>) —
+verdict FINDINGS with no acceptance blockers; every normative claim survived
+execution-backed refutation (five SDKs probed live at the subject SHA,
+signature identity 10/10, canonical form parseable by every executable
+verifier, normalize-then-recompute class closed by the MUST-verbatim
+wording). The earlier retro-audit corrections (C1–C10, PR #149) are landed;
+the process finding F-4 (advisory→blocking drift) is neutralized by the
+merged baseline-sync test (#152,
+`test_known_fractional_baseline_matches_lep_evidence_table`).
+
+Conditions carried to implementation: fix the "holds no outbound signer"
+sentence (dossier F-1 — the platform signs outbound webhooks via
+`router.py → messages.webhook_headers → auth.signature_for`, emitting the
+canonical form; the format conclusion stands), the Swift "only the canonical
+form" overstatement (F-2: Swift accepts `+00:00` offsets; it rejects only
+fractional seconds), and the deferred-Q3 "JWT/JWS" misnomer (F-3: the
+security block is the `HMAC-SHA256` mirror). The public 14-day window is
+waived by the maintainer's recorded decision; the discussion issue remains
+open and any post-decision adopter comment with new evidence reopens this
+record per the trigger clauses.
+
+Evidence corrections (evidence-table and derived-count fixes per ARB
+retro-audit at `dee5584`) landed in PR #149 before acceptance.
 
 Public discussion: <https://github.com/SpearSystems/LCP/issues/121>
 (tracked from `docs/V1.1-ROADMAP.md` Phase 5, "Canonical timestamp
