@@ -19,6 +19,7 @@ recorded in [`LEP-PROCESS-PLAN.md`](LEP-PROCESS-PLAN.md).
 | LEP | Title | Status | Author(s) | Opened | Review deadline | Decision/date | Target version | Proposal | Implementation / traceability |
 |---|---|---|---|---|---|---|---|---|---|
 | LEP-0001 | Bounded batch submission and event subscriptions | Draft | LCP maintainers | 2026-08-18 | — | — | v1.1.0 | [proposal](LEPs/LEP-0001-batch-submission-and-event-subscriptions.md) | Not accepted; not implemented. Public discussion and independent security/privacy review are pending. |
+| LEP-0002 | Canonical timestamp generation and cross-SDK signature interop | Draft | LCP maintainers | 2026-11-02 | — | — | v1.1.0 | [proposal](LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md) | Not accepted; not implemented. Public discussion ([#121](https://github.com/SpearSystems/LCP/issues/121)) and independent security/privacy review are pending. |
 
 ## Status vocabulary
 
