@@ -1,0 +1,52 @@
+{
+  "suite": "lcp-sdk-negative",
+  "version": 1,
+  "group": "ping-pii",
+  "description": "Negative vector for the ping strict-allowlist PII boundary: SPEC.md §4 defines the ping schema as an allowlist (additionalProperties: false), not a blocklist — any field outside it (raw PII especially) is a validation error LCP-008 PII_IN_PING. The non-ping_safe *declared* vertical-attribute path (loan_amount_cents on a mortgage ping) is already locked by the shared corpus fixture sdk-012 and test-vectors/conformance.py check_ping_safe and is deliberately NOT duplicated here; this vector covers the undeclared/PII field path with its error code.",
+  "vectors": [
+    {
+      "id": "lcp-neg-pii-001",
+      "invariant": null,
+      "spec_ref": "SPEC.md §4 ping (strict allowlist; any other field -> LCP-008); SPEC.md §5; SPEC.md §9 PII",
+      "description": "Valid ping envelope (corpus fixture sdk-002) with a raw 'phone' field added to the payload. The ping schema carries phone_hash only; raw phone numbers MUST NOT cross the ping boundary and must be rejected as LCP-008.",
+      "applies_to": ["ping"],
+      "check": "envelope_validate",
+      "inputs": {
+        "envelope": {
+          "lcp": {
+            "version": "1.0.0",
+            "message": {
+              "id": "cc0e8400-e29b-41d4-a716-446655440011",
+              "type": "ping",
+              "timestamp": "2026-08-15T12:00:00Z",
+              "sender_id": "platform_001",
+              "receiver_id": "buyer_002",
+              "idempotency_key": "platform-001-ping-dedup-001"
+            },
+            "payload": {
+              "ping_id": "ping_dedup_001",
+              "lead_reference": "ref_dedup_001",
+              "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "country_code": "US",
+              "state_region": "CA",
+              "vertical": "mortgage",
+              "attributes": {
+                "loan_type": "purchase",
+                "loan_amount_band": "500k_750k"
+              },
+              "compliance_flags": {
+                "consent": true,
+                "otp_verified": false
+              },
+              "floor_price_cents": 2000,
+              "currency": "USD",
+              "phone": "+15551234567"
+            }
+          }
+        }
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-008", "error_name": "PII_IN_PING" },
+      "sdk_exercisable": true
+    }
+  ]
+}

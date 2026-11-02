@@ -1,0 +1,119 @@
+{
+  "suite": "lcp-sdk-negative",
+  "version": 1,
+  "group": "field-allowlist",
+  "description": "Vectors for the SPEC.md §6 extensibility nuance surfaced by LEP-0003: unknown OPTIONAL fields are IGNORED on open objects (additionalProperties: true, e.g. offer.extensions) but REJECTED on closed allowlists (additionalProperties: false, e.g. the message header). Both directions are asserted — an SDK that strips unknown fields everywhere breaks forward compatibility; an SDK that ignores them everywhere breaks the allowlist guarantee.",
+  "vectors": [
+    {
+      "id": "lcp-neg-fld-001",
+      "invariant": null,
+      "spec_ref": "SPEC.md §6 (unknown optional fields ignored; extensions object is open)",
+      "description": "Offer carrying an unknown namespaced field inside the OPEN extensions object must validate (accepted, ignored by consumers that do not register it). Base is the known-good corpus offer fixture.",
+      "applies_to": ["*"],
+      "check": "offer_validate",
+      "inputs": {
+        "offer": {
+          "offer_id": "mortgage-au",
+          "buyer_id": "buyer_001",
+          "active": true,
+          "vertical": "mortgage",
+          "countries": ["AU"],
+          "floor_price_cents": 1500,
+          "currency": "AUD",
+          "require_consent_evidence": true,
+          "webhook_url": "http://127.0.0.1:9999/buyer",
+          "ping_timeout_seconds": 30,
+          "extensions": {
+            "acme.data_lake.score_model": { "weight": 2, "version": "v3" },
+            "acme.data_lake.future_flag": true
+          }
+        }
+      },
+      "expect": { "outcome": "accept", "error_code": null, "error_name": null },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-fld-002",
+      "invariant": null,
+      "spec_ref": "SPEC.md §2 Envelope + §6 (closed objects use additionalProperties: false); SPEC.md §5 LCP-100",
+      "description": "Envelope with an unknown field 'x_debug' inside the CLOSED message header (additionalProperties: false) must be rejected as a validation error — the header allowlist is part of the published contract.",
+      "applies_to": ["*"],
+      "check": "envelope_validate",
+      "inputs": {
+        "envelope": {
+          "lcp": {
+            "version": "1.0.0",
+            "message": {
+              "id": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "lead",
+              "timestamp": "2026-08-15T10:20:00Z",
+              "sender_id": "pub_123",
+              "receiver_id": "platform_001",
+              "correlation_id": null,
+              "idempotency_key": "pub-lead-20260815-001",
+              "test": false,
+              "x_debug": "1"
+            },
+            "payload": {
+              "lead_id": "lead_abc123",
+              "external_id": "pub-internal-456",
+              "submitted_at": "2026-08-15T10:19:50Z",
+              "status": "NEW",
+              "channel": "form",
+              "consumer": {
+                "first_name": "Jane",
+                "last_name": "Smith",
+                "email": "jane.smith@example.com",
+                "phone": "+61412345678",
+                "locale": "en-AU"
+              },
+              "location": {
+                "country_code": "AU",
+                "state_region": "NSW",
+                "postal_code": "2000",
+                "city": "Sydney",
+                "timezone": "Australia/Sydney"
+              },
+              "compliance": {
+                "consent_timestamp": "2026-08-15T10:19:45Z",
+                "consent_source_url": "https://publisher.example.com/landing/mortgage",
+                "consent_text_version": "v2.1",
+                "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+                "consent_evidence": [
+                  { "type": "verified_consent", "provider": "internal", "token_or_url": "evd_abc123def456" }
+                ],
+                "otp_verified": true,
+                "dnc_checked": true
+              },
+              "provenance": {
+                "received_at": "2026-08-15T10:20:01Z",
+                "source_type": "publisher",
+                "source_id": "pub_123",
+                "source_url": "https://publisher.example.com/landing/mortgage",
+                "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                "campaign_id": "camp_mortgage_nsw_2026"
+              },
+              "attributes": {
+                "vertical": "mortgage",
+                "schema_version": "1.0.0",
+                "loan_type": "refinance",
+                "loan_amount_cents": 65000000,
+                "loan_amount_band": "500k_750k",
+                "property_type": "single_family",
+                "property_value_band": "800k_1m",
+                "credit_rating_band": "excellent",
+                "employment_status": "employed",
+                "annual_income_band": "100k_150k",
+                "ltv_ratio_band": "70_80",
+                "is_first_home_buyer": false,
+                "has_existing_mortgage": true
+              }
+            }
+          }
+        }
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-100", "error_name": "VALIDATION_ERROR" },
+      "sdk_exercisable": true
+    }
+  ]
+}

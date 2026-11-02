@@ -1,0 +1,86 @@
+{
+  "suite": "lcp-sdk-negative",
+  "version": 1,
+  "group": "signature",
+  "description": "Negative vectors for security invariants 1-2 (docs/SDK-ROADMAP.md): the HMAC covers the exact wire bytes <timestamp>\\n<idempotency-key>\\n<raw-body>, and verification must operate on raw bytes, never on a re-serialization of the parsed body. Each reject vector carries an accept control with identical inputs except the attacked byte sequence, so a runner that always rejects cannot pass this suite.",
+  "vectors": [
+    {
+      "id": "lcp-neg-sig-001",
+      "invariant": 1,
+      "spec_ref": "SPEC.md §9 Authentication (canonical signing input); SPEC.md §5 LCP-012",
+      "description": "Body modified after signing (one byte flipped) must be rejected.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "4cc333974ad77b9edab4e709ef733023d2bef20a12b50db29dd1f08771a6c468",
+        "timestamp": "2026-08-15T10:20:00Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytez\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-sig-002",
+      "invariant": 1,
+      "spec_ref": "SPEC.md §9 Authentication (canonical signing input)",
+      "description": "Control for lcp-neg-sig-001: the exact signed bytes must verify. Proves the suite's reject direction is meaningful.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "4cc333974ad77b9edab4e709ef733023d2bef20a12b50db29dd1f08771a6c468",
+        "timestamp": "2026-08-15T10:20:00Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "accept", "error_code": null, "error_name": null },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-sig-003",
+      "invariant": 2,
+      "spec_ref": "SPEC.md §9 Authentication (raw-request-body is byte-exact); docs/SDK-ROADMAP.md invariant 2",
+      "description": "Re-serialized body must be rejected: signature covers '{\"b\":2,\"a\":1}' but verification runs over an equivalent-JSON, different-bytes rendering ('{\"a\": 1, \"b\": 2}' — reordered keys, added space). A verifier that re-serializes the parsed object would accept this.",
+      "applies_to": ["*"],
+      "check": "verify_raw_body",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "98c2021ef4f14eecf0bcced8d9c728889ed88692bf9fb8d4d18df8e8b54ee02c",
+        "timestamp": "2026-08-15T10:20:00Z",
+        "idempotency_key": "neg-key-003",
+        "signed_body": "{\"b\":2,\"a\":1}",
+        "verify_body": "{\"a\": 1, \"b\": 2}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-sig-004",
+      "invariant": 2,
+      "spec_ref": "SPEC.md §9 Authentication (raw-request-body is byte-exact)",
+      "description": "Control for lcp-neg-sig-003: verifying over the identical raw bytes (same parse) must accept.",
+      "applies_to": ["*"],
+      "check": "verify_raw_body",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "98c2021ef4f14eecf0bcced8d9c728889ed88692bf9fb8d4d18df8e8b54ee02c",
+        "timestamp": "2026-08-15T10:20:00Z",
+        "idempotency_key": "neg-key-003",
+        "signed_body": "{\"b\":2,\"a\":1}",
+        "verify_body": "{\"b\":2,\"a\":1}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "accept", "error_code": null, "error_name": null },
+      "sdk_exercisable": true
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "suite": "lcp-sdk-negative",
+  "version": 1,
+  "group": "replay-window",
+  "description": "Negative vectors for security invariant 5 (docs/SDK-ROADMAP.md): replay-window and timestamp-format validation happens before payload processing. SPEC.md §5 assigns both expired timestamps and invalid signatures to LCP-012 SIGNATURE_INVALID (identity failures are LCP-002), so every rejection here is expected to surface LCP-012.",
+  "vectors": [
+    {
+      "id": "lcp-neg-replay-001",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 (default replay window is five minutes; reject before processing PII); SPEC.md §5 LCP-012",
+      "description": "Correctly signed request with timestamp 4801 s old (outside the 300 s window) must be rejected despite a valid signature.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "93d42a30f4768aaba6677f7187f6f8cfe18ff6b8d2c3b33ca470e7ad857ef880",
+        "timestamp": "2026-08-15T09:00:00Z",
+        "idempotency_key": "neg-key-002",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"stale but correctly signed\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-002",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 X-LCP-Timestamp; SPEC.md §5 LCP-012",
+      "description": "Timestamp string '0000-00-00T00:00:00Z' is not a valid instant and must be rejected with the LCP-012 family error before any signature comparison.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp": "0000-00-00T00:00:00Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-003",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 X-LCP-Timestamp; SPEC.md §5 LCP-012",
+      "description": "Free-form garbage timestamp 'not-a-timestamp' must be rejected, not coerced.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp": "not-a-timestamp",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-004",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 X-LCP-Timestamp (unambiguous instant required); SPEC.md §5 LCP-012",
+      "description": "Timestamp '2026-08-15T10:20:00' without a timezone is not comparable to the receiver clock and must be rejected.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp": "2026-08-15T10:20:00",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-005",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 (five-minute window)",
+      "description": "Control: a correctly signed request 121 s old (inside the 300 s window) must verify — proves the window is enforced by age, not a blanket reject.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "b6e2ff4085ebc2f17a9f229398a1fda6c4f82261c6b31fcaebe679cf6238158d",
+        "timestamp": "2026-08-15T10:18:00Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "accept", "error_code": null, "error_name": null },
+      "sdk_exercisable": true
+    }
+  ]
+}

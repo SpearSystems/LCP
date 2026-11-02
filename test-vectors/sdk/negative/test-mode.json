@@ -1,0 +1,38 @@
+{
+  "suite": "lcp-sdk-negative",
+  "version": 1,
+  "group": "test-mode",
+  "description": "Vector for security invariant 8 (docs/SDK-ROADMAP.md): test traffic cannot silently become production traffic. SPEC.md §5 assigns the enforcement error LCP-013 TEST_TRAFFIC_POLICY (test envelope flag vs X-LCP-Test header disagreement, test traffic at a production endpoint, non-test traffic at a sandbox). SDK GAP (verified at 3d4bc9ab): the Python SDK exposes no verifier-side production/sandbox mode state — webhook.verify_http_request is mode-agnostic and LCPClient only *emits* the X-LCP-Test header on the send side (client.py _headers). Per this suite's contract, invariant 8 is not exercisable by an SDK primitive; enforcement lives in the reference platform. The vector is published so SDKs that DO expose a production-mode verifier can set sdk_exercisable: true in their lane's copy/report, and runners MUST surface the skip loudly (never a silent pass).",
+  "vectors": [
+    {
+      "id": "lcp-neg-mode-001",
+      "invariant": 8,
+      "spec_ref": "SPEC.md §5 LCP-013; docs/SDK-ROADMAP.md invariant 8",
+      "description": "A production-mode verifier must refuse an envelope with message.test = true. Expected reject outcome LCP-013 if (when) an SDK exposes mode state.",
+      "applies_to": ["*"],
+      "check": "production_mode_verify",
+      "inputs": {
+        "mode": "production",
+        "envelope": {
+          "lcp": {
+            "version": "1.0.0",
+            "message": {
+              "id": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "lead",
+              "timestamp": "2026-08-15T10:20:00Z",
+              "sender_id": "pub_123",
+              "receiver_id": "platform_001",
+              "correlation_id": null,
+              "idempotency_key": "pub-lead-20260815-001",
+              "test": true
+            },
+            "payload": { "lead_id": "lead_abc123", "status": "NEW" }
+          }
+        }
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-013", "error_name": "TEST_TRAFFIC_POLICY" },
+      "sdk_exercisable": false,
+      "gap_note": "Invariant 8 not exercisable by the Python SDK — the SDK exposes no production-mode verifier state (webhook.verify_http_request is mode-agnostic; X-LCP-Test is send-side only). Platform concern (reference platform enforces LCP-013 per SPEC.md §5)."
+    }
+  ]
+}
