@@ -27,11 +27,17 @@ Rules
    - pins with no comment are checked against the repo's tag list: any real
      released tag resolves them (WARN asking for a comment); an SHA that
      resolves nowhere FAILS.
-3. Known-unresolvable pins are *exempted loudly*, never silently: entries in
-   ``KNOWN_UNRESOLVABLE`` print a WARN with their evidence each run. The
-   ``aquasecurity/trivy-action`` pin was verified unresolvable upstream
-   (commit absent from the repository; noted in issue #127) and is retained
-   pending an owner decision — this checker does not rewrite workflow pins.
+3. Pins that genuinely cannot be resolved upstream are *exempted loudly*,
+   never silently: entries in ``KNOWN_UNRESOLVABLE`` print a WARN with their
+   evidence each run until re-pinned. The list is currently empty: the
+   ``aquasecurity/trivy-action`` commit from issue #127 was re-verified
+   2026-11-02 and DOES resolve — ``v0.36.0`` is an annotated tag whose
+   peeled target is ``ed142fd0673e97e23eac54620cfb913e5ce36c25`` (verified
+   via ``git ls-remote`` ``refs/tags/v0.36.0^{}`` and the REST
+   ``/commits/`` endpoint). The original "unresolvable" claim rested on a
+   wrong tag name (missing ``v`` prefix) and a 404 from the
+   ``/git/objects/`` REST quirk; the pin is retained unchanged and now
+   carries its ``# v0.36.0`` comment.
 
 Exit codes: 0 = clean (warnings allowed), 1 = violations found,
 2 = usage/environment error (API unreachable, bad arguments).
@@ -43,7 +49,9 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -111,14 +119,11 @@ class Report:
 # Pins retained from history that no longer resolve upstream. Format:
 # "<owner/repo@sha>" -> reason printed in every run (with evidence link).
 # This is a disclosure list, not a mute button: each entry is re-verified
-# against upstream tags every run and stays a visible WARN.
-KNOWN_UNRESOLVABLE: dict[str, str] = {
-    "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25": (
-        "commit absent from upstream (verified 2026-11-02 via "
-        "GET /repos/aquasecurity/trivy-action/git/objects/...; see issue #127). "
-        "Pin kept unchanged pending owner decision."
-    ),
-}
+# against upstream tags every run and stays a visible WARN. Entries MUST
+# carry dated re-verification evidence; the 2026-11-02 trivy-action review
+# (see module docstring, rule 3) is the cautionary tale for exempting on a
+# single endpoint 404.
+KNOWN_UNRESOLVABLE: dict[str, str] = {}
 
 
 def parse_pins(root: Path) -> list[Pin]:
@@ -146,13 +151,96 @@ def parse_pins(root: Path) -> list[Pin]:
     return pins
 
 
+REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
+def _ls_remote(repo: str, patterns: list[str]) -> list[str]:
+    """Run ``git ls-remote`` against the public repo (anonymous git protocol).
+
+    Empty ``patterns`` lists every ref (used for the tag map).
+    """
+    if not REPO_NAME_RE.match(repo):
+        raise EnvironmentError_(f"refusing malformed repo name: {repo!r}")
+    url = f"https://github.com/{repo}"
+    argv = ["git", "-c", "credential.interactive=false", "ls-remote", url, *patterns]
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        raise EnvironmentError_(f"git ls-remote failed for {repo}: {err}") from err
+    if proc.returncode != 0:
+        raise EnvironmentError_(
+            f"git ls-remote failed for {repo} (exit {proc.returncode}): "
+            f"{proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else 'no stderr'}"
+        )
+    return proc.stdout.splitlines()
+
+
+def parse_lsremote_ref(lines: list[str], kind: str, ref: str) -> tuple[str, str] | None:
+    """Pick the commit target for one ref from ls-remote output.
+
+    Annotated tags appear twice (``refs/tags/X`` = tag object,
+    ``refs/tags/X^{}`` = peeled commit); prefer the peeled entry.
+    """
+    exact = f"refs/{kind}/{ref}"
+    peeled = f"{exact}^{{}}"
+    direct: str | None = None
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) != 2:
+            continue
+        sha, name = parts[0].strip(), parts[1].strip()
+        if name == peeled:
+            return ("commit", sha)
+        if name == exact:
+            direct = sha
+    return ("commit", direct) if direct else None
+
+
+def parse_lsremote_tags(lines: list[str]) -> dict[str, list[str]]:
+    """Build the commit-sha -> tag-names map from full ls-remote tag output."""
+    plain: dict[str, str] = {}
+    peeled: dict[str, str] = {}
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) != 2 or not parts[1].startswith("refs/tags/"):
+            continue
+        sha, name = parts[0].strip(), parts[1].strip()
+        if name.endswith("^{}"):
+            peeled[name.removesuffix("^{}").removeprefix("refs/tags/")] = sha
+        else:
+            plain[name.removeprefix("refs/tags/")] = sha
+    mapping: dict[str, list[str]] = {}
+    for name, sha in plain.items():
+        commit = peeled.get(name, sha)  # annotated tags map via their peeled commit
+        mapping.setdefault(commit, []).append(name)
+    return mapping
+
+
 class GitHubAPI:
-    """Minimal REST client: ref resolution + tag enumeration, with cache."""
+    """Minimal REST client: ref resolution + tag enumeration, with cache.
+
+    Bursty REST access across many repos from a CI runner token can trip
+    GitHub's secondary rate limits deterministically (observed 2026-11-02 on
+    PR #140: persistent 403 on aquasecurity/trivy-action refs endpoints from
+    ``github.token`` while every other repo resolved and the same calls
+    succeed via PAT). On repeated refusal for a repo, this client degrades
+    that repo to ``git ls-remote`` — the same anonymous git path the runner
+    itself uses for ``uses:`` fetches — instead of failing the whole run.
+    """
 
     def __init__(self, token: str | None = None):
         self._token = token
         self._ref_cache: dict[str, tuple[str, str] | None] = {}
         self._tags_cache: dict[str, dict[str, list[str]]] = {}
+        self._degraded: set[str] = set()
+        self._lsremote = _ls_remote
 
     def _get(self, url: str) -> tuple[object, str]:
         headers = {
@@ -162,31 +250,58 @@ class GitHubAPI:
         }
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
-        request = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.loads(
-                    response.read().decode("utf-8")
-                ), response.headers.get("Link", "")
-        except urllib.error.HTTPError as err:
-            if err.code in (403, 429):
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            request = urllib.request.Request(url, headers=headers)
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    return json.loads(
+                        response.read().decode("utf-8")
+                    ), response.headers.get("Link", "")
+            except urllib.error.HTTPError as err:
+                if err.code == 404:
+                    return None, ""
+                if err.code in (403, 429) and attempt < attempts:
+                    # GitHub secondary rate limits are transient bursts
+                    # (observed mid-run on a hot repo's refs endpoint).
+                    wait = err.headers.get("Retry-After")
+                    delay = int(wait) if wait and wait.isdigit() else 15 * attempt
+                    time.sleep(min(delay, 90))
+                    continue
+                if err.code in (403, 429):
+                    raise EnvironmentError_(
+                        f"GitHub API access refused for {url} (HTTP {err.code}) "
+                        f"after {attempts} attempts: rate limited? Export GITHUB_TOKEN."
+                    ) from err
                 raise EnvironmentError_(
-                    f"GitHub API access refused for {url} (HTTP {err.code}): "
-                    "rate limited? Export GITHUB_TOKEN."
+                    f"GitHub API error for {url}: HTTP {err.code}"
                 ) from err
-            if err.code == 404:
-                return None, ""
-            raise EnvironmentError_(
-                f"GitHub API error for {url}: HTTP {err.code}"
-            ) from err
-        except (urllib.error.URLError, TimeoutError, OSError) as err:
-            raise EnvironmentError_(f"GitHub API unreachable for {url}: {err}") from err
+            except (urllib.error.URLError, TimeoutError, OSError) as err:
+                raise EnvironmentError_(
+                    f"GitHub API unreachable for {url}: {err}"
+                ) from err
+        raise EnvironmentError_(f"GitHub API failed for {url}: unreachable")
 
     def resolve_ref(self, repo: str, kind: str, ref: str) -> tuple[str, str] | None:
-        """Return ('commit'|'tag-object', commit_sha) or None if the ref is absent."""
+        """Return ('commit', commit_sha) or None if the ref is absent."""
         cache_key = f"{repo}|{kind}|{ref}"
         if cache_key in self._ref_cache:
             return self._ref_cache[cache_key]
+        target: tuple[str, str] | None
+        if repo in self._degraded:
+            target = self._resolve_ref_lsremote(repo, kind, ref)
+        else:
+            try:
+                target = self._resolve_ref_rest(repo, kind, ref)
+            except EnvironmentError_:
+                self._degraded.add(repo)
+                target = self._resolve_ref_lsremote(repo, kind, ref)
+        self._ref_cache[cache_key] = target
+        return target
+
+    def _resolve_ref_rest(
+        self, repo: str, kind: str, ref: str
+    ) -> tuple[str, str] | None:
         quoted = urllib.parse.quote(ref, safe="")
         result = self._get(
             f"https://api.github.com/repos/{repo}/git/ref/{kind}/{quoted}"
@@ -206,13 +321,30 @@ class GitHubAPI:
                     )
             if typ == "commit":
                 target = ("commit", sha)
-        self._ref_cache[cache_key] = target
         return target
+
+    def _resolve_ref_lsremote(
+        self, repo: str, kind: str, ref: str
+    ) -> tuple[str, str] | None:
+        lines = self._lsremote(repo, [f"refs/{kind}/{ref}", f"refs/{kind}/{ref}^{{}}"])
+        return parse_lsremote_ref(lines, kind, ref)
 
     def tags_by_commit(self, repo: str) -> dict[str, list[str]]:
         """Map every tag's (dereferenced) commit SHA to its tag names."""
         if repo in self._tags_cache:
             return self._tags_cache[repo]
+        if repo in self._degraded:
+            mapping = parse_lsremote_tags(self._lsremote(repo, []))
+        else:
+            try:
+                mapping = self._tags_by_commit_rest(repo)
+            except EnvironmentError_:
+                self._degraded.add(repo)
+                mapping = parse_lsremote_tags(self._lsremote(repo, []))
+        self._tags_cache[repo] = mapping
+        return mapping
+
+    def _tags_by_commit_rest(self, repo: str) -> dict[str, list[str]]:
         mapping: dict[str, list[str]] = {}
         url = f"https://api.github.com/repos/{repo}/tags?per_page=100"
         while url:
@@ -227,7 +359,6 @@ class GitHubAPI:
             for chunk in link.split(","):
                 if 'rel="next"' in chunk:
                     url = chunk.split("<")[1].split(">")[0]
-        self._tags_cache[repo] = mapping
         return mapping
 
 

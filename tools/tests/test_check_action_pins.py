@@ -17,16 +17,30 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from check_action_pins import (  # noqa: E402
     KNOWN_UNRESOLVABLE,
+    EnvironmentError_,
+    GitHubAPI,
     Pin,
     check_action_pins,
     check_pin,
     main,
+    parse_lsremote_ref,
+    parse_lsremote_tags,
     parse_pins,
 )
 
+
 SHA_A = "a" * 40
 SHA_B = "b" * 40
-SHA_TRIVY = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+
+
+class ExplodingAPI:
+    """Any API call is a test failure (exempted pins must short-circuit)."""
+
+    def resolve_ref(self, repo: str, kind: str, ref: str):
+        raise AssertionError("exempted pin must not hit the API")
+
+    def tags_by_commit(self, repo: str):
+        raise AssertionError("exempted pin must not hit the API")
 
 
 class FakeAPI:
@@ -149,20 +163,81 @@ class CheckPinTests(unittest.TestCase):
         status, _ = check_pin(self.pin(SHA_A, "v1.9.9"), api)
         self.assertEqual(status, "fail")
 
+    def test_exemption_list_stays_empty_without_evidence(self):
+        # The trivy-action #127 exemption was disproven on 2026-11-02:
+        # ed142fd… is the peeled target of upstream tag v0.36.0 and now
+        # carries a '# v0.36.0' comment; the workflow pins pass normally.
+        self.assertNotIn(
+            "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
+            KNOWN_UNRESOLVABLE,
+        )
+
     def test_known_unresolvable_pin_warns_loudly_but_never_calls_api(self):
-        pin = Pin("s.yml", 9, "aquasecurity/trivy-action", SHA_TRIVY, None)
-        self.assertIn(pin.key, KNOWN_UNRESOLVABLE)
+        import check_action_pins
 
-        class ExplodingAPI(FakeAPI):
-            def resolve_ref(self, *args):
-                raise AssertionError("exempted pin must not hit the API")
-
-            def tags_by_commit(self, *args):
-                raise AssertionError("exempted pin must not hit the API")
-
-        status, msg = check_pin(pin, ExplodingAPI())
+        pin = Pin("s.yml", 9, "acme/tool", SHA_A, None)
+        check_action_pins.KNOWN_UNRESOLVABLE = {
+            pin.key: "synthetic: dated evidence here"
+        }
+        try:
+            status, msg = check_pin(pin, ExplodingAPI())
+        finally:
+            check_action_pins.KNOWN_UNRESOLVABLE = {}
         self.assertEqual(status, "warn")
-        self.assertIn("#127", msg)
+        self.assertIn("synthetic", msg)
+
+
+class LsRemoteFallbackTests(unittest.TestCase):
+    def test_annotated_ref_prefers_peeled_line(self):
+        lines = [
+            f"a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8\trefs/tags/v0.36.0",
+            f"{SHA_A}\trefs/tags/v0.36.0^{{}}",
+        ]
+        self.assertEqual(
+            parse_lsremote_ref(lines, "tags", "v0.36.0"), ("commit", SHA_A)
+        )
+
+    def test_lightweight_ref_direct_line(self):
+        lines = [f"{SHA_B}\trefs/heads/release/v1"]
+        self.assertEqual(
+            parse_lsremote_ref(lines, "heads", "release/v1"), ("commit", SHA_B)
+        )
+
+    def test_absent_ref_returns_none(self):
+        self.assertIsNone(parse_lsremote_ref([], "tags", "v9"))
+
+    def test_tag_map_peels_annotated_only(self):
+        lines = [
+            f"tagobj\trefs/tags/v1.0.0",
+            f"{SHA_A}\trefs/tags/v1.0.0^{{}}",
+            f"{SHA_B}\trefs/tags/v2.0.0",  # lightweight: line IS the commit
+        ]
+        mapping = parse_lsremote_tags(lines)
+        self.assertEqual(mapping.get(SHA_A), ["v1.0.0"])
+        self.assertEqual(mapping.get(SHA_B), ["v2.0.0"])
+        self.assertNotIn("tagobj", mapping)
+
+    def test_api_refusal_degrades_repo_to_lsremote(self):
+        api = GitHubAPI()
+
+        def refuse(url):
+            raise EnvironmentError_(f"403 for {url}")
+
+        api._get = refuse
+        seen = []
+
+        def fake_lsremote(repo, patterns):
+            seen.append((repo, tuple(patterns)))
+            return [f"tagobj\trefs/tags/v0.1.0", f"{SHA_A}\trefs/tags/v0.1.0^{{}}"]
+
+        api._lsremote = fake_lsremote
+        self.assertEqual(
+            api.resolve_ref("acme/tool", "tags", "v0.1.0"), ("commit", SHA_A)
+        )
+        # repo now degraded: further resolutions skip REST entirely
+        self.assertEqual(api.resolve_ref("acme/tool", "tags", "v0.2.0"), None)
+        self.assertEqual(len(seen), 2)  # both calls were ls-remote, no REST retry
+        self.assertIn("acme/tool", api._degraded)
 
 
 class ReportAndMainTests(unittest.TestCase):

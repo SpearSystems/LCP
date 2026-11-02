@@ -202,7 +202,7 @@ jobs:
         # focused on OS packages so inherited base-image SBOM metadata cannot
         # report removed build-time Python packages as runtime vulnerabilities.
         # v0.36.0; pin the signed commit after the 2026 action-tag incident.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: lcp-reference-platform:ci
           format: sarif
@@ -217,7 +217,7 @@ jobs:
         if: always()
         # Non-gating report: retain both OS and Python-library findings,
         # including unfixed findings, for vulnerability-exception review.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: lcp-reference-platform:ci
           format: sarif
