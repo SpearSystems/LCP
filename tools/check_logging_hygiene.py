@@ -13,7 +13,9 @@ Rule scope is by directory pattern, not a blanket ban on ``print``:
 - ``implementations/reference-platform/lcp_platform/admin.py`` is the
   operator CLI (``lcp-platform`` entry point); its table/JSON output to
   stdout is by design and is documented in the operator docs.
-- Test harnesses (path segments ``test``/``tests``) may print runner status.
+- Test harnesses (path segments ``test``/``tests``, and Go ``_test.go``
+  files, which sit beside their package instead of in a tests directory) may
+  print runner status.
 - The top-level ``examples/`` tree is demo code whose prints are part of
   the lesson; example files are guarded by the header rule instead
   (Rule 3). Any ``examples/`` segment is also exempt from Rules 1-2.
@@ -24,7 +26,13 @@ Rules:
    call ``print(`` without the documented operational-message allowance
    ``file=sys.stderr``. JavaScript/TypeScript files under
    ``implementations/`` must not call ``console.log(`` or ``console.error(``
-   (there is no stderr allowance for console calls).
+   (there is no stderr allowance for console calls). Go files under
+   ``implementations/`` must not call ``fmt.Print``/``Printf``/``Println``,
+   ``log.Print``/``Fatal``/``Panic`` (any suffix variant), write to
+   ``os.Stdout``, or target ``fmt.Fprint*`` at ``os.Stdout``;
+   ``fmt.Fprint*`` to ``os.Stderr`` keeps the Python-style operational
+   allowance and ``fmt.Sprintf``/``fmt.Errorf`` are string building, not
+   output.
 2. PAYLOAD_DUMP — no output call (``print(``, ``console.*``, ``logging.``)
    may take a ``json.dumps(...)``/``JSON.stringify(...)`` argument on the
    same line, in any scanned file, even to stderr: dumping a serialized
@@ -68,6 +76,7 @@ SKIP_DIRS = {
 
 PY_EXT = {".py"}
 JS_EXT = {".cjs", ".js", ".mjs", ".ts"}
+GO_EXT = {".go"}
 HEADER_EXT = PY_EXT | JS_EXT | {".md", ".sh"}
 
 PRINT_PY = re.compile(r"(?<![\w.])print\(")
@@ -75,6 +84,21 @@ STDERR_ALLOWANCE = re.compile(r"file\s*=\s*sys\.stderr\b")
 CONSOLE_JS = re.compile(r"console\.(?:log|error)\s*\(")
 LOGGING_CALL = re.compile(r"(?:logging\.|logger\.|getLogger)")
 SERIALIZED_DUMP = re.compile(r"(?:json\.dumps\(|JSON\.stringify\()")
+
+# Rule 1 also covers the Go SDK, which the static gate previously skipped,
+# leaving ``fmt.Println``-class leaks in ``implementations/sdk/go`` uncaught
+# (invariant 7 had only a runtime half for Go). Matches only calls whose
+# destination is stdout or the stdlib log package (which writes to stderr by
+# default but is a library smell for a PII-handling SDK):
+#   fmt.Print|Printf|Println      -> stdout
+#   log.Print|Fatal|Panic(+ln/f)  -> stdlib logger
+#   fmt.Fprint*(os.Stdout, ...)   -> explicit stdout writer
+#   os.Stdout.Write(...)          -> explicit stdout writer
+# fmt.Fprint*(os.Stderr, ...)/Sprintf/Eferror and byte-building are NOT output
+# calls and stay allowed, mirroring the Python stderr operational allowance.
+GO_OUTPUT_CALL = re.compile(
+    r"(?<![\w.])(?:fmt\.Print(?:ln|f)?\s*\(|log\.(?:Print|Fatal|Panic)(?:ln|f)?\s*\(|fmt\.Fprint(?:ln|f)?\s*\(\s*os\.Stdout\b|os\.Stdout\.Write\s*\()"
+)
 
 # Header line: "example" ... "not for production" (case-insensitive) with a
 # comment marker appropriate to the file type.
@@ -130,7 +154,13 @@ def check_logging_hygiene(repo_root: str | Path = ROOT) -> list[str]:
                 continue
             if not _is_rule12_scope(relative):
                 continue
-            if suffix not in PY_EXT and suffix not in JS_EXT:
+            if suffix not in PY_EXT and suffix not in JS_EXT and suffix not in GO_EXT:
+                continue
+            # Go has no tests/ directory convention: _test.go files sit beside
+            # the package source and are test harnesses that legitimately
+            # echo captured output (the log-capture suite writes to redirected
+            # os.Stdout/os.Stderr). Exempt them exactly as test dirs are.
+            if suffix in GO_EXT and name.endswith("_test.go"):
                 continue
             problems.extend(_check_output_lines(path, relative, suffix))
     return problems
@@ -158,6 +188,15 @@ def _check_output_lines(path: Path, relative: Path, suffix: str) -> list[str]:
                     "code must not print to stdout (use file=sys.stderr for "
                     "operational messages)"
                 )
+    elif suffix in GO_EXT:
+        for lineno, call in _call_spans(text, GO_OUTPUT_CALL):
+            problems.append(
+                f"{relative}:{lineno}: OUTSIDE_STDOUT_PRINT: Go platform/SDK "
+                "code must not write to stdout or the log package; LCP "
+                "envelopes are PII-bearing (fmt.Fprintf(os.Stderr, ...) is "
+                "the operational-message allowance, fmt.Sprintf/Eferror are "
+                "not output calls)"
+            )
     else:
         for lineno, call in _call_spans(text, CONSOLE_JS):
             if SERIALIZED_DUMP.search(call):

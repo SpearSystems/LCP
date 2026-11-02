@@ -109,6 +109,80 @@ class LoggingHygieneTests(unittest.TestCase):
         )
         self.assertEqual(problems, [])
 
+    def test_go_fmt_println_in_sdk_is_flagged(self):
+        problems = self.scan(
+            {
+                "implementations/sdk/go/lcp.go": "package lcp\n"
+                'import "fmt"\n'
+                'func sign(body string) { fmt.Println("body", body) }\n',
+            }
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("OUTSIDE_STDOUT_PRINT", problems[0])
+        self.assertIn("lcp.go:3", problems[0])
+
+    def test_go_log_print_is_flagged(self):
+        problems = self.scan(
+            {
+                "implementations/sdk/go/validation.go": "package lcp\n"
+                'import "log"\n'
+                'func check() { log.Printf("envelope %s", env) }\n',
+            }
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("OUTSIDE_STDOUT_PRINT", problems[0])
+
+    def test_go_os_stdout_write_is_flagged(self):
+        problems = self.scan(
+            {
+                "implementations/sdk/go/lcp.go": "package lcp\n"
+                'import "os"\n'
+                "func dump(b []byte) { os.Stdout.Write(b) }\n",
+            }
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("OUTSIDE_STDOUT_PRINT", problems[0])
+
+    def test_go_fprint_to_stdout_is_flagged_but_stderr_is_allowed(self):
+        flag = self.scan(
+            {
+                "implementations/sdk/go/lcp.go": "package lcp\n"
+                'import ("fmt"; "os")\n'
+                'func leak(e string) { fmt.Fprintf(os.Stdout, "%s\\n", e) }\n',
+            }
+        )
+        self.assertEqual(len(flag), 1)
+        self.assertIn("OUTSIDE_STDOUT_PRINT", flag[0])
+        allow = self.scan(
+            {
+                "implementations/sdk/go/lcp.go": "package lcp\n"
+                'import ("fmt"; "os")\n'
+                'func note() { fmt.Fprintln(os.Stderr, "starting") }\n',
+            }
+        )
+        self.assertEqual(allow, [])
+
+    def test_go_string_building_is_not_flagged(self):
+        problems = self.scan(
+            {
+                "implementations/sdk/go/lcp.go": "package lcp\n"
+                'import ("errors"; "fmt")\n'
+                'func id(s string) string { return fmt.Sprintf("%s-%s", s, s) }\n'
+                'func err() error { return errors.New(fmt.Sprint("x")) }\n',
+            }
+        )
+        self.assertEqual(problems, [])
+
+    def test_go_test_files_are_exempt(self):
+        problems = self.scan(
+            {
+                "implementations/sdk/go/log_capture_test.go": "package lcp\n"
+                'import ("fmt"; "os"; "testing")\n'
+                'func TestX(t *testing.T) { fmt.Fprintf(os.Stderr, "%v\\n", x); fmt.Println("status") }\n',
+            }
+        )
+        self.assertEqual(problems, [])
+
 
 if __name__ == "__main__":
     unittest.main()
