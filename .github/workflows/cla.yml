@@ -17,7 +17,17 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const body = context.payload.pull_request.body || '';
+            const pr = context.payload.pull_request;
+            const login = (pr.user && pr.user.login) || '';
+            // Bots cannot acknowledge a CLA: they have no legal capacity to
+            // agree, and automated dependency bumps are opened by the
+            // repository's own bot under maintainer control. Exempt them and
+            // keep the body-checkbox requirement for human contributors.
+            if (pr.user && (pr.user.type === 'Bot' || login.endsWith('[bot]'))) {
+              core.info(`Bot-authored pull request (${login}): CLA acknowledgment not applicable.`);
+              return;
+            }
+            const body = pr.body || '';
             const acknowledged = /- \[[xX]\] I have read and agree to the \[Contributor License Agreement\]/.test(body);
             if (!acknowledged) {
               core.setFailed('Check the Contributor License Agreement box in the pull-request template before requesting review. Private security reports belong in GitHub Security Advisories and are not blocked by this check.');
