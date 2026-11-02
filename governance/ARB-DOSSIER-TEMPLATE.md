@@ -6,7 +6,7 @@
 
 - **Subject:** <artifact under review, e.g. "LEP-0002 proposal + evidence tables">
 - **Head commit (full SHA):** <40-char SHA — all citations and commands were executed at this commit, clean checkout>
-- **Lane:** <L-Spec | L-SDK/<lang> | L-Platform | L-MCP | L-SupplyChain | L-DocsDrift | L-Judge>
+- **Lane:** <L-Spec | L-SDK/<lang> | L-Platform | L-Security | L-MCP | L-SupplyChain | L-DocsDrift | L-Judge>
 - **Reviewer:** <harness name + model id + version/params, enough for a third party to re-run it>
 - **Date:** <YYYY-MM-DD>
 
@@ -15,6 +15,8 @@
 - Fresh context (no shared conversation with the artifact's author): yes/no — <how assured>
 - Author-never-audits: <lane authorship vs artifact authorship statement>
 - Surface disjointness: <this lane did not write any part of the subject>
+- Launch control: <who/what controller launched this lane run; its
+  relationship to the subject's authorship; **SELF-AUDIT** if the same party>
 - Model diversity: <same/different family than authoring lane; state the absence>
 - Declared limitations: <environment gaps; anything not exercised → verdict cap `INCONCLUSIVE`>
 
@@ -45,6 +47,11 @@ required evidence that the PASS is worth something.
 |---|---|---|---|
 | 1 | <attempt> | `<how>` | <outcome> |
 
+For any attempt or finding built on a constructed input (a planted field, a
+crafted payload), the input's exact bytes belong in the **Plant bytes
+appendix** below — a dissenter re-runs the same bytes, not a paraphrase
+(reproducibility rule 1; gate G1).
+
 ## Findings
 
 | # | Severity (blocker/major/minor) | File:line at SHA | Description | Minimal reproduction | Disposition |
@@ -54,6 +61,17 @@ required evidence that the PASS is worth something.
 Durable findings MUST be converted into a named CI test or an explicit
 tracked waiver **before this lane closes** (G5). List the conversion PR /
 issue numbers in Disposition; a finding left as prose is a gate failure.
+
+## Plant bytes appendix
+
+Required whenever any claim, refutation attempt, or finding involves a
+constructed input; omit only if nothing was planted. Each constructed input
+MUST be recorded byte-exactly — inline literal here, or a committed fixture
+path that exists at the head SHA:
+
+| # | Constructed input (what/where) | Byte-exact record | Referenced by |
+|---|---|---|---|
+| 1 | <e.g. `phone` planted at `verticals/<vertical>.json` attributes root> | `<exact inline literal bytes>` or committed fixture `<path>` at `<head SHA>` | attempt #<n> / finding #<n> / claim #<n> |
 
 ## Dissent record
 
