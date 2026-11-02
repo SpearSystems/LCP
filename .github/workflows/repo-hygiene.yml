@@ -1,0 +1,46 @@
+name: Repo hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  action-pins:
+    name: Action pin truth (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Verify every workflow pin resolves to its declared tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tools/check_action_pins.py
+
+  exception-expiry:
+    name: SBOM exception re-review expiry (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Fail on exceptions past their re-review deadline
+        run: python tools/check_exception_expiry.py
+
+  doc-citations:
+    name: Docs citation drift (advisory this wave)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Report path:line / path:symbol drift without blocking
+        continue-on-error: true
+        run: python tools/check_doc_citations.py
