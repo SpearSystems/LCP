@@ -18,14 +18,16 @@ Test-id families: `L1-*`/`L2-*`/`L3-*` = conformance vectors
 (`test-vectors/sdk/validation-corpus.json`, run by all 10 SDK harnesses),
 `lcp-sdk-hmac-NNN` = shared HMAC vector,
 `lcp-neg-*` = shared negative security vectors
-(`test-vectors/sdk/negative/*.json`, spine #132 + runners landed for 9/10 SDKs
-via #132/#141/#144/#147; Swift runner remaining on SEC-04b/SEC-05b), `plat:` = reference-platform
+(`test-vectors/sdk/negative/*.json`, spine #132 + runners landed for 10/10 SDKs
+via #132/#141/#144/#147 + Swift on this PR), `plat:` = reference-platform
 unittest (`implementations/reference-platform/tests/`), `sdk-py:` = Python
 SDK unittest, `mcp:` = MCP adapter unittest, `tool:` = repo checker tool.
 Negative-vector spine (#132) credited on VER-03, ERR-006, ERR-008, ERR-012,
-ERR-013, MSG-PING-02, SEC-04, SEC-05 + partials SEC-04b/SEC-05b. Still owed
-vectors: LOC-02 (missing state+postal), CMP-04 (OTP code present),
-MSG-PING-03 (token inside compliance_flags).
+ERR-013, MSG-PING-02, SEC-04, SEC-05 + partials SEC-04b/SEC-05b (closed by the
+Swift runner on this PR — 10/10 lanes now execute the shared suite). The three
+once-owed conformance vectors (LOC-02 missing state+postal, CMP-04 planted OTP
+code, MSG-PING-03 token inside compliance_flags) landed as L2-013–L2-018 in
+`test-vectors/l2-lifecycle.json` with paired accept controls.
 
 Known ledger findings (filed as issues linked from the introducing PR): ATR-04
 reserved-core-field shadowing is enforced by `tool:check_reserved_fields`
@@ -56,12 +58,12 @@ LCP-002 — recorded under ERR-002.
 | CON-07 | §3 phone_hash/email_hash are HMAC-SHA256 64-hex strings | schema+runner | L3-003 | green |
 | CON-08 | §3 gender removed from core (verticals define it in attributes) | schema | - | gap(no assert-absent test pins gender out of core) |
 | LOC-01 | §3 location.country_code REQUIRED, ISO 3166-1 alpha-2 | schema+runner | L2-001 | green |
-| LOC-02 | §3 location requires state_region OR postal_code | schema | - | gap(anyOf present in schemas/core.json; no negative vector proves it — pending W1NegVectors) |
+| LOC-02 | §3 location requires state_region OR postal_code | schema+runner | L2-013, L2-014 | green |
 | LOC-03 | §3 location.timezone is IANA | schema | - | gap(no IANA validation or vector) |
 | CMP-01 | §3 compliance block carries consent evidence fields | schema+runner | L2-001, L3-004 | green |
 | CMP-02 | §3 consent_purposes captures consent scope ("capture it") | schema | - | exempt(advisory guidance; field defined in schemas/core.json) |
 | CMP-03 | §3 consent_evidence extensible to new frameworks without core change | schema+runner | L3-004 | green |
-| CMP-04 | §3 OTP code MUST NOT be included (only verified hash/timestamp) | schema | - | gap(otp/compliance additionalProperties:false blocks it structurally; no planted-code vector proves rejection — pending W1NegVectors) |
+| CMP-04 | §3 OTP code MUST NOT be included (only verified hash/timestamp) | schema+runner | L2-015, L2-016 | green |
 | CMP-05 | §3 consent_expires_at: no contact after expiry | platform | plat:test_retention_boundaries_stop_expired_and_unconsented_routing | green |
 | CMP-06 | §3 scrubs[] tri-state semantics (clean/flagged/blocked; blocked leads rejected) | schema | - | gap(no vectors or platform behavior for scrub results) |
 | CMP-08 | §3 consent_evidence entry shape (type/provider/token_or_url; URI valid) | schema+corpus | sdk-009, L3-004 | green |
@@ -93,7 +95,7 @@ LCP-002 — recorded under ERR-002.
 | MSG-CALL-02 | §4 CALL_* lifecycle events carry offer_id/call_status/total_seconds/disposition/transfer_status in details | schema+platform | - | gap(call lifecycle event shapes unexercised end-to-end) |
 | MSG-PING-01 | §4 ping is a strict allowlist (additionalProperties:false); anything else → LCP-008 | schema+runner | L2-003, L2-007, L2-008, sdk-002 | green |
 | MSG-PING-02 | §4 ping never contains consumer/compliance/provenance blocks | conformance-runner+corpus | L2-007, L2-008, lcp-neg-pii-001 | green |
-| MSG-PING-03 | §4 compliance_flags are presence indicators only — never tokens or evidence | schema+runner | - | gap(no planted-token vector for compliance_flags) |
+| MSG-PING-03 | §4 compliance_flags are presence indicators only — never tokens or evidence | schema+runner | L2-017, L2-018 | green |
 | MSG-BID-01 | §4 bid decision accept/reject/pass; bid_price_cents required iff accept | schema+platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | MSG-BID-02 | §4 auction flow: platform collects bids in expiry window, posts winner, losers get no PII | platform | plat:test_ping_bid_post_and_delivery_event_flow, plat:test_indexed_offer_candidates_are_conservative_and_reindex_updates | green |
 | MSG-POST-01 | §4 post delivers full PII to winning buyer | schema+runner | L2-004 | green |
@@ -113,7 +115,7 @@ LCP-002 — recorded under ERR-002.
 | ERR-005 | §5 LCP-005 DUPLICATE_LEAD ↔ 409 | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_idempotency_key_reuse_with_different_body_is_rejected | green |
 | ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004, lcp-neg-mt-001, plat:test_unknown_message_type_returns_structured_error | green |
 | ERR-007 | §5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422 | platform | - | gap(no implementation-visible test of unsupported version handling) |
-| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, sdk-012, lcp-neg-pii-001, plat:test_pii_in_ping_rejected_by_platform_validation | green |
+| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, L2-017, sdk-012, lcp-neg-pii-001, plat:test_pii_in_ping_rejected_by_platform_validation | green |
 | ERR-009 | §5 LCP-009 INVALID_PHONE ↔ 400 | schema+platform | L2-011 | gap(pattern proven at schema layer; platform code emission unasserted) |
 | ERR-010 | §5 LCP-010 INVALID_TERRITORY ↔ 422 | platform | - | gap(no test emits the code) |
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | - | gap(router.py raises 429 LCP-011; no test drives the limit or header) |
@@ -149,9 +151,9 @@ LCP-002 — recorded under ERR-002.
 | SEC-02 | §9 HMAC auth via X-LCP-Signature/Timestamp/Idempotency-Key headers | sdk+platform | lcp-sdk-hmac-001, plat:test_http_service_accepts_canonical_hmac_request | green |
 | SEC-03 | §9 canonical signing input timestamp\nkey\nraw-body; lowercase hex HMAC-SHA256 | sdk | lcp-sdk-hmac-001, sdk-py:test_canonical_signature_round_trip | green |
 | SEC-04 | §9 verifier uses the raw body bytes; re-serialized body must fail | sdk-python | sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers, lcp-neg-sig-003, lcp-neg-sig-004 | green |
-| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | gap(vectors #132; runners landed 9/10 SDKs — python #132, java/kotlin/php #144, ts/go #141, ruby/csharp/rust #147; Swift runner remaining) |
+| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | green |
 | SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
-| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | gap(platform + spine + runners 9/10 SDKs landed (#132/#141/#144/#147); Swift runner remaining) |
+| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
 | SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | - | gap(presence tested; equality of header vs envelope never asserted) |
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
 | SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |

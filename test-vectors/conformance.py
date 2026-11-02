@@ -66,10 +66,10 @@ _core_schema = load_schema("core")
 _core_resource = Resource(contents=_core_schema, specification=DRAFT202012)
 
 # Register core.json under both its $id and bare filename for $ref resolution
-_registry = Registry().with_resource(
-    uri="https://lcp.dev/schemas/core.json", resource=_core_resource
-).with_resource(
-    uri="core.json", resource=_core_resource
+_registry = (
+    Registry()
+    .with_resource(uri="https://lcp.dev/schemas/core.json", resource=_core_resource)
+    .with_resource(uri="core.json", resource=_core_resource)
 )
 
 
@@ -135,7 +135,9 @@ def _nested_ping_safe_errors(value: Any, schema: dict, path: str) -> List[str]:
             )
             continue
         if isinstance(definition.get("properties"), dict):
-            violations.extend(_nested_ping_safe_errors(field_value, definition, field_path))
+            violations.extend(
+                _nested_ping_safe_errors(field_value, definition, field_path)
+            )
     return violations
 
 
@@ -151,6 +153,22 @@ def check_ping_safe(payload: dict) -> List[str]:
             f"PII_IN_PING: vertical schema '{vertical}' not found — cannot validate ping_safe"
         ]
     return _nested_ping_safe_errors(attrs, schema, "attributes")
+
+
+def check_compliance_flags(payload: dict) -> List[str]:
+    """SPEC §4: ping compliance_flags are presence indicators only — never
+    tokens or evidence. The object stays open (§6: new flags must pass
+    without a schema change), so schema closure cannot catch a planted
+    bearer token; every flag value MUST be a boolean."""
+    flags = payload.get("compliance_flags")
+    if not isinstance(flags, dict):
+        return []
+    return [
+        f"PII_IN_PING: compliance_flags.{name} is not a boolean presence "
+        "indicator — tokens/evidence forbidden (LCP-008)"
+        for name, value in flags.items()
+        if not isinstance(value, bool)
+    ]
 
 
 # --- Status transition graph -------------------------------------------------
@@ -182,7 +200,13 @@ def is_valid_transition(from_status: str, to_status: str) -> bool:
 
 
 class TestResult:
-    def __init__(self, vector_id: str, name: str, passed: bool, errors: Optional[List[str]] = None):
+    def __init__(
+        self,
+        vector_id: str,
+        name: str,
+        passed: bool,
+        errors: Optional[List[str]] = None,
+    ):
         self.vector_id = vector_id
         self.name = name
         self.passed = passed
@@ -212,7 +236,9 @@ def validate_message(envelope: dict) -> List[str]:
         try:
             parsed_id = UUID(message_id)
             if parsed_id.version != 4:
-                errors.append("envelope: message.id must be a UUID v4 at lcp/message/id")
+                errors.append(
+                    "envelope: message.id must be a UUID v4 at lcp/message/id"
+                )
         except ValueError:
             errors.append("envelope: message.id must be a UUID at lcp/message/id")
     timestamp = message.get("timestamp")
@@ -222,7 +248,9 @@ def validate_message(envelope: dict) -> List[str]:
             if parsed_timestamp.tzinfo is None or "T" not in timestamp:
                 raise ValueError
         except ValueError:
-            errors.append("envelope: message.timestamp must be an RFC3339 date-time at lcp/message/timestamp")
+            errors.append(
+                "envelope: message.timestamp must be an RFC3339 date-time at lcp/message/timestamp"
+            )
 
     if errors:
         return errors  # Can't validate payload if envelope is broken
@@ -238,8 +266,10 @@ def validate_message(envelope: dict) -> List[str]:
     # 3. Validate the selected vertical for every message carrying attributes.
     if msg_type in {"lead", "call", "post", "ping"}:
         attributes = payload.get("attributes")
-        vertical = payload.get("vertical") if msg_type == "ping" else (
-            attributes.get("vertical") if isinstance(attributes, dict) else None
+        vertical = (
+            payload.get("vertical")
+            if msg_type == "ping"
+            else (attributes.get("vertical") if isinstance(attributes, dict) else None)
         )
         if isinstance(vertical, str) and isinstance(attributes, dict):
             vertical_validator = _vertical_validators.get(vertical)
@@ -248,7 +278,9 @@ def validate_message(envelope: dict) -> List[str]:
             else:
                 vertical_attributes = dict(attributes)
                 if msg_type == "ping":
-                    version_definition = vertical_validator.schema.get("properties", {}).get("schema_version", {})
+                    version_definition = vertical_validator.schema.get(
+                        "properties", {}
+                    ).get("schema_version", {})
                     vertical_attributes.setdefault(
                         "vertical",
                         vertical,
@@ -263,6 +295,7 @@ def validate_message(envelope: dict) -> List[str]:
                 )
         if msg_type == "ping":
             errors.extend(check_ping_safe(payload))
+            errors.extend(check_compliance_flags(payload))
 
     return errors
 
@@ -308,10 +341,17 @@ def run_vector(vector: dict) -> TestResult:
         return TestResult(vid, name, True)
     elif expect == "fail":
         if not errors:
-            return TestResult(vid, name, False, ["expected failure but message validated successfully"])
+            return TestResult(
+                vid,
+                name,
+                False,
+                ["expected failure but message validated successfully"],
+            )
         expected_text = vector.get("error_contains")
         if expected_text:
-            expected_values = [expected_text] if isinstance(expected_text, str) else expected_text
+            expected_values = (
+                [expected_text] if isinstance(expected_text, str) else expected_text
+            )
             combined = " ".join(errors)
             missing = [value for value in expected_values if value not in combined]
             if missing:
@@ -319,7 +359,8 @@ def run_vector(vector: dict) -> TestResult:
                     vid,
                     name,
                     False,
-                    [f"expected error text not found: {value}" for value in missing] + errors,
+                    [f"expected error text not found: {value}" for value in missing]
+                    + errors,
                 )
         return TestResult(vid, name, True)
     else:
@@ -361,9 +402,9 @@ def main() -> None:
     total_fail = 0
 
     for tier_name, tier_file in sorted(tiers.items()):
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  {tier_name} - {tier_file}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         results = run_tier(tier_file)
         tier_pass = sum(1 for r in results if r.passed)
@@ -382,9 +423,9 @@ def main() -> None:
         total_pass += tier_pass
         total_fail += tier_fail
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  TOTAL: {total_pass} passed, {total_fail} failed")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     if total_fail > 0:
         print(f"\n  {total_fail} test(s) FAILED")

@@ -402,6 +402,277 @@
         "lead_schema",
         "consumer_required_fields"
       ]
+    },
+    {
+      "id": "L2-013",
+      "name": "lead_location_missing_state_and_postal",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "description": "Location carries country_code + city but neither state_region nor postal_code. SPEC \u00a73 requires at least one of the two (schemas/core.json location anyOf); a runner that only checks country_code would wrongly accept. Paired control: L2-014 differs only in adding state_region.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-loc-013"
+          },
+          "payload": {
+            "lead_id": "lead_loc_013",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Li Wei",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "city": "Melbourne"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "location_state_or_postal"
+      ]
+    },
+    {
+      "id": "L2-014",
+      "name": "lead_location_state_region_only_accepted",
+      "expect": "pass",
+      "description": "Control for L2-013: identical lead whose location adds state_region and still carries no postal_code \u2014 the anyOf is satisfied by either selector alone, proving the rule is the OR requirement, not a blanket reject.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-loc-014"
+          },
+          "payload": {
+            "lead_id": "lead_loc_014",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Li Wei",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "city": "Melbourne",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "location_state_or_postal"
+      ]
+    },
+    {
+      "id": "L2-015",
+      "name": "lead_compliance_otp_planted_code",
+      "expect": "fail",
+      "error_code": "LCP-100",
+      "description": "compliance.otp carries the correctly-hashed verification plus a planted plaintext 'code' property (842314). SPEC \u00a73: the actual OTP code MUST NOT be included \u2014 it is ephemeral and poses a replay risk. The closed otp object (additionalProperties:false) must reject; control: L2-016 differs only in dropping code.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-otp-015"
+          },
+          "payload": {
+            "lead_id": "lead_otp_015",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Li Wei",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:40Z",
+              "otp_verified": true,
+              "otp": {
+                "channel": "sms",
+                "verified_at": "2026-08-15T10:19:45Z",
+                "verified_value_hash": "3f786850336657eb307ef96c13f7526b8552aaf87f1cf83f6b6cbd1f6e3a2b63",
+                "attempts": 2,
+                "code": "842314"
+              }
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "otp_closed_object"
+      ]
+    },
+    {
+      "id": "L2-016",
+      "name": "lead_compliance_otp_hash_and_timestamp_accepted",
+      "expect": "pass",
+      "description": "Control for L2-015: the same otp block with only the permitted channel/verified_at/verified_value_hash/attempts \u2014 hash and timestamp are the sanctioned evidence, no plaintext code.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-otp-016"
+          },
+          "payload": {
+            "lead_id": "lead_otp_016",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Li Wei",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:40Z",
+              "otp_verified": true,
+              "otp": {
+                "channel": "sms",
+                "verified_at": "2026-08-15T10:19:45Z",
+                "verified_value_hash": "3f786850336657eb307ef96c13f7526b8552aaf87f1cf83f6b6cbd1f6e3a2b63",
+                "attempts": 2
+              }
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "otp_closed_object"
+      ]
+    },
+    {
+      "id": "L2-017",
+      "name": "ping_compliance_flags_planted_token",
+      "expect": "fail",
+      "error_code": "LCP-008",
+      "error_contains": [
+        "PII_IN_PING",
+        "compliance_flags.consent_evidence_token",
+        "LCP-008"
+      ],
+      "description": "Valid ping (L2-009 base) whose compliance_flags gain an unknown consent_evidence_token carrying a bearer-JWT-shaped string. SPEC \u00a74: compliance_flags are presence indicators only \u2014 never tokens or evidence. The object stays open (new boolean flags must pass, see L2-018) so closure cannot catch this; the conformance runner's presence-indicator check must.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440002",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-ping-cflag-017"
+          },
+          "payload": {
+            "ping_id": "ping_cflag_017",
+            "lead_reference": "ref_017",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "refinance",
+              "loan_amount_band": "500k_750k"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": true,
+              "consent_evidence_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjb25zZW50LXJlY29yZC1sZWFkXzAxNyIsImF1ZCI6ImJ1eWVyXzAxIn0.planted-not-a-presence-indicator"
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_compliance_flags_presence_only"
+      ]
+    },
+    {
+      "id": "L2-018",
+      "name": "ping_compliance_flags_presence_indicators_accepted",
+      "expect": "pass",
+      "description": "Control for L2-017: compliance_flags carrying known booleans plus one unknown boolean presence flag (mfa_verified) \u2014 presence indicators are open-extensible; every value is a boolean, so the runner must accept.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "770e8400-e29b-41d4-a716-446655440002",
+            "type": "ping",
+            "timestamp": "2026-08-15T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-ping-cflag-018"
+          },
+          "payload": {
+            "ping_id": "ping_cflag_018",
+            "lead_reference": "ref_018",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "AU",
+            "vertical": "mortgage",
+            "attributes": {
+              "loan_type": "refinance",
+              "loan_amount_band": "500k_750k"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": true,
+              "dnc_checked": false,
+              "mfa_verified": true
+            },
+            "floor_price_cents": 1500,
+            "currency": "AUD"
+          }
+        }
+      },
+      "checks": [
+        "ping_compliance_flags_presence_only"
+      ]
     }
   ]
 }

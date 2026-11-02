@@ -150,7 +150,7 @@ the parent merge window; no workflow edit made here).
 | Ruby | `implementations/sdk/ruby/test/negative_vector_test.rb` (#147) | `Lcp::Signing` verify + schema validator | 13/13 executed; entered via 2-line tail require in `shared_vector_test.rb` |
 | C# | `implementations/sdk/csharp/tests/NegativeVectors.cs` (#147) | verify + validation entrypoints | 13/13 executed; invoked from `tests/Program.cs`; CI-log-backed proof |
 | Rust | `implementations/sdk/rust/tests/negative_vectors.rs` (#147) | `verify_hmac` + bundle validation | 13/13 executed; first `tests/` dir in the lane; `cargo test --locked` auto-discovers |
-| Swift | — | — | **remaining gap:** runner not yet written (tracked in docs/SPEC-COVERAGE.md SEC-04b/SEC-05b); XCTest-in-CI constraint noted in #139 findings |
+| Swift | `implementations/sdk/swift/Tests/LCPTests/NegativeVectorsTests.swift` (#150) | `LCPSigning.verify` (frozen clock from `inputs.now`, `maxSkew = replay_window_seconds`), `LCPValidator.validateEnvelope` / `validateOffer` from the repo schema tree | 13/13 executed; `lcp-neg-mode-001` GAP via stderr line (the Swift verifier holds no test/production mode state — invariant 8 is a platform concern); auto-discovered by `swift test` in `sdk.yml` (same CI path as the #139 interop probe; no workflow change needed) |
 
 All landed runners report `lcp-neg-mode-001` as GAP per policy — no SDK
 verifier holds test/production mode state; invariant 8 remains a platform
