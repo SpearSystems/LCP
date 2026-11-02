@@ -164,8 +164,7 @@ def check_compliance_flags(payload: dict) -> List[str]:
     if not isinstance(flags, dict):
         return []
     return [
-        f"PII_IN_PING: compliance_flags.{name} is not a boolean presence "
-        "indicator — tokens/evidence forbidden (LCP-008)"
+        f"PII_IN_PING: compliance_flags.{name} is not a boolean presence indicator — tokens/evidence forbidden (LCP-008)"
         for name, value in flags.items()
         if not isinstance(value, bool)
     ]
