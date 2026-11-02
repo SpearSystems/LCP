@@ -81,6 +81,8 @@ jobs:
           "${HOME}/.kyverno/kyverno" version
       - name: Validate LEP registry
         run: python tools/check_lep_registry.py
+      - name: Validate logging hygiene
+        run: python tools/check_logging_hygiene.py
       - name: Test reviewed SARIF tooling
         run: python -m unittest discover -s tools/tests -v
       - name: Test image verification fixtures

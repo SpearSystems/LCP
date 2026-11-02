@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# example — not for production: illustrative template; review persistence,
+# consent, and retry handling before adapting to live traffic.
 # Submit an existing LCP JSON envelope with canonical HMAC signing.
 # Requires: curl, openssl, and python3.
 # Required: LCP_ENDPOINT, LCP_SENDER_ID, LCP_HMAC_SECRET.

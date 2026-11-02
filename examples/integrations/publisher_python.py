@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# example — not for production: illustrative template; review persistence,
+# consent, and retry handling before adapting to live traffic.
 """Send one synthetic/example lead to an LCP endpoint.
 
 Required environment variables:
