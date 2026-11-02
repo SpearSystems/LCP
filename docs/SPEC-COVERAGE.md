@@ -63,7 +63,7 @@ LCP-002 — recorded under ERR-002.
 | ATR-01 | §3 attributes require vertical + schema_version | schema+runner | L2-001 | green |
 | ATR-02 | §3 vertical fields tagged ping_safe; ping with non-tagged field rejected (LCP-008) | conformance-runner | L2-009, L2-009b, L2-009c, L2-009d, sdk-012 | green |
 | ATR-03 | §3 ping attributes only ping_safe:true values, nested objects included | conformance-runner | L2-003 | green |
-| ATR-04 | §3 vertical schemas MUST NOT redefine core field names in attributes | tooling | - | gap(NOT ENFORCED — planted phone-in-mortgage passed conformance 30/30 and check_sdk_schema_sync exit 0; issue filed) |
+| ATR-04 | §3 vertical schemas MUST NOT redefine core field names in attributes | tooling | - | gap(NOT ENFORCED — planted phone-in-mortgage passed conformance 30/30 and check_sdk_schema_sync exit 0; issue #134) |
 | ATR-05 | §3 country-specific vertical data modeled as country-scoped objects (AGENTS rule 7) | governance | - | exempt(schema-authoring guidance; enforced by vertical design review, no runtime semantics) |
 | ATR-06 | §3 performance metrics belong in extensions, never in core or vertical schemas | tooling | - | gap(no checker asserts metric absence in verticals) |
 | ATT-01 | §3 attachments[] metadata shape, limits, raw-byte fidelity through upload/download | platform | plat:test_attachment_upload_uses_attachment_limit_not_json_limit, plat:test_http_attachment_endpoints_preserve_raw_bytes, plat:test_attachment_download_returns_binary_headers_and_bytes | green |
