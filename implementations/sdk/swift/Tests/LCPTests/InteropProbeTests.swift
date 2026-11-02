@@ -29,7 +29,7 @@ final class InteropProbeTests: XCTestCase {
     }
 
     func testEmitInteropProbe() throws {
-        let vectorURL = repoRoot().appendingPathComponent("test-vectors/sdk/hmac.json")
+        let vectorURL = try repoRoot().appendingPathComponent("test-vectors/sdk/hmac.json")
         guard let raw = FileManager.default.contents(atPath: vectorURL.path),
               let vector = try JSONSerialization.jsonObject(with: raw) as? [String: Any]
         else { throw XCTSkip("cannot read \(vectorURL.path)") }

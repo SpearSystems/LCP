@@ -54,9 +54,12 @@ const result = {
   signature_hex: signatureHex,
   emitted_timestamp: emittedTimestamp,
 };
-// Logging hygiene: implementations/** runtime code must not write payload
-// prints to stdout; stderr + LCP_INTEROP_OUT are the machine channels.
-console.error("LCP_INTEROP " + JSON.stringify(result, Object.keys(result).sort()));
+// Logging hygiene: implementations/** must not pass serialized payloads to
+// print/console/logging calls (tools/check_logging_hygiene.py Rule 2 — no
+// stderr allowance for console.*). A direct stderr stream write is the same
+// channel the Go/Python probes use; LCP_INTEROP_OUT is the file channel.
+const payload = JSON.stringify(result, Object.keys(result).sort());
+process.stderr.write("LCP_INTEROP " + payload + "\n");
 if (process.env.LCP_INTEROP_OUT) {
   writeFileSync(process.env.LCP_INTEROP_OUT, JSON.stringify(result) + "\n");
 }
