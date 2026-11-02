@@ -28,8 +28,10 @@ vectors: LOC-02 (missing state+postal), CMP-04 (OTP code present),
 MSG-PING-03 (token inside compliance_flags).
 
 Known ledger findings (filed as issues linked from the introducing PR): ATR-04
-reserved-core-field shadowing is **not enforced by any tool** — planted
-proof in the PR body; ERR-012's `test_bearer_with_wrong_api_key_is_rejected`
+reserved-core-field shadowing is enforced by `tool:check_reserved_fields`
+(reserved set derived from `schemas/core.json`; embedded pre-hash in
+`check_sdk_schema_sync` and pre-write in `generate_sdk_models` — issue #134,
+planted proofs in that PR); ERR-012's `test_bearer_with_wrong_api_key_is_rejected`
 asserts LCP-012 for a wrong bearer key, where §5 maps identity failures to
 LCP-002 — recorded under ERR-002.
 
@@ -68,7 +70,7 @@ LCP-002 — recorded under ERR-002.
 | ATR-01 | §3 attributes require vertical + schema_version | schema+runner | L2-001 | green |
 | ATR-02 | §3 vertical fields tagged ping_safe; ping with non-tagged field rejected (LCP-008) | conformance-runner | L2-009, L2-009b, L2-009c, L2-009d, sdk-012 | green |
 | ATR-03 | §3 ping attributes only ping_safe:true values, nested objects included | conformance-runner | L2-003 | green |
-| ATR-04 | §3 vertical schemas MUST NOT redefine core field names in attributes | tooling | - | gap(NOT ENFORCED — planted phone-in-mortgage passed conformance 30/30 and check_sdk_schema_sync exit 0; issue #134) |
+| ATR-04 | §3 vertical schemas MUST NOT redefine core field names in attributes | tooling | tool:check_reserved_fields | green |
 | ATR-05 | §3 country-specific vertical data modeled as country-scoped objects (AGENTS rule 7) | governance | - | exempt(schema-authoring guidance; enforced by vertical design review, no runtime semantics) |
 | ATR-06 | §3 performance metrics belong in extensions, never in core or vertical schemas | tooling | - | gap(no checker asserts metric absence in verticals) |
 | ATT-01 | §3 attachments[] metadata shape, limits, raw-byte fidelity through upload/download | platform | plat:test_attachment_upload_uses_attachment_limit_not_json_limit, plat:test_http_attachment_endpoints_preserve_raw_bytes, plat:test_attachment_download_returns_binary_headers_and_bytes | green |
@@ -171,7 +173,7 @@ LCP-002 — recorded under ERR-002.
 | GOV-03 | §11 anti-capture: no mandatory fees, approvals, or proprietary dependencies | governance | - | exempt(governance charter text; adjudicated by maintainers, not tests) |
 | DOC-01 | §6 machine-readable schemas ship synced with every SDK (bundle + manifest + typed models) | tooling | tool:check_sdk_schema_sync | green |
 | DOC-02 | quality gate: every schema validates its examples | conformance-runner | L2-001, L2-002, L2-003, L2-004, L2-005, L2-006 | green |
-| UNI-01 | §12 universal audit checklist executed mechanically before core changes | tooling | - | gap(checklist is manual today; CORE-01/CON-08/ATR-04/ATR-06 rows are its unautomated members) |
+| UNI-01 | §12 universal audit checklist executed mechanically before core changes | tooling | - | gap(checklist is manual today; CORE-01/CON-08/ATR-06 rows are its unautomated members) |
 | UNI-02 | §12 legacy production wire-contract fields map 1:1 into LCP | platform | plat:test_versioned_publisher_mapping_normalizes_otp_and_audits_without_source_pii | green |
 <!-- SPEC-COVERAGE-MATRIX:END -->
 
@@ -180,9 +182,8 @@ LCP-002 — recorded under ERR-002.
 The `gap` rows above are the work queue for ARB waves W1–W5: per-SDK
 negative-runner wiring (spine vectors landed via #132, Python executes;
 9 languages pending), the three still-owed negative vectors listed in the
-header, capabilities/offer-restriction coverage, universal-audit
-mechanization, and the reserved-core-field enforcement hole (ATR-04,
-filed as issue #134 with planted proof).
+header, capabilities/offer-restriction coverage, and universal-audit
+mechanization.
 
 Wave-5 flip: `--fail-on-gap` exists on the checker; `spec-coverage.yml`
 drops `continue-on-error` at the same time the gap count reaches zero.
