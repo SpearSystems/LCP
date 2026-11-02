@@ -70,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - working-directory: implementations/sdk/go
-        run: go test ./...
+        run: go test -v ./...
       - name: Build Go module
         working-directory: implementations/sdk/go
         run: go build ./...
@@ -109,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - working-directory: implementations/sdk/php
-        run: composer install --no-interaction --no-progress --prefer-dist && php tests/shared_vector.php
+        run: composer install --no-interaction --no-progress --prefer-dist && php tests/shared_vector.php && php tests/negative_vectors.php
       - name: Archive Composer package
         working-directory: implementations/sdk/php
         run: composer archive --format=zip --dir="$RUNNER_TEMP" --file=lcp-sdk

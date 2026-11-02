@@ -135,3 +135,23 @@ is not yet discovered: the `php` job in `.github/workflows/sdk.yml` invokes only
 `php tests/shared_vector.php`; wiring this runner needs that one line extended to
 `… && php tests/shared_vector.php && php tests/negative_vectors.php` (deferred to
 the parent merge window; no workflow edit made here).
+
+**Batch B/C consolidations (parent, post-#141/#147):**
+
+- PHP discovery line landed in `sdk.yml` (`&& php tests/negative_vectors.php`).
+- Go job now runs `go test -v ./...` so the runner's GAP/summary lines are
+  visible in CI logs.
+
+| SDK | Runner file | Primitives | Notes |
+|---|---|---|---|
+| Python | `implementations/sdk/python/tests/test_negative_vectors.py` (#132) | `verify_hmac`, raw-body webhook verify, envelope/offer validators | reference implementation of the runner contract |
+| TypeScript | `implementations/sdk/typescript/test/negative-vectors.test.mjs` (#141) | `verifyHmac`, `LcpSchemaValidator` | outcome-only asserts (plain errors, no protocol codes); `lcp-neg-replay-004` pinned under `TZ=Australia/Sydney` and `TZ=UTC`; wired into `npm test` chain |
+| Go | `implementations/sdk/go/negative_vectors_test.go` (#141) | `VerifyHMAC`, `ValidateEnvelopeBundle`, `ValidateOffer` | rejects naive timestamps at RFC3339 parse; GAP line via stdout (visible with `-v`) |
+| Ruby | `implementations/sdk/ruby/test/negative_vector_test.rb` (#147) | `Lcp::Signing` verify + schema validator | 13/13 executed; entered via 2-line tail require in `shared_vector_test.rb` |
+| C# | `implementations/sdk/csharp/tests/NegativeVectors.cs` (#147) | verify + validation entrypoints | 13/13 executed; invoked from `tests/Program.cs`; CI-log-backed proof |
+| Rust | `implementations/sdk/rust/tests/negative_vectors.rs` (#147) | `verify_hmac` + bundle validation | 13/13 executed; first `tests/` dir in the lane; `cargo test --locked` auto-discovers |
+| Swift | — | — | **remaining gap:** runner not yet written (tracked in docs/SPEC-COVERAGE.md SEC-04b/SEC-05b); XCTest-in-CI constraint noted in #139 findings |
+
+All landed runners report `lcp-neg-mode-001` as GAP per policy — no SDK
+verifier holds test/production mode state; invariant 8 remains a platform
+concern (LCP-013 path).
