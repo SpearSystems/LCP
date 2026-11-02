@@ -30,12 +30,12 @@ Blocking/advisory split (this is the LEP-0002 dossier machinery):
   is always a real defect. Exit 1.
 - Missing or malformed probe output is a toolchain/pipeline break: exit 2.
   Nothing is ever silently skipped.
-- The generation-shape check is advisory until LEP-0002 is Accepted: Go, Java,
+- The generation-shape check is advisory until LEP-0002 is Accepted: Java,
   Kotlin and Rust emit fractional seconds today (LEP-0002 §Problem statement
   evidence table), and that FAIL cells in the matrix are the dossier evidence.
-  Shape results NEVER affect the exit code. When an SDK beyond the known four
+  Shape results NEVER affect the exit code. When an SDK beyond the known three
   starts failing the shape check, the report flags ``REGRESSION``; when one of
-  the known four aligns, it flags ``ALIGNED`` — both as the LEP-0002 rollout
+  the known three aligns, it flags ``ALIGNED`` — both as the LEP-0002 rollout
   progress signal.
 
 Exit codes: 2 probe missing/unparsable, 1 signature identity broken, 0
@@ -70,7 +70,7 @@ SDK_LANGS = (
 # 2026-11-02 head) to emit fractional seconds today. Their shape FAIL is
 # expected dossier content, not a regression. Update this baseline together
 # with LEP-0002 step 2 (SDK generation alignment), never silently.
-KNOWN_FRACTIONAL_SDKS = frozenset({"go", "java", "kotlin", "rust"})
+KNOWN_FRACTIONAL_SDKS = frozenset({"java", "kotlin", "rust"})
 
 # Whole-second canonical form required by LEP-0002 once accepted.
 CANONICAL_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

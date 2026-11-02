@@ -1,7 +1,7 @@
 """Unit tests for tools/sdk_interop_matrix.py (cross-SDK interop, LEP-0002 step 1).
 
 Deterministic and network-free: fixed vectors + canned probe outputs,
-including the four known fractional emitters (Go/Java/Kotlin/Rust) from the
+including the three known fractional emitters (Java/Kotlin/Rust) from the
 LEP-0002 evidence table and planted-violation fixtures proving the checks are
 fail-loud, not vacuous.
 """
@@ -37,8 +37,8 @@ EXPECTED_CANONICAL = hashlib.sha256(
     b"2026-08-15T10:20:00Z\nsdk-vector-001\n" + b'{"hello":"world"}'
 ).hexdigest()
 
-WHOLE_SECOND_SDKS = ["python", "typescript", "ruby", "php", "swift", "csharp"]
-FRACTIONAL_SDKS = ["go", "java", "kotlin", "rust"]
+WHOLE_SECOND_SDKS = ["python", "typescript", "ruby", "php", "swift", "csharp", "go"]
+FRACTIONAL_SDKS = ["java", "kotlin", "rust"]
 
 FAKE_SIG = "0" * 64
 
@@ -143,9 +143,9 @@ class SignatureIdentityTests(unittest.TestCase):
 
 
 class ShapeMatrixTests(unittest.TestCase):
-    def test_today_matrix_is_six_pass_four_fail(self):
+    def test_today_matrix_is_seven_pass_three_fail(self):
         matrix = interop.build_matrix(VECTOR, all_probes())
-        self.assertEqual(matrix["shape_counts"], {"pass": 6, "fail": 4, "missing": 0})
+        self.assertEqual(matrix["shape_counts"], {"pass": 7, "fail": 3, "missing": 0})
         for sdk in FRACTIONAL_SDKS:
             row = next(r for r in matrix["rows"] if r["sdk"] == sdk)
             self.assertEqual(row["shape_status"], "FAIL")
@@ -155,7 +155,7 @@ class ShapeMatrixTests(unittest.TestCase):
 
     def test_shape_fail_never_changes_exit_code(self):
         matrix = interop.build_matrix(VECTOR, all_probes())
-        self.assertEqual(matrix["exit_code"], 0)  # four shape FAILs, still green
+        self.assertEqual(matrix["exit_code"], 0)  # three shape FAILs, still green
 
     def test_planted_fractional_in_whole_second_sdk_is_regression(self):
         # Acceptance proof: a future fractional regression in a currently
@@ -171,12 +171,12 @@ class ShapeMatrixTests(unittest.TestCase):
         self.assertEqual(matrix["exit_code"], 0)
 
     def test_known_fractional_sdk_aligning_is_reported_as_progress(self):
-        probes = all_probes(go=canned_probe("go", emitted="2026-08-15T10:20:00Z"))
+        probes = all_probes(java=canned_probe("java", emitted="2026-08-15T10:20:00Z"))
         matrix = interop.build_matrix(VECTOR, probes)
-        row = next(r for r in matrix["rows"] if r["sdk"] == "go")
+        row = next(r for r in matrix["rows"] if r["sdk"] == "java")
         self.assertEqual(row["shape_status"], "PASS")
         self.assertIn("ALIGNED", row["shape_note"])
-        self.assertEqual(matrix["shape_alignments"], ["go"])
+        self.assertEqual(matrix["shape_alignments"], ["java"])
 
     def test_wrong_instant_whole_second_shape_fails(self):
         probes = all_probes(rust=canned_probe("rust", emitted="2027-01-01T00:00:00Z"))
@@ -226,13 +226,13 @@ class CliTests(unittest.TestCase):
             with open(summary_path, encoding="utf-8") as handle:
                 summary = handle.read()
             self.assertIn("Signature identity (blocking): PASS", summary)
-            self.assertIn("6 PASS / 4 FAIL", summary)
+            self.assertIn("7 PASS / 3 FAIL", summary)
             for sdk in FRACTIONAL_SDKS:
                 self.assertIn(f"| {sdk} | PASS |", summary)
             with open(report_path, encoding="utf-8") as handle:
                 report = json.load(handle)
             self.assertEqual(
-                report["shape_counts"], {"pass": 6, "fail": 4, "missing": 0}
+                report["shape_counts"], {"pass": 7, "fail": 3, "missing": 0}
             )
             self.assertTrue(report["signature_identity"])
 

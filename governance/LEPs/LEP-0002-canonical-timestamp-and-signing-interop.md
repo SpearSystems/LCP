@@ -5,6 +5,8 @@
 - **Date:** 2026-11-02
 - **Status:** **Draft** — not accepted, not implemented
 - **Target version:** v1.1.0 (documentation clarification; no wire-contract change)
+- **Evidence corrections applied:** evidence-table and derived-count fixes
+  per ARB retro-audit at `dee5584` (no status change; remains Draft)
 
 Public discussion: <https://github.com/SpearSystems/LCP/issues/121>
 (tracked from `docs/V1.1-ROADMAP.md` Phase 5, "Canonical timestamp
@@ -33,22 +35,25 @@ is re-verified against `origin/main` at draft time.
 | SDK | File:line | Expression | Emitted form |
 |---|---|---|---|
 | Python | `implementations/sdk/python/lcp_sdk/envelope.py:10-12` (used at `client.py:64`) | `strftime("%Y-%m-%dT%H:%M:%SZ")` | whole seconds |
-| TypeScript | `implementations/sdk/typescript/src/index.ts:22-23` (used at `:132`) | `new Date().toISOString().replace(/\.\d{3}Z$/, "Z")` | whole seconds (ms stripped) |
+| TypeScript | `implementations/sdk/typescript/src/index.ts:22-23` (used at `:131-132`) | `new Date().toISOString().replace(/\.\d{3}Z$/, "Z")` | whole seconds (ms stripped) |
 | Ruby | `implementations/sdk/ruby/lib/lcp_sdk.rb:76` | `Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")` | whole seconds |
 | PHP | `implementations/sdk/php/src/LcpSdk.php:75` | `gmdate('Y-m-d\TH:i:s\Z')` | whole seconds |
 | C# | `implementations/sdk/csharp/src/LcpSdk.cs:96` | `DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")` | whole seconds |
 | Swift | `implementations/sdk/swift/Sources/LCP/Lcp.swift:39` | `ISO8601DateFormatter().string(from: Date())` (default `.withInternetDateTime` options) | whole seconds |
-| Go | `implementations/sdk/go/lcp.go:164` | `time.Now().UTC().Format(time.RFC3339)` | **fractional** whenever the clock carries sub-second precision |
+| Go | `implementations/sdk/go/lcp.go:164` | `time.Now().UTC().Format(time.RFC3339)` | **whole seconds** — the `time.RFC3339` layout carries no fractional-seconds token, so `Format` always drops the nanosecond field (verified at dee5584: the SDK probe formats the frozen instant `…10:20:00.123456789Z` as `2026-08-15T10:20:00Z`; CI matrix measures 7 whole-second / 3 fractional) |
 | Java | `implementations/sdk/java/src/main/java/com/spearsystems/lcp/LcpSdk.java:54` | `Instant.now().toString()` | **fractional** (0/3/6/9 digits as returned by the clock; whole seconds only when the nano field is exactly zero) |
 | Kotlin | `implementations/sdk/kotlin/src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt:32` | `Instant.now().toString()` | **fractional** (as Java) |
 | Rust | `implementations/sdk/rust/src/lib.rs:51` | `OffsetDateTime::now_utc().format(&Rfc3339)` | **fractional** (nanosecond subsecond is formatted when nonzero) |
 
-The same divergence flows into the envelope `lcp.message.timestamp`
-default in several SDKs (Ruby `lcp_sdk.rb:54`, Java `LcpSdk.java:23`,
-Kotlin `LcpSdk.kt:21`, Rust `lib.rs:30`, Swift `Lcp.swift:16`, Go
-`lcp.go:45`). The reference platform signs whole seconds
-(`implementations/reference-platform/lcp_platform/storage.py:21-22`
-`now_iso`), and the MCP adapter inherits the Python SDK's whole-second
+The envelope `lcp.message.timestamp` defaults reuse each SDK's
+generator (Ruby `lcp_sdk.rb:54`, Java `LcpSdk.java:23`, Kotlin
+`LcpSdk.kt:21`, Rust `lib.rs:30`, Swift `Lcp.swift:16`, Go
+`lcp.go:45`); only the Java, Kotlin, and Rust defaults inherit the
+fractional divergence — the Ruby, Swift, and Go defaults already emit
+the canonical whole-second form. The reference platform generates whole
+seconds (`implementations/reference-platform/lcp_platform/storage.py:21-22`
+`now_iso`; it verifies inbound signatures and holds no outbound signer),
+and the MCP adapter inherits the Python SDK's whole-second
 form (`implementations/mcp-server/lcp_mcp_server/client.py` wraps
 `lcp_sdk.LCPClient`).
 
@@ -57,7 +62,9 @@ form (`implementations/mcp-server/lcp_mcp_server/client.py` wraps
 1. *Verifier asymmetry is a live failure, not a hypothetical.* Verifiers
    re-parse the header for the replay window. Nine of the ten parse
    leniently and accept both forms — Python `fromisoformat` with an
-   RFC-2822 fallback (`signing.py:_parse_timestamp`), Go
+   RFC-2822 fallback (`signing.py:_parse_timestamp`; note `fromisoformat`
+   only parses a 9-digit fraction on Python ≥ 3.11, and the supported
+   floor is 3.10), Go
    `time.Parse(time.RFC3339)` (`lcp.go:73-74`, which tolerates a
    fractional second absent from the layout), Java `Instant.parse`
    (`LcpSdk.java:42`), Kotlin `Instant.parse` (`LcpSdk.kt:28`), Ruby
@@ -66,7 +73,7 @@ form (`implementations/mcp-server/lcp_mcp_server/client.py` wraps
    TypeScript `new Date(timestamp)` (`index.ts:78`), Rust
    `OffsetDateTime::parse(&Rfc3339)` (`lib.rs:41`). The Swift verifier
    (`Lcp.swift:33`) uses the default `ISO8601DateFormatter`, which
-   rejects fractional seconds: a Go, Java, Kotlin, or Rust signer can
+   rejects fractional seconds: a **Java, Kotlin, or Rust** signer can
    produce a request that a Swift verifier refuses outright, with an
    error ("timestamp outside replay window") that misattributes a format
    problem as a clock problem.
@@ -96,7 +103,7 @@ the discussion issue.
   *string* is the signed input, not the clock. No new fields, no message
   types, no version bump of the wire contract; envelopes and headers are
   unchanged in shape.
-- All ten SDK bundles: signer-side formatting alignment (four SDKs emit
+- All ten SDK bundles: signer-side formatting alignment (three SDKs emit
   fractional today) and the envelope default-timestamp generators.
 - Reference platform and MCP adapter: already canonical; cited as the
   conformance reference, no change.
@@ -120,7 +127,7 @@ YYYY-MM-DDTHH:MM:SSZ
 — UTC, whole seconds, exactly one `Z`, no fractional part, no numeric
 offset. This is already the form used by SPEC.md §9's own example
 (`"timestamp": "2026-08-15T10:20:00Z"`), the shared HMAC vector, the
-reference platform, and six of ten SDKs.
+reference platform, and seven of ten SDKs.
 
 Valid:
 
@@ -195,16 +202,17 @@ the replay window; this proposal changes no verifier behavior.
 
 ## SDK, OpenAPI, MCP, conformance, and operational impact
 
-- **SDKs (after acceptance):** Go (`lcp.go:164`, plus `lcp.go:45`),
-  Java (`LcpSdk.java:54`, `:23`), Kotlin (`LcpSdk.kt:32`, `:21`), Rust
-  (`lib.rs:51`, `:30`) switch to explicit whole-second UTC formatting
-  (e.g. `time.Now().UTC().Format("2006-01-02T15:04:05Z")`,
-  `DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")` with
-  `withZone(ZoneOffset.UTC)` over `Instant.now()`,
-  `format(&well_known::rfc3339::WellKnownFormat)`-equivalent whole-second
-  formatting in `time`-crate terms). The six already-canonical SDKs get
-  no code change; per-SDK unit tests pin the emitted shape with a frozen
-  clock so regressions are visible in each language's own CI.
+- **SDKs (after acceptance):** Java (`LcpSdk.java:54`, `:23`), Kotlin
+  (`LcpSdk.kt:32`, `:21`), Rust (`lib.rs:51`, `:30`) switch to explicit
+  whole-second UTC formatting
+  (`DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")` with
+  `withZone(ZoneOffset.UTC)` over `Instant.now()`; in `time`-crate terms
+  `now_utc().replace_nanosecond(0)?.format(&Rfc3339)`). **Go needs no
+  code change** — `time.Now().UTC().Format(time.RFC3339)` (`lcp.go:164`,
+  `lcp.go:45`) already emits the canonical form because the layout has
+  no fractional token. The **seven** already-canonical SDKs get no code
+  change; per-SDK unit tests pin the emitted shape with a frozen clock
+  so regressions are visible in each language's own CI.
 - **OpenAPI/MCP:** no schema-surface change (the header is documented
   auth metadata, not a schema'd body field). The MCP adapter's client
   wrapper inherits Python's canonical form; its README example stays
@@ -254,11 +262,13 @@ registry records `Accepted`:
    asserts the canonical signing bytes and the resulting signature are
    identical across languages, plus a generation-shape check per SDK with
    a frozen clock. On today's tree the generation-shape half *fails for
-   Go/Java/Kotlin/Rust by design* — the failure is the evidence that the
+   **Java/Kotlin/Rust** by design (Go passes — `Format(time.RFC3339)`
+   renders whole seconds; the shipped matrix flags it `ALIGNED` against
+   the stale evidence row)* — the failure is the evidence that the
    job works; the job initially runs as an advisory/reporting job until
    acceptance, then becomes blocking in the implementation PR.
-2. **SDK generation changes** (single batch, one release train): the four
-   fractional emitters switch to canonical formatting; every SDK gains
+2. **SDK generation changes** (single batch, one release train): the
+   three fractional emitters switch to canonical formatting; every SDK gains
    the frozen-clock format unit test. SDK version bumps are PATCH-level
    behavior alignment per bundle changelogs (no API change).
 3. **Docs:** SPEC.md §9 normative paragraph + canonical example set,
