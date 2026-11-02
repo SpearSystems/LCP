@@ -16,12 +16,16 @@ ids, test-less green rows, missing exempt reasons). Statuses:
 Test-id families: `L1-*`/`L2-*`/`L3-*` = conformance vectors
 (`test-vectors/*.json`), `sdk-NNN` = shared validation corpus
 (`test-vectors/sdk/validation-corpus.json`, run by all 10 SDK harnesses),
-`lcp-sdk-hmac-NNN` = shared HMAC vector, `plat:` = reference-platform
+`lcp-sdk-hmac-NNN` = shared HMAC vector,
+`lcp-neg-*` = shared negative security vectors
+(`test-vectors/sdk/negative/*.json`, spine + Python runner landed via #132;
+remaining SDK runners tracked on SEC-04b/SEC-05b), `plat:` = reference-platform
 unittest (`implementations/reference-platform/tests/`), `sdk-py:` = Python
 SDK unittest, `mcp:` = MCP adapter unittest, `tool:` = repo checker tool.
-Rows that must be updated when `W1NegVectors` lands: SEC-04b, SEC-05b,
-VER-03, LOC-02, CMP-04, MSG-PING-03. (The adversarial platform E2E from
-#133 already closed ERR-006 and EXC-02; per-SDK assertions still pending.)
+Negative-vector spine (#132) credited on VER-03, ERR-006, ERR-008, ERR-012,
+ERR-013, MSG-PING-02, SEC-04, SEC-05 + partials SEC-04b/SEC-05b. Still owed
+vectors: LOC-02 (missing state+postal), CMP-04 (OTP code present),
+MSG-PING-03 (token inside compliance_flags).
 
 Known ledger findings (filed as issues linked from the introducing PR): ATR-04
 reserved-core-field shadowing is **not enforced by any tool** — planted
@@ -86,7 +90,7 @@ LCP-002 — recorded under ERR-002.
 | MSG-CALL-01 | §4 call message: call block (status, durations, recording, ivr, disposition, queue, agent) | schema+runner | L1-002, L2-002 | green |
 | MSG-CALL-02 | §4 CALL_* lifecycle events carry offer_id/call_status/total_seconds/disposition/transfer_status in details | schema+platform | - | gap(call lifecycle event shapes unexercised end-to-end) |
 | MSG-PING-01 | §4 ping is a strict allowlist (additionalProperties:false); anything else → LCP-008 | schema+runner | L2-003, L2-007, L2-008, sdk-002 | green |
-| MSG-PING-02 | §4 ping never contains consumer/compliance/provenance blocks | conformance-runner | L2-007, L2-008 | green |
+| MSG-PING-02 | §4 ping never contains consumer/compliance/provenance blocks | conformance-runner+corpus | L2-007, L2-008, lcp-neg-pii-001 | green |
 | MSG-PING-03 | §4 compliance_flags are presence indicators only — never tokens or evidence | schema+runner | - | gap(no planted-token vector for compliance_flags) |
 | MSG-BID-01 | §4 bid decision accept/reject/pass; bid_price_cents required iff accept | schema+platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | MSG-BID-02 | §4 auction flow: platform collects bids in expiry window, posts winner, losers get no PII | platform | plat:test_ping_bid_post_and_delivery_event_flow, plat:test_indexed_offer_candidates_are_conservative_and_reindex_updates | green |
@@ -105,20 +109,20 @@ LCP-002 — recorded under ERR-002.
 | ERR-003 | §5 LCP-003 MISSING_REQUIRED_FIELD code emitted for schema-missing fields | platform | - | gap(corpus proves rejection; no assertion the platform stamps code LCP-003) |
 | ERR-004 | §5 LCP-004 INVALID_STATUS_TRANSITION ↔ 422 | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | ERR-005 | §5 LCP-005 DUPLICATE_LEAD ↔ 409 | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_idempotency_key_reuse_with_different_body_is_rejected | green |
-| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004, plat:test_unknown_message_type_returns_structured_error | green |
+| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004, lcp-neg-mt-001, plat:test_unknown_message_type_returns_structured_error | green |
 | ERR-007 | §5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422 | platform | - | gap(no implementation-visible test of unsupported version handling) |
-| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, sdk-012, plat:test_pii_in_ping_rejected_by_platform_validation | green |
+| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, sdk-012, lcp-neg-pii-001, plat:test_pii_in_ping_rejected_by_platform_validation | green |
 | ERR-009 | §5 LCP-009 INVALID_PHONE ↔ 400 | schema+platform | L2-011 | gap(pattern proven at schema layer; platform code emission unasserted) |
 | ERR-010 | §5 LCP-010 INVALID_TERRITORY ↔ 422 | platform | - | gap(no test emits the code) |
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | - | gap(router.py raises 429 LCP-011; no test drives the limit or header) |
-| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers, plat:test_bearer_with_wrong_api_key_is_rejected, plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001 | green |
-| ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform | plat:test_production_endpoint_rejects_test_traffic | green |
+| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers, plat:test_bearer_with_wrong_api_key_is_rejected, plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
+| ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform+corpus | plat:test_production_endpoint_rejects_test_traffic, lcp-neg-mode-001 | green |
 | ERR-100 | §5 LCP-100 VALIDATION_ERROR ↔ 400 catch-all | platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | ERR-500 | §5 LCP-500 INTERNAL_ERROR ↔ 500 | platform | - | gap(no fault-injection test of the 500 envelope) |
 | ERR-SHAPE | §5 one error shape (errors[] with code/name/message/field/details) everywhere | schema+platform | L3-005, plat:test_malformed_json_content_type_returns_json_error | green |
 | VER-01 | §6 protocol semver + per-schema versions + SDK version coherence | tooling | tool:check_sdk_versions | green |
 | VER-02 | §6 deprecation policy N+2 with 2-year grace + migration guidance | governance | - | exempt(policy governs future releases; nothing to test at v1.0) |
-| VER-03 | §6 unknown optional fields ignored on open objects but rejected on closed allowlists | schema+runner | - | gap(allowlist half proven via L2-007/008; ignore-vs-reject vectors pending W1NegVectors) |
+| VER-03 | §6 unknown optional fields ignored on open objects but rejected on closed allowlists | schema+corpus | lcp-neg-fld-001, lcp-neg-fld-002 | green |
 | VER-04 | §6 extensions namespaced org.division.purpose and registered | governance | - | exempt(EXTENSION-REGISTRY.md is format-only governance registration; human-reviewed) |
 | ENU-01 | §6 message.type closed: unknown rejected | schema+runner | L1-007 | green |
 | ENU-02 | §6 status open: unknown stored and passed through | platform | - | gap(no unknown-status passthrough vector) |
@@ -142,10 +146,10 @@ LCP-002 — recorded under ERR-002.
 | SEC-01 | §9 TLS 1.3 required for all transports | platform+deployment | - | exempt(deployment-edge policy; enforced by reference-platform Kyverno admission and security profiles, not by protocol CI) |
 | SEC-02 | §9 HMAC auth via X-LCP-Signature/Timestamp/Idempotency-Key headers | sdk+platform | lcp-sdk-hmac-001, plat:test_http_service_accepts_canonical_hmac_request | green |
 | SEC-03 | §9 canonical signing input timestamp\nkey\nraw-body; lowercase hex HMAC-SHA256 | sdk | lcp-sdk-hmac-001, sdk-py:test_canonical_signature_round_trip | green |
-| SEC-04 | §9 verifier uses the raw body bytes; re-serialized body must fail | sdk-python | sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers | green |
-| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | - | gap(only Python asserted; tamper/re-serialize vectors pending W1NegVectors) |
-| SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected | green |
-| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced | gap(platform window+idempotency now enforced by E2E; per-SDK replay vectors pending W1NegVectors) |
+| SEC-04 | §9 verifier uses the raw body bytes; re-serialized body must fail | sdk-python | sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers, lcp-neg-sig-003, lcp-neg-sig-004 | green |
+| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | gap(vectors landed in test-vectors/sdk/negative/signature.json #132; only the Python runner executes them — 9 SDK runners pending) |
+| SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
+| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | gap(platform + vector spine landed; per-SDK runners (9 languages) pending) |
 | SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | - | gap(presence tested; equality of header vs envelope never asserted) |
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
 | SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |
@@ -173,12 +177,12 @@ LCP-002 — recorded under ERR-002.
 
 ## Gap backlog (v1 snapshot — recomputed by the checker, listed here for reading)
 
-The `gap` rows above are the work queue for ARB waves W1–W5: negative
-signature/replay/allowlist vectors (W1NegVectors in flight; platform-side
-adversarial E2E already landed via #133 and is credited above),
-capabilities/offer-restriction coverage, universal-audit mechanization, and
-the reserved-core-field enforcement hole (ATR-04, filed as issue #134 with
-planted proof).
+The `gap` rows above are the work queue for ARB waves W1–W5: per-SDK
+negative-runner wiring (spine vectors landed via #132, Python executes;
+9 languages pending), the three still-owed negative vectors listed in the
+header, capabilities/offer-restriction coverage, universal-audit
+mechanization, and the reserved-core-field enforcement hole (ATR-04,
+filed as issue #134 with planted proof).
 
 Wave-5 flip: `--fail-on-gap` exists on the checker; `spec-coverage.yml`
 drops `continue-on-error` at the same time the gap count reaches zero.

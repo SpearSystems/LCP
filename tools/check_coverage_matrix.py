@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -46,10 +45,12 @@ END_RE = re.compile(r"<!--\s*SPEC-COVERAGE-MATRIX:END\s*-->")
 STATUS_RE = re.compile(
     r"^(?P<kind>green|gap|exempt)(?:\((?P<reason>.*)\))?$", re.DOTALL
 )
-# Tokens that name shared conformance/corpus/hmac vectors; everything else in
-# the Tests column (plat:, sdk-py:, mcp:, tool:, file paths) is an opaque,
-# human-greppable reference.
-VECTOR_ID_RE = re.compile(r"^(?:L[123]-\d+[a-z]?|sdk-\d+|lcp-sdk-hmac-\d+)$")
+# Tokens that name shared conformance/corpus/hmac/negative vectors; everything
+# else in the Tests column (plat:, sdk-py:, mcp:, tool:, file paths) is an
+# opaque, human-greppable reference.
+VECTOR_ID_RE = re.compile(
+    r"^(?:L[123]-\d+[a-z]?|sdk-\d+|lcp-sdk-hmac-\d+|lcp-neg-[a-z]+-\d+)$"
+)
 EMPTY_TESTS = {"", "-"}
 
 COLUMNS = ("clause", "gist", "surface", "tests", "status")
