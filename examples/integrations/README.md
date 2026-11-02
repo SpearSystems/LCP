@@ -1,5 +1,8 @@
 # Integration examples
 
+> Example — not for production. These files are reviewed starting points, not
+> supported runtime code.
+
 These examples are intentionally small starting points for partner adapters.
 They use synthetic data and do not replace durable outbox/idempotency storage,
 secret management, privacy controls, TLS/WAF, or a production web framework.

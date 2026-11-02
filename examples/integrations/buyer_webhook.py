@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# example — not for production: illustrative template; review persistence,
+# consent, and retry handling before adapting to live traffic.
 """Illustrative buyer webhook for an LCP platform.
 
 This is an integration template, not a production server. Replace SEEN_KEYS
@@ -17,7 +19,13 @@ import json
 import os
 from threading import Lock
 
-from lcp_sdk import LCPClient, SchemaValidator, SignatureError, verify_hmac, build_envelope
+from lcp_sdk import (
+    LCPClient,
+    SchemaValidator,
+    SignatureError,
+    verify_hmac,
+    build_envelope,
+)
 
 
 BUYER_ID = os.environ.get("LCP_BUYER_ID", "buyer_001")
@@ -111,7 +119,13 @@ class BuyerHandler(BaseHTTPRequestHandler):
                 print("received lifecycle event", envelope["lcp"]["payload"]["event"])
             else:
                 raise ValueError(f"unexpected webhook type: {message_type}")
-        except (KeyError, TypeError, ValueError, SignatureError, json.JSONDecodeError) as exc:
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            SignatureError,
+            json.JSONDecodeError,
+        ) as exc:
             if claimed:
                 release_claim(idempotency_key)
             print(f"rejected buyer webhook: {type(exc).__name__}")
