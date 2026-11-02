@@ -19,12 +19,12 @@ Test-id families: `L1-*`/`L2-*`/`L3-*` = conformance vectors
 `lcp-sdk-hmac-NNN` = shared HMAC vector,
 `lcp-neg-*` = shared negative security vectors
 (`test-vectors/sdk/negative/*.json`, spine #132 + runners landed for 10/10 SDKs
-via #132/#141/#144/#147 + Swift on this PR), `plat:` = reference-platform
+via #132/#141/#144/#147/#154), `plat:` = reference-platform
 unittest (`implementations/reference-platform/tests/`), `sdk-py:` = Python
 SDK unittest, `mcp:` = MCP adapter unittest, `tool:` = repo checker tool.
 Negative-vector spine (#132) credited on VER-03, ERR-006, ERR-008, ERR-012,
 ERR-013, MSG-PING-02, SEC-04, SEC-05 + partials SEC-04b/SEC-05b (closed by the
-Swift runner on this PR — 10/10 lanes now execute the shared suite). The three
+Swift runner in #154 — 10/10 lanes now execute the shared suite). The three
 once-owed conformance vectors (LOC-02 missing state+postal, CMP-04 planted OTP
 code, MSG-PING-03 token inside compliance_flags) landed as L2-013–L2-018 in
 `test-vectors/l2-lifecycle.json` with paired accept controls.
