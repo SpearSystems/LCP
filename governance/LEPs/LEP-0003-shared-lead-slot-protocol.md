@@ -5,6 +5,8 @@
 - **Date:** 2026-11-02
 - **Status:** **Draft** — not accepted, not implemented
 - **Target version:** v1.1.0 (MINOR; see Compatibility and versioning)
+- **Evidence corrections applied:** valid post-example `exclusivity` block
+  fixed per ARB retro-audit at `dee5584` (no status change; remains Draft)
 - **Discussion:** [#124](https://github.com/SpearSystems/LCP/issues/124)
   (`[LEP] Shared-lead slot allocation and contacted-party dedup exchange`)
 - **Roadmap trigger:** `docs/V1.1-ROADMAP.md`, Phase 6, "Shared-lead slot
@@ -266,7 +268,7 @@ exchange.
       "consumer": { "full_name": "Jordan Reyes", "phone": "+15125550147" },
       "location": { "country_code": "US", "state_region": "TX", "postal_code": "78701" },
       "attributes": { "vertical": "home_services", "schema_version": "1.0.0" },
-      "exclusivity": "shared",
+      "exclusivity": { "exclusivity": "shared", "max_buyers": 2 },
       "contacted_hashes": [
         "3f02a7c9d15e8b46a2c9f0d3b7e1a58c4d92f6b0a3c8e1d47f9b2c5a0d6e8f13",
         "9d4b17e0c26a8f53d1e7b94c0a26f8d35b1e7c9a4f2d60b8e1c3a5d7f9b2c4e6"
