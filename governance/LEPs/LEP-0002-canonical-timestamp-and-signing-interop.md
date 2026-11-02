@@ -3,7 +3,7 @@
 - **Title:** Canonical timestamp generation and cross-SDK signature interop
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
-- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized
+- **Status:** **Implemented** — accepted 2026-11-03; implemented and verified same day (PR #158, blocking interop 10/10)
 - **Target version:** v1.1.0 (documentation clarification; no wire-contract change)
 
 ## Decision (maintainer, 2026-11-03)

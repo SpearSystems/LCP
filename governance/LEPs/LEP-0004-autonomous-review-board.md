@@ -3,7 +3,7 @@
 - **Title:** Autonomous Review Board for independent review
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
-- **Status:** **Accepted** — accepted 2026-11-03 (conditional; implementation gated on the #151 charter tightenings), not yet implemented
+- **Status:** **Implemented** — accepted 2026-11-03 (conditional); all five tightenings + F4 landed and verified in PR #156; ARB operative
 - **Target version:** none — governance process change; no protocol version, no wire impact
 
 ## Decision (maintainer, 2026-11-03)
