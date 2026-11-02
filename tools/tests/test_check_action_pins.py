@@ -17,10 +17,14 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from check_action_pins import (  # noqa: E402
     KNOWN_UNRESOLVABLE,
+    EnvironmentError_,
+    GitHubAPI,
     Pin,
     check_action_pins,
     check_pin,
     main,
+    parse_lsremote_ref,
+    parse_lsremote_tags,
     parse_pins,
 )
 
@@ -181,6 +185,59 @@ class CheckPinTests(unittest.TestCase):
             check_action_pins.KNOWN_UNRESOLVABLE = {}
         self.assertEqual(status, "warn")
         self.assertIn("synthetic", msg)
+
+
+class LsRemoteFallbackTests(unittest.TestCase):
+    def test_annotated_ref_prefers_peeled_line(self):
+        lines = [
+            f"a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8\trefs/tags/v0.36.0",
+            f"{SHA_A}\trefs/tags/v0.36.0^{{}}",
+        ]
+        self.assertEqual(
+            parse_lsremote_ref(lines, "tags", "v0.36.0"), ("commit", SHA_A)
+        )
+
+    def test_lightweight_ref_direct_line(self):
+        lines = [f"{SHA_B}\trefs/heads/release/v1"]
+        self.assertEqual(
+            parse_lsremote_ref(lines, "heads", "release/v1"), ("commit", SHA_B)
+        )
+
+    def test_absent_ref_returns_none(self):
+        self.assertIsNone(parse_lsremote_ref([], "tags", "v9"))
+
+    def test_tag_map_peels_annotated_only(self):
+        lines = [
+            f"tagobj\trefs/tags/v1.0.0",
+            f"{SHA_A}\trefs/tags/v1.0.0^{{}}",
+            f"{SHA_B}\trefs/tags/v2.0.0",  # lightweight: line IS the commit
+        ]
+        mapping = parse_lsremote_tags(lines)
+        self.assertEqual(mapping.get(SHA_A), ["v1.0.0"])
+        self.assertEqual(mapping.get(SHA_B), ["v2.0.0"])
+        self.assertNotIn("tagobj", mapping)
+
+    def test_api_refusal_degrades_repo_to_lsremote(self):
+        api = GitHubAPI()
+
+        def refuse(url):
+            raise EnvironmentError_(f"403 for {url}")
+
+        api._get = refuse
+        seen = []
+
+        def fake_lsremote(repo, patterns):
+            seen.append((repo, tuple(patterns)))
+            return [f"tagobj\trefs/tags/v0.1.0", f"{SHA_A}\trefs/tags/v0.1.0^{{}}"]
+
+        api._lsremote = fake_lsremote
+        self.assertEqual(
+            api.resolve_ref("acme/tool", "tags", "v0.1.0"), ("commit", SHA_A)
+        )
+        # repo now degraded: further resolutions skip REST entirely
+        self.assertEqual(api.resolve_ref("acme/tool", "tags", "v0.2.0"), None)
+        self.assertEqual(len(seen), 2)  # both calls were ls-remote, no REST retry
+        self.assertIn("acme/tool", api._degraded)
 
 
 class ReportAndMainTests(unittest.TestCase):

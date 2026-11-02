@@ -49,6 +49,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -150,13 +151,96 @@ def parse_pins(root: Path) -> list[Pin]:
     return pins
 
 
+REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
+def _ls_remote(repo: str, patterns: list[str]) -> list[str]:
+    """Run ``git ls-remote`` against the public repo (anonymous git protocol).
+
+    Empty ``patterns`` lists every ref (used for the tag map).
+    """
+    if not REPO_NAME_RE.match(repo):
+        raise EnvironmentError_(f"refusing malformed repo name: {repo!r}")
+    url = f"https://github.com/{repo}"
+    argv = ["git", "-c", "credential.interactive=false", "ls-remote", url, *patterns]
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        raise EnvironmentError_(f"git ls-remote failed for {repo}: {err}") from err
+    if proc.returncode != 0:
+        raise EnvironmentError_(
+            f"git ls-remote failed for {repo} (exit {proc.returncode}): "
+            f"{proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else 'no stderr'}"
+        )
+    return proc.stdout.splitlines()
+
+
+def parse_lsremote_ref(lines: list[str], kind: str, ref: str) -> tuple[str, str] | None:
+    """Pick the commit target for one ref from ls-remote output.
+
+    Annotated tags appear twice (``refs/tags/X`` = tag object,
+    ``refs/tags/X^{}`` = peeled commit); prefer the peeled entry.
+    """
+    exact = f"refs/{kind}/{ref}"
+    peeled = f"{exact}^{{}}"
+    direct: str | None = None
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) != 2:
+            continue
+        sha, name = parts[0].strip(), parts[1].strip()
+        if name == peeled:
+            return ("commit", sha)
+        if name == exact:
+            direct = sha
+    return ("commit", direct) if direct else None
+
+
+def parse_lsremote_tags(lines: list[str]) -> dict[str, list[str]]:
+    """Build the commit-sha -> tag-names map from full ls-remote tag output."""
+    plain: dict[str, str] = {}
+    peeled: dict[str, str] = {}
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) != 2 or not parts[1].startswith("refs/tags/"):
+            continue
+        sha, name = parts[0].strip(), parts[1].strip()
+        if name.endswith("^{}"):
+            peeled[name.removesuffix("^{}").removeprefix("refs/tags/")] = sha
+        else:
+            plain[name.removeprefix("refs/tags/")] = sha
+    mapping: dict[str, list[str]] = {}
+    for name, sha in plain.items():
+        commit = peeled.get(name, sha)  # annotated tags map via their peeled commit
+        mapping.setdefault(commit, []).append(name)
+    return mapping
+
+
 class GitHubAPI:
-    """Minimal REST client: ref resolution + tag enumeration, with cache."""
+    """Minimal REST client: ref resolution + tag enumeration, with cache.
+
+    Bursty REST access across many repos from a CI runner token can trip
+    GitHub's secondary rate limits deterministically (observed 2026-11-02 on
+    PR #140: persistent 403 on aquasecurity/trivy-action refs endpoints from
+    ``github.token`` while every other repo resolved and the same calls
+    succeed via PAT). On repeated refusal for a repo, this client degrades
+    that repo to ``git ls-remote`` — the same anonymous git path the runner
+    itself uses for ``uses:`` fetches — instead of failing the whole run.
+    """
 
     def __init__(self, token: str | None = None):
         self._token = token
         self._ref_cache: dict[str, tuple[str, str] | None] = {}
         self._tags_cache: dict[str, dict[str, list[str]]] = {}
+        self._degraded: set[str] = set()
+        self._lsremote = _ls_remote
 
     def _get(self, url: str) -> tuple[object, str]:
         headers = {
@@ -199,10 +283,25 @@ class GitHubAPI:
         raise EnvironmentError_(f"GitHub API failed for {url}: unreachable")
 
     def resolve_ref(self, repo: str, kind: str, ref: str) -> tuple[str, str] | None:
-        """Return ('commit'|'tag-object', commit_sha) or None if the ref is absent."""
+        """Return ('commit', commit_sha) or None if the ref is absent."""
         cache_key = f"{repo}|{kind}|{ref}"
         if cache_key in self._ref_cache:
             return self._ref_cache[cache_key]
+        target: tuple[str, str] | None
+        if repo in self._degraded:
+            target = self._resolve_ref_lsremote(repo, kind, ref)
+        else:
+            try:
+                target = self._resolve_ref_rest(repo, kind, ref)
+            except EnvironmentError_:
+                self._degraded.add(repo)
+                target = self._resolve_ref_lsremote(repo, kind, ref)
+        self._ref_cache[cache_key] = target
+        return target
+
+    def _resolve_ref_rest(
+        self, repo: str, kind: str, ref: str
+    ) -> tuple[str, str] | None:
         quoted = urllib.parse.quote(ref, safe="")
         result = self._get(
             f"https://api.github.com/repos/{repo}/git/ref/{kind}/{quoted}"
@@ -222,13 +321,30 @@ class GitHubAPI:
                     )
             if typ == "commit":
                 target = ("commit", sha)
-        self._ref_cache[cache_key] = target
         return target
+
+    def _resolve_ref_lsremote(
+        self, repo: str, kind: str, ref: str
+    ) -> tuple[str, str] | None:
+        lines = self._lsremote(repo, [f"refs/{kind}/{ref}", f"refs/{kind}/{ref}^{{}}"])
+        return parse_lsremote_ref(lines, kind, ref)
 
     def tags_by_commit(self, repo: str) -> dict[str, list[str]]:
         """Map every tag's (dereferenced) commit SHA to its tag names."""
         if repo in self._tags_cache:
             return self._tags_cache[repo]
+        if repo in self._degraded:
+            mapping = parse_lsremote_tags(self._lsremote(repo, []))
+        else:
+            try:
+                mapping = self._tags_by_commit_rest(repo)
+            except EnvironmentError_:
+                self._degraded.add(repo)
+                mapping = parse_lsremote_tags(self._lsremote(repo, []))
+        self._tags_cache[repo] = mapping
+        return mapping
+
+    def _tags_by_commit_rest(self, repo: str) -> dict[str, list[str]]:
         mapping: dict[str, list[str]] = {}
         url = f"https://api.github.com/repos/{repo}/tags?per_page=100"
         while url:
@@ -243,7 +359,6 @@ class GitHubAPI:
             for chunk in link.split(","):
                 if 'rel="next"' in chunk:
                     url = chunk.split("<")[1].split(">")[0]
-        self._tags_cache[repo] = mapping
         return mapping
 
 
