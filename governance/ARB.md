@@ -33,6 +33,7 @@ breadth per lane breeds shallow coverage.
 | L-Spec | `SPEC.md` vs schemas vs conformance | every normative MUST/SHOULD implemented and tested; universal-core audit (SPEC.md §12) automated where possible |
 | L-SDK (×10, one per SDK) | each SDK | the SDK security invariants of `docs/SDK-ROADMAP.md`; raw-body verification; constant-time comparison; TLS defaults; log cleanliness |
 | L-Platform | reference platform + router semantics | auction integrity (no oversell, no replay, tenant scoping), dead-letter and retention behavior, consent evidence |
+| L-Security | PII boundaries, auth rules, retention rules: SPEC vs code vs docs | consent evidence, auth-code taxonomy, retention/erasure behavior, logging hygiene; produces the **ARB-Security dossier** |
 | L-MCP | MCP adapter | tool contract vs Python SDK reuse, event-loop blocking claims, auth |
 | L-SupplyChain | CI workflows, action pins, SBOM, release paths | every pinned `uses:` SHA matches its claimed tag; trusted-publishing claims true as written; exception registries honest and unexpired |
 | L-DocsDrift | governance, LEPs, docs | every `path:line` / `path:symbol` citation resolves at the reviewed commit; documented claims match code; changelog accuracy |
@@ -47,9 +48,17 @@ limitation) MUST declare the limitation in the dossier and mark the verdict
 1. **Fresh context.** Every auditor runs with no conversation history shared
    with the author of the artifact under review. Its inputs are this charter
    prompt, the dossier template, and the artifact itself.
-2. **Author-never-audits.** No lane reviews an artifact it wrote. A change
-   authored in one lane MUST be audited by a lane that did not produce it;
-   lanes are assigned to surfaces disjoint from their own authorship.
+2. **Author-never-audits.** No lane reviews an artifact it wrote. Authorship
+   attaches to the **controller** of the lane run — the party that launches
+   it, supplies its prompt, or curates its inputs — not to the lane's label:
+   an author's own agent running a differently-named lane against the
+   author's own artifact is a self-audit and does not satisfy G2 standing
+   alone. A self-audit dossier is still public evidence; it MUST be labeled
+   **SELF-AUDIT** in the independence attestation, and a decision that relies
+   on one MUST state in its rationale that no non-author-controlled run covers
+   the relied-on surfaces. A change authored in one lane MUST be audited by a
+   lane that did not produce it; lanes are assigned to surfaces disjoint from
+   their own authorship.
 3. **One lane, one surface.** A reviewer MUST NOT audit a neighboring lane's
    surface to "help"; cross-surface observations are filed as findings
    against the owning lane, not as verdicts.
@@ -78,15 +87,21 @@ limitation) MUST declare the limitation in the dossier and mark the verdict
 
 1. **Every claim is command + observed output** at a full (not abbreviated)
    commit SHA, from a clean checkout. Claims without a reproduction command
-   are opinion and MUST be labeled as such by the judge.
+   are opinion and MUST be labeled as such by the judge. A claim that depends
+   on a constructed input (a plant, a crafted payload) MUST record that input
+   byte-exactly — inline literal or committed fixture path at the head SHA —
+   so a dissenter re-runs the same bytes, not a paraphrase.
 2. **Durable findings become CI tests before the lane closes.** Any bug
    class, untested invariant, or falsified claim found in a dossier MUST be
    converted into a named, deterministic, CI-enforced test (or an explicit
    tracked waiver with reason) before the lane that found it is closed.
    Reports rot; tests do not.
-3. **The harness is published.** Lanes, charter prompts, and the dossier
-   template live in this repository. A dossier is re-runnable by a third
-   party at the same commit, and MUST include the exact invocation that
+3. **The harness is published.** The charter, the dossier template, and one
+   canonical charter prompt per lane live in this repository
+   (`governance/ARB.md`, `governance/ARB-DOSSIER-TEMPLATE.md`, and the lane
+   prompts in `governance/ARB-PROMPTS.md`). A lane without a published prompt
+   cannot produce a decision-bearing dossier. A dossier is re-runnable by a
+   third party at the same commit, and MUST include the exact invocation that
    produced it.
 
 ## Role separation
@@ -120,9 +135,12 @@ A Review Dossier satisfies the independent-maintainer requirement only if
 ALL gates hold (L-Judge enforces each):
 
 - **G1** Subject pinned to a full commit SHA; claims reproduce from a clean
-  checkout at that SHA.
+  checkout at that SHA, with constructed inputs recorded byte-exactly (the
+  template's Plant bytes appendix).
 - **G2** Independence attestation: fresh context, author-never-audits, lane
-  surface matches the artifact, model-diversity statement present.
+  surface matches the artifact, model-diversity statement present,
+  **launch-control attestation present** (rule 2: authorship is the run's
+  controller's, and a same-party run is labeled **SELF-AUDIT**).
 - **G3** Refutation budget met: ≥5 enumerated adversarial attempts with
   commands and outputs.
 - **G4** Every substantive claim carries command + observed output;
@@ -167,10 +185,12 @@ justified by two facts stated plainly:
 1. the change has zero protocol or wire impact — it reassigns *who does the
    reading*, never *what the protocol does*; and
 2. the independent control for this exception is not the maintainer's word
-   but **external re-runnability**: the charter, prompts, and template are
-   public in-repo from the day they merge, so any adopter may audit the
-   auditor by re-running it, and the 14-day public window plus the dissent
-   protocol apply to LEP-0004 like any other proposal.
+   but **external re-runnability**: the charter (`ARB.md`), the per-lane
+   charter prompts (`ARB-PROMPTS.md`), and the dossier template
+   (`ARB-DOSSIER-TEMPLATE.md`) are public in-repo from the day they merge, so
+   any adopter may audit the auditor by re-running it, and the 14-day public
+   window plus the dissent protocol apply to LEP-0004 like any other
+   proposal.
 
 No future governance proposal may invoke this clause; once the ARB exists,
 process changes are ARB subject matter like everything else.

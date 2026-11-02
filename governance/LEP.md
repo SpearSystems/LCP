@@ -57,10 +57,12 @@ material until maintainers record an exemption.
    the review window.
 4. **Decision** — maintainers record exactly one of `Accepted`, `Rejected`, or
    `Deferred`, with rationale, date, reviewers, and any conditions. A material
-   proposal requires an independent second-maintainer review; security or
-   privacy changes also require a named domain review. A single maintainer may
-   make an urgent security decision only when the reason and follow-up review
-   are recorded.
+   proposal requires an independent review, satisfied as defined under Roles
+   and independence (a human maintainer who did not author the proposal, or an
+   ARB Review Dossier passing charter gates G1–G6); security or privacy changes
+   additionally require the named human domain reviewer or the co-sign
+   specified there. A single maintainer may make an urgent security decision
+   only when the reason and follow-up review are recorded.
 5. **Implement** — only an `Accepted` proposal may authorize implementation.
    Link the LEP from the implementation PR/commit and update applicable
    schemas, examples, vectors, OpenAPI/MCP contracts, generated SDK models,
@@ -86,10 +88,23 @@ Each material LEP identifies:
 - **Domain reviewers:** represent affected publishers, buyers, implementers,
   and SDK maintainers.
 - **Security/privacy reviewer:** reviews PII, authorization, delivery,
-  retention, replay, and abuse implications.
+  retention, replay, and abuse implications. For a proposal touching a PII
+  boundary, an authentication rule, or a retention rule, this role MUST be
+  filled by a named human domain reviewer, or by the decision maintainer's
+  explicit co-sign of the ARB-Security review dossier. Agent reviews
+  certify consistency with the specification, not legality or privacy
+  fitness.
 - **Independent maintainer:** reviews the decision separately from the author
-  where possible and is required for material acceptance/rejection/deferral.
+  and is required for material acceptance/rejection/deferral. An ARB Review
+  Dossier meeting every quality gate of [`ARB.md`](ARB.md) satisfies this
+  requirement; the dossier MUST come from a lane that did not author the
+  change under review, MUST enumerate its refutation attempts at a full
+  commit SHA, and MUST be posted publicly on the proposal or pull request.
 - **Decision maintainers:** record the final decision and rationale publicly.
+
+ARB lanes, judges, and automation never record decision status. Only a
+maintainer writes `Accepted`, `Rejected`, or `Deferred`, and the decision
+rationale cites the dossier and the public discussion it was published on.
 
 No LEP grants ownership, fees, approval rights, or a veto over the open
 extension registry. Review must remain open to affected adopters and must not
@@ -128,6 +143,15 @@ Every numbered proposal must include:
 - Separate capabilities with materially different semantics may share an
   umbrella discussion, but each must have independently reviewable and
   independently decidable acceptance criteria.
+- The independent-review requirement for a material decision is satisfied
+  either by a review from a maintainer who did not author the proposal or by
+  an ARB Review Dossier that passes charter gates G1–G6. A valid dissenting
+  dossier re-run at the same commit blocks recording of the decision until the
+  charter's dissent protocol has adjudicated it.
+- Decisions are adopted per decision: the maintainer records
+  `Accepted`/`Rejected`/`Deferred` citing the dossier link. Silence is never
+  consent — no dossier expiry, review-window lapse, or automation may
+  produce a decision status.
 
 ## Traceability and implementation gate
 
