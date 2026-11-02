@@ -30,6 +30,47 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   unbounded empty DATA frames DoS). Folded into v1.1 — no patch release
   for the published 1.0.2 crate; the fix ships with the next release.
 
+### Governance and verification (ARB wave 0–1.5)
+
+- Autonomous Review Board charter (`governance/ARB.md`), dossier template,
+  and LEP-0004 (Draft; agent-audited independent review replacing the
+  second-maintainer labor while keeping maintainer sign-off) — issue #128.
+- CLA workflow now exempts bot-authored PRs (#103) — human contributors
+  keep the body-checkbox requirement.
+- Dependabot groups `codeql-action` and `docker/*` bumps into single PRs
+  (#106), eliminating the transient CodeQL lockstep failures.
+- Negative security-vector suite (`test-vectors/sdk/negative/`, #132):
+  14 vectors across invariants 1/2/5/6 of the SDK security-invariant list,
+  with format spec, loud gap-skip policy, and runners for 9/10 SDKs
+  (Python, Java, Kotlin, PHP, TypeScript, Go, Ruby, C#, Rust); Swift
+  runner tracked on SEC-04b/SEC-05b.
+- Cross-SDK signature-interop matrix (`sdk-interop.yml`, #139): all ten
+  SDKs produce identical canonical signing bytes and signature for the
+  shared vector; timestamp *generation* shape is reported advisory
+  (7 whole-second / 3 fractional) and becomes blocking with LEP-0002
+  implementation.
+- SPEC→test coverage matrix (`docs/SPEC-COVERAGE.md`, #135): 137
+  normative clauses mapped to named tests with a CI checker
+  (`tools/check_coverage_matrix.py`); gaps and exemptions are explicit.
+- Reserved-core-field enforcement (`tools/check_reserved_fields.py`,
+  #146, closes #134): vertical attributes redefining core field names now
+  fail pre-write in model generation and pre-hash in schema sync — AGENTS
+  rule 6 is machine-enforced.
+- Repo hygiene checkers (`repo-hygiene.yml`, #138/#140): action
+  pin-truth (every `uses@sha` verified against upstream tags,
+  rate-limit-resilient), docs-citation drift (advisory), and
+  vulnerability-exception expiry (blocking; dated re-review rows).
+- Adversarial reference-platform E2E (`test_adversarial_e2e.py`, #133):
+  replay/idempotency, over-award, tampered-signature, unknown-type,
+  dead-letter, and PII-boundary scenarios locked; findings filed as
+  #131 (LCP-006 unreachable) and related.
+- Runtime log-capture tests for Python/TypeScript/Go SDKs (#130) plus Go
+  static coverage in the hygiene checker (#137); invariant 7 is now
+  enforced statically and dynamically where CI runs it.
+- Auth error-code triage (`docs/err-auth-triage.md`, #145): bearer-key
+  mismatch must be LCP-002 per §5 — code fix pending ruling on #142;
+  five §5-unassigned conditions filed for clarification (#143).
+
 ## [1.0.2] — 2026-08-18
 
 ### Security and hardening (repository audit remediation)

@@ -18,8 +18,8 @@ Test-id families: `L1-*`/`L2-*`/`L3-*` = conformance vectors
 (`test-vectors/sdk/validation-corpus.json`, run by all 10 SDK harnesses),
 `lcp-sdk-hmac-NNN` = shared HMAC vector,
 `lcp-neg-*` = shared negative security vectors
-(`test-vectors/sdk/negative/*.json`, spine + Python runner landed via #132;
-remaining SDK runners tracked on SEC-04b/SEC-05b), `plat:` = reference-platform
+(`test-vectors/sdk/negative/*.json`, spine #132 + runners landed for 9/10 SDKs
+via #132/#141/#144/#147; Swift runner remaining on SEC-04b/SEC-05b), `plat:` = reference-platform
 unittest (`implementations/reference-platform/tests/`), `sdk-py:` = Python
 SDK unittest, `mcp:` = MCP adapter unittest, `tool:` = repo checker tool.
 Negative-vector spine (#132) credited on VER-03, ERR-006, ERR-008, ERR-012,
@@ -107,7 +107,7 @@ LCP-002 — recorded under ERR-002.
 | MSG-EVT-03 | §4 CONSENT_WITHDRAWN: buyers MUST update suppression list | platform | plat:test_consent_events_trigger_suppression_and_erasure | green |
 | MSG-EVT-04 | §4 ERASURE_REQUEST: buyers MUST delete data and ack | platform | plat:test_erasure_redacts_pii_and_cancels_delivery, plat:test_erasure_deletion_retries_after_storage_failure, plat:test_postgres_encrypted_intake_idempotency_and_erasure | green |
 | ERR-001 | §5 LCP-001 INVALID_FORMAT ↔ 400 | platform | plat:test_malformed_json_content_type_returns_json_error, plat:test_oversized_json_body_returns_json_413 | green |
-| ERR-002 | §5 LCP-002 UNKNOWN_SENDER ↔ 401 (identity distinct from signature; ledger finding: test_bearer_with_wrong_api_key_is_rejected asserts LCP-012 where §5 implies LCP-002) | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
+| ERR-002 | §5 LCP-002 UNKNOWN_SENDER ↔ 401 (identity distinct from signature; bearer-mismatch branch emits LCP-012 contrary to §5 identity axis — pending #142; auth.py:137 untested) | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | ERR-003 | §5 LCP-003 MISSING_REQUIRED_FIELD code emitted for schema-missing fields | platform | - | gap(corpus proves rejection; no assertion the platform stamps code LCP-003) |
 | ERR-004 | §5 LCP-004 INVALID_STATUS_TRANSITION ↔ 422 | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | ERR-005 | §5 LCP-005 DUPLICATE_LEAD ↔ 409 | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_idempotency_key_reuse_with_different_body_is_rejected | green |
@@ -117,7 +117,7 @@ LCP-002 — recorded under ERR-002.
 | ERR-009 | §5 LCP-009 INVALID_PHONE ↔ 400 | schema+platform | L2-011 | gap(pattern proven at schema layer; platform code emission unasserted) |
 | ERR-010 | §5 LCP-010 INVALID_TERRITORY ↔ 422 | platform | - | gap(no test emits the code) |
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | - | gap(router.py raises 429 LCP-011; no test drives the limit or header) |
-| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers, plat:test_bearer_with_wrong_api_key_is_rejected, plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
+| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers (asserts the LCP-012 emitted by the service.py:115 pre-check; the bearer branch auth.py:137 is unreachable from that request), plat:test_bearer_with_wrong_api_key_is_rejected (same pre-check shadowing), plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
 | ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform+corpus | plat:test_production_endpoint_rejects_test_traffic, lcp-neg-mode-001 | green |
 | ERR-100 | §5 LCP-100 VALIDATION_ERROR ↔ 400 catch-all | platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | ERR-500 | §5 LCP-500 INTERNAL_ERROR ↔ 500 | platform | - | gap(no fault-injection test of the 500 envelope) |
@@ -149,9 +149,9 @@ LCP-002 — recorded under ERR-002.
 | SEC-02 | §9 HMAC auth via X-LCP-Signature/Timestamp/Idempotency-Key headers | sdk+platform | lcp-sdk-hmac-001, plat:test_http_service_accepts_canonical_hmac_request | green |
 | SEC-03 | §9 canonical signing input timestamp\nkey\nraw-body; lowercase hex HMAC-SHA256 | sdk | lcp-sdk-hmac-001, sdk-py:test_canonical_signature_round_trip | green |
 | SEC-04 | §9 verifier uses the raw body bytes; re-serialized body must fail | sdk-python | sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers, lcp-neg-sig-003, lcp-neg-sig-004 | green |
-| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | gap(vectors landed in test-vectors/sdk/negative/signature.json #132; only the Python runner executes them — 9 SDK runners pending) |
+| SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | gap(vectors #132; runners landed 9/10 SDKs — python #132, java/kotlin/php #144, ts/go #141, ruby/csharp/rust #147; Swift runner remaining) |
 | SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
-| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | gap(platform + vector spine landed; per-SDK runners (9 languages) pending) |
+| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | gap(platform + spine + runners 9/10 SDKs landed (#132/#141/#144/#147); Swift runner remaining) |
 | SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | - | gap(presence tested; equality of header vs envelope never asserted) |
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
 | SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |
