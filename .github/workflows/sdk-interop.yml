@@ -1,0 +1,134 @@
+# Cross-SDK signature-interop matrix — LEP-0002 rollout step 1 (ARB plan §3.3).
+#
+# All ten SDK probes sign the one fixed message in test-vectors/sdk/hmac.json
+# through their own library entry points and format their own timestamp
+# generator at a frozen sub-second instant. Signature identity across SDKs is
+# blocking; the generation-shape column is advisory until LEP-0002 is Accepted
+# (fractional emitters are the dossier evidence and must not redden the job —
+# advisory is enforced by tools/sdk_interop_matrix.py's exit-code contract).
+name: SDK signature interop
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC — weekly advisory matrix refresh
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Interop probe (${{ matrix.sdk }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: python
+            os: ubuntu-latest
+            setup: |
+              python -m pip install --disable-pip-version-check --constraint requirements-ci.txt jsonschema referencing httpx
+              python -m pip install --disable-pip-version-check -e implementations/sdk/python
+            probe: python implementations/sdk/python/examples-internal/interop_probe.py --vector test-vectors/sdk/hmac.json
+          - sdk: typescript
+            os: ubuntu-latest
+            setup: |
+              npm --prefix implementations/sdk/typescript ci --ignore-scripts --no-audit --no-fund
+              npm --prefix implementations/sdk/typescript run build
+            probe: node implementations/sdk/typescript/examples-internal/interop-probe.mjs --vector test-vectors/sdk/hmac.json
+          - sdk: go
+            os: ubuntu-latest
+            setup: ""
+            probe: go -C implementations/sdk/go run ./examples-internal/interop_probe --vector "$GITHUB_WORKSPACE/test-vectors/sdk/hmac.json"
+          - sdk: java
+            os: ubuntu-latest
+            setup: mvn --batch-mode --no-transfer-progress -q -f implementations/sdk/java/pom.xml compile
+            probe: java -cp implementations/sdk/java/target/classes implementations/sdk/java/examples-internal/InteropProbe.java --vector test-vectors/sdk/hmac.json
+          - sdk: kotlin
+            os: ubuntu-latest
+            setup: ""
+            probe: gradle -p implementations/sdk/kotlin --no-daemon -q test --tests com.spearsystems.lcp.InteropProbeTest
+          - sdk: rust
+            os: ubuntu-latest
+            setup: ""
+            probe: cargo run --quiet --manifest-path implementations/sdk/rust/Cargo.toml --example interop_probe -- --vector test-vectors/sdk/hmac.json
+          - sdk: ruby
+            os: ubuntu-latest
+            setup: ""
+            probe: ruby implementations/sdk/ruby/examples-internal/interop_probe.rb --vector test-vectors/sdk/hmac.json
+          - sdk: php
+            os: ubuntu-latest
+            setup: ""
+            probe: php implementations/sdk/php/examples-internal/interop_probe.php --vector test-vectors/sdk/hmac.json
+          - sdk: swift
+            os: macos-latest
+            setup: ""
+            # `swift test` on the runner's SwiftPM has no --package-path; cd is the
+            # same invocation sdk.yml's Swift SDK job uses.
+            probe: cd implementations/sdk/swift && swift test --filter InteropProbeTests
+          - sdk: csharp
+            os: ubuntu-latest
+            setup: ""
+            probe: dotnet run --project implementations/sdk/csharp/examples-internal/InteropProbe -- --vector test-vectors/sdk/hmac.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Set up .NET
+        if: ${{ matrix.sdk == 'csharp' }}
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.x"
+      - name: Set up toolchain
+        if: ${{ matrix.setup != '' }}
+        run: ${{ matrix.setup }}
+      - name: Run probe
+        # LCP_INTEROP_OUT is the machine-readable channel every probe supports;
+        # the stdout line is the same payload for human log readers.
+        env:
+          LCP_INTEROP_OUT: ${{ runner.temp }}/raw.json
+          LCP_REPO_ROOT: ${{ github.workspace }}
+        run: ${{ matrix.probe }}
+      - name: Validate and normalize probe output
+        shell: bash
+        run: |
+          cat "$RUNNER_TEMP/raw.json" | python tools/sdk_interop_matrix.py extract \
+            --sdk "${{ matrix.sdk }}" --out "probe-${{ matrix.sdk }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: probe-${{ matrix.sdk }}
+          path: probe-${{ matrix.sdk }}.json
+          retention-days: 7
+
+  matrix:
+    name: Signature identity + generation-shape matrix
+    needs: probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: probe-*
+          path: probes
+          merge-multiple: true
+      - name: Build interop matrix
+        # Exit contract (tools/sdk_interop_matrix.py): 2 = probe missing or
+        # malformed, 1 = signature identity broken, 0 = otherwise. The shape
+        # matrix never contributes to the exit code, so known-fractional SDKs
+        # keep this job green until LEP-0002 step 2 aligns generation.
+        run: |
+          python tools/sdk_interop_matrix.py aggregate \
+            --vector test-vectors/sdk/hmac.json \
+            --probes probes \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --report interop-report.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: interop-report
+          path: interop-report.json
+          retention-days: 30
