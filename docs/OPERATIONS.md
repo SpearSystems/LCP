@@ -40,6 +40,28 @@ failed deliveries, database saturation, backup failures, unusual volume from a
 tenant, attachment capacity/malware backlog, open dead letters, and any offer
 that is materially under-paced toward its monthly payable minimum.
 
+### Clock sync
+
+The HMAC replay window is enforced against each host's system clock:
+`auth.py` in the reference platform accepts a signed request only when its
+`X-LCP-Timestamp` is within `LCP_REPLAY_WINDOW_SECONDS` (default 300) of the
+server's current time, in either direction. The platform stamps outbound
+signed webhook deliveries with the same clock, and buyers verifying those
+timestamps apply the same rule against their own clocks.
+
+- Run an NTP daemon (`chronyd` or `ntpd`) on every API, worker, and ingress
+  host, pointed at the same trusted time sources. Require the same of
+  publisher and buyer peers during onboarding; their clocks decide whether
+  your webhooks verify and whether your API accepts their traffic.
+- Alert when any host's reported clock offset exceeds one second — that is
+  well inside the replay window, so drift is fixed before it becomes an
+  outage.
+- Track `LCP-012` "Timestamp is outside the replay window" responses broken
+  out by sender. A single sender failing while others succeed is that
+  sender's clock, not an attack.
+- Never widen `LCP_REPLAY_WINDOW_SECONDS` to mask skew; keep it at five
+  minutes or shorter per the deployment guide.
+
 The reference platform exposes only aggregate metrics. Example response shape:
 
 ```json
@@ -79,6 +101,13 @@ The reference platform exposes only aggregate metrics. Example response shape:
    lcp-platform-admin dead-letter quarantine --job-id <job-id>
    lcp-platform-admin dead-letter replay --job-id <job-id>
    ```
+
+   `list` dumps the full dead-letter rows as JSON, including lead IDs
+   (`lead_id`) and delivery error strings (`last_error`) from the
+   `dead_letter_jobs` table. The rows carry no raw envelope bodies, but lead
+   IDs are still production identifiers: run the command from an
+   operator-controlled shell and treat its output like incident data — never
+   paste it into tickets, chat, or screenshots.
 
    Replay resets only the durable queue row; it never reconstructs or prints a
    consumer payload. Preserve the job ID and redacted error in the incident
