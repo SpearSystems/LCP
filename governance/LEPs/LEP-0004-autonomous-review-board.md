@@ -3,8 +3,42 @@
 - **Title:** Autonomous Review Board for independent review
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
-- **Status:** **Draft** — not accepted, not implemented
+- **Status:** **Accepted** — accepted 2026-11-03 (conditional; implementation gated on the #151 charter tightenings), not yet implemented
 - **Target version:** none — governance process change; no protocol version, no wire impact
+
+## Decision (maintainer, 2026-11-03)
+
+**Accepted, conditional.** Recorded by the maintainer (randybeno) following the
+ARB sign-off model. Decision basis: the L-DocsDrift independent-review dossier
+(<https://github.com/SpearSystems/LCP/issues/128#issuecomment-6578281988>) and
+its tracked findings F1–F7.
+
+Conditions (all must land in the implementation PR before this process is
+operative; until then `ARB.md` and `LEP.md` remain un-amended and the ARB has
+no force):
+
+- **F1 (capture):** attribute authorship to the *controller*, not the lane;
+  a fresh-context agent launched by a proposal's author to audit its own
+  proposal is labeled `SELF-AUDIT` and cannot satisfy independent review.
+  Add a mandatory launch-controller field to the G2 attestation.
+- **F5 (self-contradiction):** the Decision-rules bullet must read
+  "satisfied by" (not "only by") an ARB dossier, preserving a future human
+  second maintainer's ability to satisfy the requirement directly.
+- **F4 (stale text):** reconcile the surviving stage-4 "independent
+  second-maintainer review … named domain review" sentence (LEP.md:60-61)
+  that the current diff leaves outside its amended sections.
+- **F2 (deterministic PII gate):** the charter names no lane that produces
+  "the ARB-Security dossier"; add the lane row or rename the gate to a
+  lane that exists.
+- **F3/F7 (dissent re-runnability):** the charter's claim that "charter
+  prompts live in this repository" is unbacked at this SHA; publish the
+  prompts and require dossiers to record plant bytes so an adopter can
+  reproduce a finding without transcript access.
+
+Independent-review note: this is the single-use chicken-and-egg exception
+declared in this proposal (§ below). The independent control is external
+re-runnability of the published charter, template, and evidence commands at
+the recorded commit, not an ARB review of the ARB.
 
 Public discussion: <https://github.com/SpearSystems/LCP/issues/128>.
 Charter record: [`../ARB.md`](../ARB.md); dossier template:
