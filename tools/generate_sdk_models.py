@@ -18,7 +18,18 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_DIR = ROOT / "implementations" / "sdk"
-SDK_NAMES = ("python", "typescript", "go", "csharp", "java", "php", "rust", "ruby", "kotlin", "swift")
+SDK_NAMES = (
+    "python",
+    "typescript",
+    "go",
+    "csharp",
+    "java",
+    "php",
+    "rust",
+    "ruby",
+    "kotlin",
+    "swift",
+)
 BUNDLE_FILES = {
     "python": "lcp_sdk/schema-bundle.json",
     "typescript": "src/generated/schema-bundle.json",
@@ -35,7 +46,12 @@ MANIFEST_FILES = {"typescript": "src/generated/schema-manifest.json"}
 
 
 def canonical_files() -> list[Path]:
-    return sorted([*ROOT.joinpath("schemas").glob("*.json"), *ROOT.joinpath("verticals").glob("*.json")])
+    return sorted(
+        [
+            *ROOT.joinpath("schemas").glob("*.json"),
+            *ROOT.joinpath("verticals").glob("*.json"),
+        ]
+    )
 
 
 def expected_manifest() -> dict[str, Any]:
@@ -64,13 +80,29 @@ def manifest_path(name: str) -> Path:
 
 
 def write_outputs() -> None:
+    # Earliest propagation choke point: refuse to bundle/manifest/loose-copy a
+    # vertical that redefines a reserved core field (SPEC §3), so a planted
+    # violation can never be re-hashed into any SDK (issue #134). The same
+    # gate runs pre-hash in check_sdk_schema_sync.main() for --check.
+    from check_reserved_fields import find_violations
+
+    violations = find_violations(ROOT / "schemas", ROOT / "verticals", ROOT / "SPEC.md")
+    if violations:
+        print("Refusing to generate SDK schema bundles:")
+        for violation in violations:
+            print(f"- {violation}")
+        raise SystemExit(1)
     manifest = expected_manifest()
     bundle = schema_bundle()
     for name in SDK_NAMES:
         output = bundle_path(name)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        manifest_path(name).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        manifest_path(name).write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     # The Python SDK's runtime loader resolves schemas from loose
     # lcp_sdk/schemas/ and lcp_sdk/verticals/ directories. Commit canonical
     # copies inside the package so the wheel and sdist are self-contained and
@@ -89,8 +121,16 @@ def check_outputs() -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--write", action="store_true", help="write bundles and manifests into every SDK")
-    parser.add_argument("--check", action="store_true", help="verify checked-in manifests and model declarations")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="write bundles and manifests into every SDK",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify checked-in manifests and model declarations",
+    )
     options = parser.parse_args()
     if options.write:
         write_outputs()
