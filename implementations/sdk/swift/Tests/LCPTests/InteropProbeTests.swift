@@ -11,7 +11,7 @@ import XCTest
 /// (Lcp.swift:16 `ISO8601DateFormatter().string(from: Date())`) at a frozen
 /// sub-second instant — the default formatter has no fractional option, so
 /// Swift is compliant today. The probe never asserts; the matrix owns the
-/// checks. Emits the `LCP_INTEROP {json}` stdout line and writes
+/// checks. Emits the `LCP_INTEROP {json}` line on stderr and writes
 /// LCP_INTEROP_OUT so the workflow can collect it without scraping test logs.
 final class InteropProbeTests: XCTestCase {
     func repoRoot() throws -> URL {
@@ -56,7 +56,8 @@ final class InteropProbeTests: XCTestCase {
         ]
         let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
         let json = String(decoding: data, as: UTF8.self)
-        print("LCP_INTEROP \(json)")
+        // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+        FileHandle.standardError.write(Data("LCP_INTEROP \(json)\n".utf8))
         if let out = ProcessInfo.processInfo.environment["LCP_INTEROP_OUT"], !out.isEmpty {
             try (json + "\n").write(toFile: out, atomically: true, encoding: .utf8)
         }

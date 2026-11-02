@@ -57,7 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "signature_hex": sign_hmac(secret, timestamp, Some(idempotency_key), &body),
         "emitted_timestamp": frozen.format(&Rfc3339)?,
     });
-    println!("LCP_INTEROP {}", serde_json::to_string(&result)?);
+    // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+    eprintln!("LCP_INTEROP {}", serde_json::to_string(&result)?);
     if let Ok(out) = env::var("LCP_INTEROP_OUT") {
         fs::write(out, format!("{}\n", serde_json::to_string(&result)?))?;
     }

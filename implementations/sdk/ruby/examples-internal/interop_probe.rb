@@ -38,5 +38,6 @@ result = {
   "signature_hex" => LcpSdk::Signing.sign(vector["secret"], vector["timestamp"], vector["idempotency_key"], vector["body_utf8"]),
 }
 json = JSON.generate(result)
-puts "LCP_INTEROP #{json}"
+# Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+$stderr.puts "LCP_INTEROP #{json}"
 File.write(ENV["LCP_INTEROP_OUT"], "#{json}\n") if ENV["LCP_INTEROP_OUT"] && !ENV["LCP_INTEROP_OUT"].empty?

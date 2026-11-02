@@ -85,7 +85,8 @@ func main() {
 		EmittedTimestamp: emitted,
 	}
 	payload, _ := json.Marshal(result)
-	fmt.Println("LCP_INTEROP", string(payload))
+	// Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+	fmt.Fprintln(os.Stderr, "LCP_INTEROP", string(payload))
 	if out := os.Getenv("LCP_INTEROP_OUT"); out != "" {
 		os.WriteFile(out, append(payload, '\n'), 0o644)
 	}

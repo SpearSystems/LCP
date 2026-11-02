@@ -77,7 +77,10 @@ def main() -> int:
         "emitted_timestamp": frozen_utc_timestamp(),
     }
     line = "LCP_INTEROP " + json.dumps(result, sort_keys=True)
-    print(line)
+    # Logging hygiene: implementations/** runtime code must not print payloads
+    # to stdout (tools/check_logging_hygiene.py Rule 1). The machine-readable
+    # channels are stderr and LCP_INTEROP_OUT.
+    print(line, file=sys.stderr)
     out = os.environ.get("LCP_INTEROP_OUT")
     if out:
         with open(out, "w", encoding="utf-8") as handle:

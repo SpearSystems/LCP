@@ -17,7 +17,7 @@ import kotlin.test.Test
  * (LcpSdk.kt: Instant.now().toString()) at a frozen instant with non-zero
  * nanoseconds via Clock.fixed — the fractional emission is the LEP-0002
  * evidence. Runs under `gradle test --tests '*InteropProbeTest*'`; emits the
- * `LCP_INTEROP {json}` stdout line and writes LCP_INTEROP_OUT when set.
+ * `LCP_INTEROP {json}` line on stderr and writes LCP_INTEROP_OUT when set.
  * Never asserts; the matrix owns the checks.
  */
 class InteropProbeTest {
@@ -40,7 +40,8 @@ class InteropProbeTest {
             ",\"emitted_timestamp\":\"$emitted\"" +
             ",\"sdk\":\"kotlin\"" +
             ",\"signature_hex\":\"${LcpSdk.signHmac(secret, timestamp, idempotencyKey, body)}\"}"
-        println("LCP_INTEROP $result")
+        // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+        System.err.println("LCP_INTEROP $result")
         val out = System.getenv("LCP_INTEROP_OUT")?.takeIf { it.isNotEmpty() }
             ?: File(root, "implementations/sdk/kotlin/build/interop-probe.json").path
         File(out).let { path ->

@@ -24,10 +24,12 @@ public final class InteropProbe {
     private InteropProbe() {}
 
     private static String field(String json, String name) {
-        int marker = json.indexOf("\"" + name + "\":\"");
-        if (marker < 0) throw new IllegalStateException("vector field missing: " + name);
+        int colon = json.indexOf("\"" + name + "\":");
+        if (colon < 0) throw new IllegalStateException("vector field missing: " + name);
+        int open = json.indexOf('"', colon + name.length() + 2);
+        if (open < 0) throw new IllegalStateException("vector field missing: " + name);
         StringBuilder value = new StringBuilder();
-        for (int p = marker + name.length() + 4; p < json.length(); p++) {
+        for (int p = open + 1; p < json.length(); p++) {
             char c = json.charAt(p);
             if (c == '"') break;
             if (c == '\\') { value.append(json.charAt(++p)); } else { value.append(c); }
@@ -58,7 +60,8 @@ public final class InteropProbe {
                 + "\",\"emitted_timestamp\":\"" + emitted
                 + "\",\"sdk\":\"java\""
                 + ",\"signature_hex\":\"" + LcpSdk.signHmac(secret, timestamp, idempotencyKey, body) + "\"}";
-        System.out.println("LCP_INTEROP " + result);
+        // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+        System.err.println("LCP_INTEROP " + result);
         String out = System.getenv("LCP_INTEROP_OUT");
         if (out != null) Files.writeString(Path.of(out), result + System.lineSeparator());
     }

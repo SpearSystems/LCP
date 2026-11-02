@@ -63,7 +63,9 @@ jobs:
           - sdk: swift
             os: macos-latest
             setup: ""
-            probe: swift --package-path implementations/sdk/swift test --filter InteropProbeTests
+            # `swift test` on the runner's SwiftPM has no --package-path; cd is the
+            # same invocation sdk.yml's Swift SDK job uses.
+            probe: cd implementations/sdk/swift && swift test --filter InteropProbeTests
           - sdk: csharp
             os: ubuntu-latest
             setup: ""

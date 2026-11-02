@@ -54,8 +54,9 @@ const result = {
   signature_hex: signatureHex,
   emitted_timestamp: emittedTimestamp,
 };
-const line = "LCP_INTEROP " + JSON.stringify(result, Object.keys(result).sort());
-console.log(line);
+// Logging hygiene: implementations/** runtime code must not write payload
+// prints to stdout; stderr + LCP_INTEROP_OUT are the machine channels.
+console.error("LCP_INTEROP " + JSON.stringify(result, Object.keys(result).sort()));
 if (process.env.LCP_INTEROP_OUT) {
   writeFileSync(process.env.LCP_INTEROP_OUT, JSON.stringify(result) + "\n");
 }

@@ -48,7 +48,8 @@ using (var vectorStream = File.OpenRead(ResolveVectorPath(args)))
         ["signature_hex"] = LcpSigning.SignHmac(secret, timestamp, idempotencyKey, body),
     };
     var payload = JsonSerializer.Serialize(result);
-    Console.WriteLine($"LCP_INTEROP {payload}");
+    // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+    Console.Error.WriteLine($"LCP_INTEROP {payload}");
     var outPath = Environment.GetEnvironmentVariable("LCP_INTEROP_OUT");
     if (!string.IsNullOrEmpty(outPath)) File.WriteAllText(outPath, payload + Environment.NewLine);
 }

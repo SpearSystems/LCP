@@ -32,7 +32,8 @@ $result = [
 ];
 ksort($result);
 $json = json_encode($result);
-echo 'LCP_INTEROP ' . $json . PHP_EOL;
+// Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
+fwrite(STDERR, 'LCP_INTEROP ' . $json . PHP_EOL);
 $out = getenv('LCP_INTEROP_OUT');
 if ($out !== false && $out !== '') {
     file_put_contents($out, $json . PHP_EOL);
