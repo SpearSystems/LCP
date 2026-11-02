@@ -24,9 +24,19 @@ from check_action_pins import (  # noqa: E402
     parse_pins,
 )
 
+
 SHA_A = "a" * 40
 SHA_B = "b" * 40
-SHA_TRIVY = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+
+
+class ExplodingAPI:
+    """Any API call is a test failure (exempted pins must short-circuit)."""
+
+    def resolve_ref(self, repo: str, kind: str, ref: str):
+        raise AssertionError("exempted pin must not hit the API")
+
+    def tags_by_commit(self, repo: str):
+        raise AssertionError("exempted pin must not hit the API")
 
 
 class FakeAPI:
@@ -149,20 +159,28 @@ class CheckPinTests(unittest.TestCase):
         status, _ = check_pin(self.pin(SHA_A, "v1.9.9"), api)
         self.assertEqual(status, "fail")
 
+    def test_exemption_list_stays_empty_without_evidence(self):
+        # The trivy-action #127 exemption was disproven on 2026-11-02:
+        # ed142fd… is the peeled target of upstream tag v0.36.0 and now
+        # carries a '# v0.36.0' comment; the workflow pins pass normally.
+        self.assertNotIn(
+            "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25",
+            KNOWN_UNRESOLVABLE,
+        )
+
     def test_known_unresolvable_pin_warns_loudly_but_never_calls_api(self):
-        pin = Pin("s.yml", 9, "aquasecurity/trivy-action", SHA_TRIVY, None)
-        self.assertIn(pin.key, KNOWN_UNRESOLVABLE)
+        import check_action_pins
 
-        class ExplodingAPI(FakeAPI):
-            def resolve_ref(self, *args):
-                raise AssertionError("exempted pin must not hit the API")
-
-            def tags_by_commit(self, *args):
-                raise AssertionError("exempted pin must not hit the API")
-
-        status, msg = check_pin(pin, ExplodingAPI())
+        pin = Pin("s.yml", 9, "acme/tool", SHA_A, None)
+        check_action_pins.KNOWN_UNRESOLVABLE = {
+            pin.key: "synthetic: dated evidence here"
+        }
+        try:
+            status, msg = check_pin(pin, ExplodingAPI())
+        finally:
+            check_action_pins.KNOWN_UNRESOLVABLE = {}
         self.assertEqual(status, "warn")
-        self.assertIn("#127", msg)
+        self.assertIn("synthetic", msg)
 
 
 class ReportAndMainTests(unittest.TestCase):

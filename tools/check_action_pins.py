@@ -27,11 +27,17 @@ Rules
    - pins with no comment are checked against the repo's tag list: any real
      released tag resolves them (WARN asking for a comment); an SHA that
      resolves nowhere FAILS.
-3. Known-unresolvable pins are *exempted loudly*, never silently: entries in
-   ``KNOWN_UNRESOLVABLE`` print a WARN with their evidence each run. The
-   ``aquasecurity/trivy-action`` pin was verified unresolvable upstream
-   (commit absent from the repository; noted in issue #127) and is retained
-   pending an owner decision — this checker does not rewrite workflow pins.
+3. Pins that genuinely cannot be resolved upstream are *exempted loudly*,
+   never silently: entries in ``KNOWN_UNRESOLVABLE`` print a WARN with their
+   evidence each run until re-pinned. The list is currently empty: the
+   ``aquasecurity/trivy-action`` commit from issue #127 was re-verified
+   2026-11-02 and DOES resolve — ``v0.36.0`` is an annotated tag whose
+   peeled target is ``ed142fd0673e97e23eac54620cfb913e5ce36c25`` (verified
+   via ``git ls-remote`` ``refs/tags/v0.36.0^{}`` and the REST
+   ``/commits/`` endpoint). The original "unresolvable" claim rested on a
+   wrong tag name (missing ``v`` prefix) and a 404 from the
+   ``/git/objects/`` REST quirk; the pin is retained unchanged and now
+   carries its ``# v0.36.0`` comment.
 
 Exit codes: 0 = clean (warnings allowed), 1 = violations found,
 2 = usage/environment error (API unreachable, bad arguments).
@@ -111,14 +117,11 @@ class Report:
 # Pins retained from history that no longer resolve upstream. Format:
 # "<owner/repo@sha>" -> reason printed in every run (with evidence link).
 # This is a disclosure list, not a mute button: each entry is re-verified
-# against upstream tags every run and stays a visible WARN.
-KNOWN_UNRESOLVABLE: dict[str, str] = {
-    "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25": (
-        "commit absent from upstream (verified 2026-11-02 via "
-        "GET /repos/aquasecurity/trivy-action/git/objects/...; see issue #127). "
-        "Pin kept unchanged pending owner decision."
-    ),
-}
+# against upstream tags every run and stays a visible WARN. Entries MUST
+# carry dated re-verification evidence; the 2026-11-02 trivy-action review
+# (see module docstring, rule 3) is the cautionary tale for exempting on a
+# single endpoint 404.
+KNOWN_UNRESOLVABLE: dict[str, str] = {}
 
 
 def parse_pins(root: Path) -> list[Pin]:
