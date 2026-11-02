@@ -1,0 +1,29 @@
+name: Spec Coverage Matrix
+
+# Advisory gate (ARB plan §3.1, wave W1). Reports only for now:
+# W5 flips this to blocking by removing `continue-on-error` below and
+# adding `--fail-on-gap` to the checker step, once the gap backlog in
+# docs/SPEC-COVERAGE.md closes to zero.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: SPEC-to-test coverage matrix (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Check coverage matrix structure and vector mapping
+        run: python tools/check_coverage_matrix.py
+      - name: Run coverage-matrix gate unit tests
+        run: python -m unittest tools.tests.test_check_coverage_matrix -v
