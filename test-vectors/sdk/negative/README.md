@@ -109,3 +109,29 @@ the lane override.
    sets, gap rules) before executing anything. Format violations fail CI.
 4. Signatures for new `verify_*` inputs: `HMAC-SHA256(secret,
    "<timestamp>\\n<key>\\n<body>")` lowercase hex — generate, never guess.
+
+## SDK runner exercisability (added per lane; batch A)
+
+Each runner loads every `*.json` in this directory, lints the shared format,
+then dispatches each vector against that SDK's real primitives. These SDKs
+surface no protocol error **codes** from their verify/validate entrypoints (they
+raise/return a bare failure), so per the contract above each runner asserts the
+`outcome` only and never the code. `production_mode_verify` is a loud gap-skip
+(stderr line, not counted as executed) because none of these SDKs has a
+verifier-side test/prod mode — invariant 8 is a platform concern (§ Gap policy).
+
+| SDK | Runner file | verify_hmac | verify_raw_body | envelope_validate | offer_validate | production_mode_verify |
+|---|---|---|---|---|---|---|
+| Java | `implementations/sdk/java/src/test/java/com/spearsystems/lcp/NegativeVectorsTest.java` | ✅ `LcpSdk.verifyHmac` (throw ⇒ reject; malformed-timestamp family rejects via `Instant.parse`) | ✅ verify over raw `verify_body` bytes | ✅ `SchemaValidator.validateEnvelope` (unknown type / closed-header extra / non-allowlisted ping field all throw) | ✅ `SchemaValidator.validateOffer` | ⚠️ GAP (`sdk_exercisable:false`) |
+| Kotlin | `implementations/sdk/kotlin/src/test/kotlin/com/spearsystems/lcp/NegativeVectorsTest.kt` | ✅ `LcpSdk.verifyHmac` (`Instant.parse` + `MessageDigest.isEqual`) | ✅ verify over raw `verify_body` bytes | ✅ `LcpSchemaValidator.validateEnvelope` | ✅ `LcpSchemaValidator.validateOffer` | ⚠️ GAP (`sdk_exercisable:false`) |
+| PHP | `implementations/sdk/php/tests/negative_vectors.php` | ✅ `Lcp\Signing::verify` (`hash_equals`; malformed ts rejects via constructor throw or signature mismatch — outcome-only, deterministic) | ✅ verify over raw `verify_body` bytes | ✅ `Lcp\SchemaValidator::validateEnvelope` | ✅ `Lcp\SchemaValidator::validateOffer` | ⚠️ GAP (`sdk_exercisable:false`) |
+
+Per-SDK totals with the current suite (14 vectors): **13 executed, 1 gap-skip**
+(`lcp-neg-mode-001`).
+
+CI discovery: **Java** (`mvn test` → surefire auto-discovers `src/test/**/*Test.java`)
+and **Kotlin** (`gradle test`) run these runners with no workflow change. **PHP**
+is not yet discovered: the `php` job in `.github/workflows/sdk.yml` invokes only
+`php tests/shared_vector.php`; wiring this runner needs that one line extended to
+`… && php tests/shared_vector.php && php tests/negative_vectors.php` (deferred to
+the parent merge window; no workflow edit made here).
