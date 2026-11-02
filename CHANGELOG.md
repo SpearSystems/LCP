@@ -41,9 +41,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   (#106), eliminating the transient CodeQL lockstep failures.
 - Negative security-vector suite (`test-vectors/sdk/negative/`, #132):
   14 vectors across invariants 1/2/5/6 of the SDK security-invariant list,
-  with format spec, loud gap-skip policy, and runners for 9/10 SDKs
-  (Python, Java, Kotlin, PHP, TypeScript, Go, Ruby, C#, Rust); Swift
-  runner tracked on SEC-04b/SEC-05b.
+  with format spec, loud gap-skip policy, and runners for all 10 SDKs
+  (Python, Java, Kotlin, PHP, TypeScript, Go, Ruby, C#, Rust, Swift — #154;
+  the Swift verifier has no test/production mode state, so `production_mode_verify`
+  stays a loud gap-skip there too).
+- Conformance-level planted negatives for the last three owed ledger rows
+  (`test-vectors/l2-lifecycle.json`, #154): L2-013/014 (location must carry
+  state_region OR postal_code), L2-015/016 (OTP plaintext code rejected;
+  hash+timestamp accepted), L2-017/018 (token inside ping `compliance_flags`
+  rejected by a new `check_compliance_flags` presence-indicator run in
+  `conformance.py`; boolean presence flags accepted).
 - Cross-SDK signature-interop matrix (`sdk-interop.yml`, #139): all ten
   SDKs produce identical canonical signing bytes and signature for the
   shared vector; timestamp *generation* shape is reported advisory
