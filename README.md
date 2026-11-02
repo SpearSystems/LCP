@@ -447,3 +447,7 @@ SPEC.md          ── Canonical protocol specification
 
 Apache 2.0. Free to implement — no membership, no approval, no fees.
 See [governance/](governance/) for anti-capture and trademark policies.
+
+`X-LCP-Timestamp` and every envelope `lcp.message.timestamp` default are
+emitted in the canonical whole-second UTC wire form `YYYY-MM-DDTHH:MM:SSZ`
+(SPEC.md §9, LEP-0002); the HMAC signs the exact transmitted string.

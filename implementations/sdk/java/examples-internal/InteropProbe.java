@@ -4,10 +4,11 @@
 //   java -cp target/classes implementations/sdk/java/examples-internal/InteropProbe.java --vector test-vectors/sdk/hmac.json
 //
 // Signs the fixed vector message through the SDK's own canonicalSigningBytes +
-// signHmac, then formats Instant.now().toString() (LcpSdk.java:54) at a frozen
-// instant with non-zero nanoseconds via Clock.fixed — Instant.toString keeps
-// the fraction, the LEP-0002 evidence. The probe never asserts; the matrix
-// owns the checks.
+// signHmac, then formats the SDK's canonical generation expression
+// (LcpSdk.nowIsoUtc / CANONICAL_TIMESTAMP_FORMAT over Instant.now(Clock.fixed))
+// at a frozen instant with non-zero nanoseconds — the whole-second wire form
+// is the LEP-0002 conformance shape. The probe never asserts; the matrix owns
+// the checks.
 
 import com.spearsystems.lcp.LcpSdk;
 
@@ -51,10 +52,11 @@ public final class InteropProbe {
         byte[] canonical = LcpSdk.canonicalSigningBytes(timestamp, idempotencyKey, body);
         String canonicalSha256 = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));
         // Frozen instant 2026-08-15T10:20:00.123456789Z through the SDK's own
-        // generation expression; Instant.now(Clock.fixed) formats identically
-        // to the SDK's Instant.now() at a sub-second system-clock tick.
-        String emitted = Instant.now(Clock.fixed(
-                Instant.parse("2026-08-15T10:20:00.123456789Z"), ZoneOffset.UTC)).toString();
+        // generation expression (LcpSdk.nowIsoUtc); formatting a Clock.fixed instant
+        // with CANONICAL_TIMESTAMP_FORMAT is identical to the SDK's Instant.now()
+        // path at a sub-second system-clock tick.
+        String emitted = LcpSdk.formatTimestamp(Instant.now(Clock.fixed(
+                Instant.parse("2026-08-15T10:20:00.123456789Z"), ZoneOffset.UTC)));
 
         String result = "{\"canonical_sha256\":\"" + canonicalSha256
                 + "\",\"emitted_timestamp\":\"" + emitted

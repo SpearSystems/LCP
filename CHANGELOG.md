@@ -24,6 +24,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   pass while real credentials (including values pasted over the
   `REPLACE_ME` sentinels) fail.
 
+### LEP-0002: canonical timestamp generation and cross-SDK interop
+
+- **SDKs (Java/Kotlin/Rust):** envelope default-timestamp and HMAC
+  `X-LCP-Timestamp` generators switch to the canonical whole-second UTC
+  wire form (`YYYY-MM-DDTHH:MM:SSZ`) via `DateTimeFormatter` with
+  `ZoneOffset.UTC` (Java/Kotlin) and `OffsetDateTime::replace_nanosecond(0)?`
+  before `Rfc3339` (Rust). The other seven SDKs already emitted this form;
+  no code change. Each of the three updated SDKs gains a `CanonicalTimestamp*`
+  frozen-clock unit test pinning `.123456789 ns → 2026-08-15T10:20:00Z`;
+  the interop probes route through the SDK's own generation expression so
+  the matrix reflects shipped behavior.
+- **SPEC.md §9:** canonical-generation normative paragraph — signers MUST
+  emit the whole-second UTC form; HMAC covers the exact transmitted
+  timestamp string; verifiers MUST recompute verbatim, never reformat;
+  receiver parse leniency is unchanged.
+- **Interop blocking flip:** `tools/sdk_interop_matrix.py`
+  `KNOWN_FRACTIONAL_SDKS` is now the empty set and any generation-shape
+  FAIL exits 1 (was advisory). The `SDK signature interop` workflow
+  (`.github/workflows/sdk-interop.yml`) turns red on any shape regression
+  and keeps its weekly refresh schedule. `tools/tests/test_sdk_interop_matrix.py`
+  carries the #152 truthfulness drift guard: the LEP-0002 evidence
+  table is a superseded historical record, and the parser requires the
+  `superseded by implementation PR` caption whenever the baseline is
+  empty — a silent caption deletion or a reverted-Java fractional
+  expectation turns the suite red.
+- **Governance:** LEP-0002 wording fixes carried from the ARB decision
+  (F-1 outbound webhook signer, F-2 Swift accepts `+00:00`, F-3 HMAC-SHA256
+  mirror in the deferred-Q3 security block) and the Implementation/
+  Verification links landed in the proposal; the registry's LEP-0002
+  traceability cell gains the implementation PR link.
+- See [`governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md`](governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md).
+
 ### Security and hardening
 
 - Rust SDK: bump `h2` 0.4.15 → 0.4.16 (RUSTSEC-2026-0258, low-severity

@@ -1,17 +1,18 @@
-# Cross-SDK signature-interop matrix — LEP-0002 rollout step 1 (ARB plan §3.3).
+# Cross-SDK signature-interop matrix — LEP-0002 rollout (ARB plan §3.3).
 #
 # All ten SDK probes sign the one fixed message in test-vectors/sdk/hmac.json
 # through their own library entry points and format their own timestamp
 # generator at a frozen sub-second instant. Signature identity across SDKs is
-# blocking; the generation-shape column is advisory until LEP-0002 is Accepted
-# (fractional emitters are the dossier evidence and must not redden the job —
-# advisory is enforced by tools/sdk_interop_matrix.py's exit-code contract).
+# blocking and so is the generation-shape column now that LEP-0002 is accepted
+# and implemented (SPEC.md §9 pins the whole-second UTC wire form as a MUST;
+# tools/sdk_interop_matrix.py exits 1 on any shape FAIL). The weekly schedule
+# refresh keeps the evidence column current for post-merge drift.
 name: SDK signature interop
 
 on:
   pull_request:
   schedule:
-    - cron: "17 4 * * 1" # Mondays 04:17 UTC — weekly advisory matrix refresh
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC — weekly blocking interop matrix refresh
 
 permissions:
   contents: read
@@ -117,9 +118,10 @@ jobs:
           merge-multiple: true
       - name: Build interop matrix
         # Exit contract (tools/sdk_interop_matrix.py): 2 = probe missing or
-        # malformed, 1 = signature identity broken, 0 = otherwise. The shape
-        # matrix never contributes to the exit code, so known-fractional SDKs
-        # keep this job green until LEP-0002 step 2 aligns generation.
+        # malformed, 1 = signature identity broken OR generation-shape FAIL
+        # (SPEC.md §9 canonical MUST), 0 = all-ten green. Post-LEP-0002
+        # implementation the shape column is blocking: any SDK that emits a
+        # fractional/offset/unmarked form reddens this job.
         run: |
           python tools/sdk_interop_matrix.py aggregate \
             --vector test-vectors/sdk/hmac.json \

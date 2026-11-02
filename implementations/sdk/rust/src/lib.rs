@@ -12,6 +12,29 @@ pub use validation::SchemaValidator;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/**
+ * Canonical whole-second UTC wire format for `X-LCP-Timestamp` and the mirrored
+ * envelope field (LEP-0002). Signers MUST emit exactly this shape; the HMAC covers
+ * the transmitted string verbatim (SPEC.md §9). `Rfc3339` omits the fractional
+ * part when the nano field is zero, so `now_iso_utc` truncates before formatting.
+ */
+pub fn now_iso_utc() -> String {
+    OffsetDateTime::now_utc()
+        .replace_nanosecond(0)
+        .expect("canonical timestamp")
+        .format(&Rfc3339)
+        .expect("canonical timestamp")
+}
+
+/** Format one already-parsed instant as the canonical whole-second UTC string. */
+pub fn format_timestamp(value: OffsetDateTime) -> String {
+    value
+        .replace_nanosecond(0)
+        .expect("canonical timestamp")
+        .format(&Rfc3339)
+        .expect("canonical timestamp")
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
     pub id: String,
@@ -27,7 +50,7 @@ pub struct Message {
 
 pub fn build_envelope(message_type: &str, sender_id: &str, receiver_id: &str, payload: Value, test: bool) -> Value {
     let id = uuid();
-    json!({"lcp":{"version":"1.0.0","message":{"id":id,"type":message_type,"timestamp":OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp"),"sender_id":sender_id,"receiver_id":receiver_id,"correlation_id":null,"idempotency_key":format!("{}-{}-{}", sender_id, message_type, uuid()),"test":test},"payload":payload}})
+    json!({"lcp":{"version":"1.0.0","message":{"id":id,"type":message_type,"timestamp":now_iso_utc(),"sender_id":sender_id,"receiver_id":receiver_id,"correlation_id":null,"idempotency_key":format!("{}-{}-{}", sender_id, message_type, uuid()),"test":test},"payload":payload}})
 }
 
 fn uuid() -> String {
@@ -48,7 +71,7 @@ impl Client {
     pub fn hmac_secret(mut self, value: impl Into<String>) -> Self { self.hmac_secret = Some(value.into()); self }
     pub fn request(&self, method: reqwest::Method, path: &str, payload: Option<Value>, test: bool) -> Result<Value, Box<dyn std::error::Error>> {
         let body = payload.as_ref().map(|value| serde_json::to_vec(value)).transpose()?; let key = payload.as_ref().and_then(|value| value.pointer("/lcp/message/idempotency_key")).and_then(Value::as_str);
-        for attempt in 0..=self.max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = OffsetDateTime::now_utc().format(&Rfc3339)?; request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(error) if attempt < self.max_retries => { std::thread::sleep(Duration::from_secs(1 << attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == self.max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(Duration::from_secs(1 << attempt)); }
+        for attempt in 0..=self.max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = now_iso_utc(); request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(error) if attempt < self.max_retries => { std::thread::sleep(Duration::from_secs(1 << attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == self.max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(Duration::from_secs(1 << attempt)); }
         Err("LCP request failed".into())
     }
 
@@ -66,6 +89,12 @@ impl ConstantTimeEq for [u8] { fn ct_eq(&self, other: &[u8]) -> subtle::Choice {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn canonical_timestamp_shape_pins_whole_second_utc() {
+        let frozen = OffsetDateTime::from_unix_timestamp_nanos(1_786_789_200_123_456_789).unwrap();
+        assert_eq!("2026-08-15T10:20:00Z", format_timestamp(frozen));
+    }
+
     #[test]
     fn shared_hmac_vector() {
         let body = b"{\"hello\":\"world\"}";

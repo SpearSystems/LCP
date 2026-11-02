@@ -715,6 +715,29 @@ The default replay window is five minutes; deployments MAY choose a
 shorter window. During key rotation, a receiver MAY accept a previously
 active secret for a bounded migration period.
 
+**Canonical timestamp generation (LEP-0002).** Signers MUST emit
+`X-LCP-Timestamp` (and the mirrored `payload.message.security.timestamp`,
+and SDK envelope `lcp.message.timestamp` defaults) in the whole-second
+UTC wire form:
+
+```text
+YYYY-MM-DDTHH:MM:SSZ
+```
+
+— UTC, whole seconds, exactly one `Z`, no fractional part, no numeric
+offset. Fractional (`2026-08-15T10:20:00.123456789Z`), numeric-offset
+(`2026-08-15T10:20:00+00:00`), unmarked (`2026-08-15T10:20:00`), and
+RFC-2822 (`Mon, 17 Aug 2026 10:20:00 GMT`) forms MUST NOT be generated
+by a conforming signer.
+
+The HMAC covers the **exact timestamp string transmitted in the header**,
+byte-for-byte: signers MUST build the canonical input from the same string
+they put on the wire, and verifiers MUST recompute the digest over the
+received header value verbatim — never over a parsed-and-reformatted
+timestamp. Receivers keep applying their existing (lenient) clock parsing
+to decide the replay window; this canonicalization changes no verifier
+behavior.
+
 ### Phone hash (dedup)
 
 `phone_hash = HMAC-SHA256(shared_secret, normalized_e164)`

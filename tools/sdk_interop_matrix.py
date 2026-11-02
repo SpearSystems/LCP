@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-SDK signature-interop matrix (LEP-0002 rollout step 1; ARB plan §3.3).
+"""Cross-SDK signature-interop matrix (LEP-0002 rollout; ARB plan §3.3, post-implementation blocking).
 
 Every SDK probe (see ``.github/workflows/sdk-interop.yml`` and the per-SDK
 ``interop_probe`` entry points under ``implementations/sdk/<lang>/``) does two
@@ -23,23 +23,26 @@ Sub-commands:
   identity against the published vector, and render the generation-shape
   matrix (job summary + ``interop-report.json`` artifact).
 
-Blocking/advisory split (this is the LEP-0002 dossier machinery):
+Blocking split (post-LEP-0002 implementation; the interop job is now a
+merge gate):
 
-- Signature identity is blocking-safe: all ten SDKs already reproduce the
-  published ``signature_hex`` over identical canonical bytes, so a break here
-  is always a real defect. Exit 1.
+- Signature identity is blocking: all ten SDKs must reproduce the published
+  ``signature_hex`` over identical canonical bytes, so a break here is always
+  a real defect. Exit 1.
 - Missing or malformed probe output is a toolchain/pipeline break: exit 2.
   Nothing is ever silently skipped.
-- The generation-shape check is advisory until LEP-0002 is Accepted: Java,
-  Kotlin and Rust emit fractional seconds today (LEP-0002 §Problem statement
-  evidence table), and that FAIL cells in the matrix are the dossier evidence.
-  Shape results NEVER affect the exit code. When an SDK beyond the known three
-  starts failing the shape check, the report flags ``REGRESSION``; when one of
-  the known three aligns, it flags ``ALIGNED`` — both as the LEP-0002 rollout
-  progress signal.
+- Generation shape is **blocking after LEP-0002 acceptance and implementation**
+  (SPEC.md §9 pins the whole-second UTC wire form; Java, Kotlin, Rust switched
+  to it in the implementation PR; the LEP-0002 evidence table's ``Emitted
+  form`` column is now a superseded historical record). Any shape FAIL —
+  fractional, numeric-offset, unmarked, RFC-2822 emission, or the wrong
+  instant under the frozen clock — exits 1. The
+  ``KNOWN_FRACTIONAL_SDKS`` baseline is now the empty set: no SDK is
+  permitted to emit fractional seconds.
 
-Exit codes: 2 probe missing/unparsable, 1 signature identity broken, 0
-otherwise (shape FAILs are reported, not fatal).
+Exit codes: 2 probe missing/unparsable, 1 signature identity broken OR
+generation-shape FAIL, 0 otherwise. This is a change from the pre-acceptance
+advisory contract where shape FAILs were reported but never fatal.
 """
 
 from __future__ import annotations
@@ -66,11 +69,15 @@ SDK_LANGS = (
     "csharp",
 )
 
-# SDKs whose timestamp generation is documented (LEP-0002 evidence table,
-# 2026-11-02 head) to emit fractional seconds today. Their shape FAIL is
-# expected dossier content, not a regression. Update this baseline together
-# with LEP-0002 step 2 (SDK generation alignment), never silently.
-KNOWN_FRACTIONAL_SDKS = frozenset({"java", "kotlin", "rust"})
+# Post-LEP-0002 baseline: no SDK is permitted to emit fractional seconds.
+# The LEP-0002 signer evidence table is a superseded historical record
+# (state at draft time before the implementation PR); the sync test in
+# ``tools/tests/test_sdk_interop_matrix.py`` asserts the caption marker is
+# present whenever this baseline is empty, so a doc edit that silently
+# removes the marker (or reintroduces a fractional emitter) goes red.
+# Widen this set only together with an LEP reopening and a caption
+# removal — never silently.
+KNOWN_FRACTIONAL_SDKS: frozenset = frozenset()
 
 # Whole-second canonical form required by LEP-0002 once accepted.
 CANONICAL_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -165,7 +172,7 @@ def canonical_sha256(vector: dict[str, Any]) -> str:
 
 
 def shape_result(sdk: str, emitted: str) -> tuple[str, str]:
-    """Return (status, note) for the advisory generation-shape check."""
+    """Return (status, note) for the blocking generation-shape check (LEP-0002)."""
     if CANONICAL_TIMESTAMP_RE.match(emitted):
         if emitted != FROZEN_CANONICAL:
             return (
@@ -174,16 +181,18 @@ def shape_result(sdk: str, emitted: str) -> tuple[str, str]:
             )
         if sdk in KNOWN_FRACTIONAL_SDKS:
             aligned_note = (
-                "ALIGNED: listed as fractional in the LEP-0002 evidence table but emits "
-                "canonical now — verify whether step 2 landed or the evidence row is wrong"
+                "ALIGNED: listed as fractional in the current baseline but emits "
+                "canonical now — the baseline is stale, widen/remove it explicitly"
             )
             return "PASS", aligned_note
         return "PASS", ""
     note = f"fractional/non-canonical shape: {emitted!r}"
     if sdk in KNOWN_FRACTIONAL_SDKS:
-        note += " (known fractional emitter, LEP-0002 evidence)"
+        # Post-acceptance the baseline is empty; the branch only fires again
+        # if an adopter reopens LEP-0002 with a widened fractional set.
+        note += " (listed fractional in the current baseline)"
     else:
-        note += " REGRESSION vs LEP-0002 baseline"
+        note += " REGRESSION vs LEP-0002 canonical baseline (blocking)"
     return "FAIL", note
 
 
@@ -250,7 +259,7 @@ def build_matrix(
     signature_identity = not blocking
     return {
         "vector_id": vector["id"],
-        "mode": "signature-identity blocking / generation-shape advisory (LEP-0002 rollout step 1)",
+        "mode": "signature-identity + generation-shape blocking (LEP-0002 implementation)",
         "signature_identity": signature_identity,
         "blocking": blocking,
         "rows": rows,
@@ -260,7 +269,12 @@ def build_matrix(
         "shape_alignments": alignments,
         "exit_code": 2
         if any(row["shape_status"] is None for row in rows)
-        else (0 if signature_identity else 1),
+        else (
+            1
+            if (not signature_identity
+                or any(row["shape_status"] == "FAIL" for row in rows))
+            else 0
+        ),
     }
 
 
@@ -275,10 +289,16 @@ def render_summary(matrix: dict[str, Any]) -> str:
         ),
         "",
         (
-            f"**Timestamp generation shape (advisory until LEP-0002 Accepted): "
+            f"**Timestamp generation shape (blocking after LEP-0002 implementation): "
             f"{matrix['shape_counts']['pass']} PASS / {matrix['shape_counts']['fail']} FAIL** — "
-            f"known fractional emitters: {', '.join('`' + s + '`' for s in matrix['known_fractional'])}. "
-            "This row is the LEP-0002 dossier evidence, not a merge gate."
+            + (
+                "known fractional emitters: "
+                + ", ".join("`" + s + "`" for s in matrix["known_fractional"])
+                + ". "
+                if matrix["known_fractional"]
+                else "no SDK is listed fractional in the post-LEP-0002 baseline. "
+            )
+            + "Any shape FAIL exits 1 (SPEC.md §9 canonical generation is a MUST)."
         ),
         "",
         "| SDK | Signature | Canonical SHA-256 | Shape (frozen clock) | Note |",
@@ -367,11 +387,12 @@ def cmd_aggregate(args: argparse.Namespace) -> int:
             else f"BLOCKING: {item}",
             file=sys.stderr,
         )
-    if matrix["shape_regressions"]:
+    shape_fail_sdks = [row["sdk"] for row in matrix["rows"] if row["shape_status"] == "FAIL"]
+    if shape_fail_sdks:
         print(
-            "advisory: generation-shape REGRESSION for "
-            + ", ".join(matrix["shape_regressions"])
-            + " — reported only; see the matrix summary",
+            "blocking: generation-shape FAIL for "
+            + ", ".join(shape_fail_sdks)
+            + " — SPEC.md §9 canonical generation is a MUST; see the matrix summary",
             file=sys.stderr,
         )
     return matrix["exit_code"]

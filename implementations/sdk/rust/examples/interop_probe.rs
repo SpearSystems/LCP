@@ -2,18 +2,17 @@
 //!
 //! Signs the fixed hmac.json vector message through the SDK's own
 //! canonical_signing_bytes + sign_hmac, then formats the SDK's timestamp
-//! generation expression (lib.rs: OffsetDateTime::now_utc().format(&Rfc3339))
-//! at a frozen instant with non-zero nanoseconds — `time`'s Rfc3339 emits the
-//! subsecond fraction when present, the LEP-0002 evidence. The probe never
-//! asserts; the matrix owns the checks.
+//! generation expression (lib.rs: now_iso_utc → replace_nanosecond(0) then
+//! Rfc3339) at a frozen instant with non-zero nanoseconds — the whole-second
+//! wire form is the LEP-0002 conformance shape. The probe never asserts; the
+//! matrix owns the checks.
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use lcp_sdk::{canonical_signing_bytes, sign_hmac};
+use lcp_sdk::{canonical_signing_bytes, format_timestamp, sign_hmac};
 use sha2::{Digest, Sha256};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 fn vector_path() -> PathBuf {
@@ -49,13 +48,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut hasher = Sha256::new();
     hasher.update(&canonical);
     // Frozen instant 2026-08-15T10:20:00.123456789Z through the SDK's own
-    // generation expression (lib.rs:51); now_utc() has no injectable seam.
+    // generation expression (lib.rs: format_timestamp over now_utc()); now_utc()
+    // has no injectable seam.
     let frozen = OffsetDateTime::from_unix_timestamp_nanos(1_786_789_200_123_456_789)?;
     let result = serde_json::json!({
         "sdk": "rust",
         "canonical_sha256": hex::encode(hasher.finalize()),
         "signature_hex": sign_hmac(secret, timestamp, Some(idempotency_key), &body),
-        "emitted_timestamp": frozen.format(&Rfc3339)?,
+        "emitted_timestamp": format_timestamp(frozen),
     });
     // Logging hygiene: no payload prints on stdout; stderr + LCP_INTEROP_OUT.
     eprintln!("LCP_INTEROP {}", serde_json::to_string(&result)?);

@@ -11,3 +11,7 @@ The SDK provides generated payload models and `LcpSchemaValidator` full Draft 20
 verification, raw-body verification primitives, and an HTTP client for leads,
 calls, bids, capabilities, and offers. Use the application's approved JSON
 serializer for complex payloads. See the shared [SDK contract](../../../docs/SDK-ROADMAP.md).
+
+`X-LCP-Timestamp` and every envelope `lcp.message.timestamp` default are
+emitted in the canonical whole-second UTC wire form `YYYY-MM-DDTHH:MM:SSZ`
+(SPEC.md §9, LEP-0002); the HMAC signs the exact transmitted string.
