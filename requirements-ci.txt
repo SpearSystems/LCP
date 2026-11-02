@@ -4,6 +4,12 @@ cryptography==50.0.0
 httpx==0.28.1
 jsonschema==4.26.0
 mcp==2.2.0
+# Pinned transitively (mcp -> httpx2 -> httpcore2): 2.12.0 fixes
+# CVE-2026-84378/-84379/-84380/-84381 (httpx2 and httpcore2) and CVE-2026-84382.
+httpx2==2.12.0
+httpcore2==2.12.0
+# Pinned transitively (httpx -> certifi): 2026.10.18 fixes PYSEC-2026-4320.
+certifi==2026.10.18
 # Pinned transitively (mcp -> starlette): 0.0.32 fixes CVE-2024-53981,
 # CVE-2026-24486, CVE-2026-40347, CVE-2026-42561, CVE-2026-53537/8/9/40.
 python-multipart==0.0.32
