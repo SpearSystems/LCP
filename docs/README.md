@@ -114,6 +114,9 @@
   attestations, digest deployment, and Kyverno admission enforcement.
 - [Vulnerability exception register](VULNERABILITY-EXCEPTIONS.md) — current
   full-image scan review and expiry-based follow-up.
+- [ARB retro-audit ledger 2026-11](AUDIT-2026-11.md) — claim-by-claim
+  re-verification of the Nov security/governance merges with commands and
+  residual tracked items.
 - [Maintainer release setup](MAINTAINER-RELEASE-SETUP.md) — branch protection,
   protected release environment, OIDC trusted publishers, and break-glass
   controls.
