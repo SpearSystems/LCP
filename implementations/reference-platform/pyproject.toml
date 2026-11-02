@@ -14,7 +14,9 @@ dependencies = [
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
 object-storage = ["boto3>=1.35.0", "clamd>=1.0.2"]
-production = ["gunicorn>=23.0", "psycopg[binary]>=3.2", "boto3>=1.35.0", "clamd>=1.0.2"]
+# urllib3 floor: transitive via botocore (allows <3); >=2.8.0 keeps the
+# installed copy past CVE-2026-97687/-97689 without disturbing botocore.
+production = ["gunicorn>=23.0", "psycopg[binary]>=3.2", "boto3>=1.35.0", "clamd>=1.0.2", "urllib3>=2.8.0"]
 
 [project.scripts]
 lcp-platform = "lcp_platform.server:main"
