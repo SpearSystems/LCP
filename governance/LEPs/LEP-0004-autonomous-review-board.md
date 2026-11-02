@@ -34,6 +34,29 @@ no force):
   prompts live in this repository" is unbacked at this SHA; publish the
   prompts and require dossiers to record plant bytes so an adopter can
   reproduce a finding without transcript access.
+- **Implementation:** PR [#156](https://github.com/SpearSystems/LCP/pull/156).
+  Conditions → hunks: F1 → the charter's independence rule 2 and gate G2 in
+  `governance/ARB.md` (authorship attaches to the run's controller;
+  SELF-AUDIT labeling; launch-control attestation) plus the Launch control
+  attestation line in `governance/ARB-DOSSIER-TEMPLATE.md`; F2 → the
+  `L-Security` row in the lanes table of `governance/ARB.md` (produces the
+  ARB-Security dossier named by the PII/auth/retention gate and by the
+  amended Roles bullet) and the template's lane enumeration; F3 → the
+  charter's reproducibility rule 3 and the chicken-and-egg item in
+  `governance/ARB.md`, with the per-lane charter prompts published in the
+  new `governance/ARB-PROMPTS.md`; F5 → the amended Decision-rules bullet in
+  `governance/LEP.md`, which reads "satisfied either by a review from a
+  maintainer who did not author the proposal or by an ARB Review Dossier
+  that passes charter gates G1–G6" (the "only by" wording rejected per the
+  Alternatives section); F7 → the charter's reproducibility rule 1 and gate
+  G1 in `governance/ARB.md` plus the Plant bytes appendix in
+  `governance/ARB-DOSSIER-TEMPLATE.md`. F4 → the stage-4 Decision sentence
+  in `governance/LEP.md` reconciled in the same diff. Verification:
+  charter/template grep sweeps, `tools/check_lep_registry.py`, and
+  `tools/check_doc_citations.py` green at the implementation SHA (outputs in
+  the PR body); findings tracked at
+  [#151](https://github.com/SpearSystems/LCP/issues/151); dossier
+  [#128](https://github.com/SpearSystems/LCP/issues/128#issuecomment-6578281988).
 
 Independent-review note: this is the single-use chicken-and-egg exception
 declared in this proposal (§ below). The independent control is external
