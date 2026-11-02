@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 
 from .config import PlatformConfig
@@ -11,7 +12,7 @@ from .router import Platform
 def run() -> None:
     config = PlatformConfig.from_env()
     platform = Platform(config)
-    print("LCP delivery worker started")
+    print("LCP delivery worker started", file=sys.stderr)
     try:
         while True:
             platform.process_once()

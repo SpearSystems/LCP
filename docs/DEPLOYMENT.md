@@ -93,6 +93,16 @@ chmod 600 /run/secrets/lcp-credentials.json
 export LCP_SECRETS_FILE=/run/secrets/lcp-credentials.json
 ```
 
+The loader's world-accessible check is POSIX-only: `FileSecretProvider`
+(`implementations/reference-platform/lcp_platform/secrets.py`) skips the mode
+check when `os.name == "nt"`, because Windows mode bits do not describe
+actual file access. On Windows, enforce equivalent protection with NTFS
+ACLs: give read/write only to the service account and administrators, remove
+inherited `Users` / `Authenticated Users` access, and keep the secrets file
+off network shares and unencrypted backup targets that widen access. The
+`chmod 600` line above is POSIX shorthand for this ACL work; on Windows the
+file's default ACLs are not a substitute for doing it explicitly.
+
 Use KMS/HSM-backed secret management for the Regulated profile. Rotate the
 active secret and retain the previous secret only for the documented migration
 window. The application encryption key protects persisted envelopes with
@@ -114,7 +124,7 @@ Important settings include:
 | `LCP_WEBHOOK_HOST_ALLOWLIST` | Prefer an explicit buyer egress allowlist. |
 | `LCP_RATE_LIMIT_PER_MINUTE` | Set per traffic class and enforce edge quotas too. |
 | `LCP_MAX_BODY_BYTES` | Keep bounded and review against vertical payload sizes. |
-| `LCP_REPLAY_WINDOW_SECONDS` | Five minutes or shorter. |
+| `LCP_REPLAY_WINDOW_SECONDS` | Five minutes or shorter. The window is measured against each host's system clock; keep API, worker, and partner hosts NTP-synced (see clock sync in the [operations runbook](OPERATIONS.md)). |
 | `LCP_ATTACHMENT_BACKEND` | `file` for a sandbox/single node; use `s3` for the production S3-compatible object-storage adapter. |
 | `LCP_ATTACHMENT_DIRECTORY` | Used by the reference file backend only; keep it on residency-controlled encrypted storage. |
 | `LCP_MAX_ATTACHMENT_BYTES` | Bound according to malware scanning, storage, and buyer requirements. |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import sys
 import threading
 import time
 
@@ -25,7 +26,11 @@ class LCPRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = -1
-        max_body_bytes = self.max_attachment_bytes if self.path.rstrip("/") == "/v1/lcp/attachments" else self.max_body_bytes
+        max_body_bytes = (
+            self.max_attachment_bytes
+            if self.path.rstrip("/") == "/v1/lcp/attachments"
+            else self.max_body_bytes
+        )
         if length < 0 or length > max_body_bytes:
             self.send_error(413, "Request body is too large")
             return
@@ -39,9 +44,13 @@ class LCPRequestHandler(BaseHTTPRequestHandler):
             headers=headers,
             body=body,
         )
-        encoded = payload if isinstance(payload, bytes) else json.dumps(
-            payload, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
+        encoded = (
+            payload
+            if isinstance(payload, bytes)
+            else json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
+                "utf-8"
+            )
+        )
         self.send_response(status)
         for key, value in response_headers.items():
             self.send_header(key, value)
@@ -70,7 +79,10 @@ def run(config: PlatformConfig | None = None) -> None:
         daemon=True,
     )
     worker.start()
-    print(f"LCP platform listening on http://{config.host}:{config.port}")
+    print(
+        f"LCP platform listening on http://{config.host}:{config.port}",
+        file=sys.stderr,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -85,7 +97,7 @@ def _worker_loop(platform: Platform, interval: float) -> None:
         try:
             platform.process_once()
         except Exception as exc:  # keep delivery worker alive; operators see the error
-            print(f"LCP delivery worker error: {exc}")
+            print(f"LCP delivery worker error: {exc}", file=sys.stderr)
         time.sleep(interval)
 
 

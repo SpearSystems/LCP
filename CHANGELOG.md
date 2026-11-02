@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### CI and tooling
+
+- Logging-hygiene lint (`tools/check_logging_hygiene.py`, wired into the
+  Test workflow): platform/SDK code under `implementations/` must not
+  print to stdout or console-dump serialized payloads; operational
+  messages use the documented `file=sys.stderr` allowance (reference
+  platform startup and delivery-worker messages moved accordingly);
+  operator CLIs (`admin.py`, `tools/`, `test-vectors/`) keep stdout by
+  design; every `examples/integrations/` file now carries an explicit
+  `example — not for production` header.
+- Committed-secrets scan (`committed-secrets` job in the Security
+  workflow): a pinned, SHA-256-verified Trivy binary (v0.76.1) runs
+  `fs --scanners secret` with the repo's `trivy-secret-rules.yaml`
+  custom rules over the checked-out tree of every push and pull
+  request, so placeholder files like `kubernetes/secret.example.yaml`
+  pass while real credentials (including values pasted over the
+  `REPLACE_ME` sentinels) fail.
+
 ### Security and hardening
 
 - Rust SDK: bump `h2` 0.4.15 → 0.4.16 (RUSTSEC-2026-0258, low-severity
