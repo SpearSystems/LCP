@@ -24,3 +24,5 @@ end
 raise "Shared validation corpus mismatches: #{failures.join(", ")}" unless failures.empty?
 puts "Ruby SDK HMAC and full JSON Schema vectors passed"
 puts "Ruby SDK shared validation corpus passed"
+require_relative "negative_vector_test"
+puts "Ruby SDK negative security vectors passed (#{LcpSdk::NegativeVectorTest.run!} vectors executed)"

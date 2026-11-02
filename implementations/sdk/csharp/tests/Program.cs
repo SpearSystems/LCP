@@ -43,3 +43,4 @@ if (corpusFailures.Count > 0)
     throw new Exception("Shared validation corpus mismatches: " + string.Join("; ", corpusFailures));
 Console.WriteLine("C# SDK HMAC and full JSON Schema vectors passed");
 Console.WriteLine("C# SDK shared validation corpus passed");
+Console.WriteLine($"C# SDK negative security vectors passed ({NegativeVectors.Run(repositoryRoot)} vectors executed)");
