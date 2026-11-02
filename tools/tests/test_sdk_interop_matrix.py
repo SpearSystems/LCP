@@ -1,11 +1,17 @@
-"""Unit tests for tools/sdk_interop_matrix.py (cross-SDK interop, LEP-0002 step 1).
+"""Unit tests for tools/sdk_interop_matrix.py (post-LEP-0002 interop gate).
 
-Deterministic and network-free: fixed vectors + canned probe outputs,
-including the three known fractional emitters (Java/Kotlin/Rust) from the
-LEP-0002 evidence table and planted-violation fixtures proving the checks are
-fail-loud, not vacuous. Also carries the evidence-table drift guard:
-KNOWN_FRACTIONAL_SDKS is pinned against the LEP-0002 signer table parsed
-from governance/LEPs/, so the mirror can never silently stale.
+Deterministic and network-free: fixed vectors + canned probe outputs, and
+planted-violation fixtures proving the shape + identity checks are fail-loud,
+not vacuous. Carries the evidence-table drift guard:
+KNOWN_FRACTIONAL_SDKS (empty after LEP-0002 implementation) is pinned against
+the LEP-0002 signer table parsed from governance/LEPs/, so the mirror can
+never silently stale. Post-implementation the table's `Emitted form` column
+describes PRE-implementation divergence; the caption line above the table
+must carry a supersession marker so the parser knows the rows are historical.
+The sync test asserts (baseline == parsed_current_emission) — when the
+baseline is empty the parser requires the marker (rows in the table are
+ignored). A silent stale-parse (a doc edit that removes the marker or
+reverts a fractional expectation) turns this suite red.
 """
 
 from __future__ import annotations
@@ -40,8 +46,9 @@ EXPECTED_CANONICAL = hashlib.sha256(
     b"2026-08-15T10:20:00Z\nsdk-vector-001\n" + b'{"hello":"world"}'
 ).hexdigest()
 
-WHOLE_SECOND_SDKS = ["python", "typescript", "ruby", "php", "swift", "csharp", "go"]
-FRACTIONAL_SDKS = ["java", "kotlin", "rust"]
+# Post-LEP-0002 baseline: every SDK is expected to emit canonical whole-second.
+WHOLE_SECOND_SDKS = list(interop.SDK_LANGS)
+FRACTIONAL_SDKS: list[str] = []  # no SDK is fractional in the current baseline
 
 FAKE_SIG = "0" * 64
 
@@ -146,23 +153,39 @@ class SignatureIdentityTests(unittest.TestCase):
 
 
 class ShapeMatrixTests(unittest.TestCase):
-    def test_today_matrix_is_seven_pass_three_fail(self):
+    """Post-LEP-0002: generation-shape is blocking; all ten probe to canonical."""
+
+    def test_all_ten_matrix_is_shape_pass_and_exit_green(self):
         matrix = interop.build_matrix(VECTOR, all_probes())
-        self.assertEqual(matrix["shape_counts"], {"pass": 7, "fail": 3, "missing": 0})
-        for sdk in FRACTIONAL_SDKS:
-            row = next(r for r in matrix["rows"] if r["sdk"] == sdk)
-            self.assertEqual(row["shape_status"], "FAIL")
-            self.assertIn("LEP-0002 evidence", row["shape_note"])
+        self.assertEqual(matrix["shape_counts"], {"pass": 10, "fail": 0, "missing": 0})
         self.assertEqual(matrix["shape_regressions"], [])
         self.assertEqual(matrix["shape_alignments"], [])
+        self.assertEqual(matrix["exit_code"], 0)
 
-    def test_shape_fail_never_changes_exit_code(self):
-        matrix = interop.build_matrix(VECTOR, all_probes())
-        self.assertEqual(matrix["exit_code"], 0)  # three shape FAILs, still green
+    def test_planted_fractional_java_reddens_suite(self):
+        # Planted proof: revert the Java expectation to fractional and the
+        # shape matrix goes red with a blocking exit code. This is the exact
+        # regression the LEP-0002 implementation PR must never reintroduce.
+        probes = all_probes(java=canned_probe("java", emitted="2026-08-15T10:20:00.123456789Z"))
+        matrix = interop.build_matrix(VECTOR, probes)
+        row = next(r for r in matrix["rows"] if r["sdk"] == "java")
+        self.assertEqual(row["shape_status"], "FAIL")
+        self.assertIn("REGRESSION", row["shape_note"])
+        self.assertEqual(matrix["shape_regressions"], ["java"])
+        self.assertEqual(matrix["exit_code"], 1)
+
+    def test_shape_fail_now_changes_exit_code(self):
+        # The pre-implementation "advisory" contract is gone: any shape FAIL
+        # exits 1 (SPEC.md §9 canonical generation is a MUST).
+        probes = all_probes(
+            python=canned_probe("python", emitted="2026-08-15T10:20:00.123456Z")
+        )
+        matrix = interop.build_matrix(VECTOR, probes)
+        self.assertEqual(matrix["exit_code"], 1)
 
     def test_planted_fractional_in_whole_second_sdk_is_regression(self):
-        # Acceptance proof: a future fractional regression in a currently
-        # whole-second SDK is caught and flagged (advisory, not exit code).
+        # A future fractional regression in any SDK is caught and flagged as
+        # blocking REGRESSION.
         probes = all_probes(
             python=canned_probe("python", emitted="2026-08-15T10:20:00.123456Z")
         )
@@ -171,15 +194,7 @@ class ShapeMatrixTests(unittest.TestCase):
         self.assertEqual(row["shape_status"], "FAIL")
         self.assertIn("REGRESSION", row["shape_note"])
         self.assertEqual(matrix["shape_regressions"], ["python"])
-        self.assertEqual(matrix["exit_code"], 0)
-
-    def test_known_fractional_sdk_aligning_is_reported_as_progress(self):
-        probes = all_probes(java=canned_probe("java", emitted="2026-08-15T10:20:00Z"))
-        matrix = interop.build_matrix(VECTOR, probes)
-        row = next(r for r in matrix["rows"] if r["sdk"] == "java")
-        self.assertEqual(row["shape_status"], "PASS")
-        self.assertIn("ALIGNED", row["shape_note"])
-        self.assertEqual(matrix["shape_alignments"], ["java"])
+        self.assertEqual(matrix["exit_code"], 1)
 
     def test_wrong_instant_whole_second_shape_fails(self):
         probes = all_probes(rust=canned_probe("rust", emitted="2027-01-01T00:00:00Z"))
@@ -187,6 +202,7 @@ class ShapeMatrixTests(unittest.TestCase):
         row = next(r for r in matrix["rows"] if r["sdk"] == "rust")
         self.assertEqual(row["shape_status"], "FAIL")
         self.assertIn("wrong instant", row["shape_note"])
+        self.assertEqual(matrix["exit_code"], 1)
 
 
 class CliTests(unittest.TestCase):
@@ -202,7 +218,7 @@ class CliTests(unittest.TestCase):
             code = interop.main(argv)
         return code, out.getvalue(), err.getvalue()
 
-    def test_aggregate_green_with_advisory_fails_and_writes_report(self):
+    def test_aggregate_all_green_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             vector_path = os.path.join(tmp, "hmac.json")
             with open(vector_path, "w", encoding="utf-8") as handle:
@@ -229,15 +245,35 @@ class CliTests(unittest.TestCase):
             with open(summary_path, encoding="utf-8") as handle:
                 summary = handle.read()
             self.assertIn("Signature identity (blocking): PASS", summary)
-            self.assertIn("7 PASS / 3 FAIL", summary)
-            for sdk in FRACTIONAL_SDKS:
+            self.assertIn("10 PASS / 0 FAIL", summary)
+            for sdk in interop.SDK_LANGS:
                 self.assertIn(f"| {sdk} | PASS |", summary)
             with open(report_path, encoding="utf-8") as handle:
                 report = json.load(handle)
             self.assertEqual(
-                report["shape_counts"], {"pass": 7, "fail": 3, "missing": 0}
+                report["shape_counts"], {"pass": 10, "fail": 0, "missing": 0}
             )
             self.assertTrue(report["signature_identity"])
+
+    def test_aggregate_exit_one_on_shape_regression(self):
+        # Post-LEP-0002 blocking proof: a Java revert to fractional reddens
+        # the CLI aggregate even though signature identity stays intact.
+        with tempfile.TemporaryDirectory() as tmp:
+            vector_path = os.path.join(tmp, "hmac.json")
+            with open(vector_path, "w", encoding="utf-8") as handle:
+                json.dump(VECTOR, handle)
+            probes_dir = os.path.join(tmp, "probes")
+            os.makedirs(probes_dir)
+            self._write_probes(
+                probes_dir,
+                all_probes(java=canned_probe("java", emitted="2026-08-15T10:20:00.123456789Z")),
+            )
+            code, _, err = self._run(
+                ["aggregate", "--vector", vector_path, "--probes", probes_dir]
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("java", err)
+            self.assertIn("blocking", err)
 
     def test_aggregate_exit_one_on_tampered_probe(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -358,9 +394,28 @@ def _lep_sdk_id(display: str) -> str:
     return sdk
 
 
-def parse_lep_fractional_sdks(text: str) -> set[str]:
-    """Return tool ids of SDKs whose 'Emitted form' cell starts with
-    **fractional in the LEP-0002 signer-side evidence table.
+# A caption above the LEP-0002 evidence table marks the `Emitted form` column
+# as the *pre-implementation* divergence record; the current emission baseline
+# is the empty set (SPEC.md Â§9 canonical MUST). The parser requires the
+# marker whenever KNOWN_FRACTIONAL_SDKS is empty, so a doc edit that silently
+# removes the marker (or reintroduces a fractional expectation) turns the sync
+# test red — silent stale-parse is the failure mode this guard exists to avoid.
+SUPERSESSION_MARKER = "superseded by implementation PR"
+CAPTION_WINDOW_LINES = 20
+
+
+def _find_supersession_caption(lines: list, header_idx: int) -> bool:
+    """True when the caption above the table names an implementation PR."""
+    start = max(0, header_idx - CAPTION_WINDOW_LINES)
+    window = " ".join(lines[start:header_idx])
+    return SUPERSESSION_MARKER.lower() in window.lower()
+
+
+def parse_lep_fractional_rows(text: str) -> set:
+    """Return tool ids of SDKs whose Emitted-form cell starts with
+    **fractional in the LEP-0002 signer-side evidence table, IGNORING any
+    supersession caption. Used by parser tests to prove the row-scan itself
+    still works when the caption is removed.
 
     Tolerant of markdown cosmetics inside rows (whitespace/soft wraps, bold
     or code decoration on the SDK name, cell case); strict about the table's
@@ -429,6 +484,29 @@ def parse_lep_fractional_sdks(text: str) -> set[str]:
     return fractional
 
 
+def parse_lep_fractional_sdks(text: str) -> set:
+    """Return the SDKs whose CURRENT emission diverges from canonical.
+
+    Post-implementation the LEP-0002 evidence table describes PRE-
+    implementation divergence; when a caption above the table carries the
+    'superseded by implementation PR' marker, the CURRENT-emission set is
+    empty (the rows are the historical dossier record). Otherwise the parser
+    falls back to the raw row scan so a doc edit that removes the marker (or
+    reintroduces a fractional expectation) still reaches the sync-test
+    baseline check — silent stale-parse is the failure mode we avoid.
+    """
+    lines = text.splitlines()
+    header_at = [
+        i
+        for i, ln in enumerate(lines)
+        if ln.lstrip().startswith("|")
+        and tuple(_split_markdown_row(ln)) == EVIDENCE_HEADER
+    ]
+    if header_at and _find_supersession_caption(lines, header_at[0]):
+        return set()
+    return parse_lep_fractional_rows(text)
+
+
 EVIDENCE_TABLE_FIXTURE = """\
 Some prose before the table.
 
@@ -449,14 +527,18 @@ Prose after the table.
 
 
 class LepEvidenceTableParserTests(unittest.TestCase):
-    """Parser unit tests against fixture strings only; never mutate governance files."""
+    """Row-scan parser unit tests against fixture strings only; never mutate
+    governance files. EVIDENCE_TABLE_FIXTURE carries no supersession caption,
+    so the raw row scanner (parse_lep_fractional_rows) is the target for the
+    row-structure tests."""
 
     def test_extracts_only_bold_leading_fractional_rows(self):
-        # Go's cell mentions 'fractional' twice mid-cell and must NOT match;
-        # Rust's capitalized '**Fractional' must match; C# maps to 'csharp'
-        # and is excluded as whole seconds.
+        # Row-scan test: EVIDENCE_TABLE_FIXTURE carries no caption, so the raw
+        # row parser is the target. Go's cell mentions 'fractional' twice mid-cell
+        # and must NOT match; Rust's capitalized '**Fractional' must match; C#
+        # maps to 'csharp' and is excluded as whole seconds.
         self.assertEqual(
-            parse_lep_fractional_sdks(EVIDENCE_TABLE_FIXTURE),
+            parse_lep_fractional_rows(EVIDENCE_TABLE_FIXTURE),
             {"java", "kotlin", "rust"},
         )
 
@@ -465,32 +547,59 @@ class LepEvidenceTableParserTests(unittest.TestCase):
             "| **Fractional** (nanosecond subsecond formatted when nonzero) |",
             "| **Fractional** (nanosecond subsecond\n  formatted when nonzero) |",
         ).replace("| Rust |", "| **Rust** |")
-        self.assertIn("rust", parse_lep_fractional_sdks(wrapped))
+        self.assertIn("rust", parse_lep_fractional_rows(wrapped))
 
     def test_fourth_fractional_claim_is_not_silently_dropped(self):
         # Fixture copy of the table claiming Ruby emits fractional too. The
-        # parser reports all four, so the baseline equality check in
-        # LepEvidenceBaselineTests goes red against the three-SDK baseline —
-        # the drift guard catches a doc edit that widens the set.
+        # row-scan reports all four; a doc edit that widens the set (or
+        # removes the caption on the real LEP) goes red against the empty
+        # post-implementation baseline in LepEvidenceBaselineTests.
         planted = EVIDENCE_TABLE_FIXTURE.replace(
             '`Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")` | whole seconds |',
             '`Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")` | **fractional** (planted) |',
         )
         self.assertEqual(
-            parse_lep_fractional_sdks(planted),
+            parse_lep_fractional_rows(planted),
             {"java", "kotlin", "ruby", "rust"},
         )
         self.assertNotEqual(
-            parse_lep_fractional_sdks(planted),
+            parse_lep_fractional_rows(planted),
             set(interop.KNOWN_FRACTIONAL_SDKS),
         )
+
+    def test_caption_marker_switches_parser_to_current_emission(self):
+        # A caption above the table naming the implementation PR flips the
+        # wrapper's interpretation: the rows are the historical dossier, the
+        # current-emission baseline is empty.
+        captioned = EVIDENCE_TABLE_FIXTURE.replace(
+            "**Signer-side divergence (generation):**",
+            "**Signer-side divergence (generation):** _state at draft time, "
+            "superseded by implementation PR #157_",
+        )
+        self.assertEqual(parse_lep_fractional_sdks(captioned), set())
+        # The raw row-scan still sees the three fractional rows, proving the
+        # wrapper — not a parser bug — is what returns empty.
+        self.assertEqual(
+            parse_lep_fractional_rows(captioned),
+            {"java", "kotlin", "rust"},
+        )
+
+    def test_no_caption_falls_back_to_row_scan(self):
+        # Without the marker, the wrapper must delegate to the row-scan so
+        # a silent caption deletion (or a pre-implementation doc edit)
+        # cannot mask a widened fractional set.
+        self.assertEqual(
+            parse_lep_fractional_sdks(EVIDENCE_TABLE_FIXTURE),
+            parse_lep_fractional_rows(EVIDENCE_TABLE_FIXTURE),
+        )
+
 
     def test_header_rename_fails_loud(self):
         broken = EVIDENCE_TABLE_FIXTURE.replace(
             "| Emitted form |", "| Timestamp form |"
         )
         with self.assertRaises(ValueError) as ctx:
-            parse_lep_fractional_sdks(broken)
+            parse_lep_fractional_rows(broken)
         self.assertIn("found 0", str(ctx.exception))
         self.assertIn("KNOWN_FRACTIONAL_SDKS", str(ctx.exception))
 
@@ -500,13 +609,13 @@ class LepEvidenceTableParserTests(unittest.TestCase):
             "| SDK | File:line | Expression | Emitted form | Notes |",
         ).replace("|---|---|---|---|", "|---|---|---|---|---|")
         with self.assertRaises(ValueError) as ctx:
-            parse_lep_fractional_sdks(broken)
+            parse_lep_fractional_rows(broken)
         self.assertIn("structure changed", str(ctx.exception))
 
     def test_missing_separator_fails_loud(self):
         broken = EVIDENCE_TABLE_FIXTURE.replace("|---|---|---|---|", "")
         with self.assertRaises(ValueError) as ctx:
-            parse_lep_fractional_sdks(broken)
+            parse_lep_fractional_rows(broken)
         self.assertIn("separator row", str(ctx.exception))
 
     def test_malformed_row_fails_loud(self):
@@ -515,26 +624,72 @@ class LepEvidenceTableParserTests(unittest.TestCase):
             "| C# | `c.cs:1` | whole seconds |",
         )
         with self.assertRaises(ValueError) as ctx:
-            parse_lep_fractional_sdks(broken)
+            parse_lep_fractional_rows(broken)
         self.assertIn("cells", str(ctx.exception))
 
     def test_unknown_fractional_sdk_fails_loud(self):
         broken = EVIDENCE_TABLE_FIXTURE.replace("| Java |", "| Dart |")
         with self.assertRaises(ValueError) as ctx:
-            parse_lep_fractional_sdks(broken)
+            parse_lep_fractional_rows(broken)
         self.assertIn("Dart", str(ctx.exception))
 
 
 class LepEvidenceBaselineTests(unittest.TestCase):
-    def test_known_fractional_baseline_matches_lep_evidence_table(self):
+    """#152 TRUTHFULNESS drift guard.
+
+    Post-implementation the LEP-0002 evidence table's `Emitted form` column
+    is a historical record (state at draft time); the wrapper returns the
+    empty set whenever the supersession caption is present. The sync test
+    compares the empty baseline against the table's CURRENT-emission
+    interpretation, so a doc edit that removes the caption (equivalent to
+    "reverting Java to fractional expectation") turns the suite red — the
+    failure mode we set out to avoid is a silent stale-parse.
+    """
+
+    def _lep_text(self) -> str:
         if not LEP0002_PATH.is_file():
             self.fail(f"LEP-0002 moved or missing: expected {LEP0002_PATH}")
-        emitted = parse_lep_fractional_sdks(LEP0002_PATH.read_text(encoding="utf-8"))
+        return LEP0002_PATH.read_text(encoding="utf-8")
+
+    def test_known_fractional_baseline_matches_lep_evidence_table(self):
+        text = self._lep_text()
+        emitted = parse_lep_fractional_sdks(text)
         self.assertEqual(
             emitted,
             set(interop.KNOWN_FRACTIONAL_SDKS),
             "tools/sdk_interop_matrix.KNOWN_FRACTIONAL_SDKS has drifted from the "
-            "LEP-0002 signer evidence table; update both together (LEP-0002 step 2).",
+            "LEP-0002 signer evidence table's CURRENT emission; update both "
+            "together (revert the caption for a genuine LEP reopening).",
+        )
+
+    def test_supersession_caption_present_when_baseline_empty(self):
+        # The baseline is empty post-implementation; the table must therefore
+        # carry the supersession marker so the wrapper ignores the historical
+        # rows. Silent caption deletion is the failure mode we guard against.
+        if interop.KNOWN_FRACTIONAL_SDKS:
+            self.skipTest("non-empty baseline; marker not required")
+        text = self._lep_text()
+        self.assertIn(
+            SUPERSESSION_MARKER.lower(),
+            text.lower(),
+            "LEP-0002 evidence table lost its supersession caption while the "
+            "KNOWN_FRACTIONAL_SDKS baseline is empty — a Java/Kotlin/Rust "
+            "revert or an unmarked doc edit; the interop matrix would go red.",
+        )
+
+    def test_planted_reverted_java_fractional_expectation_goes_red(self):
+        # Planted proof: a doc edit that removes the caption while keeping the
+        # fractional rows (equivalent to reverting Java's expectation) must be
+        # caught by the sync test. We simulate by stripping the marker from
+        # the real LEP text and asserting the parser now disagrees with the
+        # empty baseline.
+        text = self._lep_text()
+        stripped = text.replace(SUPERSESSION_MARKER, "[caption redacted]")
+        self.assertNotEqual(
+            parse_lep_fractional_sdks(stripped),
+            set(interop.KNOWN_FRACTIONAL_SDKS),
+            "the parser must disagree with the empty baseline once the "
+            "supersession caption is gone (this is the reverted-Java case).",
         )
 
 

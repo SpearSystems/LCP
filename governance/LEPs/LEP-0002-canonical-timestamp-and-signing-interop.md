@@ -34,6 +34,14 @@ record per the trigger clauses.
 Evidence corrections (evidence-table and derived-count fixes per ARB
 retro-audit at `dee5584`) landed in PR #149 before acceptance.
 
+Implementation: PR #158 (this branch `impl/lep-0002-canonical-timestamp`):
+Java/Kotlin/Rust SDK whole-second emission + frozen-clock unit tests, SPEC
+§9 canonical-generation paragraph, interop baseline flip and blocking CI.
+Verification: `SDK signature interop` workflow on PR #158 (all ten SDK
+generation-shape cells PASS; matrix job now red on any shape FAIL) plus
+the `interop probe (java|kotlin|rust)` jobs and per-SDK `mvn|gradle|cargo
+test` suites carrying the new `CanonicalTimestamp*` frozen-clock tests.
+
 Public discussion: <https://github.com/SpearSystems/LCP/issues/121>
 (tracked from `docs/V1.1-ROADMAP.md` Phase 5, "Canonical timestamp
 generation and cross-SDK signature interop").
@@ -56,7 +64,12 @@ window but does not state what format a signer MUST emit, so each SDK
 chose its own. The v1.0.2 external review flagged this; every line below
 is re-verified against `origin/main` at draft time.
 
-**Signer-side divergence (generation):**
+**Signer-side divergence (generation):** _state at draft time, superseded by implementation PR #158._
+Java, Kotlin and Rust now emit the canonical whole-second form pinned in
+SPEC.md §9; this table is the LEP-0002 dossier evidence, not the current
+emission. The interop matrix baseline tracks the post-implementation state
+(see `tools/sdk_interop_matrix.py` `KNOWN_FRACTIONAL_SDKS` and the caption
+check in `tools/tests/test_sdk_interop_matrix.py`).
 
 | SDK | File:line | Expression | Emitted form |
 |---|---|---|---|
@@ -77,10 +90,14 @@ generator (Ruby `lcp_sdk.rb:54`, Java `LcpSdk.java:23`, Kotlin
 `lcp.go:45`); only the Java, Kotlin, and Rust defaults inherit the
 fractional divergence — the Ruby, Swift, and Go defaults already emit
 the canonical whole-second form. The reference platform generates whole
-seconds (`implementations/reference-platform/lcp_platform/storage.py:21-22`
-`now_iso`; it verifies inbound signatures and holds no outbound signer),
-and the MCP adapter inherits the Python SDK's whole-second
-form (`implementations/mcp-server/lcp_mcp_server/client.py` wraps
+seconds both for inbound replay-window checks
+(`implementations/reference-platform/lcp_platform/storage.py:21-22` `now_iso`)
+and for outbound webhook signing: the router's delivery path
+(`router.py → messages.webhook_headers → auth.signature_for`) emits the
+canonical form on the transmitted `X-LCP-Timestamp` header, so the platform
+is an outbound signer already producing the shape this LEP pins. The MCP
+adapter inherits the Python SDK's whole-second form
+(`implementations/mcp-server/lcp_mcp_server/client.py` wraps
 `lcp_sdk.LCPClient`).
 
 **Concrete interoperability consequences:**
@@ -201,9 +218,10 @@ the replay window; this proposal changes no verifier behavior.
 - **Abuse:** none new; identical signed-message volume and semantics.
 - Verifier leniency today (documented above: parsers already accept
   whole-second and fractional forms everywhere except the strictest,
-  Swift, which accepts only the canonical whole-second form) means the
-  proposed signer format is the intersection every verifier already
-  parses.
+  Swift, whose default `ISO8601DateFormatter` accepts the canonical
+  whole-second `Z` form and `+00:00` numeric-offset UTC variants but
+  rejects fractional seconds) means the proposed signer format is the
+  intersection every verifier already parses.
 
 ## Compatibility, versioning, and deprecation impact
 
@@ -321,9 +339,11 @@ hand-written signers already comply.
 - Should envelope `lcp.message.timestamp` defaults adopt the same
   explicit canonical statement in the schema documentation (it is already
   string-typed; no schema change proposed now)?
-- Should the interop job also cover the JWT/JWS security block path
-  (SPEC.md §9 `payload.message.security`) where the timestamp travels in
-  the body rather than a header?
+- Should the interop job also cover the transport-agnostic
+  `payload.message.security` block (SPEC.md §9) — the HMAC-SHA256 mirror of
+  the HTTP header set, not a JWT/JWS path — where the timestamp travels in
+  the body rather than a header, including how the numeric attestation
+  claims there interact with the canonical generation rule?
 - Is a machine-readable format vector warranted under
   `test-vectors/sdk/`, or are per-SDK frozen-clock tests sufficient?
 

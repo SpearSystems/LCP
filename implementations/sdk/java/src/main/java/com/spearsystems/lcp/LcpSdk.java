@@ -10,17 +10,33 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 import java.util.UUID;
 
 public final class LcpSdk {
     private LcpSdk() {}
 
+    /**
+     * Canonical whole-second UTC wire format for {@code X-LCP-Timestamp} and the
+     * mirrored envelope field (LEP-0002). Signers MUST emit exactly this shape;
+     * the HMAC covers the transmitted string verbatim (SPEC.md §9).
+     */
+    public static final DateTimeFormatter CANONICAL_TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
+
+    /** Format one instant in the canonical whole-second UTC wire form. */
+    public static String formatTimestamp(Instant value) { return CANONICAL_TIMESTAMP_FORMAT.format(value); }
+
+    /** Current wall clock in the canonical wire form (truncates sub-second noise). */
+    public static String nowIsoUtc() { return CANONICAL_TIMESTAMP_FORMAT.format(Instant.now()); }
+
     public record Message(String id, String type, String timestamp, String senderId, String receiverId, String correlationId, String idempotencyKey, boolean test) {}
     public record Envelope(String json, Message message) {}
 
     public static Envelope buildEnvelope(String type, String senderId, String receiverId, String payloadJson, boolean test) {
-        var message = new Message(UUID.randomUUID().toString(), type, Instant.now().toString(), senderId, receiverId, null, senderId + "-" + type + "-" + UUID.randomUUID(), test);
+        var message = new Message(UUID.randomUUID().toString(), type, nowIsoUtc(), senderId, receiverId, null, senderId + "-" + type + "-" + UUID.randomUUID(), test);
         var messageJson = "{\"id\":\"" + escape(message.id()) + "\",\"type\":\"" + escape(type) + "\",\"timestamp\":\"" + escape(message.timestamp()) + "\",\"sender_id\":\"" + escape(senderId) + "\",\"receiver_id\":\"" + escape(receiverId) + "\",\"correlation_id\":null,\"idempotency_key\":\"" + escape(message.idempotencyKey()) + "\",\"test\":" + test + "}";
         return new Envelope("{\"lcp\":{\"version\":\"1.0.0\",\"message\":" + messageJson + ",\"payload\":" + payloadJson + "}}", message);
     }
@@ -51,7 +67,7 @@ public final class LcpSdk {
         public String request(String method, String path, String body, String idempotencyKey, boolean test) throws Exception {
             var raw = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8); var builder = HttpRequest.newBuilder(URI.create(endpoint + "/" + path.replaceFirst("^/", ""))).timeout(Duration.ofSeconds(30)).header("Accept", "application/json").header("Content-Type", "application/json");
             if (senderId != null) builder.header("X-LCP-Sender-Id", senderId); if (apiKey != null) builder.header("Authorization", "Bearer " + apiKey); if (idempotencyKey != null) builder.header("X-LCP-Idempotency-Key", idempotencyKey); if (test) builder.header("X-LCP-Test", "true");
-            if (hmacSecret != null) { var timestamp = Instant.now().toString(); builder.header("X-LCP-Timestamp", timestamp); builder.header("X-LCP-Signature", signHmac(hmacSecret, timestamp, idempotencyKey, raw)); }
+            if (hmacSecret != null) { var timestamp = nowIsoUtc(); builder.header("X-LCP-Timestamp", timestamp); builder.header("X-LCP-Signature", signHmac(hmacSecret, timestamp, idempotencyKey, raw)); }
             builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(raw)); var response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString()); if (response.statusCode() / 100 != 2) throw new IllegalStateException("LCP HTTP " + response.statusCode() + ": " + response.body()); return response.body();
         }
         public String submitLead(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/leads", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }

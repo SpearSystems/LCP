@@ -11,3 +11,7 @@ The crate provides generated payload models, `SchemaValidator` full Draft 2020-1
 verification, raw-body verification, and a blocking HTTP client with retry
 handling for leads, calls, bids, and discovery operations. TLS is provided by
 `reqwest` with rustls. See the shared [SDK contract](../../../docs/SDK-ROADMAP.md).
+
+`X-LCP-Timestamp` and every envelope `lcp.message.timestamp` default are
+emitted in the canonical whole-second UTC wire form `YYYY-MM-DDTHH:MM:SSZ`
+(SPEC.md §9, LEP-0002); the HMAC signs the exact transmitted string.
