@@ -3,7 +3,11 @@
 - **Title:** Shared-lead slot allocation and contacted-party dedup exchange
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
-- **Status:** **Draft** — not accepted, not implemented
+- **Last revised:** 2026-11-03 (ARB L-Platform dossier findings F1–F10
+  dispositioned; see "Revision 2026-11-03 (post-dossier)")
+- **Status:** **Draft** — not accepted, not implemented; post-dossier
+  revision awaiting a fresh ARB run (charter: the verdict certified at
+  `0bbc1437` is void for this changed surface)
 - **Target version:** v1.1.0 (MINOR; see Compatibility and versioning)
 - **Evidence corrections applied:** valid post-example `exclusivity` block
   fixed per ARB retro-audit at `dee5584` (no status change; remains Draft)
@@ -66,9 +70,14 @@ events exchange `phone_hash`/`email_hash` values keyed per pair
   (field tables + `CONTACTED` guidance), §6 (closed-object versioning
   clarification; see Compatibility), §9 (contact-hash paragraph mirroring
   `phone_hash`).
-- **Reference implementation:** platform-enforced slot accounting
-  (remaining = `max_buyers` − delivered posts; never oversell) and
-  contacted-hash propagation on post; `CONTACTED` event ingestion.
+- **Reference implementation:** platform-enforced slot accounting — the
+  budget counts **distinct awarded buyers** (`SPEC.md:312` defines
+  `max_buyers` as "maximum number of **buyers** who may receive the
+  lead"), delivery stays per `(lead, offer)`, and the rule is enforced
+  at one write-time decision point with DB-backed uniqueness (see
+  "Slot accounting (implementation-phase requirements)" and "Units"
+  below; never oversell) — plus contacted-hash propagation on post and
+  `CONTACTED` event ingestion.
 - **REST/OpenAPI, MCP, SDKs, vectors:** change-gated at implementation
   time — listed in the impact section, **not** authorized by this Draft.
 - **Not in scope:** slot *pricing* policy (per-buyer bidding strategy
@@ -87,17 +96,46 @@ Additive optional field on the existing ping allowlist (SPEC.md §4,
 
 | Field | Type | Notes |
 |---|---|---|
-| `slots_available` | integer | Remaining copies of the lead that can still be sold at ping time, **including** the slot this ping's recipient may win. `minimum: 1`. Absent = the platform does not advertise slot state (v1.0 behavior). |
+| `slots_available` | integer | Remaining **buyer-award** slots of the lead that can still be sold at ping time (slots count buyers, not copies — see "Units" below), **including** the slot this ping's recipient may win. `minimum: 1`. Absent = the platform does not advertise slot state (v1.0 behavior). |
+
+**Units (normative).** The slot budget and `slots_available` use the
+unit SPEC already sets: `max_buyers` is the maximum number of
+**buyers** who may receive a shared lead (`SPEC.md:312`). One awarded
+buyer consumes exactly **one** slot regardless of how many matching
+offers they hold; delivery remains per `(lead, offer)`, so the number
+of delivered post **copies** for a lead is not the budget and can
+legally exceed it (a single awarded buyer holding two matching offers
+receives two posts inside their one slot). The reference platform's
+current award path slices per-**candidate**
+(`winners = candidates[:max_winners]`, `router.py:680-683`), which is
+exactly the conflation the unit statement removes: one buyer with two
+matching offers measured `posts=2, distinct_buyers=1` against a
+`max_buyers: 2` budget while a second bidding buyer received nothing
+(dossier F3, row 19). The implementation PR must state the unit in
+SPEC §3 slot semantics and land #153 **T4**
+(`plat: test_max_buyers_bounds_distinct_buyers`).
 
 Semantics:
 
 - `exclusivity: "exclusive"` is exactly the one-slot special case: when
   present, `slots_available` MUST be `1` (an exclusive ping advertising
-  more is a semantic error; see invalid example B).
+  more is a semantic error; see invalid example B — rejected by the
+  drafted schema conditional, not just by prose; see Schemas below).
 - For `shared` leads, `slots_available ≤ max_buyers` (when the lead
-  declares a `max_buyers`), and the platform MUST NOT send a ping with
-  `slots_available: 0` — zero remaining means stop pinging, not ping with
-  zero.
+  declares one) is a **platform-side send-time invariant only**: the
+  ping allowlist carries the `exclusivity` hint string and no
+  `max_buyers` (`schemas/ping.json:163-168`), so a pinged buyer can
+  neither verify the relation nor know whether a `shared` ping has a
+  declared budget at all — this proposal makes **no
+  receiver-verifiability claim** for the inequality (dossier F10). The
+  undeclared case is normative: a `shared` lead without `max_buyers`
+  has a slot budget of **1**, matching the reference platform's
+  implicit cap (`max(1, int(exclusivity.get("max_buyers", 1)))`,
+  `router.py:680-683`); an advertised `slots_available: 5` on an
+  uncapped `shared` lead is therefore a sender-conformance failure,
+  not a freedom. The platform MUST NOT send a ping with
+  `slots_available: 0` — zero remaining means stop pinging, not ping
+  with zero.
 - The field is an integer count. It is non-PII and carries no consumer
   data, so it is compatible with the ping strict allowlist design
   (`LCP-008 PII_IN_PING` protection is preserved — the allowlist simply
@@ -109,19 +147,29 @@ Additive optional field on `bid` (`schemas/bid.json`):
 
 | Field | Type | Notes |
 |---|---|---|
-| `slots_claimed` | integer | Slots this buyer claims if selected. `minimum: 1`. Only meaningful with `decision: accept`; absent = 1. |
+| `slots_claimed` | integer | Buyer slots this buyer claims if selected. **`minimum: 1, maximum: 1` at v1.1** — single-slot awards only; multi-slot agency claims have no delivery path today and are deferred (§2 bullets, Deferred questions). Only meaningful with `decision: accept`; absent = 1. |
 
 - The claim is a request, not a reservation. The platform awards slots at
   **post** time (delivery is the claim event; bids are non-binding, per
   the existing auction flow where "losers receive no further messages").
-- The platform MUST NOT award more slots than remain. If a winner's
-  `slots_claimed` exceeds the remaining count, the platform either awards
-  the remainder or re-routes (deployment choice) — under no conditions
-  posts beyond the advertised budget (see invalid example C).
-- A buyer claiming more than one slot is the agency/network case: one
-  buyer, several downstream vendors. This keeps the reference network's
-  `slots_claimed` mechanism without forcing single-vendor buyers to
-  reason about it.
+- The platform MUST NOT award more buyer slots than remain. Because
+  the v1.1 range is exactly 1, a claim can never itself exceed the
+  remaining count — the oversell surface is the **award path**, not
+  the claim value, and it is currently unenforced (see invalid example
+  C and "Slot accounting (implementation-phase requirements)" below).
+- **`slots_claimed > 1` (the agency/network case: one buyer, several
+  downstream vendors) is deferred, not silently kept.** It has **no
+  delivery path** on the current guard: the award skip is keyed per
+  `(lead, offer)` — `has_delivery_for_offer` at `router.py:693`
+  enforced by `storage.py:2183-2188` — so a second copy to the same
+  buyer is refused (reproduced: `winner posts=1, after extra pass=1`,
+  dossier F4 row 18), and no response surface (post or ack) ever
+  tells the winner **how many slots it was awarded**, which is what
+  "awards the remainder" would need to be observable. v1.1 caps the
+  claim at 1; lifting the cap requires the awarded-count wire signal,
+  the `(lead, buyer)`/slot-ordinal delivery shape, and #153 **T5**
+  (`plat: test_slots_claimed_multi_award_within_budget`) — recorded
+  as a Deferred question with that trigger.
 
 ### 3. Post — `contacted_hashes`
 
@@ -152,6 +200,59 @@ Additive optional field on `post` (`schemas/post.json`):
   §9's position on key distribution. The protocol only fixes the wire
   rule: every hash in a message is keyed with the secret shared with that
   message's receiver.
+- **The preimage is the wire value, byte-for-byte (normative).** The
+  only hash-input behavior that exists anywhere in this repository is
+  the reference platform's `phone_hash` builder: `hmac.new(
+  buyer_secret.encode(), phone.encode(), hashlib.sha256)` over the
+  **verbatim** `consumer.phone` string of the delivered lead — no
+  folding, no stripping, no separator handling (`messages.py:89-93`).
+  `contacted_hashes` inherits exactly that rule for phone entries: the
+  preimage is the `consumer.phone` string the platform delivered,
+  hashed under the receiving buyer's pair secret. Nothing is
+  "canonicalized", because nothing else is implemented.
+- **Email entries are blocked until §9 norms the normalization.**
+  `normalized_email` appears only as a term — `SPEC.md:97, 375, 720`
+  use it, zero sites define it; the schemas echo the description
+  (`schemas/core.json:22`, `schemas/ping.json:41`); no published
+  vector pins a preimage→digest pair (`test-vectors/sdk/hmac.json`
+  covers message *signing* only); the reference platform never
+  computes an email hash (`messages.py` hashes phone only); and no
+  SDK contains a dedup-hash builder at all (re-verified by grep at
+  `0ad98e85`). This is measured, not inferred: divergent-but-plausible
+  inputs produce **different digests silently** —
+  `+15125550147` vs `+1 (512) 555-0147`, `Jordan@Example.com` vs
+  `jordan@example.com`, `jordan+crm@example.com` vs
+  `jordan@example.com` all digest apart (dossier F7, row 26) — so two
+  honest implementations can kill the dedup value with no error
+  anywhere. Consequence: **no email-form `contacted_hashes` entry
+  ships** until SPEC §9 pins `normalized_e164`/`normalized_email` and
+  #153 **T9** publishes executed vectors
+  (`lcp-sdk-dedup-hash-001..N`, run by all ten SDKs and the reference
+  platform, closing ledger row `SEC-08`).
+- **Reference digests for implementation conformance.** Proposed
+  fixture form for the vector file `test-vectors/sdk/dedup-hash.json`:
+  entries of
+  `{"name": …, "secret": "<pair secret, UTF-8>", "domain": "phone|email", "preimage": "<canonical string>", "digest": "<lowercase hex HMAC-SHA256>"}`.
+  Until that file publishes, these two locally computed digests are
+  the conformance targets (python3 `hmac` at 2026-11-03 over the
+  example pair secret bytes `pair-secret-for-vectors-0123456789`):
+  - phone `+15125550147` →
+    `c47aff331606437528b34b7f919eb37704e87ee35eed80e52cfa36826a4a2e12`
+    (the byte-for-byte rule; equals what `messages.py:89-93` computes
+    for that value and secret)
+  - email `Jordan@example.com` →
+    `d28da9b5424990cf7ac6000cf4e04537ca487929e71cef12f91191f29f78a6c4`
+    (preimage under the **proposed** §9 canonical — surrounding
+    whitespace trimmed, domain ASCII-lowercased, local-part bytes kept,
+    plus-addresses distinct — so this row is a proposal fixture, not a
+    published vector; the §9 pin may still move it)
+- **Re-keying a reported digest requires the plaintext.** HMAC of a
+  received digest under another pair's secret is **not** a re-key
+  (measured: `re-HMAC-of-report ≠ required(C-keyed)`; a plaintext
+  re-key is `True`, dossier row 27). The platform may therefore
+  re-key only from the contact values it delivered itself — never
+  from `CONTACTED` report digests — which is exactly what the valid
+  post example below asserts.
 
 ### 4. Event — `CONTACTED` (reporting direction)
 
@@ -169,11 +270,133 @@ style as the existing `CONVERTED`/`DISPUTED` detail guidance:
 
 The buyer sends the hashes it already computed from values that arrived
 in its own pair-keyed form (or that it hashes from the post it received
-under its pair secret); the platform stores them and re-keys per recipient
-pair for subsequent posts. `submitEvent` (REST) already exists as the
-transport.
+under its pair secret); the platform stores them and re-keys — **only
+from plaintext it holds** (the lead values it delivered; §3 on
+re-keying) — per recipient pair for subsequent posts. `submitEvent`
+(REST) already exists as the transport.
+
+- **Zero schema cost, nonzero platform cost (normative).** The
+  reporting direction as drafted is refused today by the reference
+  platform for a properly scoped buyer: buyer-reportable event names
+  are gated through the **closed** set `_BUYER_EVENT_TYPES`
+  (`router.py:81-91`), enforced per sender at `router.py:940-949`, and
+  `CONTACTED` is not in it — measured, the proposal's own §4 example
+  from a delivered buyer with `scopes=["event:submit","bid:submit"]`
+  returns `LCP-002 Sender is not authorized for this lead event`,
+  while `DELIVERED` on the same transport and scopes returns
+  `RECEIVED` (dossier F5, row 20). Acceptance today rides the default
+  credential's wildcard scope (`storage.py:916` seeds `["*"]`;
+  `auth.py:168-170` treats `*` as satisfying every scope check —
+  routed observation O2, L-Security), which is not a conformance-grade
+  path. The implementation PR **must**, as part of landing `CONTACTED`:
+  add it to `_BUYER_EVENT_TYPES` (v1.1-gated), advertise it in
+  `capabilities().events` (`router.py:1318` advertises twelve values
+  and — measured — omits `CONTACTED`, contradicting the §8 surface
+  the compatibility gate relies on), and land #153 **T6**
+  (`plat: test_buyer_scoped_contacted_event_accepted_and_advertised`).
+- **The report rule cannot be drafted; state what it is instead.**
+  `event.details` is `additionalProperties: true`
+  (`schemas/event.json:25-28`), so no schema change reaches into
+  report payloads: a SHA-1-shaped string — or even a plaintext phone —
+  inside `details` validates in both trees (dossier row 22). The
+  "same per-pair rule as post" is therefore an **ingest-behavior
+  requirement**, and the draft bounds it honestly: receivers MUST
+  reject `CONTACTED` reports whose `details.contacted_hashes` contains
+  an entry failing `^[a-f0-9]{64}$` or exceeds **32 entries per
+  report**, and MUST treat oversized or malformed reports as a
+  validation rejection, not a store. Beyond shape and count the trust
+  model is explicit: the platform **cannot verify** that a reported
+  digest matches a real contact (verification would require every
+  pair's secret and normalization, §3), so entries are
+  authenticated-sender attestations scoped to one `lead_id` — keyed
+  HMACs are unmatchable by anyone outside the pair **and
+  unverifiable-by-design for the receiver**; disputes ride the
+  existing ack/rejection paths (abuse list below).
+- **Replay and accumulation (corrects the earlier claim).** The event
+  store dedupes by the event **`message.id`**, not by
+  `idempotency_key`: `lifecycle_events.event_id TEXT PRIMARY KEY` and
+  no idempotency column at all (`storage.py:626-632`; contrast
+  `leads`/`attachments`), `insert_event` compares stored content by
+  that id and raises `EventIdempotencyConflict` on reuse with
+  different bytes (`storage.py:2226-2252`) — two reports sharing one
+  `idempotency_key` with fresh message ids both persist (measured,
+  dossier F9 row 21). Normative semantics: contact reports are
+  **at-least-once**; exact re-sends of the same `message.id` collapse
+  receiver-side, retried reports with new ids are **merged by digest
+  set** (the contacted set per lead accumulates as a set union — the
+  wire array carries no `uniqueItems`, duplicates are tolerated but
+  meaningless), and the absent-vs-`[]` rule carries to the report
+  direction: absent = nothing to report (don't send), `[]` = MUST NOT
+  be sent as an event detail (it asserts nothing).
+
+### 5. Slot accounting (implementation-phase requirement)
+
+The `MUST NOT oversell` rule currently has **no enforcement point**
+(dossier F2, rows 11-17), so the implementation PR for this LEP is
+blocked until all four of the following land together:
+
+1. **One write-time decision point.** The remaining-budget check and
+   the post write occur in **one transaction**, counting distinct
+   awarded buyers (Units, §1). Today the budget is a per-pass slice
+   (`max_winners`/`winners = candidates[:max_winners]`,
+   `router.py:680-683`), re-entry is allowed for a `POSTED` lead
+   (`POSTED` is absent from the early-return status set,
+   `router.py:636-637`), and the only guard is an advisory read in one
+   critical section (`has_delivery_for_offer`, `storage.py:2183-2188`)
+   whose write is a separate transaction. Reproduced races: two award
+   passes whose slot-state reads overlap delivered **4 posts** against
+   `max_buyers: 2` (row 14); two OS processes on the shipped Postgres
+   backend delivered **3** post rows against a budget of 2, with a
+   primary-key collision raised inside the losing replica's loop
+   (row 15); the serialized control run holds (row 16) — the defect is
+   the read→write window plus per-pass budgeting, not single-thread
+   logic.
+2. **DB-enforced uniqueness of awarded slots.** The deliveries table
+   constrains only `message_id` (`message_id TEXT NOT NULL UNIQUE`,
+   `storage.py:613-614`); a second `insert_delivery(kind='post')` for
+   the same `(lead_id, offer_id)` was measured `accepted=2 rows=2`
+   (row 17). The invariant must survive application bugs: a durable
+   uniqueness constraint on the award — e.g. a unique index on
+   `(lead_id, offer_id)` restricted to `kind='post'` rows, or a
+   `(lead_id, slot_ordinal)` award table — plus the distinct-buyer
+   count at the decision point (T4).
+3. **Locked or leased expiry/re-offer sweep.** The auction-close
+   trigger (`router.py:480-483`) is the platform's only multi-worker
+   path back into `_route_lead` and takes neither a lease nor a row
+   lock (`list_expired_open_pings`, `storage.py:1921-1926`), unlike
+   every other worker path (`claim_due_deliveries` lease columns,
+   `storage.py:2117+`; the Postgres backend's
+   `FOR UPDATE SKIP LOCKED`, `postgres.py:231, 268`). Expiry sweeps
+   claim under `FOR UPDATE SKIP LOCKED` (or a lease) before routing.
+4. **Award-eligible ping state.** `_route_lead` builds candidates
+   from every accepted bid without checking `ping.status`
+   (`router.py:645-667`); the OPEN-ping requirement lives only in
+   `submit_bid` (`router.py:373-380`), so a post-expiry bid that
+   reached the store by another path stays award-eligible. The
+   decision point filters non-OPEN/expired pings (dossier's
+   cross-surface observation, recorded at #153).
+
+Named blocking tests (#153): **T2**
+`plat: test_slot_budget_never_oversells_under_concurrent_award` +
+`plat: test_slot_budget_two_process_postgres_race`; **T3**
+`plat: test_second_post_for_same_lead_offer_is_refused` (DDL in the
+`deliveries` schema); **T4**
+`plat: test_max_buyers_bounds_distinct_buyers`. Ledger honesty:
+`docs/SPEC-COVERAGE.md:88` marks row `EXC-02` ("no over-award") green
+on the strength of
+`plat:test_exclusive_lead_overaward_refused_single_post_only`
+(`test_adversarial_e2e.py:216`) — the exclusive, single-pass,
+single-thread case; no shared multi-award or concurrent test exists
+(routed observation O1); T2/T4 extend that row when they land.
 
 ### Valid example — ping with slots
+
+*(Re-validated by execution 2026-11-03. `attributes` use only fields
+defined and `ping_safe: true` in `verticals/home_services.json`
+(`service_type`, `budget_band`) — the F1 fix; the previously drafted
+`service_category`/`project_size_band` exist nowhere in the vertical
+registry and the example failed the repository's own runner with
+`LCP-008 PII_IN_PING` even after the v1.1 fields were added.)*
 
 ```json
 {
@@ -197,7 +420,7 @@ transport.
       "state_region": "TX",
       "postal_code": "78701",
       "vertical": "home_services",
-      "attributes": { "service_category": "gutter_repair", "project_size_band": "1k_5k" },
+      "attributes": { "service_type": "gutters", "budget_band": "1000_5000" },
       "floor_price_cents": 2400,
       "currency": "USD",
       "exclusivity": "shared",
@@ -335,14 +558,38 @@ A conformant platform rejects the ping construction at send time; a
 receiver detecting it MUST treat the lead as non-slot-advertised (fall
 back to `exclusivity` semantics) and MAY ack `REJECTED`.
 
+**Honest status of "rejects" (dossier F8).** Under the original naive
+property drafts (`slots_available` added with `minimum: 1` and nothing
+else), this shape **validates** — measured `PASS` under the v1.1
+overlay while the vector list promised a rejection test (row 8). The
+contradiction *is* expressible because `ping.json`'s `exclusivity` is
+a plain string enum (`schemas/ping.json:163-168`) and the object has
+no existing `allOf`, so the drafted `ping.json` now carries a
+top-level conditional — `if properties.exclusivity == "exclusive"`
+(and present) `then properties.slots_available const 1` — and the
+negative vector `lcp-neg-exclusive-multislot-001` lands in
+`test-vectors/sdk/validation-corpus.json` plus
+`test-vectors/sdk/negative/` (#153 **T7**). With that conditional the
+overlay run recorded in the Revision section **rejects** this
+construction; without it, neither schema nor vector would.
+
 ### Invalid example C — slot oversell
 
-A lead has `max_buyers: 2` and one post already delivered
-(`slots_available: 1` on later pings). A winner bids `slots_claimed: 2`.
-The platform MUST NOT deliver a second copy to this buyer and a copy to
-another winner — total delivered posts MUST NOT exceed the slot budget.
-Awarding one, or re-routing, is the platform's choice; posting two is a
-conformance failure.
+A lead has `max_buyers: 2` and **both buyer slots already awarded**
+(two delivered posts to two distinct buyers; `slots_available` reflects
+the remaining **buyer** budget per the Units statement — copies are not
+the budget). Two further accepted bids arrive (buyers C and D). The
+platform MUST NOT award either beyond the budget: distinct awarded
+buyers MUST NOT exceed `max_buyers`, and re-entry for a `POSTED` lead
+changes nothing. Under today's code this invariant is enforced only by
+the advisory read described in §5, and the dossier **reproduced**
+over-award: two overlapping award passes delivered 4 posts against a
+2-buyer budget; two OS processes on the shipped Postgres backend
+delivered 3 (rows 14-15). Additionally, a `slots_claimed: 2` bid is
+**out of range for v1.1** (`maximum: 1`, §2) — multi-slot claims are
+deferred, not silently possible. Award-oversell is a conformance
+failure with named blocking tests T2/T3/T4; which eligible bid to
+re-route is the platform's choice.
 
 ### Invalid example D — v1.1 field to a v1.0 receiver
 
@@ -351,7 +598,11 @@ conformance failure.
 `slots_available: 2`. `buyer_009`'s L2 conformance validates the ping
 against the v1.0 strict allowlist and rejects it (`LCP-008`/validation
 error, per SPEC.md §4). This is the compatibility boundary the
-capability-gating rule in the Compatibility section exists to prevent.
+capability-gating rule in the Compatibility section exists to prevent;
+that rule's match mechanics (full-semver elements, parsed comparison,
+hosting obligation, OpenAPI pattern) are normed there as an
+implementation-phase deliverable (F6/T10), not borrowed from today's
+one-sentence §8.
 
 ## Compatibility, versioning, and deprecation impact
 
@@ -378,13 +629,44 @@ capability-gating rule in the Compatibility section exists to prevent.
   extension-ignore promise has the same hole: `extensions` is defined only
   in `offer.json`, so `payload.extensions` fails the closed ping/bid/post
   schemas today.)
-- **Consequence (normative):** v1.1 slot fields are capability-gated, not
-  ignore-gated. A sender MUST include `slots_available` only in pings to
-  receivers whose §8 capability advertisement includes protocol version
-  `1.1` in `lcp_versions` (and likewise gate `slots_claimed`,
-  `contacted_hashes`, and `CONTACTED` on the receiver's declared v1.1
-  support). §8 already exposes `lcp_versions`; this proposal consumes the
-  existing negotiation surface and adds none.
+- **Consequence (normative):** v1.1 slot fields are capability-gated,
+  not ignore-gated. A sender MUST include `slots_available` only in
+  pings to receivers whose §8 capability advertisement supports v1.1
+  — compared as **parsed semver** (an advertised element with
+  `major == 1` and `minor >= 1`), never as the string literal `1.1`,
+  and every advertised element MUST be a full `major.minor.patch`
+  version — (and likewise gate `slots_claimed`, `contacted_hashes`,
+  and `CONTACTED` on the receiver's declared v1.1 support).
+- **Honest status of the cited surface (dossier F6).** What exists
+  today is the field *name*, not a consumable negotiation rule:
+  SPEC.md §8 is one sentence listing `{ lcp_versions, … }` with no
+  element format, no match rule, and no statement of who must host
+  `GET /v1/lcp/capabilities` for a *ping receiver* or whether
+  discovery is obligatory below L3 (`SPEC.md:594-601`; capability
+  discovery is named only as an L3 item, `SPEC.md:594-595`); OpenAPI
+  types `lcp_versions` as `array of string` with no pattern and does
+  not require it (`api/lcp-openapi.yaml:798-804`); the only shipped
+  producer advertises `["1.0.0"]` (`router.py:1310`). And the earlier
+  wording of this very bullet ("include protocol version `1.1`") is
+  self-inconsistent with every semver-form advertisement: exact
+  membership of `1.1` is `False` for `1.1.0`/`1.0.0`+`1.1.0` forms
+  while prefix membership also matches `1.10.0` (measured, row 24) —
+  the gate as previously drafted could never open, or would open on
+  the wrong version. **The implementation PR MUST add this exact
+  normative text** (it is this proposal's spec-text deliverable, not
+  an existing rule): (a) SPEC.md §8 — "Every `lcp_versions` element
+  MUST be a full `major.minor.patch` semantic version. A peer supports
+  protocol extensions of minor `m` when its advertised set contains
+  an element with `major == 1` and `minor >= m`; senders MUST compare
+  parsed versions, never string literals or prefixes. Every endpoint
+  that initiates traffic to a counterparty (ping senders included)
+  MUST host `GET /v1/lcp/capabilities` for that counterparty."
+  (b) OpenAPI — `lcp_versions` items gain pattern
+  `^\d+\.\d+\.\d+$` and become required. (c) Test #153 **T10**
+  `plat: test_capabilities_lcp_versions_gate_match_rule` asserts the
+  element format and both gate directions. Invalid example D below
+  illustrates the *absence* of this rule's protection; with (a)–(c)
+  landed it is the mechanism.
 - **Implementation-phase spec text:** SPEC.md §6 SHOULD gain one
   clarifying sentence recording that closed-object additions rely on
   version negotiation while the ignore-unknown rule covers open objects
@@ -468,7 +750,12 @@ with a revisit trigger.
   events are HMAC-authenticated messages (§9 `X-LCP-Signature`); slot
   state and contacted hashes are platform-emitted (buyer-controlled
   fields are claims, which the platform must not trust blindly — see
-  Invalid C). `idempotency_key` covers replay of contact reports.
+  Invalid C). Contact reports replay-proof by **event `message.id`**
+  dedupe (`lifecycle_events.event_id` primary key, §4) — the earlier
+  claim in this section that `idempotency_key` covered report replay
+  was factually wrong (the event store has no idempotency column at
+  all; measured, dossier F9) and is replaced by the at-least-once +
+  receiver-side-dedupe semantics in §4.
 - **Retention.** `contacted_hashes` are pseudonymized derived values
   bounded to one lead's contact history; they inherit the deployment's
   §9 PII retention policy (hashes of contact data used for matching are
@@ -481,8 +768,10 @@ with a revisit trigger.
   per-lead scope, dispute via existing ack/rejection paths); hash
   enumeration by a pair insider (already insider to that pair — the same
   threat model §9 accepted for `phone_hash`, noted for reviewers);
-  contacted-list growth as a storage side channel (bounded by lead
-  contacts; no bulk suppression sync in scope).
+  contacted-list growth as a storage side channel (reports capped at
+  32 entries each (§4); per-lead accumulation is a set union bounded
+  by distinct contacts; bulk suppression sync stays out of scope with
+  the array-bound deferred question).
 - **Universal-core audit (§12):** adds zero vertical- or market-specific
   fields; slot accounting is the runtime half of the already-core
   `exclusivity`/`max_buyers` blocks; the reference network's wire
@@ -498,18 +787,41 @@ helpers, and OpenAPI/MCP surfaces updated together"; `governance/LEP.md`
 traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
 
 - **Schemas:** additive property drafts — `ping.json`
-  (`slots_available`, `minimum: 1`, integer), `bid.json`
-  (`slots_claimed`, `minimum: 1`), `post.json` (`contacted_hashes`,
-  `array` of `^[a-f0-9]{64}$`, min 0). No `$defs/exclusivity` change.
+  (`slots_available`, integer, `minimum: 1`) **plus the top-level
+  conditional** `if properties.exclusivity == "exclusive" (present)
+  then properties.slots_available const 1` (invalid-B fix, F8/T7),
+  `bid.json` (`slots_claimed`, integer, `minimum: 1, maximum: 1` at
+  v1.1 — F4), `post.json` (`contacted_hashes`, `array` of
+  `^[a-f0-9]{64}$`, min 0; no `uniqueItems` — duplicates merge
+  receiver-side per §4). No `$defs/exclusivity` change; no
+  `event.json` change (`details` stays open by design; the report
+  rule is ingest behavior, §4).
 - **Examples:** new positive examples (this document's four) added to
   `examples/`; the four invalid shapes land in the negative corpus
   (`test-vectors/sdk/validation-corpus.json` and message-level vectors).
 - **Conformance vectors:** valid ping-with-slots/bid-with-claim/
   post-with-hashes roundtrip; SHA-1-shaped and short-digest rejection;
-  exclusive+multi-slot contradiction rejection; oversell attempt yields
-  no second post (platform behavior vector, L2/L3); `CONTACTED` event
-  accepted as open-enum value with pass-through storage (L1 rule
-  regression); absent-vs-empty `contacted_hashes` distinction.
+  exclusive+multi-slot contradiction rejection **by the new schema
+  conditional** (`lcp-neg-exclusive-multislot-001`, T7); oversell
+  attempt yields no post beyond the distinct-buyer budget — including
+  the two-pass concurrent and two-process Postgres races
+  (`plat:…`, T2/T3/T4, platform behavior vectors, L2/L3); scoped-buyer
+  `CONTACTED` acceptance + advertisement (T6); capability
+  `lcp_versions` semver match rule (T10); published `dedup-hash`
+  vectors executed by the reference platform and all ten SDKs (T9);
+  `CONTACTED` event accepted as open-enum value with pass-through
+  storage (L1 rule regression — recorded honestly:
+  `test-vectors/conformance.py` ignores each vector's `checks` array
+  (no reference to the key anywhere in the runner), so labels like
+  `event_open_enum_pass_through` on `L3-006`
+  (`test-vectors/l3-advanced.json:287`) are currently decorative
+  (routed O3) — the implementation PR wires `checks` or ships real
+  platform tests); absent-vs-empty `contacted_hashes` distinction in
+  both directions (§4); and a tooling test that validates every
+  fenced `### Valid example` block in `governance/LEPs/*.md` through
+  the platform's own `SchemaValidator` (#153 **T1**,
+  `tool: test_lep_wire_examples`) so the F1 class of defect cannot
+  silently return.
 - **SDKs (all 10 languages: python, typescript, go, rust, java, kotlin,
   ruby, php, csharp, swift):** generated models for the three fields
   (closed-object regeneration, schema bundles + SHA-256 manifests re-sync
@@ -517,7 +829,12 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   accounting shim, and contacted-hash builders that **reuse the existing
   per-pair `phone_hash`/`email_hash` HMAC utilities** — no new hashing
   primitive, no SHA-1 anywhere (grep-gate: reject `sha1` adoption in SDK
-  hash helpers).
+  hash helpers). Recorded honestly (dossier F7/H5): **no SDK contains a
+  dedup-hash builder today** — `phone_hash`/`email_hash` appear in
+  generated models and schema bundles only — so the builders are new
+  code executed against the T9 vectors, hashing the **wire bytes
+  verbatim** per §3, and no email builder ships before §9 pins the
+  normalization.
 - **OpenAPI:** `submitBid` request body gains `slots_claimed`; ping/post
   surfaces expose `slots_available`/`contacted_hashes` on existing
   schemas. No new endpoint — contact reporting rides `submitEvent`.
@@ -525,11 +842,16 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   server's pre-send schema validation (which loads the published
   schemas) automatically enforces the allowlist change; buyer-facing ping
   handling surfaces `slots_available` in tool responses.
-- **Reference platform:** slot counters per lead (`remaining =
-  max_buyers − delivered`, decremented atomically at post; ping-stop
-  rule), `CONTACTED` ingestion + per-pair re-keying on subsequent posts,
-  capability advertisement gains `1.1` in `lcp_versions` behind the
-  release.
+- **Reference platform:** the §5 enforcement set lands before any
+  feature flip — one write-time, locked decision point counting
+  distinct awarded buyers, DB-enforced `(lead, offer)`/slot-ordinal
+  uniqueness on post deliveries, expiry/re-offer sweeps under
+  `FOR UPDATE SKIP LOCKED` (or a lease), ping-status filtering at the
+  decision point; `CONTACTED` ingestion **plus** its addition to
+  `_BUYER_EVENT_TYPES` and `capabilities().events` (F5/T6) + per-pair
+  re-keying on subsequent posts **from held plaintext only** (§3);
+  capability advertisement gains a full-semver v1.1 element
+  (`1.1.0`) in `lcp_versions` behind the release (F6/T10).
 - **Operational:** metrics and alerting in the rollout section;
   documentation of the absent-vs-empty semantics for integrators; ops
   note that pair-secret rotation mid-lead-invalidates prior contacted
@@ -587,10 +909,14 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
    §6/§8/§9 spec-text clarification. Behavior for every message that
    omits the new fields is bit-for-bit v1.0.
 2. **Capability negotiation is the switch.** The reference platform
-   advertises `1.1` in `lcp_versions` and emits slot fields only to
-   receivers advertising v1.1; buyers adopt in any order, no coordinated
-   flag day. Platform-side accounting ships behind the release with the
-   same gate (feature-flag-able per LEP-0001's rollout pattern).
+   advertises a full-semver v1.1 element (`1.1.0`) in `lcp_versions`
+   and emits slot fields only to receivers whose advertisement parses
+   to `major == 1, minor >= 1` (never string-prefix matching — F6);
+   buyers adopt in any order, no coordinated flag day. Platform-side
+   accounting ships behind the release with the same gate
+   (feature-flag-able per LEP-0001's rollout pattern) — and the §5
+   enforcement set (T2/T3) lands **before** the flip, since the flip
+   is what activates the oversell surface.
 3. **SDK/OpenAPI/MCP in the same release** as schemas + vectors (change
    gates 4–5); contacted-hash helpers documented as the only sanctioned
    builder (prevents ad-hoc SHA-1 drift in integrator code).
@@ -601,18 +927,69 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
    dedup value signal); duplicate-contact dispute rate (before/after
    adoption evidence for the next marketplace items).
 5. **Rollback:** stop emitting the fields (absent = v1.0 semantics is the
-   designed idle state) and/or drop `1.1` from advertised `lcp_versions`;
+   designed idle state) and/or drop every v1.1-or-higher minor element
+   from advertised `lcp_versions`;
    disable the platform accounting feature. No data-format migration, no
    stored-envelope rewrite: slot counters are platform-internal bookkeep-
    ing reconstructible from delivery history, and received contacted
    hashes are disposable derived data.
+
+## Revision 2026-11-03 (post-dossier)
+
+The independent ARB L-Platform review dossier on [#124](https://github.com/SpearSystems/LCP/issues/124#issuecomment-6579188344)
+(head `0bbc1437`, verdict **FINDINGS**, 10 findings + 3 routed
+observations; durable conversions tracked at
+[#153](https://github.com/SpearSystems/LCP/issues/153)) reviewed this
+Draft adversarially against `SPEC.md`, `schemas/`, `verticals/`, and
+the reference platform's award path. This revision dispositions F1–F10
+**in the record**; it changes no status, no registry row, and
+authorizes no implementation (Draft gates unchanged). Dispositions:
+
+| Finding | What changed here |
+|---|---|
+| **F1** (major) — the ping example's `attributes` (`service_category`, `project_size_band`) exist nowhere in `verticals/home_services.json`, so the example failed the repository's own validator/runner (`LCP-008 PII_IN_PING`) **independently of the v1.1 fields** | Example fixed to `service_type: "gutters"` / `budget_band: "1000_5000"` (defined, `ping_safe: true`); note added under the example; the four invalid shapes re-tested; recurrence gate named (`tool: test_lep_wire_examples`, T1). No vertical-schema change (the scope promise holds). |
+| **F2** (major) — `MUST NOT oversell` had **no enforcement point**: per-pass slice, advisory read vs separate write, `message_id`-only constraint, unlocked re-offer sweep, `POSTED` re-entry; oversell reproduced in-process (4 posts vs 2) and cross-process on Postgres (3 vs 2) | New normative **"Slot accounting (implementation-phase requirements)"** (§5): single write-time decision point counting distinct buyers, DB-enforced uniqueness per awarded slot, leased/`FOR UPDATE SKIP LOCKED` sweeps, ping-status filtering; reproduced races cited as the problem evidence; **T2/T3** named as blocking tests; the scope bullet's `max_buyers − delivered posts` formula replaced by the buyer-unit definition. |
+| **F3** (major) — budget unit contradiction: §3 (`SPEC.md:312`) counts **buyers**; this LEP counted delivered **posts**, so one buyer with two offers consumed a two-buyer budget (measured) | "Units (normative)" under §1: a slot is a buyer award; one buyer = one slot regardless of offer count; delivery per `(lead, offer)`; copies are never the budget. Ping table, bid section, invalid C, the refund deferred item, and the T4 test all aligned. |
+| **F4** (major) — `slots_claimed > 1` has no delivery path (per-`(lead, offer)` guard; awarded count unobservable on the wire) | v1.1 scope narrowed: schema `maximum: 1`; the agency framing replaced with the measured behavior + a new **Deferred question** with its trigger and **T5** named. |
+| **F5** (major) — the reporting direction is refused today for properly scoped buyers (`CONTACTED` absent from `_BUYER_EVENT_TYPES`, measured `LCP-002`), unadvertised in `capabilities().events`, and the open `details` lets anything through | §4 gained the scoped-buyer MUST (allowlist + advertisement changes, **T6**), the wildcard-default-scope path recorded as routed observation O2 (not a conformance path), the explicit report bounds (32-entry / 64-hex ingest rule) and trust model (format+count sanity only; keyed HMAC unverifiable-by-design), and corrected replay semantics. |
+| **F6** (major) — the capability gate cited text that defines nothing (§8 one sentence; OpenAPI untyped-ish array; `["1.0.0"]` the only producer; literal `1.1` unsatisfiable, prefix wrong) | The Compatibility section rewritten honestly: what exists is quoted with line cites; the exact normative text the implementation PR must add (element format, parsed-semver match rule, hosting obligation for ping initiators, OpenAPI pattern) is specified here; rollout/rollback wording moved to full-semver elements; **T10** named; invalid D points at the corrected rule. |
+| **F7** (major) — the hash preimage is normed nowhere; only `consumer.phone` verbatim exists; email hashing implemented nowhere; re-keying a reported digest is impossible without plaintext | §3 gained: the verbatim wire-bytes preimage rule (matching `messages.py:89-93`), the honest "no email behavior exists to inherit" statement, the gate (no email entries until T9 vectors), proposed fixture form, two locally computed reference digests (labeled conformance targets), and the plaintext-only re-key constraint (`router.py` post builder is the only source). |
+| **F8** (minor) — invalid B validated under the naive draft while vectors promised rejection | Drafted `ping.json` now carries the expressible conditional (`exclusive ⇒ slots_available const 1`), negative vector `lcp-neg-exclusive-multislot-001` (**T7**) promised, invalid B text made honest, conditional re-run recorded. |
+| **F9** (minor) — "`idempotency_key` covers replay of contact reports" factually wrong (dedupe is `event_id`); accumulation undefined; report-direction absent-vs-`[]` unstated | The privacy bullet corrected; §4 defines at-least-once + receiver-side `message.id` dedupe, set-union accumulation with digest merge, absent-vs-`[]` for reports. |
+| **F10** (minor) — `slots_available ≤ max_buyers` unverifiable by the receiver (no `max_buyers` on the allowlist); undeclared-`shared` case left unbounded while the platform caps at 1 | §1 states the invariant platform-side only, bans receiver reliance, and norms the undeclared budget to 1 (matching the router's implicit cap). |
+| **O1/O2/O3** (routed, carried) | Implementation-phase test obligations recorded in §5/§4/impact: `EXC-02` ledger honesty (extended by T2/T4), scoped buyer credentials for T6 (the wildcard path is not a conformance path), `conformance.py` ignoring `checks` arrays (wire it or ship real tests). The dossier's cross-surface note (`ping.status` unchecked in `_route_lead`) became §5 item 4. |
+
+**Example re-validation (executed 2026-11-03).** Every `### Valid
+example` block and every invalid shape in this document were run
+against the **published** v1.0 schemas and a v1.1 draft overlay
+carrying exactly this document's corrected drafts (`slots_available`
+min 1 + the invalid-B conditional; `slots_claimed` 1..1;
+`contacted_hashes` 64-hex pattern), using the repository's own
+`lcp_platform.validation.SchemaValidator` (`jsonschema 4.26.0`) and
+`test-vectors/conformance.py::validate_message` for the vertical /
+ping-safe layer. Results (full commands and outputs recorded on the
+revision PR): the corrected ping example and the bid/post/event
+examples `PASS` under the overlay; the same four `REJ` under the
+published tree exactly as invalid D predicts (closed objects);
+invalid A `REJ` (pattern), invalid B `REJ` (conditional),
+`slots_available: 0/-1` `REJ` (minimum), `slots_claimed: 2` `REJ`
+(maximum), duplicate/`[]` report shapes behave per §4. The baseline
+repository gates (`tools/check_lep_registry.py`,
+`tools/check_doc_citations.py`, `test-vectors/conformance.py`,
+`tools/check_reserved_fields.py`) pass on this revision unchanged.
+
+**Status unchanged: Draft.** The registry row already records the
+2026-11-03 maintainer directive; the ARB charter voids the `0bbc1437`
+verdict for the changed surface, so the next step is a fresh dossier
+run on this revision — not acceptance.
 
 ## Deferred questions
 
 - **Slot refund on no-show / dispute / expiry.** When a delivered slot
   dies (`REJECTED`, `EXPIRED`, `DISPUTED → REFUNDED`, or the §9
   agent-timeout auto-`EXPIRED` re-offer path), does its slot return to
-  the pool? Current draft: the budget is on *delivery*, refund is
+  the pool? Current draft: the budget is spent at **award** (one slot
+  per distinct buyer awarded — §1 Units), and refund is
   unspecified — a deliberate silence, not an oversight, because refunding
   changes publisher revenue and buyer competition economics. Trigger:
   first production shared-lead campaign with measured
@@ -628,10 +1005,16 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
 - **`normalized_email` definition.** §9 hashes
   `normalized_email` but the spec does not norm the normalization
   (case-folding, local-part rules, plus-addressing). Contacted-hash
-  interop fails silently if pairs normalize differently. Trigger: this
-  LEP's implementation phase — pin the normalization in §9 (or its
-  extension) before shipping vectors, since both this exchange and
-  `email_hash` need it.
+  interop fails silently if pairs normalize differently (measured,
+  dossier F7 row 26). **Revised 2026-11-03:** the *phone* preimage is
+  no longer deferred — §3 norms it to the verbatim wire bytes,
+  matching the only implemented behavior (`messages.py:89-93`); what
+  remains deferred is the email half, and the §3 rule escalates it
+  from "nice to pin" to a **gate**: no email-form
+  `contacted_hashes` entry ships until §9 pins the canonical and
+  #153 **T9** vectors publish (the T9 proposal in §3 carries a
+  concrete candidate rule + reference digests so the pin has a
+  starting point).
 - **Non-phone/email contact channels in `via`.** Chat-app IDs and other
   identifiers outside the two hash domains. Trigger: first adopter
   marketing leads through a channel whose contact identifier is not an
@@ -647,6 +1030,15 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   variant (buyers exchanging keyed hashes without the platform) changes
   the trust topology entirely. Trigger: a marketplace with no central
   platform that still needs slot coordination — not LCP's current model.
+- **Multi-slot agency delivery (`slots_claimed > 1`).** v1.1 caps the
+  claim at exactly 1 (§2) because the `(lead, offer)` guard has no
+  second-copy path to one buyer and no wire surface reports the
+  awarded count (dossier F4). Trigger: an adopter with a concrete
+  agency workflow needing N > 1 copies per buyer — the implementation
+  must then add the awarded-count signal (ack or post), the
+  `(lead, buyer, ordinal)`-keyed delivery path, and #153 **T5**
+  (`plat: test_slots_claimed_multi_award_within_budget`) before the
+  schema maximum can be lifted.
 
 **Revisit trigger:** first v1.1 shared-lead production deployment, or
 adopter evidence on refund economics and per-market defaults.
