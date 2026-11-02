@@ -20,7 +20,8 @@ Test-id families: `L1-*`/`L2-*`/`L3-*` = conformance vectors
 unittest (`implementations/reference-platform/tests/`), `sdk-py:` = Python
 SDK unittest, `mcp:` = MCP adapter unittest, `tool:` = repo checker tool.
 Rows that must be updated when `W1NegVectors` lands: SEC-04b, SEC-05b,
-VER-03, LOC-02, CMP-04, MSG-PING-03, ERR-006.
+VER-03, LOC-02, CMP-04, MSG-PING-03. (The adversarial platform E2E from
+#133 already closed ERR-006 and EXC-02; per-SDK assertions still pending.)
 
 Known ledger findings (filed as issues linked from the introducing PR): ATR-04
 reserved-core-field shadowing is **not enforced by any tool** — planted
@@ -76,7 +77,7 @@ LCP-002 — recorded under ERR-002.
 | STA-04 | §3 dispute resolution paths DISPUTED→ACCEPTED and DISPUTED→REFUNDED | platform | - | gap(no platform lifecycle test exercises either resolution path) |
 | STA-05 | §3 lead expiry: expires_at/ttl_seconds → platform transitions to EXPIRED | schema+platform | L3-007, plat:test_expiry_uses_legal_transition_graph | green |
 | EXC-01 | §3 exclusivity exclusive or shared, default shared | schema+runner | L3-007 | green |
-| EXC-02 | §3 max_buyers bounds how many buyers receive a shared lead (no over-award) | platform | - | gap(routing enforces but no test; adversarial over-award scenario pending W1PlatformE2E) |
+| EXC-02 | §3 max_buyers bounds how many buyers receive a shared lead (no over-award) | platform | plat:test_exclusive_lead_overaward_refused_single_post_only, plat:test_direct_offer_creates_post_without_auction | green |
 | MSG-01 | §4 message.type closed set of 7 (lead/call/ping/bid/post/ack/event) | schema+runner | L1-007, sdk-004 | green |
 | MSG-LEAD-01 | §4 lead payload = consumer+location+compliance+provenance+attributes+external_id+submitted_at+channel | schema+runner | L2-001, sdk-001 | green |
 | MSG-LEAD-02 | §4 lead.channel ∈ form/chat/click/api/agent/referral (open enum — see ENU-03) | schema | L1-001 | green |
@@ -104,13 +105,13 @@ LCP-002 — recorded under ERR-002.
 | ERR-003 | §5 LCP-003 MISSING_REQUIRED_FIELD code emitted for schema-missing fields | platform | - | gap(corpus proves rejection; no assertion the platform stamps code LCP-003) |
 | ERR-004 | §5 LCP-004 INVALID_STATUS_TRANSITION ↔ 422 | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | ERR-005 | §5 LCP-005 DUPLICATE_LEAD ↔ 409 | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_idempotency_key_reuse_with_different_body_is_rejected | green |
-| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004 | gap(rejection proven; structured LCP-006 emission unproven — pending W1NegVectors) |
+| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004, plat:test_unknown_message_type_returns_structured_error | green |
 | ERR-007 | §5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422 | platform | - | gap(no implementation-visible test of unsupported version handling) |
-| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, sdk-012 | green |
+| ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, sdk-012, plat:test_pii_in_ping_rejected_by_platform_validation | green |
 | ERR-009 | §5 LCP-009 INVALID_PHONE ↔ 400 | schema+platform | L2-011 | gap(pattern proven at schema layer; platform code emission unasserted) |
 | ERR-010 | §5 LCP-010 INVALID_TERRITORY ↔ 422 | platform | - | gap(no test emits the code) |
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | - | gap(router.py raises 429 LCP-011; no test drives the limit or header) |
-| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers, plat:test_bearer_with_wrong_api_key_is_rejected, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001 | green |
+| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers, plat:test_bearer_with_wrong_api_key_is_rejected, plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001 | green |
 | ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform | plat:test_production_endpoint_rejects_test_traffic | green |
 | ERR-100 | §5 LCP-100 VALIDATION_ERROR ↔ 400 catch-all | platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | ERR-500 | §5 LCP-500 INTERNAL_ERROR ↔ 500 | platform | - | gap(no fault-injection test of the 500 envelope) |
@@ -144,7 +145,7 @@ LCP-002 — recorded under ERR-002.
 | SEC-04 | §9 verifier uses the raw body bytes; re-serialized body must fail | sdk-python | sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers | green |
 | SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | - | gap(only Python asserted; tamper/re-serialize vectors pending W1NegVectors) |
 | SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected | green |
-| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | - | gap(pending W1NegVectors; window default 300s encoded in lcp-sdk-hmac-001 only) |
+| SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced | gap(platform window+idempotency now enforced by E2E; per-SDK replay vectors pending W1NegVectors) |
 | SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | - | gap(presence tested; equality of header vs envelope never asserted) |
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
 | SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |
@@ -156,7 +157,7 @@ LCP-002 — recorded under ERR-002.
 | PII-01 | §1/§9 ping carries non-PII attributes + hashes only; full PII flows only in post | schema+runner | L2-003, L2-004, sdk-002 | green |
 | PII-02 | §9 retention policies per contract; expired/unconsented routing stopped | platform | plat:test_retention_boundaries_stop_expired_and_unconsented_routing | green |
 | IDEM-01 | §1 mandatory idempotency: key reuse returns cached outcome, never duplicate delivery | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_postgres_encrypted_intake_idempotency_and_erasure | green |
-| DNR-01 | §9/ops dead letters durable, replayable, visible without PII | platform | plat:test_dead_letters_are_durable_replayable_and_visible_in_safe_metrics | green |
+| DNR-01 | §9/ops dead letters durable, replayable, visible without PII | platform | plat:test_dead_letters_are_durable_replayable_and_visible_in_safe_metrics, plat:test_dead_letter_durable_when_webhook_unreachable | green |
 | SND-01 | §5/§10 sandbox endpoints accept ONLY test traffic (both LCP-013 directions) | platform | - | gap(production-side tested via ERR-013; sandbox-side rejects at router.py:1362-1366 untested) |
 | MCP-01 | §10 reference MCP adapter: tools reject malformed payloads pre-network; schema loader path-safe | mcp | mcp:test_malformed_tool_payload_is_rejected_before_network, mcp:test_valid_tool_payload_reaches_the_endpoint, mcp:test_local_schema_loader_rejects_traversal_and_symlink_escape, mcp:test_bid_without_platform_id_is_rejected_before_network | green |
 | MCP-02 | §10 binding rules: capability discovery → tool list; schemas → tool input schemas | mcp | - | gap(get_capabilities tool exists; no test of discovery mapping) |
@@ -173,10 +174,11 @@ LCP-002 — recorded under ERR-002.
 ## Gap backlog (v1 snapshot — recomputed by the checker, listed here for reading)
 
 The `gap` rows above are the work queue for ARB waves W1–W5: negative
-signature/replay/allowlist vectors (W1NegVectors in flight), platform
-adversarial E2E (W1PlatformE2E in flight), capabilities/offer-restriction
-coverage, universal-audit mechanization, and the reserved-core-field
-enforcement hole (ATR-04, filed as an issue with planted proof).
+signature/replay/allowlist vectors (W1NegVectors in flight; platform-side
+adversarial E2E already landed via #133 and is credited above),
+capabilities/offer-restriction coverage, universal-audit mechanization, and
+the reserved-core-field enforcement hole (ATR-04, filed as issue #134 with
+planted proof).
 
 Wave-5 flip: `--fail-on-gap` exists on the checker; `spec-coverage.yml`
 drops `continue-on-error` at the same time the gap count reaches zero.
