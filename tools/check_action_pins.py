@@ -50,6 +50,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -165,25 +166,37 @@ class GitHubAPI:
         }
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
-        request = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.loads(
-                    response.read().decode("utf-8")
-                ), response.headers.get("Link", "")
-        except urllib.error.HTTPError as err:
-            if err.code in (403, 429):
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            request = urllib.request.Request(url, headers=headers)
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    return json.loads(
+                        response.read().decode("utf-8")
+                    ), response.headers.get("Link", "")
+            except urllib.error.HTTPError as err:
+                if err.code == 404:
+                    return None, ""
+                if err.code in (403, 429) and attempt < attempts:
+                    # GitHub secondary rate limits are transient bursts
+                    # (observed mid-run on a hot repo's refs endpoint).
+                    wait = err.headers.get("Retry-After")
+                    delay = int(wait) if wait and wait.isdigit() else 15 * attempt
+                    time.sleep(min(delay, 90))
+                    continue
+                if err.code in (403, 429):
+                    raise EnvironmentError_(
+                        f"GitHub API access refused for {url} (HTTP {err.code}) "
+                        f"after {attempts} attempts: rate limited? Export GITHUB_TOKEN."
+                    ) from err
                 raise EnvironmentError_(
-                    f"GitHub API access refused for {url} (HTTP {err.code}): "
-                    "rate limited? Export GITHUB_TOKEN."
+                    f"GitHub API error for {url}: HTTP {err.code}"
                 ) from err
-            if err.code == 404:
-                return None, ""
-            raise EnvironmentError_(
-                f"GitHub API error for {url}: HTTP {err.code}"
-            ) from err
-        except (urllib.error.URLError, TimeoutError, OSError) as err:
-            raise EnvironmentError_(f"GitHub API unreachable for {url}: {err}") from err
+            except (urllib.error.URLError, TimeoutError, OSError) as err:
+                raise EnvironmentError_(
+                    f"GitHub API unreachable for {url}: {err}"
+                ) from err
+        raise EnvironmentError_(f"GitHub API failed for {url}: unreachable")
 
     def resolve_ref(self, repo: str, kind: str, ref: str) -> tuple[str, str] | None:
         """Return ('commit'|'tag-object', commit_sha) or None if the ref is absent."""
