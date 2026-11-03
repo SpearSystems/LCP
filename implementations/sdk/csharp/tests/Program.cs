@@ -44,3 +44,4 @@ if (corpusFailures.Count > 0)
 Console.WriteLine("C# SDK HMAC and full JSON Schema vectors passed");
 Console.WriteLine("C# SDK shared validation corpus passed");
 Console.WriteLine($"C# SDK negative security vectors passed ({NegativeVectors.Run(repositoryRoot)} vectors executed)");
+Console.WriteLine(Lep0003Slots.Run(repositoryRoot));

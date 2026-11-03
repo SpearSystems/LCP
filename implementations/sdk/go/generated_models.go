@@ -64,6 +64,9 @@ type PingPayload struct {
 	Attributes      map[string]any `json:"attributes,omitempty"`
 	FloorPriceCents int            `json:"floor_price_cents"`
 	Currency        string         `json:"currency"`
+	// SlotsAvailable advertises remaining buyer-award slots (v1.1, LEP-0003).
+	// Pointer: absent (nil) means the platform does not advertise slot state.
+	SlotsAvailable *int `json:"slots_available,omitempty"`
 }
 type PostPayload struct {
 	LeadID         string          `json:"lead_id"`
@@ -80,8 +83,12 @@ type PostPayload struct {
 	Compliance     json.RawMessage `json:"compliance,omitempty"`
 	Attributes     map[string]any  `json:"attributes"`
 	Provenance     json.RawMessage `json:"provenance,omitempty"`
-	Call           json.RawMessage `json:"call,omitempty"`
-	Attachments    []map[string]any `json:"attachments,omitempty"`
+	// ContactedHashes carries per-pair contact digests (v1.1, LEP-0003).
+	// Pointer: nil = the platform has no contact reports; &[]string{} attests
+	// zero prior contacts — the two are distinct on the wire.
+	ContactedHashes *[]string       `json:"contacted_hashes,omitempty"`
+	Call            json.RawMessage `json:"call,omitempty"`
+	Attachments     []map[string]any `json:"attachments,omitempty"`
 }
 type BidPayload struct {
 	PingID                  string `json:"ping_id"`
@@ -92,6 +99,9 @@ type BidPayload struct {
 	BuyerReference          string `json:"buyer_reference,omitempty"`
 	RejectReason            string `json:"reject_reason,omitempty"`
 	CapacityRemaining       int    `json:"capacity_remaining,omitempty"`
+	// SlotsClaimed is the buyer's slot claim (v1.1, LEP-0003): exactly 1 at v1.1.
+	// Pointer: absent (nil) means the default claim of one slot.
+	SlotsClaimed *int `json:"slots_claimed,omitempty"`
 }
 type AckPayload struct {
 	OriginalMessageID string           `json:"original_message_id"`

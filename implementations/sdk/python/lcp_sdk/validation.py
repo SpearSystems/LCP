@@ -11,6 +11,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
+from .capability import slot_capability_errors
+
 
 MESSAGE_TYPES = ("lead", "call", "ping", "post", "ack", "event", "bid")
 
@@ -136,11 +138,21 @@ class SchemaValidator:
         if errors:
             raise ValidationError(errors)
 
-    def validate_envelope(self, envelope: dict[str, Any]) -> list[str]:
-        """Return validation errors for an envelope and its message payload."""
+    def validate_envelope(self, envelope: dict[str, Any], *, receiver_advertised_lcp_versions: list[str] | None = None) -> list[str]:
+        """Return validation errors for an envelope and its message payload.
+
+        ``receiver_advertised_lcp_versions`` optionally applies the SPEC.md §8
+        capability gate: when the counterparty's advertisement lacks a v1.1
+        element, envelopes carrying slot fields are rejected (closed objects
+        make this gate necessary — a v1.0 receiver cannot ignore the fields).
+        """
         errors = [self._format_error(error) for error in self._envelope.iter_errors(envelope)]
         if errors:
             return errors
+        if receiver_advertised_lcp_versions is not None:
+            errors.extend(slot_capability_errors(envelope, receiver_advertised_lcp_versions))
+            if errors:
+                return errors
         message = envelope["lcp"]["message"]
         message_type = message["type"]
         payload = envelope["lcp"]["payload"]
@@ -174,8 +186,8 @@ class SchemaValidator:
                         errors.extend(self._ping_safe_errors(payload, vertical_validator.schema))
         return errors
 
-    def require_valid_envelope(self, envelope: dict[str, Any]) -> None:
-        errors = self.validate_envelope(envelope)
+    def require_valid_envelope(self, envelope: dict[str, Any], *, receiver_advertised_lcp_versions: list[str] | None = None) -> None:
+        errors = self.validate_envelope(envelope, receiver_advertised_lcp_versions=receiver_advertised_lcp_versions)
         if errors:
             raise ValidationError(errors)
 

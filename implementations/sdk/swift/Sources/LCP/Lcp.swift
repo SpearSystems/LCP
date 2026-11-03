@@ -29,7 +29,47 @@ public struct LCPEnvelope<Payload: Encodable>: Encodable {
 
 public enum LCPSigning {
     public static func canonicalBytes(timestamp: String, idempotencyKey: String?, body: Data) -> Data { Data("\(timestamp)\n\(idempotencyKey ?? "")\n".utf8) + body }
-    public static func sign(secret: String, timestamp: String, idempotencyKey: String?, body: Data) -> String { let key = SymmetricKey(data: Data(secret.utf8)); let digest = HMAC<SHA256>.authenticationCode(for: canonicalBytes(timestamp: timestamp, idempotencyKey: idempotencyKey, body: body), using: key); return digest.map { String(format: "%02x", $0) }.joined() }
+    public static func sign(secret: String, timestamp: String, idempotencyKey: String?, body: Data) -> String { hmacHex(secret: secret, data: canonicalBytes(timestamp: timestamp, idempotencyKey: idempotencyKey, body: body)) }
+
+    /// The single HMAC-SHA256 -> lowercase-hex construction in this SDK (SPEC.md §9).
+    public static func hmacHex(secret: String, data: Data) -> String {
+        let key = SymmetricKey(data: Data(secret.utf8))
+        let digest = HMAC<SHA256>.authenticationCode(for: data, using: key)
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The SPEC.md §9 pinned contact preimage for a value. Phone: the wire value
+    /// verbatim, byte-for-byte — no folding, stripping, or reformatting (the
+    /// reference platform's phone_hash builder is the executed baseline). Email:
+    /// the §9 pinned candidate canonical — trim surrounding whitespace,
+    /// ASCII-lowercase the domain, keep the local-part bytes verbatim,
+    /// plus-addresses distinct. Email-form contacted_hashes ENTRIES stay
+    /// emission-gated until #153 T9 executed vectors publish; this is the pinned
+    /// compute rule every contact-hash vector row reproduces under.
+    public static func normalizeContact(_ value: String, domain: String) throws -> String {
+        switch domain {
+        case "phone": return value
+        case "email":
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let separator = trimmed.lastIndex(of: "@") else {
+                throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "email contact preimage must contain '@'"])
+            }
+            let local = String(trimmed[..<separator])
+            let host = String(trimmed[trimmed.index(after: separator)...])
+            let lowered = String(host.map { $0 >= "A" && $0 <= "Z" ? Character(UnicodeScalar($0.asciiValue! + 32)) : $0 })
+            return "\(local)@\(lowered)"
+        default:
+            throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "unknown contact domain '\(domain)' (expected phone or email)"])
+        }
+    }
+
+    /// Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+    /// HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret shared
+    /// with the message's receiver. phone_hash, email_hash, and contacted_hashes
+    /// all ride this one construction — never an unsalted digest, never SHA-1.
+    public static func contactHash(secret: String, value: String, domain: String = "phone") throws -> String {
+        try hmacHex(secret: secret, data: Data(normalizeContact(value, domain: domain).utf8))
+    }
     public static func verify(secret: String, signature: String, timestamp: String, idempotencyKey: String?, body: Data, maxSkew: TimeInterval = 300, now: Date = Date()) throws { guard let date = ISO8601DateFormatter().date(from: timestamp), abs(now.timeIntervalSince(date)) <= maxSkew else { throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "timestamp outside replay window"]) }; guard sign(secret: secret, timestamp: timestamp, idempotencyKey: idempotencyKey, body: body) == signature.lowercased() else { throw NSError(domain: "LCP", code: 401, userInfo: [NSLocalizedDescriptionKey: "invalid signature"]) } }
 }
 

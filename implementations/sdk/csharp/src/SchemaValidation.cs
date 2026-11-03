@@ -66,9 +66,18 @@ public sealed class LcpSchemaValidator
             throw new LcpSchemaValidationException(schemaName, results);
     }
 
-    public void ValidateEnvelope(JsonNode envelope)
+    public void ValidateEnvelope(JsonNode envelope, IReadOnlyList<string>? receiverAdvertisedLcpVersions = null)
     {
         Validate("schemas/envelope.json", envelope);
+        // Optional SPEC.md §8 capability gate: slot fields toward a receiver
+        // that does not advertise v1.1 are a conformance failure (the v1.0
+        // closed allowlist cannot parse them).
+        if (receiverAdvertisedLcpVersions is not null)
+        {
+            var gateErrors = LcpCapability.SlotCapabilityErrors(envelope, receiverAdvertisedLcpVersions);
+            if (gateErrors.Count > 0)
+                throw new ArgumentException($"LCP capability gate: {string.Join("; ", gateErrors)}");
+        }
         var type = envelope["lcp"]?["message"]?["type"]?.GetValue<string>()
             ?? throw new ArgumentException("LCP envelope is missing lcp.message.type");
         var payload = envelope["lcp"]?["payload"]

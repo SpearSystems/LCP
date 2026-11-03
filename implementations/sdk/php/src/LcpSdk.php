@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lcp;
 
+require_once __DIR__ . '/Capability.php';
 require_once __DIR__ . '/SchemaValidator.php';
 require_once __DIR__ . '/GeneratedModels.php';
 
@@ -20,7 +21,50 @@ final class Signing
 
     public static function sign(string $secret, string $timestamp, ?string $idempotencyKey, string $body): string
     {
-        return hash_hmac('sha256', self::canonicalBytes($timestamp, $idempotencyKey, $body), $secret);
+        return self::hmacHex($secret, self::canonicalBytes($timestamp, $idempotencyKey, $body));
+    }
+
+    /** The single HMAC-SHA256 -> lowercase-hex construction in this SDK (SPEC.md §9). */
+    private static function hmacHex(string $secret, string $data): string
+    {
+        return hash_hmac('sha256', $data, $secret);
+    }
+
+    /**
+     * SPEC.md §9 pinned contact preimage. Phone: the wire value verbatim,
+     * byte-for-byte — no folding, stripping, or reformatting (the reference
+     * platform's phone_hash builder is the executed baseline). Email: the §9
+     * pinned candidate canonical — trim surrounding whitespace, ASCII-lowercase
+     * the domain, keep the local-part bytes verbatim, plus-addresses distinct.
+     * Email-form contacted_hashes ENTRIES stay emission-gated until #153 T9
+     * executed vectors publish; this is the pinned compute rule every
+     * contact-hash vector row reproduces under.
+     */
+    public static function normalizeContact(string $value, string $domain = 'phone'): string
+    {
+        if ($domain === 'phone') return $value;
+        if ($domain === 'email') {
+            $trimmed = trim($value);
+            $separator = strrpos($trimmed, '@');
+            if ($separator === false) throw new RuntimeException("email contact preimage must contain '@'");
+            $local = substr($trimmed, 0, $separator);
+            $host = substr($trimmed, $separator + 1);
+            $asciiLower = preg_replace_callback('/[A-Z]/', static fn (array $m): string => chr(ord($m[0]) + 32), $host);
+            return $local . '@' . $asciiLower;
+        }
+        throw new RuntimeException("unknown contact domain '$domain' (expected phone or email)");
+    }
+
+    /**
+     * Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+     * HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret
+     * shared with the message's receiver. phone_hash, email_hash, and
+     * contacted_hashes entries all ride this one construction — the same
+     * digest path as sign(), never an unsalted digest, never SHA-1.
+     */
+    public static function contactHash(string $secret, string $value, string $domain = 'phone'): string
+    {
+        return self::hmacHex($secret, self::normalizeContact($value, $domain));
     }
 
     public static function verify(string $secret, string $signature, string $timestamp, ?string $idempotencyKey, string $body, int $maxSkewSeconds = 300, ?DateTimeImmutable $now = null): void

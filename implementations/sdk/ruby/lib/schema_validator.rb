@@ -53,8 +53,15 @@ module LcpSdk
       true
     end
 
-    def validate_envelope(envelope)
+    def validate_envelope(envelope, receiver_advertised_lcp_versions: nil)
       validate("schemas/envelope.json", envelope)
+      # Optional SPEC.md §8 capability gate: slot fields toward a receiver that
+      # does not advertise v1.1 are a conformance failure (the v1.0 closed
+      # allowlist cannot parse them).
+      if receiver_advertised_lcp_versions
+        gate_errors = LcpSdk.slot_capability_errors(envelope, receiver_advertised_lcp_versions)
+        raise SchemaValidationError, "LCP capability gate: #{gate_errors.join('; ')}" unless gate_errors.empty?
+      end
       type = envelope.dig("lcp", "message", "type")
       raise SchemaValidationError, "missing lcp.message.type" unless type.is_a?(String)
       payload = envelope.dig("lcp", "payload")

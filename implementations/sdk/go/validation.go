@@ -3,6 +3,7 @@ package lcp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -56,10 +57,22 @@ func ValidateSchemaBundle(schemaName string, schemas map[string][]byte, document
 }
 
 // ValidateEnvelopeBundle validates the envelope and then dispatches its payload
-// through the message-type schema named by lcp.message.type.
-func ValidateEnvelopeBundle(schemas map[string][]byte, envelope []byte) error {
+// through the message-type schema named by lcp.message.type. When
+// receiverAdvertised is supplied, the SPEC.md §8 capability gate also applies:
+// an envelope carrying v1.1 slot fields fails validation unless the receiver's
+// advertisement contains a full-semver element with major 1 and minor >= 1.
+func ValidateEnvelopeBundle(schemas map[string][]byte, envelope []byte, receiverAdvertised ...[]string) error {
 	if err := ValidateSchemaBundle("schemas/envelope.json", schemas, envelope); err != nil {
 		return err
+	}
+	if len(receiverAdvertised) > 0 && receiverAdvertised[0] != nil {
+		problems, err := SlotCapabilityErrors(envelope, receiverAdvertised[0])
+		if err != nil {
+			return err
+		}
+		if len(problems) > 0 {
+			return fmt.Errorf("LCP capability gate: %s", strings.Join(problems, "; "))
+		}
 	}
 	var wire struct {
 		LCP struct {

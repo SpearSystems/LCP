@@ -3,6 +3,7 @@
 These TypedDicts are generated from the canonical schema set. Runtime
 acceptance remains the JSON Schema validator's responsibility.
 """
+
 from __future__ import annotations
 
 from typing import Any, NotRequired, TypedDict
@@ -79,6 +80,7 @@ class PingPayload(TypedDict, total=False):
     floor_price_cents: int
     currency: str
     exclusivity: NotRequired[str]
+    slots_available: NotRequired[int]
     dedup_window_hours: NotRequired[int]
     expires_at: NotRequired[str]
 
@@ -100,6 +102,7 @@ class PostPayload(TypedDict, total=False):
     attributes: JsonObject
     provenance: NotRequired[JsonObject]
     exclusivity: NotRequired[JsonObject]
+    contacted_hashes: NotRequired[list[str]]
     call: NotRequired[JsonObject]
     attachments: NotRequired[list[JsonObject]]
 
@@ -113,6 +116,7 @@ class BidPayload(TypedDict, total=False):
     buyer_reference: NotRequired[str]
     reject_reason: NotRequired[str]
     capacity_remaining: NotRequired[int]
+    slots_claimed: NotRequired[int]
 
 
 class AckPayload(TypedDict, total=False):

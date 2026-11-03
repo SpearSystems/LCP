@@ -79,7 +79,21 @@ public final class SchemaValidator {
     }
 
     public void validateEnvelope(String envelope) throws IOException {
+        validateEnvelope(envelope, null);
+    }
+
+    /**
+     * Validates the envelope and payload; when {@code receiverAdvertisedLcpVersions}
+     * is supplied the SPEC.md §8 capability gate also applies — an envelope
+     * carrying v1.1 slot fields fails validation unless the receiver advertises
+     * a full-semver element with major 1 and minor >= 1.
+     */
+    public void validateEnvelope(String envelope, List<String> receiverAdvertisedLcpVersions) throws IOException {
         validate("schemas/envelope.json", envelope);
+        if (receiverAdvertisedLcpVersions != null) {
+            var gateErrors = Capability.slotCapabilityErrors(envelope, receiverAdvertisedLcpVersions);
+            if (!gateErrors.isEmpty()) throw new IOException("LCP capability gate: " + String.join("; ", gateErrors));
+        }
         JsonNode root = mapper.readTree(envelope);
         String type = root.path("lcp").path("message").path("type").asText();
         JsonNode payload = root.path("lcp").path("payload");
