@@ -35,7 +35,9 @@ reserved-core-field shadowing is enforced by `tool:check_reserved_fields`
 `check_sdk_schema_sync` and pre-write in `generate_sdk_models` — issue #134,
 planted proofs in that PR); ERR-012's `test_bearer_with_wrong_api_key_is_rejected`
 asserts LCP-012 for a wrong bearer key, where §5 maps identity failures to
-LCP-002 — recorded under ERR-002.
+LCP-002 — recorded under ERR-002 and closed by #142: the auth.py bearer
+branch now emits LCP-002, and the strengthened test (matching fresh
+idempotency header + code/message assertions) is credited under ERR-002.
 
 <!-- SPEC-COVERAGE-MATRIX:BEGIN version=1 columns=clause,gist,surface,tests,status -->
 | clause | gist | surface | tests | status |
@@ -109,17 +111,17 @@ LCP-002 — recorded under ERR-002.
 | MSG-EVT-03 | §4 CONSENT_WITHDRAWN: buyers MUST update suppression list | platform | plat:test_consent_events_trigger_suppression_and_erasure | green |
 | MSG-EVT-04 | §4 ERASURE_REQUEST: buyers MUST delete data and ack | platform | plat:test_erasure_redacts_pii_and_cancels_delivery, plat:test_erasure_deletion_retries_after_storage_failure, plat:test_postgres_encrypted_intake_idempotency_and_erasure | green |
 | ERR-001 | §5 LCP-001 INVALID_FORMAT ↔ 400 | platform | plat:test_malformed_json_content_type_returns_json_error, plat:test_oversized_json_body_returns_json_413 | green |
-| ERR-002 | §5 LCP-002 UNKNOWN_SENDER ↔ 401 (identity distinct from signature; bearer-mismatch branch emits LCP-012 contrary to §5 identity axis — pending #142; auth.py:137 untested) | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
+| ERR-002 | §5 LCP-002 UNKNOWN_SENDER ↔ 401 (identity axis, distinct from signature; includes a wrong bearer key for a recognized sender — #142: auth.py bearer branch re-coded LCP-012→LCP-002) | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency, plat:test_bearer_with_wrong_api_key_is_rejected (sends the matching fresh X-LCP-Idempotency-Key so the request reaches the bearer branch instead of being shadowed by the service.py idempotency pre-check, and asserts code+message together) | green |
 | ERR-003 | §5 LCP-003 MISSING_REQUIRED_FIELD code emitted for schema-missing fields | platform | - | gap(corpus proves rejection; no assertion the platform stamps code LCP-003) |
 | ERR-004 | §5 LCP-004 INVALID_STATUS_TRANSITION ↔ 422 | platform | plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | ERR-005 | §5 LCP-005 DUPLICATE_LEAD ↔ 409 | platform | plat:test_idempotent_intake_returns_duplicate_ack, plat:test_idempotency_key_reuse_with_different_body_is_rejected | green |
-| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire | schema+platform | L1-007, sdk-004, lcp-neg-mt-001, plat:test_unknown_message_type_returns_structured_error | green |
+| ERR-006 | §5 LCP-006 UNKNOWN_MESSAGE_TYPE structured error on the wire (#131: the platform's structural gate re-codes message.type enum violations to LCP-006 ahead of schema validation; other validation failures keep LCP-100) | schema+platform | L1-007, sdk-004, lcp-neg-mt-001, plat:test_unknown_message_type_returns_structured_error (4a asserts LCP-006 with enum-violation details on the wire; 4b pins LCP-006 for known types outside intake) | green |
 | ERR-007 | §5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422 | platform | - | gap(no implementation-visible test of unsupported version handling) |
 | ERR-008 | §5 LCP-008 PII_IN_PING ↔ 400 | conformance-runner+platform | L2-007, L2-008, L2-009, L2-009b, L2-009c, L2-009d, L2-017, sdk-012, lcp-neg-pii-001, plat:test_pii_in_ping_rejected_by_platform_validation | green |
 | ERR-009 | §5 LCP-009 INVALID_PHONE ↔ 400 | schema+platform | L2-011 | gap(pattern proven at schema layer; platform code emission unasserted) |
 | ERR-010 | §5 LCP-010 INVALID_TERRITORY ↔ 422 | platform | - | gap(no test emits the code) |
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | - | gap(router.py raises 429 LCP-011; no test drives the limit or header) |
-| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers (asserts the LCP-012 emitted by the service.py:115 pre-check; the bearer branch auth.py:137 is unreachable from that request), plat:test_bearer_with_wrong_api_key_is_rejected (same pre-check shadowing), plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
+| ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender; signature/replay axis only — bearer-key mismatches are identity, LCP-002, see ERR-002/#142) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers (asserts the LCP-012 emitted by the service.py:115 pre-check), plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
 | ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform+corpus | plat:test_production_endpoint_rejects_test_traffic, lcp-neg-mode-001 | green |
 | ERR-100 | §5 LCP-100 VALIDATION_ERROR ↔ 400 catch-all | platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | ERR-500 | §5 LCP-500 INTERNAL_ERROR ↔ 500 | platform | - | gap(no fault-injection test of the 500 envelope) |

@@ -13,14 +13,67 @@ from .envelope import message_metadata, utc_timestamp
 from .signing import sign_hmac
 from .validation import SchemaValidator
 
+MAX_BODY_CHARS = 2048
+_TRUNCATION_SUFFIX = "…[truncated]"
+_REQUEST_ID_MAX_CHARS = 64  # request ids are server-supplied; bound the echo
+
+
+def _bounded_body(body: Any) -> Any:
+    """Cap the error body retained on the exception (see LCPHTTPError)."""
+    if isinstance(body, str):
+        if len(body) <= MAX_BODY_CHARS:
+            return body
+        return body[:MAX_BODY_CHARS] + _TRUNCATION_SUFFIX
+    try:
+        rendered = json.dumps(body, separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        rendered = repr(body)
+    if len(rendered) <= MAX_BODY_CHARS:
+        return body
+    return {
+        "truncated": True,
+        "preview": rendered[:MAX_BODY_CHARS] + _TRUNCATION_SUFFIX,
+    }
+
 
 class LCPHTTPError(RuntimeError):
-    """Raised when an LCP endpoint returns a non-success response."""
+    """Raised when an LCP endpoint returns a non-success response.
 
-    def __init__(self, status_code: int, body: Any):
+    The response body is deliberately excluded from ``str()``/``repr()``:
+    exceptions land in logs and tracebacks, and a server-controlled body can
+    carry PII in error messages or be arbitrarily large (issue #136). The
+    error string carries the status code and the request id only — the
+    pattern the TypeScript (``LcpHttpError``) and Go (``HTTPError``) SDKs
+    already follow. The body stays available on ``.body`` for programmatic
+    handling and bounded operator debugging, truncated past
+    ``MAX_BODY_CHARS`` (2048 characters of the value or of its compact JSON
+    serialisation, suffixed with ``…[truncated]``); an over-bound structured
+    body collapses to ``{"truncated": True, "preview": ...}``, while a body
+    inside the bound is kept intact so callers can still read error codes.
+    """
+
+    def __init__(
+        self,
+        status_code: int,
+        body: Any,
+        *,
+        request_id: str | None = None,
+    ) -> None:
         self.status_code = status_code
-        self.body = body
-        super().__init__(f"LCP HTTP {status_code}: {body}")
+        if not request_id and isinstance(body, dict):
+            request_id = body.get("request_id")
+        self.request_id = (
+            str(request_id)[:_REQUEST_ID_MAX_CHARS] if request_id else None
+        )
+        self.body = _bounded_body(body)
+        identity = f" request-id {self.request_id}" if self.request_id else ""
+        super().__init__(f"LCP HTTP {status_code}{identity}")
+
+    def __repr__(self) -> str:
+        return (
+            f"LCPHTTPError(status_code={self.status_code!r}, "
+            f"request_id={self.request_id!r})"
+        )
 
 
 class LCPClient:
@@ -127,7 +180,11 @@ class LCPClient:
                 delay = float(retry_after) if retry_after and retry_after.isdigit() else 2**attempt
                 time.sleep(delay)
                 continue
-            raise LCPHTTPError(response.status_code, data)
+            raise LCPHTTPError(
+                response.status_code,
+                data,
+                request_id=response.headers.get("X-LCP-Request-Id"),
+            )
 
         if last_error:
             raise last_error

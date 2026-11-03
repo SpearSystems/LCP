@@ -6,6 +6,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reference platform (#142, fixes #142):** a wrong bearer API key for a
+  recognized sender now fails with `LCP-002 UNKNOWN_SENDER` instead of
+  `LCP-012` — §5 confines LCP-012 to the HMAC signature/timestamp axis, and
+  the bearer branch is identity (ruling in `docs/err-auth-triage.md`). The
+  bearer branch previously had zero coverage: its test was shadowed by the
+  `service.py` idempotency pre-check, so `test_bearer_with_wrong_api_key_is_rejected`
+  now sends the matching fresh `X-LCP-Idempotency-Key` and asserts code and
+  message together. HMAC timestamp/signature failures keep emitting LCP-012.
+- **Reference platform (#131, fixes #131):** an envelope whose
+  `lcp.message.type` is outside the closed §6 enum is rejected on the wire
+  with `LCP-006 UNKNOWN_MESSAGE_TYPE` (was the generic `LCP-100` catch-all,
+  contrary to the §5 taxonomy). A structural check in `_validate_envelope`
+  re-codes exactly that one axis ahead of schema validation; every other
+  validation failure keeps `LCP-100`, and conformance behavior for
+  protocol-known types is untouched.
+- **Python SDK (#136, fixes #136):** `LCPHTTPError` no longer embeds the
+  full response body in `str()` — error objects reach logs and tracebacks,
+  and bodies can carry PII in error messages or be arbitrarily large. The
+  error string now carries status plus request id only (matching the
+  TypeScript `LcpHttpError` and Go `HTTPError`, which already do this), and
+  the body stays available on the bounded `.body` attribute (truncated past
+  `MAX_BODY_CHARS` = 2048 for operator debugging). Non-trivial logic pinned
+  by `HTTPErrorHygieneTests` in `tests/test_sdk.py`, including a live-server
+  round-trip.
+
 ### CI and tooling
 
 - Logging-hygiene lint (`tools/check_logging_hygiene.py`, wired into the

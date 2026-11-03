@@ -129,13 +129,23 @@ class ApiKeyAuthFlowTests(unittest.TestCase):
         headers = {
             "Authorization": "Bearer api-key-wrong",
             "Content-Type": "application/json",
+            # The header must match the envelope's idempotency key or the
+            # service.py pre-check rejects with LCP-012 before authentication
+            # runs, shadowing the bearer branch this test exists to cover
+            # (issue #142 / docs/err-auth-triage.md proof C). The key is fresh
+            # for this in-memory platform, so it is not a replay.
+            "X-LCP-Idempotency-Key": "bearer-test-001",
             "X-LCP-Test": "true",
         }
         status, _, response = PlatformService(self.platform).dispatch(
             "POST", "/v1/lcp/leads", headers=headers, body=body
         )
         self.assertEqual(status, 401)
-        self.assertEqual(response["errors"][0]["code"], "LCP-012")
+        error = response["errors"][0]
+        # Assert code and message together: the message proves the request
+        # reached the bearer branch in auth.py instead of a pre-check.
+        self.assertEqual(error["code"], "LCP-002")
+        self.assertEqual(error["message"], "Invalid bearer credential")
 
 
 if __name__ == "__main__":
