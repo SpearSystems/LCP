@@ -3,7 +3,7 @@
 - **Title:** Agent attestation verification — issuer-anchored JWS verification at intake, §5 mapping, and staged L3 advertisement honesty
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Accepted** — accepted 2026-11-03; kid-norm A, Phase 0 ratified ahead of implementation (see Decision)
+- **Status:** **Implemented** — accepted 2026-11-03; implemented (#213 verifier, #215 schema/SPEC + mode-derived L3)
 - **Target version:** v1.1.0 (MINOR — security/verification semantics and
   error-mapping text; **no new wire field, no new message type, no new §5
   code**; `schemas/core.json` tightens the *existing* `attestation` string's
@@ -25,6 +25,8 @@
   maintainer's explicit co-sign of an ARB-Security dossier. Draft status
   names none; the role MUST be filled at Review.
 ## Decision (maintainer, 2026-11-03)
+
+Implementation: PR #213 (13-step §5 verifier, issuer-JWKS resolver, kid-norm A, observe/enforce) and PR #215 (SPEC §9 normative text, `schemas/core.json` token form, corpus sdk-024–028, `conformance_level` follows enforcement).
 
 **Accepted.** Basis: two independent dossier rounds on issue #205 — the
 first found three majors (a half-guarded egress path, undecided decode-time

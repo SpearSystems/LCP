@@ -3,7 +3,7 @@
 - **Title:** Request-history log lookup (paginated audit read surface)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized (dossier + re-review at #187; co-sign recorded)
+- **Status:** **Implemented** — accepted 2026-11-03; implemented (#214) and verified same day
 - **Target version:** v1.1.0 (MINOR; read-only additive surface — see
   Compatibility, versioning, and deprecation impact)
 - **Discussion:** [#187](https://github.com/SpearSystems/LCP/issues/187)
@@ -12,6 +12,8 @@
   lookup" (medium priority)
 
 ## Decision (maintainer, 2026-11-03)
+
+Implementation: PR #214 (GET /v1/lcp/history/requests + MCP tool, single tenant decision point, identifier pins, erasure interlock, row schema excluded from SDK bundles).
 
 **Accepted.** Recorded by the maintainer (randybeno) under the per-decision
 sign-off model, with the security/privacy co-sign recorded for this
