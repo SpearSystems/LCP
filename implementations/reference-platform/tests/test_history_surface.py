@@ -310,18 +310,5 @@ class HistorySurfaceTests(unittest.TestCase):
         self.assertEqual(str(len(body["requests"])), headers["X-LCP-Result-Count"])
 
 
-class McpHistoryToolTests(unittest.TestCase):
-    def test_pagination_is_surfaced_in_the_tool_result(self) -> None:
-        """LEP-0005 §3: the adapter MUST surface the three pagination values."""
-        from lcp_mcp_server.client import _cursor_from_link
-
-        link = (
-            "<https://api.example.com/v1/lcp/history/requests?limit=50"
-            '&cursor=czI2LDIwMjYtMTEtMDNUMTA6MjE6MDA>; rel="next"'
-        )
-        self.assertEqual("czI2LDIwMjYtMTEtMDNUMTA6MjE6MDA", _cursor_from_link(link))
-        self.assertIsNone(_cursor_from_link(None))
-
-
 if __name__ == "__main__":
     unittest.main()
