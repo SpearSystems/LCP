@@ -19,7 +19,7 @@
 
 ## Problem statement and evidence
 
-**Trigger (verbatim, roadmap Phase 6).** "Platform operators and publishers
+**Trigger (verbatim, roadmap Phase 6).** "platform operators and publishers
 need to inspect past ping and post requests (for debugging, dispute
 resolution, or compliance audits) without paging through raw database dumps."
 The reference pattern the roadmap cites is a commercial US home-services
@@ -31,9 +31,12 @@ it. Never return raw envelope bodies or PII in the log surface — return
 metadata (status, token, timestamps, sender, need/vertical, price) and
 redact or hash contact fields. Additive; no core change."
 
-**Internal evidence — the data already exists; the surface does not.** The
-reference platform already records, in first-class tables, everything the
-roadmap names as metadata:
+**Internal evidence — the data already exists; the surface does not.** "Exists"
+means **stored**: the row universe is exactly the backing tables named in the
+projection mapping below, and response artifacts that are constructed but never
+persisted (acks, `messages.py:65`) mint no rows and are cut from v1. With that
+scoping, the reference platform already records, in first-class tables,
+everything the roadmap names as metadata:
 
 - `leads` (`storage.py:512`) — `message_id`, `sender_id`, `receiver_id`,
   `message_type`, `status`, `vertical`, `test`, `created_at`/`updated_at`;
@@ -47,7 +50,7 @@ roadmap names as metadata:
   `storage.py:2726-2732`) with `attempts` and `last_error`;
 - `match_decisions` (`storage.py:614`) — explainable routing decisions per
   `(lead, offer)` with reasons (already surfaced per-lead by
-  `lead_status`, `router.py:1629`);
+  `lead_status`, `router.py:1660`);
 - `dead_letter_jobs` (`storage.py:718`) — exhausted jobs with recovery
   state, listable today only through the operator CLI
   (`admin.py:38-41` → `list_dead_letters`, `storage.py:1778-1803`, ordered
@@ -60,7 +63,7 @@ roadmap names as metadata:
   interop surface.
 
 Today's only protocol-level read surfaces are `GET /v1/lcp/leads/{lead_id}`
-(role-filtered detail view, `service.py:167-172`, `router.py:1615-1697`),
+(role-filtered detail view, `service.py:167-172`, `router.py:1646-1728`),
 `GET /v1/lcp/offers` (+`/quota`), `GET /v1/lcp/capabilities`,
 `GET /v1/lcp/schemas/{name}`, `GET /v1/lcp/attachments/{id}`, `/metrics`
 (`platform:admin`-gated, `service.py:147-149`), and the health endpoints
@@ -106,7 +109,11 @@ through as a normal PR (see Alternatives).
   `_authenticate_read` gate (`service.py:174-181`, `auth.py:181-185`) plus
   **row-level scoping** (who may see which rows — the scope matrix below),
   mirroring the existing precedent that `lead:read` alone is not enough
-  (`authorize_lead_read`, `router.py:1615-1627`, filters by counterparty).
+  (`authorize_lead_read`, `router.py:1646-1658`, filters by counterparty).
+  Honest delta the post-dossier revision records: the shipped authorizer
+  binds the **counterparty**, never the **tenant** — the row-level tenant
+  equality in the matrix is a *new* obligation of this surface, not
+  inherited behavior (see "Tenant binding at query time", #202 F2).
 - **SPEC text (implementation-phase, gated on acceptance):** one paragraph
   in §9 (PII subsection, `SPEC.md:938-945`) norming the history read
   surface's contact-hash rule, and a `history` entry in the §8 capability
@@ -148,9 +155,9 @@ mutating traffic only). The required scope is `history:read`.
 | Parameter | Shape | Matches |
 |---|---|---|
 | `request_id` | UUID | the envelope `message.id` of the stored request (`schemas/envelope.json`, `message.id` is `format: uuid`) |
-| `lead_id` | string | `leads.lead_id` / `pings.lead_id` / `bids.lead_id` / `deliveries.lead_id` |
-| `message_type` | one of `lead call ping bid post ack event` | the closed §4 type set |
-| `status` | string, ≤64 chars | the row's stored status value (§3 lead statuses; `OPEN`/`WON`/`EXPIRED`/`SUPPRESSED` for pings; `accept`/`reject`/`pass` for bids; delivery statuses). **Open enum** — an unrecognized value is a valid query returning the (possibly empty) matching set, per §6's store-and-pass rule; it MUST NOT be a validation error |
+| `lead_id` | string, 1–64 chars, anchored charset (row pin, rule 6); phone/email-shaped values → 400 | `leads.lead_id` / `pings.lead_id` / `bids.lead_id` / `deliveries.lead_id` |
+| `message_type` | one of `lead call ping bid post ack event` | the closed §4 type set. `ack` is a legal filter value but matches **no stored record** in v1 — acks are response artifacts (`build_ack`, `messages.py:65`), never persisted; see the row universe and the Deferred question |
+| `status` | string, 1–64 chars, anchored charset (row pin, rule 6) | the row's stored status value (§3 lead statuses; `OPEN`/`WON`/`EXPIRED`/`SUPPRESSED` for pings; `accept`/`reject`/`pass` for bids; delivery statuses). **Open enum** — an unrecognized *well-shaped* value is a valid query returning the (possibly empty) matching set, per §6's store-and-pass rule; it MUST NOT be a validation error. Shape hygiene is not vocabulary closure: §6 governs whether a status is *known*, rule 6 governs whether the string may *ride the surface* — contact-shaped text (phone runs, emails) is `400 LCP-001` like a plaintext phone in `caller_phone_hash` |
 | `vertical` | string | registered vertical id (`capabilities().verticals`) |
 | `caller_phone_hash` | `^[a-f0-9]{64}$` | per-pair HMAC membership test, rule below |
 | `from` / `to` | `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$` | whole-second UTC, matching `now_iso()`'s canonical stored form (`storage.py:21-22`, `storage.py:42-44` and the LEP-0002 whole-second emission discipline); `to` defaults to server time; sub-second or offset forms → 400 `LCP-001` |
@@ -206,13 +213,13 @@ because the endpoint itself is capability-discoverable, see §8 below):
   "required": ["request_id", "message_type", "direction", "status", "created_at"],
   "properties": {
     "request_id":   {"type": "string", "format": "uuid", "description": "The stored envelope's message.id — the reference pattern's 'token'."},
-    "lead_id":      {"type": "string"},
-    "message_type": {"enum": ["lead", "call", "ping", "bid", "post", "ack", "event"]},
+    "lead_id":      {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$", "not": {"pattern": "(?<![-\\w])\\d{10,15}|^[0-9 .()+-]{10,}$|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"}, "description": "Publisher-supplied record handle, pinned at the projection (rule 6): anchored charset plus refusal of the §3 contact shapes — a leading 10-15 digit phone run, an all-digits/punctuation value, or an email address cannot ride a history row; hyphen-delimited digit segments (uuid-style ids) intentionally pass."},
+    "message_type": {"enum": ["lead", "call", "ping", "bid", "post", "event"], "description": "Stored-record classes only. 'ack' is excluded: acks are response artifacts, no table backs them (row universe, below; Deferred questions)."},
     "direction":    {"enum": ["received", "sent"], "description": "From the platform's side: an inbound envelope it received, or an outbound record it sent/delivered."},
-    "status":       {"type": "string", "minLength": 1, "maxLength": 64, "description": "Stored record status (open pass-through per §6)."},
-    "sender_id":    {"type": "string"},
-    "receiver_id":  {"type": "string"},
-    "vertical":     {"type": ["string", "null"]},
+    "status":       {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$", "description": "Stored record status (open pass-through per §6 — the vocabulary stays open; the shape is pinned, rule 6)."},
+    "sender_id":    {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"},
+    "receiver_id":  {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"},
+    "vertical":     {"type": ["string", "null"], "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"},
     "test":         {"type": "boolean"},
     "price_cents":  {"type": "integer", "minimum": 0, "description": "Minor units only (LEP-0003 units discipline); currency travels separately."},
     "currency":     {"type": "string", "pattern": "^[A-Z]{3}$"},
@@ -226,7 +233,53 @@ because the endpoint itself is capability-discoverable, see §8 below):
 
 Rows carry **no** `consumer`, `location`, `attributes`, or `envelope`
 members — the roadmap's "never return raw envelope bodies or PII" is the
-schema's `additionalProperties: false`, not a scrub pass.
+schema's `additionalProperties: false`, not a scrub pass. Post-dossier, the
+claim is scoped to exactly what `additionalProperties` buys: it closes
+**members**, not **text inside allowed strings**. `lead_id` is
+publisher-supplied free text whose shipped constraint is literally
+`{"type": "string"}` (`schemas/lead.json:16-18`, §4 lead), and `erase_lead`
+retains it (`storage.py:2800-2805`), so a contact planted inside an
+identifier can survive both the envelope validator and an erasure. The
+honest property of the closed shape is therefore "no contact **fields**";
+contact-shaped *text* is blocked by the identifier pins of rule 6 below, a
+bounded heuristic rather than a structural impossibility — the residual risk
+is named there, not waved away.
+
+### Row universe and projection mapping
+
+v1 mints rows only from tables that actually store records. This is the
+post-dossier correction of #202 F3/F4: the matrix previously promised `ack`
+rows and keyed child rows on columns the child tables do not have.
+
+| Source table | Row class | `direction` | `sender_id` / `receiver_id` | `status` | `created_at` |
+|---|---|---|---|---|---|
+| `leads` (`storage.py:512`) | `lead`, `call` | `received` | own columns | own column | own column |
+| `pings` (`storage.py:623`) | `ping` | `sent` (platform → buyer) | platform id / `buyer_id` column | own column (`OPEN`/`EXPIRED`/`WON`/`SUPPRESSED`) | own column |
+| `bids` (`storage.py:635`) | `bid` | `received` (buyer → platform) | `buyer_id` column / platform id | `decision` column (`accept`/`reject`/`pass`) | `received_at` |
+| `deliveries` (`storage.py:650`) | `post`, `event` (outbound webhook records; a `kind=ping` delivery attempt projects onto its `pings` row's `status`/timestamps rather than minting a duplicate row) | `sent` | platform id / `buyer_id` column | own column (`PENDING`/`RETRY`/`DELIVERED` (`router.py:1044`)/`FAILED`/`REDACTED`) | own column |
+| `lifecycle_events` (`storage.py:670`) | `event` (persisted lifecycle record) | per stored envelope direction | stored envelope `message.sender_id`/`receiver_id` | `event_name` column (`DELIVERED`/`ACCEPTED`/…, §4 event enum, open) | `timestamp` column |
+
+**No `ack` rows.** `ack` (§4, `SPEC.md:494`) is a response constructed
+per message (`build_ack`, `messages.py:65`); no table stores acks, so a
+promised ack row would be invented from unstored state — precisely what the
+record's "no new stored state" justification forbids. `ack` is cut from the
+row schema's `message_type` enum (the §4 type set itself is untouched; the
+`message_type=ack` **filter** remains a legal closed-set value returning the
+empty set), and a durable ack store is a Deferred question with its own
+backing trigger. Where a table has a column, the row field reads from the
+column; identifier fields for child rows may additionally read the stored
+envelope's `message` member (`envelope_json` is a projection *source* for ids
+only — raw envelope bodies are still never returned, per the closed shape).
+Optional row fields appear only where a source column exists: `expires_at`
+from `leads`/`pings` only; `bids` carries neither `expires_at` nor
+`updated_at`, so its rows omit both. `pings`/`bids`/`deliveries`/
+`lifecycle_events`/`dead_letter_jobs` have no `tenant_id` column, so child
+rows are tenant-attributed by joining their `lead_id` to the `leads` parent
+(see tenant binding, below); a child row with no parent is unattributable
+and excluded. Mapping and row-set faithfulness are blocking-tested by
+`plat: test_history_row_projection_covers_stored_tables` (fixture with
+lead+ping+bid+post+event rows; assert the row set matches this table and no
+row is minted from unstored state).
 
 ### What "redact or hash" means, precisely
 
@@ -264,6 +317,61 @@ leaving the choice to implementers:
 5. **Never unsalted digests** — same MUST as LEP-0003 (roadmap: "Adopt the
    mechanism, not the hash"; §14 blocker B3 lineage). SHA-1-shaped values
    in parameters or rows are conformance failures (invalid C below).
+6. **Identifier text is pinned at the projection, not trusted at the
+   source** (post-dossier rule, #202 F1). `lead_id` is publisher-supplied
+   and protocol-legal whatever the publisher mints — the shipped lead
+   schema constrains it exactly as `{"type": "string"}`
+   (`schemas/lead.json:16-18`) — and `erase_lead`'s redaction whitelist
+   **retains** it (`storage.py:2800-2805`). The ARB lane executed the
+   consequence: a lead whose `lead_id` is
+   `"+15559876543-jane.q.public@example.com"` passes the shipped
+   `SchemaValidator`, ingests, erases, and its history row still carries
+   the phone and address verbatim (dossier attempt 7 / invalid F below).
+   The row schema therefore refuses, **at emission and at query time**,
+   any `lead_id` that matches §3's contact shapes — (i) a run of 10–15
+   digits starting the value or not preceded by a letter/digit/hyphen
+   (the national-number form of the E.164 pattern pinned at
+   `schemas/core.json:17` and the shape of a phone pasted into an id),
+   (ii) a value consisting only of digits and phone punctuation
+   (`^[0-9 .()+-]{10,}$` — a formatted phone), or (iii) an email address
+   (the `consumer.email` form, `schemas/core.json:16`) — and bounds every
+   free-text identifier field (`status`, `sender_id`, `receiver_id`,
+   `vertical`: anchored charset + `maxLength` 64), so no unbounded or
+   contact-shaped string reaches a counterparty. The run-detection is
+   deliberately narrower than "any digit soup ≥10 chars": hyphen- or
+   letter-delimited digit segments (uuid-tail ids, `lead_20261103-0001`
+   date-sequence ids) PASS — the revision battery showed a wider run
+   regex misfires on them, and silently omitting the join key from 0.4%
+   of legitimate uuid-shaped ids is a worse audit failure than the
+   residual it accepts.
+   **Legacy nonconforming ids — decision: omit, do not coerce.** For a
+   stored row whose `lead_id` fails the pin, history emission MUST
+   **omit** the `lead_id` member (same absent-never-blank discipline as
+   rule 2); the row itself survives with `request_id` as its handle.
+   Coercion is rejected on evidence, not taste: (i) truncation or
+   casefolding invents a collision namespace — two consumers' distinct
+   ids can fold to one pinned value, fabricating a false join on a
+   dispute-resolution surface, which is strictly worse than an absent
+   field; (ii) a hashed substitute would be a new disclosure oracle
+   requiring its own per-pair keying argument (the LEP-0003 analysis)
+   this LEP does not open; (iii) no caller loses recourse — the
+   publisher that minted the id still holds it via its own ingest ack
+   and `lead_status`, and the stored envelope is untouched (retention of
+   the publisher's own text stays §9 deployment-defined). An omission
+   counter (`history_lead_id_omitted_total`) is the operational alert
+   that a publisher is minting contact-shaped ids. Blocking tests:
+   `vec: history-request-row-identifier-shape-pins` (negative shapes:
+   E.164-shaped id, email-shaped id, 900+ char id),
+   `plat: test_history_planted_contact_in_lead_id_rejected_or_pinned`,
+   `plat: test_history_legacy_nonconforming_lead_id_omitted`.
+   **Residual risk, named rather than argued away:** the pins are bounded
+   heuristics. They refuse the §3 contact shapes, unbounded stuffing,
+   and the shipped-dossier plant; they do not claim to recognize every
+   conceivable contact encoding inside 64 charset-safe characters. A
+   publisher smuggling a bespoke encoding into its own ids remains a
+   counterparty-data problem under §9 (the data is the publisher's, the
+   rows are scoped to parties already holding it), not something a read
+   projection can structurally prevent.
 
 The `caller_phone_hash` **filter parameter** uses the identical rule: the
 caller submits a digest it computed under its own pair secret (a value it
@@ -280,7 +388,7 @@ not a protocol question).
 
 Row visibility is **per row**, not just per endpoint — `history:read`
 alone is necessary, not sufficient. The precedent is `lead:read` +
-`authorize_lead_read` (`router.py:1615-1627`), which answers "not found"
+`authorize_lead_read` (`router.py:1646-1658`), which answers "not found"
 404 rather than "forbidden" so existence itself is not disclosed. For a
 list surface the analogue is **filtering, not erroring**: out-of-scope rows
 simply do not appear; a `request_id`/`lead_id` filter that exists but is
@@ -288,10 +396,10 @@ not yours returns `200` with an empty set.
 
 | Caller | Rows visible | Row field restrictions |
 |---|---|---|
-| **Publisher** (sender of `lead`/`call` messages) | `direction=received` rows where `sender_id == caller` (its own sends: leads, calls, events it posted) + `direction=sent` rows where `receiver_id == caller` (the acks/status responses addressed to it) | `price_cents`/`currency` absent (bids it may see are never its rows); `caller_phone_hash` computable only for rows whose lead still holds plaintext |
-| **Buyer** (sender of `bid`, receiver of `ping`/`post`) | rows where `sender_id == caller` (its bids/events) or `receiver_id == caller` (pings addressed to it, posts delivered to it, acks) | `price_cents` only on rows whose record carries a price it is party to (its own bids' `bids.bid_price_cents`, `storage.py:635-648`) — never another buyer's; `caller_phone_hash` as above |
+| **Publisher** (sender of `lead`/`call` messages) | `direction=received` rows where `sender_id == caller` (its own sends: leads, calls, events it posted) + `direction=sent` rows where `receiver_id == caller` per the projection mapping (the outbound records addressed to it; acks are response artifacts with no backing table and mint no rows — see row universe and Deferred questions) | `price_cents`/`currency` absent (bids it may see are never its rows); `caller_phone_hash` computable only for rows whose lead still holds plaintext; `lead_id` subject to rule 6 pins/omission |
+| **Buyer** (sender of `bid`, receiver of `ping`/`post`) | rows where `sender_id == caller` (its bids/events) or `receiver_id == caller` (pings addressed to it, posts delivered to it — no ack rows exist, rule 6/row universe) | `price_cents` only on rows whose record carries a price it is party to (its own bids' `bids.bid_price_cents`, `storage.py:635-648`) — never another buyer's; `caller_phone_hash` as above |
 | **Platform operator** (`platform:admin` credential, or the wildcard — see critique) | all rows within the operator's tenant | `caller_phone_hash` omitted unless the operator credential itself is the row's counterparty pair (operator holds the plaintext; a hash under nobody's pair key carries no information the operator can compare against a pair's stream); per-pair confidentiality of *prices* is NOT extended to operators (they already compute payables, `payable_records`, `storage.py:598`) |
-| **Any caller, any role** | additionally scoped to `tenant_id` equality with the credential (`credentials.tenant_id`/`leads.tenant_id`, `storage.py:501`, `storage.py:514`; the shipped multi-tenant list pattern, `storage.py` offer listing per tenant, exercised by `implementations/reference-platform/tests/test_platform.py:792-805`) | — |
+| **Any caller, any role** | additionally scoped to `tenant_id` equality with the authenticated credential (`credentials.tenant_id`/`leads.tenant_id`, `storage.py:501`, `storage.py:514`) — a **new obligation of this surface, not inherited shipped behavior**; the previous "shipped multi-tenant list pattern" framing is corrected in "Tenant binding at query time" below | — |
 
 **The `'*'` precedent, critiqued rather than inherited.** `has_scope`
 (`auth.py:187-189`) treats both `*` and `platform:admin` as satisfying
@@ -306,8 +414,12 @@ makes the posture explicit:
   conformance vectors MUST be executed with a scoped credential, never the
   wildcard default (mirroring the T6 requirement #168 landed for
   `event:submit`).
-- Every credential that holds `*` or `platform:read`-class scope
-  automatically gets this endpoint — that is today's shipped behavior and
+- Every credential that holds `*` or `platform:admin` scope automatically
+  gets this endpoint — those are the shipped auto-grant literals, verbatim
+  `"*" in scopes or required_scope in scopes or "platform:admin" in scopes`
+  (`auth.py:187-189`); an earlier draft of this bullet named
+  `platform:read`, a literal that exists nowhere in shipped code or SPEC
+  (#202 F4 — corrected). Wildcard auto-grant is today's shipped behavior and
   this Draft does not shrink it under a MINOR. The *critique* recorded
   here: a read surface disclosing **commercial metadata (prices) and
   timing graphs (who was pinged when)** inherits the coarsest scope in the
@@ -318,6 +430,63 @@ makes the posture explicit:
   operator (except the operator's own price visibility) — a wildcard
   credential broadens *which rows* the org-level operator can see, never
   *what fields* a pair-scoped value can become.
+
+#### Tenant binding at query time (new obligation, #202 F2)
+
+The matrix previously presented credential→tenant equality alongside "the
+shipped multi-tenant list pattern" as if the platform already enforced it.
+The ARB lane executed the shipped code and the framing was wrong; it is
+corrected in record. **No shipped read path binds a reader credential to a
+tenant.** `authorize_lead_read` (`router.py:1646-1658`) filters by
+counterparty only — a `'*'`-scoped credential provisioned in `tenant-b`
+reads a `tenant-a` lead through the real dispatch path with `200` (dossier
+attempt 13). The cited offer-listing precedent scopes by
+`config.routing_tenant_id` — a **deployment config value** fed to
+`store.list_offers(tenant_id=…)` (`router.py:1773-1780`), not by the
+caller's `credentials.tenant_id`; `test_platform.py:792-805` exercises that
+store parameter, not a credential. LEP-0005 therefore does not inherit a
+protection that does not exist: tenant equality is a **new** obligation this
+surface adds (it is stricter than the shipped lead-read precedent). The
+shipped cross-tenant lead-read gap is itself filed to the platform lane via
+#202 F2; this record binds its own surface and commits the stronger rule.
+
+Enforcement design — following the single-decision-point discipline of
+LEP-0003's slot award (one transaction resolves the decision; nothing
+downstream re-decides):
+
+1. **One decision point.** A single row-builder in the implementation
+   (`history_rows`, reference platform) composes the union of the
+   projection tables from the row universe above, and the tenant predicate
+   `leads.tenant_id = :caller_tenant` appears **exactly once**, at that
+   outer join. The route, the service dispatch, and the MCP adapter consume
+   its output and add no second filter; per-row tenant checks in response
+   serialization are an implementation bug, not defense-in-depth — by then
+   the row set has already crossed the boundary.
+2. **Credential-sourced, never query-sourced.** `:caller_tenant` resolves
+   through `auth.tenant_for` (`auth.py:202-208`) for the authenticated
+   sender at dispatch time — the same posture as the Security section's
+   rule that "authorization is computed from the authenticated credential,
+   never from query text". A `tenant` query parameter does not exist and
+   MUST NOT be added.
+3. **Child-table attribution.** The row-minting child tables — `pings`/
+   `bids`/`deliveries`/`lifecycle_events` — carry no `tenant_id` column
+   (nor does `dead_letter_jobs`, which is out of the v1 row universe
+   anyway; `storage.py:623-675`, `storage.py:718-741`); every child row is
+   attributed by joining its `lead_id` to the `leads` parent inside the
+   same builder. A child row with no parent is unattributable and
+   excluded.
+4. **No wildcard bypass.** `'*'`/`platform:admin` satisfy the *scope*
+   check and broaden an operator's row set **within the credential's
+   tenant only** — tenant equality is row-scoping, and row-scoping rides
+   inside every scope (bullet above). The `'*'` shipped-behavior critique
+   stays in record: binding the wildcard to a tenant is a floor, not a
+   fix, for a surface disclosing prices and timing graphs.
+
+Named blocking tests (implementation PR, #202 format):
+`plat: test_history_cross_tenant_rows_invisible` (two tenants, one
+`'*'`/`platform:admin` credential per tenant, assert empty sets across the
+boundary), `plat: test_history_operator_scope_within_tenant`, and
+`plat: test_history_unattributable_child_rows_excluded`.
 
 ### Errors (all existing codes, §5; no new code needed)
 
@@ -454,7 +623,7 @@ key** so the caller can confirm the match without re-resolving preimages):
 }
 ```
 
-### Valid wire example — erased lead (contact fields structurally absent)
+### Valid wire example — erased lead (contact fields absent)
 
 Same buyer or publisher querying `request_id=770e8400-…-000000000201`'s
 lead **after** `erase_lead` (`storage.py:2688-2790`): the row survives with
@@ -497,9 +666,12 @@ preimage is gone, so no keyed hash exists to emit:
 REJECTED by the row schema: `consumer` is not an allowlisted member
 (`additionalProperties: false` — measured in the "Verification runs",
 invalid[0]). This is the roadmap's "never return … PII in the log surface"
-made mechanical: the shape cannot carry a contact at all, so there is no
-scrub step to forget. A receiver detecting this shape from a conformant-claiming
-platform treats it as a conformance failure, not data.
+made mechanical **at the member level**: the shape has no contact *fields*,
+so there is no scrub step to forget. It is not a claim that no identifier
+can carry contact text — text smuggled inside an allowed string is a
+different vector, closed only by the rule-6 pins (invalid F), and a receiver
+detecting this shape from a conformant-claiming platform treats it as a
+conformance failure, not data.
 
 ### Invalid wire example B — plaintext phone in the filter
 
@@ -536,6 +708,37 @@ invalid C (oversell), rejection is a platform-behavior obligation with a
 named blocking test below (`plat: test_history_scope_matrix_*`), and the
 record says plainly: **this class is invisible to shape validation**, which
 is exactly why the vectors must be platform tests, not corpus entries.
+
+### Invalid wire example F — phone-shaped `lead_id` plant (post-dossier)
+
+The ARB lane's executed plant (dossier attempt 7): a publisher mints a lead
+whose id **is** the consumer's contact information. This is protocol-legal —
+`schemas/lead.json:16-18` constrains `lead_id` only as `{"type": "string"}` —
+and, because `erase_lead` retains `lead_id` (`storage.py:2800-2805`), the
+pre-revision draft row schema accepted it and would have re-emitted it to
+counterparties forever. Under the rule-6 pins the row shape refuses it three
+times over: the leading `+` fails the anchored charset, the 11-digit run
+fails the §3 phone-shape refusal, and the address fails the email-shape
+refusal:
+
+```json
+{
+  "request_id": "e40e8400-0000-4000-8000-000000000206",
+  "lead_id": "+15559876543-jane.q.public@example.com",
+  "message_type": "lead",
+  "direction": "received",
+  "status": "PINGED",
+  "created_at": "2026-11-03T10:20:05Z"
+}
+```
+
+REJECTED — `'+15559876543-jane.q.public@example.com' does not match
+'^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'` (revision battery, both validator
+legs). A conformant platform therefore never serializes this row: emission
+**omits** the `lead_id` member for stored rows whose id fails the pin (rule
+6's legacy decision), and the email-only and 900+ character variants are
+refused the same way. A receiver seeing the shape from a conformant-claiming
+platform treats it as a conformance failure.
 
 ## Compatibility, versioning, and deprecation impact
 
@@ -578,7 +781,9 @@ is exactly why the vectors must be platform tests, not corpus entries.
 - The row set is the roadmap's metadata list — status, ids, timestamps,
   sender/receiver, vertical, price — plus one contact-derived value under
   the per-pair rule. `sender_id`/`receiver_id`/`lead_id` are organization-
-  and record-level identifiers the caller already holds for in-scope rows;
+  and record-level identifiers the caller already holds for in-scope rows
+  (`lead_id` is publisher-supplied text, pinned at the projection by
+  rule 6 — see the residual-risk note there);
   **cross-party rows are never returned**, so the surface discloses no new
   relationship graph beyond the caller's own transactions (contrast: an
   operator wildcard does, by design, and is critiqued in the matrix).
@@ -609,12 +814,20 @@ is exactly why the vectors must be platform tests, not corpus entries.
   marks rows `ERASED`/`REDACTED` (`storage.py:2694-2742`) and deletes
   `contacted_parties` (`storage.py:2771-2775`); because the keyed hash is
   computed from held plaintext at read time, post-erasure rows are
-  **structurally** contact-free (valid example C) and a
-  `caller_phone_hash` filter cannot match an erased lead — there is no
-  preimage to compare against. This is asserted as a blocking vector, not
+  contact-free in every **platform-derived** field (valid example C: no
+  `consumer` member can exist, and no preimage remains to key a hash
+  against) — a `caller_phone_hash` filter cannot match an erased lead.
+  The one member `erase_lead` **retains** is the publisher-minted
+  `lead_id` (`storage.py:2800-2805`), which erasure does not scrub; it is
+  gated at emission by the rule-6 pins, not by the redaction whitelist —
+  "structurally contact-free" held for members before this revision and
+  stopped holding for planted identifier text at the dossier's executed
+  attempt 7. This pair of guarantees is asserted as blocking vectors, not
   trusted to prose: `plat: test_history_phone_hash_filter_misses_erased_leads`
   and `plat: test_history_rows_after_erase_have_no_contact_derived_fields`
-  (the shipped redaction suite is the baseline these extend).
+  (the shipped redaction suite is the baseline these extend), together
+  with `plat: test_history_planted_contact_in_lead_id_rejected_or_pinned`
+  (rule 6) closing the whitelist-retained-text path.
 - Row *existence* after erasure (ids, statuses, timings) is the
   erasure-proofing audit trail §9's compliance posture needs to *prove* an
   erasure happened — the same trade the shipped code documented
@@ -634,8 +847,10 @@ is exactly why the vectors must be platform tests, not corpus entries.
   filters disclose nothing to an attacker who can tamper (tampering yields
   errors or *fewer* rows), and authorization is computed from the
   authenticated credential, never from query text.
-- *Abuse cases:* (a) cross-tenant enumeration — tenant scoping + authz
-  matrix + per-sender §9 rate limits (`storage.py:694`,
+- *Abuse cases:* (a) cross-tenant enumeration — the **new** tenant binding
+  at query time (single decision point, no wildcard bypass; not a shipped
+  protection, see the matrix section) + authz matrix + per-sender §9 rate
+  limits (`storage.py:694`,
   `service.py:72` 429); (b) timing/price intelligence aggregation —
   the strictest rule in the matrix: a buyer never sees another buyer's
   rows, so repeated queries reconstruct only its own history; (c) the
@@ -692,9 +907,9 @@ gate.
         computed at read time.
       parameters:
         - { name: request_id,          in: query, schema: { type: string, format: uuid } }
-        - { name: lead_id,             in: query, schema: { type: string } }
-        - { name: message_type,        in: query, schema: { enum: [lead, call, ping, bid, post, ack, event] } }
-        - { name: status,              in: query, schema: { type: string, maxLength: 64 } }
+        - { name: lead_id,             in: query, schema: { type: string, minLength: 1, maxLength: 64, pattern: '^(?!.*(?<![-\w])\d{10,15})(?![0-9 .()+-]+$)(?!.*[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$' } }
+        - { name: message_type,        in: query, schema: { enum: [lead, call, ping, bid, post, ack, event] } }  # §4 closed set; 'ack' matches no stored row in v1
+        - { name: status,              in: query, schema: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$' } }
         - { name: vertical,            in: query, schema: { type: string } }
         - { name: caller_phone_hash,   in: query, schema: { type: string, pattern: '^[a-f0-9]{64}$' } }
         - { name: from,                in: query, schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$' } }
@@ -739,8 +954,20 @@ gate.
   Each SDK MAY gain a typed client method in its API surface at
   implementation review; conformance vectors are language-neutral.
 - **Conformance vectors (named, blocking at implementation):**
-  `vec: history-request-row` positive/negative shapes (invalid A–D as
-  corpus entries, mirroring the `slot-fields.json` precedent);
+  `vec: history-request-row` positive/negative shapes (invalid A–D and F
+  as corpus entries, mirroring the `slot-fields.json` precedent);
+  `vec: history-request-row-identifier-shape-pins` (rule 6 negatives:
+  E.164-shaped id, email-shaped id, 900+ char id, dashed phone-run id);
+  `plat: test_history_planted_contact_in_lead_id_rejected_or_pinned` and
+  `plat: test_history_legacy_nonconforming_lead_id_omitted` (rule 6
+  emission path, #202 F1);
+  `plat: test_history_cross_tenant_rows_invisible`,
+  `plat: test_history_operator_scope_within_tenant`, and
+  `plat: test_history_unattributable_child_rows_excluded` (tenant
+  binding, #202 F2);
+  `plat: test_history_row_projection_covers_stored_tables` (row universe
+  — lead+ping+bid+post+event fixture asserts the projection mapping and
+  that no ack row is minted from unstored state, #202 F3);
   `plat: test_history_scope_matrix_publisher_buyer_operator` (each role
   against the same fixture dataset, asserting the matrix rows, including
   `price_cents` visibility and the 401 path executed with an explicitly
@@ -831,7 +1058,7 @@ gate.
    to migrate.
 2. **Optional by construction — the rollout lever is deployment choice.**
    Deployments MAY omit the endpoint entirely (`LCP-001`/404 "Endpoint not
-   found" per `service.py:174`, no §8 `history` member — today's reality
+   found" per `service.py:172`, no §8 `history` member — today's reality
    for every deployment, unchanged). Reference platform enables it behind
    the v1.1 release with the §8 advertisement so clients negotiate rather
    than probe. There is no traffic that must be migrated because no v1.0
@@ -873,6 +1100,20 @@ gate.
   confidentiality cuts across them. Trigger: first publisher adopter
   describing a dispute that requires ping-count visibility; decide with the
   marketplace `final_pricing` item (roadmap Phase 6 sibling).
+- **Ack row class (post-dossier, #202 F3).** `ack` (§4, `SPEC.md:494`) is
+  a per-message response artifact (`build_ack`, `messages.py:65`) that no
+  table stores, so the v1 row universe is requests + deliveries/events
+  only and `ack` is cut from the row schema enum (the `message_type=ack`
+  filter stays a legal §4 value returning the empty set). A durable ack
+  store is **new stored state** and the LEP bar for that is its own
+  analysis: ack rows carry publisher-minted `lead_id`/
+  `original_message_id`, so they inherit rule 6 pins/omission, the §9
+  erasure projection (redact-on-erase like every other envelope), a
+  retention decision, and `plat: test_history_ack_rows_backs_promised_rows`
+  coverage before any ack row may be promised again. **Trigger:** the
+  first adopter dispute that cannot be reconciled from delivery rows plus
+  the publisher's own ack receipt, or a written implementation proposal
+  for an acks table with that erasure/retention analysis attached.
 - **`X-LCP-Request-Id` as a first-class history key.** The correlating
   request id is minted per dispatch (`service.py:19-24`) and persisted only
   inside `audit_events.metadata_json` (`storage.py:1060-1062`);
@@ -949,7 +1190,7 @@ venv, `jsonschema 4.26.0` (matches `requirements-ci.txt`),
    pings `'OPEN'`/`'EXPIRED'`/`'WON'`/`'SUPPRESSED'`
    (`storage.py:2102`, `storage.py:2146`, `storage.py:2173`,
    `storage.py:1534`); bids `accept` (`schemas/bid.json` decision enum);
-   deliveries `DELIVERED`/`REDACTED` (`storage.py:2726-2732`); leads
+   deliveries `DELIVERED` (`router.py:1044`) / `REDACTED` (`storage.py:2726-2732`); leads
    `ERASED` (`storage.py:2704-2708`).
 6. **Baseline repository gates** on this record + registry row:
    `tools/check_lep_registry.py`, `tools/check_doc_citations.py`,
@@ -960,3 +1201,111 @@ venv, `jsonschema 4.26.0` (matches `requirements-ci.txt`),
    envelope blocks, so Draft envelopes-in-disguise cannot sneak past it
    *and* row examples intentionally do not enter its envelope lane until
    the named tool extension lands.)
+
+Post-dossier, the battery was re-run with the rule-6 pins in the drafted
+schema; the full re-validation (published + overlay trees, all valid rows,
+all invalids, plus the new invalid F plant) is recorded in
+"Revision 2026-11-03 (post-dossier)" at the end of this record.
+
+## Revision 2026-11-03 (post-dossier)
+
+Record-only revision resolving the ARB L-Platform+L-Security dossier on
+[#187](https://github.com/SpearSystems/LCP/issues/187) (tracked in
+[#202](https://github.com/SpearSystems/LCP/issues/202)) at reviewed SHA
+`49e84794ae61ef8c50ff0269460ff2b39905f0e0`; re-validated at repo SHA
+`67fc16ef7fa8433cc90eac3a306f8748fdc03d6d` (citations below re-pinned for
+that range's `router.py` shift). **Status stays Draft**: no implementation
+is authorized; every `vec:`/`plat:` test named in this revision belongs to
+the implementation PR (G5), not to this record. The registry row and the
+coverage matrix are untouched.
+
+### Findings → edits
+
+| Dossier item | Disposition in record |
+|---|---|
+| **F1 (major)** — contact text smuggled through pattern-free `lead_id`, survives the erasure whitelist; "cannot carry a contact at all" over-claimed | Rule 6 added (identifier pins: `lead_id` charset+`maxLength` 64 + §3 contact-shape refusal; `status`/`sender_id`/`receiver_id`/`vertical` pinned); legacy nonconforming ids: **omit at emission, never coerce** (decision + defense in rule 6); structural claims narrowed to "no contact **fields**" (row-shape paragraph, invalid A prose, erasure bullet, erased-example heading); residual risk named; invalid example F added (the dossier's executed plant); `schemas/lead.json:16-18` shipped constraint cited honestly |
+| **F2 (major)** — tenant equality cited a shipped precedent that binds no reader credential | Matrix row rewritten as **new obligation**; "Tenant binding at query time" section added: single-decision-point design (one `leads.tenant_id = :caller_tenant` predicate in the row builder, credential-sourced via `auth.tenant_for` `auth.py:202-208`, child-table join/parent-exclusion rule, no wildcard bypass, `'*'` critique retained); shipped reality cited honestly (`router.py:1646-1658`, `router.py:1773-1780`, `test_platform.py:792-805`); abuse case (a) updated; blocking tests named for the implementation PR |
+| **F3 (major)** — `ack` rows promised with no storage backing | Ack cut from the v1 response surface: removed from the row schema `message_type` enum and both matrix rows; "Row universe and projection mapping" section added (per-table projection: `leads`/`pings`/`bids`/`deliveries`/`lifecycle_events` → `direction`/ids/`status`/`created_at`, columns-first with envelope `message` as id projection source; `expires_at`/`updated_at` only where a column exists); `message_type=ack` stays a legal §4 filter value returning the empty set; "the data already exists" scoped to **stored** state; Deferred question "Ack row class" added with backing trigger |
+| **F4 (minor)** — `platform:read` names no shipped literal | Reworded to the shipped auto-grant literals, quoting `auth.py:187-189` (`"*" in scopes or required_scope in scopes or "platform:admin" in scopes`) |
+| **F5 (minor)** — citation precision | 404 raise fixed `service.py:174` → `service.py:172`; deliveries `DELIVERED` grounded at `router.py:1044` (was `storage.py:2726-2732`, which covers only the erasure `REDACTED` write); roadmap quote restored to lowercase "platform" (`docs/V1.1-ROADMAP.md:300`); all `router.py` anchors re-pinned for `67fc16e` (`1615-1627`→`1646-1658`, `1615-1697`→`1646-1728`, `1629`→`1660`, `718-747`→`735-778`, `1699-1737`→`1730-1768`) |
+
+### Battery re-run (executed 2026-11-03, post-edit)
+
+Environment: repo venv, `jsonschema 4.26.0` (matches `requirements-ci.txt`).
+Both validator legs — plain `Draft202012Validator(row_schema,
+format_checker=FormatChecker())` and the platform overlay construction
+(`registry=` core.json, as built in `validation.py:64-86`) — on every fenced
+row block, plus rule-6 probes. The new guard's exact refusal semantics came
+out of the battery itself: the first wide phone-run regex misfired on
+`lead_20261103-0001` and uuid-tail ids (FAIL output, 2026-11-03), so the run
+detect was tightened to digit-starts/all-punct-values/email — the trade is
+documented in rule 6. Final transcript (900+ char instance echoes
+truncated; this section adds no `json` fences, so parsing is unchanged by
+appending it):
+
+```text
+jsonschema version: 4.26.0
+record sha256 (pre-append of this transcript section): 23daaca3ecf32863…
+json blocks found: 6
+META: check_schema(row_schema) OK
+
+== POSITIVE SHAPES (all must PASS, both legs) ==
+row[0] plain=PASS overlay=PASS mt=lead  status=PINGED    lead_id=lead_def456
+row[1] plain=PASS overlay=PASS mt=bid   status=accept    lead_id=lead_def456
+row[2] plain=PASS overlay=PASS mt=post  status=DELIVERED lead_id=lead_def456
+row[3] plain=PASS overlay=PASS mt=post  status=DELIVERED lead_id=lead_def456
+row[4] plain=PASS overlay=PASS mt=lead  status=ERASED    lead_id=lead_abc123
+wrapper[0..2] list-shape PASS
+
+== STANDALONE EXAMPLES (invalid A + invalid F; REJ both legs) ==
+invalid A plain: REJ | "Additional properties are not allowed ('consumer' was unexpected)"
+invalid A overlay: REJ | same
+invalid F plain: REJ | "'+15559876543-jane.q.public@example.com' does not match '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'"
+invalid F overlay: REJ | same
+
+== NEGATIVE PROBES (REJ, both legs) ==
+consumer-plant          : REJ | additionalProperties
+phone in hash field     : REJ | "'+15125550147' does not match '^[a-f0-9]{64}$'"
+40-hex SHA-1 in hash    : REJ | same pattern
+lowercase currency      : REJ | "'usd' does not match '^[A-Z]{3}$'"
+sub-second created_at   : REJ | whole-second pattern
+float money             : REJ | "'29.00' is not of type 'integer'"
+F plant phone+email id  : REJ | charset pattern (leading '+')
+900-char stuffed id     : REJ | charset pattern (leading '+', echo truncated)
+email-only id           : REJ | "should not be valid under {'pattern': …email branch}"
+dashed phone-run id     : REJ | "should not be valid under {…all-punctuation branch}"
+10-digit id             : REJ | "should not be valid under {…digit-start branch}"
+phone sender_id         : REJ | charset pattern
+65-char status          : REJ | charset/length
+
+== POSITIVE BOUNDARY PROBES (PASS both legs) ==
+lead_20261103-0001 (date-seq id)   : PASS
+id:8675309 (7-digit opaque)        : PASS
+64-char id at boundary             : PASS
+uuid-form id (12-digit tail)       : PASS
+unknown future status (open enum)  : PASS
+status 36-char dotted text         : PASS (platform-minted field: bound, not contact-guard)
+
+== QUERY-PARAM PROBES (OpenAPI sketch lead_id = guarded pattern) ==
+'+15559876543-jane.q.public@example.com': REJ    'jane.q.public@example.com': REJ
+'5125550147': REJ                        '555-123-4567': REJ
+'lead_def456': PASS                      'lead_20261103-0001': PASS
+status param 'NEW_UNKNOWN_STATUS': PASS  '+15125550147': REJ
+
+== MESSAGE_TYPE ENUM / DIGEST ==
+row enum: ['lead', 'call', 'ping', 'bid', 'post', 'event'] | 'ack' present: False
+digest recomputed == vector lcp-contact-hash-phone-001: True
+
+BATTERY: ALL PASS
+```
+
+Repository gates on the revised record (same session): `tools/check_doc_citations.py`
+`doc-citation-drift: 275 citation(s) checked, 0 broken [advisory]` ·
+`tools/check_lep_registry.py` passed (7 proposals) ·
+`tools/check_reserved_fields.py` passed · `test-vectors/conformance.py` ALL
+56 tests PASSED · `tools/tests/test_lep_wire_examples.py` (unittest lane) 3
+tests OK. Full CI recorded on the PR.
+
+Remaining for the implementation PR (unticked in #202 by design, G5): the
+`vec:`/`plat:` tests named in rule 6, the tenant-binding section, the row
+universe, and the conformance bullet.
