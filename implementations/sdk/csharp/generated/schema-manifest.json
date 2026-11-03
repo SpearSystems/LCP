@@ -4,7 +4,7 @@
     "schemas/ack.json": "7946d73afff4653c68ef4842986d9e5a4839ab2765346c706b8a60f46c060e4c",
     "schemas/bid.json": "afcd9d06be4e480ef0fe6efac7129a97536a042ce63ccfa94e53b6e9b77f9368",
     "schemas/call.json": "142aa654c964493cd67721921f1614a9f8635807732b816671bf5d0053bf2fe2",
-    "schemas/core.json": "2a13ad94dfb7b78441152efd19f51622fa3f13d32103246cbe952d44292318d6",
+    "schemas/core.json": "bd8d1f2f1448f076e8b3644393ac2b73cf98b989fdf543161cb80bf28a17267e",
     "schemas/envelope.json": "69bde360f9a985662ffef8d0f63dc3acbcf8d773c3fa763b70cc9e75f69a2606",
     "schemas/event.json": "e3c93ab2aa464a8401392ece2093abe207050bc372086763f373498048fd63fc",
     "schemas/lead.json": "dd5989503d9d8d2cf65114578d06e6300a767d8f9ae5c14b43bab456bd2bf2e6",

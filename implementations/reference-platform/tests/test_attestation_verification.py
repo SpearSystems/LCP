@@ -1214,8 +1214,11 @@ class AttestationGateTests(unittest.TestCase):
     # ─── Mode contract: observe verifies + audits + accepts ───────────────
 
     def test_attestation_observe_enforce_parity(self) -> None:
+        # Shape failures are mode-independent: the §2 schema pattern rejects a
+        # free-text attestation (400 LCP-100) before the verifier runs, so it is
+        # not part of the observe/enforce verdict-parity matrix — see
+        # ``test_attestation_free_text_rejected_in_both_modes``.
         cases = {
-            "free-text": ("trust me, I am a real agent (free text)", "format", 400),
             "hs256": (
                 make_token(
                     {"alg": "HS256", "typ": "JWT", "kid": "attest-key-1"},
@@ -1279,6 +1282,24 @@ class AttestationGateTests(unittest.TestCase):
                 observed_reason = rows[0]["metadata"]["reason"]
                 self.assertEqual(observed_reason, reason)
                 self.assertEqual(rows[0]["metadata"]["outcome"], "observe")
+
+    def test_attestation_free_text_rejected_in_both_modes(self) -> None:
+        """§2 shape gate is mode-independent: observe does not relax the schema."""
+        for mode in ("enforce", "observe"):
+            with self.subTest(mode=mode):
+                platform, stub = self._platform(mode=mode)
+                status, response = self._post(
+                    platform,
+                    self._lead(
+                        "trust me, I am a real agent (free text)",
+                        lead_id=f"free-text-{mode}",
+                    ),
+                )
+                self.assertEqual(400, status)
+                self.assertEqual("LCP-100", response["errors"][0]["code"])
+                self.assertEqual(
+                    stub.calls, [], "schema rejection must precede issuer fetch"
+                )
 
     # ─── §5: the procedure does not run for non-agent traffic ─────────────
 

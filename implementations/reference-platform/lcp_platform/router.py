@@ -1873,12 +1873,14 @@ class Platform:
                 "authenticated_download": True,
                 "max_bytes": self.config.max_attachment_bytes,
             },
-            # Phase 0 (LEP-0008, ratified 2026-11-03): L3 requires agent
-            # attestation *verification* (§7). This platform validates the
-            # attestation shape only, so it advertises L2 until enforcement
-            # is live — advertising L3 here is a false conformance claim
-            # (issue #192 reproduced forged/free-text attestations ingesting).
-            "conformance_level": "L2",
+            # LEP-0008 §9 advertisement honesty: L3 means agent attestation
+            # *verification* (§7). With verification implemented, the level
+            # follows the enforced mode — `observe` verifies and records but
+            # accepts, so it is NOT L3 (Phase 0 defaulted here until the
+            # implementation merged; issue #192 was the false-claim report).
+            "conformance_level": (
+                "L3" if self.config.attestation_mode == "enforce" else "L2"
+            ),
         }
 
     def public_offers(self, vertical: str | None = None) -> dict[str, Any]:

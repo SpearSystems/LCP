@@ -266,6 +266,21 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   re-advertised only when enforce-mode verification ships with its V13–V24
   gates. Regression pin: `plat:test_conformance_level_is_l2_until_attestation_verification_is_live`.
 
+### Added
+
+- **Agent attestation verification (LEP-0008, accepted 2026-11-03).** The
+  reference platform now verifies `provenance.agent.attestation` end to end:
+  issuer-published JWKS resolution over the paired egress controls, the
+  13-step §5 procedure (decode-time determinism, exact algorithm allowlist,
+  claim binding, P1363-only ES256, kid-norm A), `observe`/`enforce` modes with
+  `enforce` the default, and a frozen audit record that never stores token
+  bytes (PR #213). SPEC §9 gains the normative token-form, claim-set,
+  verification-order, replay/skew, failure-mapping and advertisement-honesty
+  text; `schemas/core.json` pins the compact-JWS shape (`≤ 8192` chars, three
+  non-empty base64url segments, no padding) with corpus vectors sdk-024–028
+  (SEC-15). `conformance_level` now follows the enforced mode: `L3` in
+  `enforce`, `L2` in `observe` — closing the false-L3 claim reported in #192.
+
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,
