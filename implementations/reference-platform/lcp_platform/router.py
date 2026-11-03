@@ -31,6 +31,7 @@ from .messages import (
     build_event,
     build_ping,
     build_post,
+    pair_phone_hash,
     webhook_headers,
 )
 from .security import SecurityPolicyError, validate_egress_host, validate_webhook_url
@@ -88,7 +89,16 @@ _BUYER_EVENT_TYPES = {
     "CALL_CONNECTED",
     "CALL_ENDED",
     "CALL_OUTCOME",
+    # LEP-0003 §4 (F5/T6): v1.1 reporting direction. A delivered buyer with
+    # proper event:submit scope must be able to report first contacts; the
+    # wildcard-default path is not a conformance-grade route.
+    "CONTACTED",
 }
+# LEP-0003 §4 ingest MUSTs: keyed-HMAC attestations validated on format and
+# count only - the platform cannot verify a reported digest without the
+# plaintext (trust model stated in the record).
+_CONTACTED_HASH_RE = re.compile(r"\A[a-f0-9]{64}\Z")
+_CONTACTED_REPORT_LIMIT = 32
 
 
 class Platform:
@@ -104,7 +114,9 @@ class Platform:
             cipher=EnvelopeCipher(config.pii_encryption_key),
         )
         self.attachment_scanner = build_malware_scanner(config)
-        self.mapping_registry = MappingRegistry(self.store.list_mappings(active_only=False))
+        self.mapping_registry = MappingRegistry(
+            self.store.list_mappings(active_only=False)
+        )
         self.normalizer = PublisherNormalizer()
         self.worker_id = f"worker-{uuid4().hex}"
         self._retry_delays = (1, 5, 30, 120, 600)
@@ -122,7 +134,11 @@ class Platform:
             action="credential.upsert",
             resource_type="credential",
             resource_id=sender_id,
-            metadata={"scopes": kwargs.get("scopes") if kwargs.get("scopes") is not None else ["*"]},
+            metadata={
+                "scopes": kwargs.get("scopes")
+                if kwargs.get("scopes") is not None
+                else ["*"]
+            },
         )
 
     def upsert_mapping(self, mapping: dict[str, Any]) -> None:
@@ -168,17 +184,23 @@ class Platform:
         self.validator.require_valid_envelope(envelope)
         self.store.insert_mapping_application(
             mapping=mapping,
-            source_record_id=str(payload.get("external_id")) if payload.get("external_id") else None,
+            source_record_id=str(payload.get("external_id"))
+            if payload.get("external_id")
+            else None,
             lead_id=str(payload["lead_id"]),
             source_digest=source_digest(source_record),
         )
         self.store.insert_audit(
-            tenant_id=self.auth.tenant_for(publisher_id) or self.config.routing_tenant_id,
+            tenant_id=self.auth.tenant_for(publisher_id)
+            or self.config.routing_tenant_id,
             actor_id=publisher_id,
             action="mapping.applied",
             resource_type="lead",
             resource_id=str(payload["lead_id"]),
-            metadata={"mapping_id": mapping["mapping_id"], "version": mapping["version"]},
+            metadata={
+                "mapping_id": mapping["mapping_id"],
+                "version": mapping["version"],
+            },
         )
         return envelope
 
@@ -198,7 +220,10 @@ class Platform:
             action="offer.upsert",
             resource_type="offer",
             resource_id=offer["offer_id"],
-            metadata={"buyer_id": offer["buyer_id"], "active": offer.get("active", True)},
+            metadata={
+                "buyer_id": offer["buyer_id"],
+                "active": offer.get("active", True),
+            },
         )
 
     # ─── Inbound messages ──────────────────────────────────────────────────
@@ -214,7 +239,9 @@ class Platform:
         self._validate_envelope(envelope)
         message = envelope["lcp"]["message"]
         if message["type"] not in {"lead", "call"}:
-            raise RequestError("Only lead and call messages can enter intake", "LCP-006")
+            raise RequestError(
+                "Only lead and call messages can enter intake", "LCP-006"
+            )
         self._validate_transport(message, headers)
         if message["receiver_id"] != self.config.platform_id:
             raise RequestError("Message receiver is not this platform", "LCP-002", 401)
@@ -227,23 +254,30 @@ class Platform:
             required_scope="lead:submit",
         )
         if sender_id != message["sender_id"]:
-            raise RequestError("Authenticated sender does not match message sender", "LCP-002", 401)
+            raise RequestError(
+                "Authenticated sender does not match message sender", "LCP-002", 401
+            )
         if not self.store.consume_rate_limit(
             sender_id,
             limit=self.config.rate_limit_per_minute,
         ):
             raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
 
-        existing = self.store.get_lead_by_idempotency(sender_id, message["idempotency_key"])
+        existing = self.store.get_lead_by_idempotency(
+            sender_id, message["idempotency_key"]
+        )
         if existing:
-            if self._body(self.store.decode_envelope(existing["envelope_json"])) != self._body(envelope):
+            if self._body(
+                self.store.decode_envelope(existing["envelope_json"])
+            ) != self._body(envelope):
                 raise RequestError(
                     "Idempotency key was reused with a different message",
                     "LCP-005",
                     409,
                 )
             self.store.insert_audit(
-                tenant_id=self.auth.tenant_for(sender_id) or self.config.routing_tenant_id,
+                tenant_id=self.auth.tenant_for(sender_id)
+                or self.config.routing_tenant_id,
                 actor_id=sender_id,
                 action="lead.duplicate",
                 resource_type="lead",
@@ -259,9 +293,13 @@ class Platform:
 
         payload = envelope["lcp"]["payload"]
         lead_expired = is_expired(envelope_expiry(envelope))
-        offers = [] if lead_expired else self.store.list_offer_candidates(
-            payload,
-            tenant_id=self.config.routing_tenant_id,
+        offers = (
+            []
+            if lead_expired
+            else self.store.list_offer_candidates(
+                payload,
+                tenant_id=self.config.routing_tenant_id,
+            )
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         self._validate_attachment_references(payload, sender_id)
@@ -272,19 +310,27 @@ class Platform:
             matches.append((offer, result))
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
-            offer for offer in matching_offers if offer.get("routing_mode", "auction") == "direct"
+            offer
+            for offer in matching_offers
+            if offer.get("routing_mode", "auction") == "direct"
         ]
         if direct_offers:
             direct_offers.sort(key=self._pacing_priority)
-            lead_exclusivity = payload.get("exclusivity", {})
-            if lead_exclusivity.get("exclusivity", "shared") == "exclusive":
-                matching_offers = direct_offers[:1]
-            else:
-                matching_offers = direct_offers[: max(1, int(lead_exclusivity.get("max_buyers", 1)))]
+            # No per-pass budget slice (LEP-0003 §5 item 1): direct awards are
+            # decided atomically at the single write-time point inside
+            # _create_direct_post, counting distinct awarded buyers.
+            matching_offers = direct_offers
+        lead_exclusive = (payload.get("exclusivity") or {}).get(
+            "exclusivity", "shared"
+        ) == "exclusive"
         sender_tenant = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
         initial_status = "EXPIRED" if lead_expired else "NEW"
-        if not self.store.insert_lead(envelope, status=initial_status, tenant_id=sender_tenant):
-            existing = self.store.get_lead_by_idempotency(sender_id, message["idempotency_key"])
+        if not self.store.insert_lead(
+            envelope, status=initial_status, tenant_id=sender_tenant
+        ):
+            existing = self.store.get_lead_by_idempotency(
+                sender_id, message["idempotency_key"]
+            )
             return build_ack(
                 envelope,
                 sender_id=self.config.platform_id,
@@ -308,6 +354,8 @@ class Platform:
                 if offer.get("routing_mode", "auction") == "direct":
                     if self._create_direct_post(envelope, offer):
                         created_direct_posts += 1
+                        if lead_exclusive:
+                            break
                 elif self._create_ping(envelope, offer):
                     created_pings += 1
         if created_direct_posts:
@@ -323,7 +371,11 @@ class Platform:
             action="lead.routed",
             resource_type="lead",
             resource_id=payload["lead_id"],
-            metadata={"message_type": message["type"], "ping_count": created_pings, "post_count": created_direct_posts},
+            metadata={
+                "message_type": message["type"],
+                "ping_count": created_pings,
+                "post_count": created_direct_posts,
+            },
         )
 
         return build_ack(
@@ -364,7 +416,9 @@ class Platform:
             raise RequestError("Buyer is not authorized for this ping", "LCP-002", 401)
         ping_envelope = self.store.decode_envelope(ping["envelope_json"])
         if message.get("correlation_id") != ping_envelope["lcp"]["message"]["id"]:
-            raise RequestError("Bid correlation does not match the ping", "LCP-003", 400)
+            raise RequestError(
+                "Bid correlation does not match the ping", "LCP-003", 400
+            )
         if not self.store.consume_rate_limit(
             sender_id,
             limit=self.config.rate_limit_per_minute,
@@ -438,21 +492,27 @@ class Platform:
             )
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
-            offer for offer in matching_offers if offer.get("routing_mode", "auction") == "direct"
+            offer
+            for offer in matching_offers
+            if offer.get("routing_mode", "auction") == "direct"
         ]
         if direct_offers:
             direct_offers.sort(key=self._pacing_priority)
-            exclusivity = payload.get("exclusivity", {})
-            if exclusivity.get("exclusivity", "shared") == "exclusive":
-                matching_offers = direct_offers[:1]
-            else:
-                matching_offers = direct_offers[: max(1, int(exclusivity.get("max_buyers", 1)))]
+            # No per-pass budget slice (LEP-0003 §5 item 1); the single
+            # write-time decision inside _create_direct_post counts
+            # distinct awarded buyers.
+            matching_offers = direct_offers
+        exclusive = (payload.get("exclusivity") or {}).get(
+            "exclusivity", "shared"
+        ) == "exclusive"
         created_pings = 0
         created_posts = 0
         for offer in matching_offers:
             if offer.get("routing_mode", "auction") == "direct":
-                if not self.store.has_delivery_for_offer(lead_id, offer["offer_id"], "post") and self._create_direct_post(envelope, offer):
+                if self._create_direct_post(envelope, offer):
                     created_posts += 1
+                    if exclusive:
+                        break
             elif not self.store.has_ping_for_offer(lead_id, offer["offer_id"]):
                 if self._create_ping(envelope, offer):
                     created_pings += 1
@@ -477,20 +537,22 @@ class Platform:
         self._process_routing_jobs()
         self._process_deliveries()
         self._process_attachment_deletions()
-        for ping in self.store.list_expired_open_pings():
-            self.store.expire_ping(ping["ping_id"])
+        # LEP-0003 §5 item 3: the auction-close re-route claims each expired
+        # ping exactly once (conditional UPDATE under the store transaction;
+        # FOR UPDATE SKIP LOCKED on Postgres) instead of racing an unlocked
+        # list_expired_open_pings sweep across replicas.
+        for ping in self.store.claim_expired_open_pings():
             if self.store.all_pings_terminal(ping["lead_id"]):
                 self._route_lead(ping["lead_id"])
 
-    def _create_direct_post(self, lead_envelope: dict[str, Any], offer: dict[str, Any]) -> bool:
+    def _create_direct_post(
+        self, lead_envelope: dict[str, Any], offer: dict[str, Any]
+    ) -> bool:
         secret = self.auth.secret_for(offer["buyer_id"])
         webhook_url = offer.get("webhook_url")
         if not secret or not webhook_url:
             return False
-        if self.store.has_delivery_for_offer(
-            lead_envelope["lcp"]["payload"]["lead_id"], offer["offer_id"], "post"
-        ):
-            return False
+        lead_payload = lead_envelope["lcp"]["payload"]
         post = build_post(
             lead_envelope,
             offer,
@@ -498,20 +560,27 @@ class Platform:
             price_cents=offer["floor_price_cents"],
             buyer_reference=None,
             correlation_id=lead_envelope["lcp"]["message"]["id"],
+            contacted_hashes=self._contacted_hashes_for(
+                lead_payload, offer["buyer_id"]
+            ),
         )
         self.validator.require_valid_envelope(post)
-        inserted = self.store.insert_delivery(
-            lead_id=lead_envelope["lcp"]["payload"]["lead_id"],
+        # Direct awards pass the SAME single write-time decision point as
+        # the auction path (LEP-0003 §5 item 1); the advisory
+        # has_delivery_for_offer pre-read is gone.
+        outcome = self.store.try_award_post(
+            lead_id=lead_payload["lead_id"],
             ping_id=None,
             offer_id=offer["offer_id"],
             buyer_id=offer["buyer_id"],
-            kind="post",
             envelope=post,
             webhook_url=webhook_url,
+            max_buyers=self._slot_budget(lead_payload),
         )
-        if inserted:
-            self._record_pending_payable(lead_envelope, offer, offer["floor_price_cents"])
-        return inserted
+        if outcome != "awarded":
+            return False
+        self._record_pending_payable(lead_envelope, offer, offer["floor_price_cents"])
+        return True
 
     @staticmethod
     def _month_key(offer: dict[str, Any], at: datetime | None = None) -> str:
@@ -538,7 +607,10 @@ class Platform:
             local = now.astimezone(ZoneInfo(offer.get("monthly_quota_timezone", "UTC")))
         except (KeyError, ValueError):
             local = now.astimezone(timezone.utc)
-        last_day = ((local.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)).day
+        last_day = (
+            (local.replace(day=28) + timedelta(days=4)).replace(day=1)
+            - timedelta(days=1)
+        ).day
         days_remaining = max(1, last_day - local.day + 1)
         return {
             "offer_id": offer_id,
@@ -583,19 +655,100 @@ class Platform:
         now = datetime.now(timezone.utc)
         if offer.get("daily_cap"):
             day_start = now.strftime("%Y-%m-%dT00:00:00Z")
-            if self.store.count_offer_deliveries(offer["offer_id"], since=day_start) >= offer["daily_cap"]:
+            if (
+                self.store.count_offer_deliveries(offer["offer_id"], since=day_start)
+                >= offer["daily_cap"]
+            ):
                 return False
         if offer.get("hourly_cap"):
             hour_start = now.strftime("%Y-%m-%dT%H:00:00Z")
-            if self.store.count_offer_deliveries(offer["offer_id"], since=hour_start) >= offer["hourly_cap"]:
+            if (
+                self.store.count_offer_deliveries(offer["offer_id"], since=hour_start)
+                >= offer["hourly_cap"]
+            ):
                 return False
-        if offer.get("monthly_maximum_payable") and offer.get("monthly_quota_policy") == "hard_cap":
-            summary = self.store.payable_summary(offer["offer_id"], self._month_key(offer, now))
-            if summary["payable"] + summary["pending"] >= int(offer["monthly_maximum_payable"]):
+        if (
+            offer.get("monthly_maximum_payable")
+            and offer.get("monthly_quota_policy") == "hard_cap"
+        ):
+            summary = self.store.payable_summary(
+                offer["offer_id"], self._month_key(offer, now)
+            )
+            if summary["payable"] + summary["pending"] >= int(
+                offer["monthly_maximum_payable"]
+            ):
                 return False
         return True
 
-    def _create_ping(self, lead_envelope: dict[str, Any], offer: dict[str, Any]) -> bool:
+    # ─── LEP-0003 slot accounting helpers ──────────────────────────────────
+
+    @staticmethod
+    def _slot_budget(lead_payload: dict[str, Any]) -> int:
+        """Slot budget in UNITS OF DISTINCT AWARDED BUYERS (LEP-0003 §1).
+
+        ``exclusive`` is exactly the one-slot special case; a ``shared`` lead
+        with ``max_buyers`` has that budget; the undeclared case is normed to
+        1, matching the platform's historical implicit cap
+        (``max(1, int(exclusivity.get("max_buyers", 1)))``).
+        """
+        exclusivity = lead_payload.get("exclusivity") or {}
+        if exclusivity.get("exclusivity", "shared") == "exclusive":
+            return 1
+        return max(1, int(exclusivity.get("max_buyers", 1)))
+
+    def _remaining_slots(self, lead_payload: dict[str, Any], lead_id: str) -> int:
+        return self._slot_budget(lead_payload) - self.store.count_awarded_buyers(
+            lead_id
+        )
+
+    def _contacted_hashes_for(
+        self, lead_payload: dict[str, Any], buyer_id: str
+    ) -> list[str] | None:
+        """Per-pair re-keying of this lead's contact history (LEP-0003 §3).
+
+        "The platform may therefore re-key only from the contact values it
+        delivered itself - never from ``CONTACTED`` report digests." The only
+        plaintext the reference platform holds for a lead is the delivered
+        ``consumer.phone`` (verbatim preimage rule); a stored attestation is
+        re-keyable only when it equals the digest the reporting buyer
+        computed under its own pair secret over that value. Attestations the
+        platform cannot tie to held plaintext stay stored and are never
+        forwarded. ``None`` = v1.0 bytes: capability-gated egress, no
+        reports, nothing re-keyable, or a phone-less lead (this platform
+        hashes phone only; the email-form re-key path ships with the
+        dedup-hash wave - SPEC §9 pin + published contact-hash vectors -
+        so no email-form digest is ever emitted here).
+        """
+        if not self.auth.advertises_slot_protocol(buyer_id):
+            return None
+        lead_id = lead_payload.get("lead_id")
+        if not lead_id:
+            return None
+        stored = self.store.list_contacted_digests(lead_id)
+        if not stored:
+            return None
+        phone = (lead_payload.get("consumer") or {}).get("phone")
+        if not phone:
+            return None
+        buyer_secret = self.auth.secret_for(buyer_id)
+        if not buyer_secret:
+            return None
+        rekeyed: list[str] = []
+        target = None
+        for row in stored:
+            reporter_secret = self.auth.secret_for(row["reported_by"])
+            if not reporter_secret:
+                continue
+            if row["digest"] == pair_phone_hash(reporter_secret, phone):
+                if target is None:
+                    target = pair_phone_hash(buyer_secret, phone)
+                if target not in rekeyed:
+                    rekeyed.append(target)
+        return rekeyed or None
+
+    def _create_ping(
+        self, lead_envelope: dict[str, Any], offer: dict[str, Any]
+    ) -> bool:
         secret = self.auth.secret_for(offer["buyer_id"])
         if not secret:
             # A buyer without a bilateral secret cannot receive a safe ping.
@@ -603,11 +756,19 @@ class Platform:
         lead_id = lead_envelope["lcp"]["payload"]["lead_id"]
         if self.store.has_ping_for_offer(lead_id, offer["offer_id"]):
             return False
+        advertised = self.auth.advertises_slot_protocol(offer["buyer_id"])
+        remaining = self._remaining_slots(lead_envelope["lcp"]["payload"], lead_id)
+        if advertised and remaining <= 0:
+            # LEP-0003 §1: "The platform MUST NOT send a ping with
+            # slots_available: 0 - zero remaining means stop pinging, not
+            # ping with zero."
+            return False
         ping, expires_at = build_ping(
             lead_envelope,
             offer,
             platform_id=self.config.platform_id,
             buyer_secret=secret,
+            slots_available=remaining if advertised else None,
         )
         self.validator.require_valid_envelope(ping)
         inserted = self.store.insert_ping(
@@ -634,7 +795,13 @@ class Platform:
 
     def _route_lead(self, lead_id: str) -> None:
         row = self.store.get_lead(lead_id)
-        if not row or row["status"] in {"ACCEPTED", "REJECTED", "EXPIRED", "DUPLICATE", "ERASED"}:
+        if not row or row["status"] in {
+            "ACCEPTED",
+            "REJECTED",
+            "EXPIRED",
+            "DUPLICATE",
+            "ERASED",
+        }:
             return
         if self.store.is_lead_suppressed(lead_id):
             return
@@ -656,13 +823,31 @@ class Platform:
             offer = self.store.get_offer(bid["offer_id"])
             if not ping or not offer or bid["decision"] != "accept":
                 continue
-            if ping["buyer_id"] != offer["buyer_id"] or bid["buyer_id"] != offer["buyer_id"]:
+            if (
+                ping["buyer_id"] != offer["buyer_id"]
+                or bid["buyer_id"] != offer["buyer_id"]
+            ):
                 continue
             if not self._capacity_available(offer):
                 continue
             if bid["bid_price_cents"] < offer["floor_price_cents"]:
                 continue
             if bid["currency"] != offer["currency"]:
+                continue
+            # LEP-0003 §5 item 4: award-eligible ping state. The OPEN-ping
+            # requirement previously lived only in submit_bid, so a
+            # post-expiry bid that reached the store by another path stayed
+            # award-eligible. The platform's expiry predicate is
+            # ``expires_at <= now``, so under canonical whole-second
+            # timestamps (LEP-0002) a bid received at or after the ping's
+            # expiry boundary is post-expiry and refused; bids received
+            # strictly before it - including the auction-close path where
+            # the sweep expires the ping and then re-routes - remain
+            # awardable. Erased/rejected pings never are. Canonical
+            # whole-second timestamps compare lexicographically.
+            if ping["status"] not in {"OPEN", "EXPIRED", "WON"}:
+                continue
+            if (bid["received_at"] or "") >= (ping["expires_at"] or ""):
                 continue
             candidates.append((bid, ping, offer))
         candidates.sort(
@@ -675,46 +860,68 @@ class Platform:
                 item[0]["buyer_id"],
             )
         )
-        lead_payload = self.store.decode_envelope(row["envelope_json"])["lcp"]["payload"]
-        exclusivity = lead_payload.get("exclusivity", {})
-        max_winners = 1 if exclusivity.get("exclusivity", "shared") == "exclusive" else max(
-            1, int(exclusivity.get("max_buyers", 1))
-        )
-        winners = candidates[:max_winners]
-        if not winners:
+        lead_payload = self.store.decode_envelope(row["envelope_json"])["lcp"][
+            "payload"
+        ]
+        budget = self._slot_budget(lead_payload)
+        exclusive = (lead_payload.get("exclusivity") or {}).get(
+            "exclusivity", "shared"
+        ) == "exclusive"
+        if not candidates:
             self.store.update_lead_status(lead_id, "EXPIRED")
             return
 
         lead_envelope = self.store.decode_envelope(row["envelope_json"])
         delivered = 0
-        for bid, ping, offer in winners:
+        for bid, ping, offer in candidates:
             if not offer.get("webhook_url"):
-                continue
-            if self.store.has_delivery_for_offer(lead_id, offer["offer_id"], "post"):
-                self.store.mark_ping_won(ping["ping_id"])
-                delivered += 1
                 continue
             post = build_post(
                 lead_envelope,
                 offer,
                 platform_id=self.config.platform_id,
                 price_cents=bid["bid_price_cents"],
-                buyer_reference=self.store.decode_envelope(bid["envelope_json"])["lcp"]["payload"].get("buyer_reference"),
+                buyer_reference=self.store.decode_envelope(bid["envelope_json"])["lcp"][
+                    "payload"
+                ].get("buyer_reference"),
                 correlation_id=ping["message_id"],
+                contacted_hashes=self._contacted_hashes_for(
+                    lead_payload, offer["buyer_id"]
+                ),
             )
             self.validator.require_valid_envelope(post)
-            if self.store.insert_delivery(
+            # LEP-0003 §5 item 1: the remaining-budget check and the post
+            # write occur in ONE transaction at this single decision point,
+            # counting distinct awarded buyers (§1 Units). The per-pass
+            # ``winners = candidates[:max_winners]`` slice and the advisory
+            # ``has_delivery_for_offer`` read-then-insert pair are gone:
+            # they let two overlapping passes deliver 4 posts against
+            # max_buyers 2 (dossier rows 14-15), and a POSTED re-entry
+            # re-budgeted from zero.
+            outcome = self.store.try_award_post(
                 lead_id=lead_id,
                 ping_id=ping["ping_id"],
                 offer_id=offer["offer_id"],
                 buyer_id=offer["buyer_id"],
-                kind="post",
                 envelope=post,
                 webhook_url=offer["webhook_url"],
-            ):
-                self._record_pending_payable(lead_envelope, offer, bid["bid_price_cents"])
+                max_buyers=budget,
+            )
+            if outcome == "awarded":
+                self._record_pending_payable(
+                    lead_envelope, offer, bid["bid_price_cents"]
+                )
                 self.store.mark_ping_won(ping["ping_id"])
                 delivered += 1
+                if exclusive:
+                    break
+            elif outcome == "duplicate_offer":
+                # The award already exists (re-entry / concurrent pass):
+                # keep the historical winner marking, mint nothing new.
+                self.store.mark_ping_won(ping["ping_id"])
+                delivered += 1
+                if exclusive:
+                    break
         self.store.update_lead_status(lead_id, "POSTED" if delivered else "EXPIRED")
 
     def _process_attachment_deletions(self) -> None:
@@ -722,13 +929,17 @@ class Platform:
             attempts = int(job["attempts"]) + 1
             try:
                 self.attachments.delete(job["storage_ref"])
-            except Exception as exc:  # deletion is durable; retry without exposing storage details
+            except (
+                Exception
+            ) as exc:  # deletion is durable; retry without exposing storage details
                 if attempts >= self.config.max_delivery_attempts:
                     status = "FAILED"
                     next_attempt = now_iso()
                 else:
                     status = "RETRY"
-                    delay = self._retry_delays[min(attempts - 1, len(self._retry_delays) - 1)]
+                    delay = self._retry_delays[
+                        min(attempts - 1, len(self._retry_delays) - 1)
+                    ]
                     next_attempt = format_iso_datetime(
                         datetime.now(timezone.utc) + timedelta(seconds=delay)
                     )
@@ -792,7 +1003,9 @@ class Platform:
                     for chunk in response.iter_bytes():
                         response_bytes += len(chunk)
                         if response_bytes > self.config.max_webhook_response_bytes:
-                            raise SecurityPolicyError("Webhook response exceeded the configured limit")
+                            raise SecurityPolicyError(
+                                "Webhook response exceeded the configured limit"
+                            )
                     response_status = response.status_code
             if response_status == 409 or 200 <= response_status < 300:
                 self.store.mark_delivery(
@@ -844,7 +1057,10 @@ class Platform:
             platform_id=self.config.platform_id,
             receiver_id=delivery["buyer_id"],
             correlation_id=post["lcp"]["message"]["id"],
-            details={"delivery_id": delivery["delivery_id"], "offer_id": delivery["offer_id"]},
+            details={
+                "delivery_id": delivery["delivery_id"],
+                "offer_id": delivery["offer_id"],
+            },
             test=post["lcp"]["message"].get("test", False),
         )
         self.validator.require_valid_envelope(event)
@@ -890,9 +1106,14 @@ class Platform:
     ) -> tuple[str, str, int | None]:
         rules = offer.get("payable_rules", {})
         seconds_value = details.get("total_seconds", details.get("call_seconds"))
-        seconds = int(seconds_value) if isinstance(seconds_value, (int, float)) else None
+        seconds = (
+            int(seconds_value) if isinstance(seconds_value, (int, float)) else None
+        )
         call_status = details.get("call_status", details.get("status"))
-        if rules.get("require_call_answered") and call_status not in {"answered", "connected"}:
+        if rules.get("require_call_answered") and call_status not in {
+            "answered",
+            "connected",
+        }:
             return "not_payable", "call_not_answered", seconds
         minimum = int(rules.get("minimum_call_seconds", 0))
         if seconds is None and minimum > 0:
@@ -903,6 +1124,63 @@ class Platform:
         if allowed and details.get("disposition") not in allowed:
             return "not_payable", "call_disposition_not_payable", seconds
         return "payable", "call_outcome_met_rules", seconds
+
+    @staticmethod
+    def _validate_contact_report(payload: dict[str, Any]) -> None:
+        """LEP-0003 §4 ingest MUSTs (the report rule cannot be drafted in the
+        open ``event.details`` object, so it is enforced at ingest).
+
+        "Receivers MUST reject ``CONTACTED`` reports whose
+        ``details.contacted_hashes`` contains an entry failing
+        ``^[a-f0-9]{64}$`` or exceeds **32 entries per report**, and MUST
+        treat oversized or malformed reports as a validation rejection, not
+        a store." ``[]`` asserts nothing and "MUST NOT be sent as an event
+        detail" (§4 report-direction absent-vs-empty rule); absent = nothing
+        to report and is not an error. Beyond shape and count the entries are
+        authenticated-sender, per-lead attestations - the platform cannot
+        verify a digest without the plaintext, and does not try.
+        """
+        details = payload.get("details")
+        if not isinstance(details, dict) or "contacted_hashes" not in details:
+            return
+        hashes = details["contacted_hashes"]
+        if (
+            not isinstance(hashes, list)
+            or not hashes
+            or len(hashes) > _CONTACTED_REPORT_LIMIT
+            or not all(
+                isinstance(entry, str) and _CONTACTED_HASH_RE.match(entry)
+                for entry in hashes
+            )
+        ):
+            raise RequestError(
+                "CONTACTED report details.contacted_hashes must be a list of "
+                "1 to 32 lowercase 64-hex per-pair digests",
+                "LCP-100",
+            )
+
+    def _record_contacted_attestations(
+        self, payload: dict[str, Any], *, lead_id: str, sender_id: str
+    ) -> None:
+        """Merge a validated CONTACTED report into the lead's contacted SET.
+
+        At-least-once semantics (LEP-0003 §4): duplicate reports of the same
+        digests merge by set union and cannot grow the set; the accumulation
+        is a set, not a log, exactly like the wire array's "duplicates are
+        tolerated but meaningless" rule.
+        """
+        details = payload.get("details")
+        if not isinstance(details, dict):
+            return
+        hashes = details.get("contacted_hashes")
+        if not isinstance(hashes, list) or not hashes:
+            return
+        self.store.record_contacted_digests(
+            lead_id,
+            [str(entry) for entry in hashes],
+            reported_by=sender_id,
+            reported_at=str(payload.get("timestamp") or now_iso()),
+        )
 
     def submit_event(
         self,
@@ -944,7 +1222,9 @@ class Platform:
             or (is_delivered_buyer and event_name in _BUYER_EVENT_TYPES)
         )
         if not authorized:
-            raise RequestError("Sender is not authorized for this lead event", "LCP-002", 401)
+            raise RequestError(
+                "Sender is not authorized for this lead event", "LCP-002", 401
+            )
 
         existing_event = self.store.get_event(message["id"])
         if existing_event:
@@ -952,7 +1232,8 @@ class Platform:
                 same_event = (
                     existing_event["lead_id"] == payload["lead_id"]
                     and existing_event["event_name"] == event_name
-                    and self.store.decode_envelope(existing_event["envelope_json"]) == envelope
+                    and self.store.decode_envelope(existing_event["envelope_json"])
+                    == envelope
                 )
             except (KeyError, TypeError, ValueError):
                 same_event = False
@@ -968,6 +1249,9 @@ class Platform:
                 status="DUPLICATE",
                 lead_id=payload["lead_id"],
             )
+
+        if event_name == "CONTACTED":
+            self._validate_contact_report(payload)
 
         target_status = _EVENT_STATUS_TARGETS.get(event_name)
         if target_status:
@@ -992,7 +1276,9 @@ class Platform:
                 )
 
         try:
-            inserted_event = self.store.insert_event(payload["lead_id"], event_name, envelope)
+            inserted_event = self.store.insert_event(
+                payload["lead_id"], event_name, envelope
+            )
         except EventIdempotencyConflict as exc:
             raise RequestError(str(exc), "LCP-005", 409) from exc
         if not inserted_event:
@@ -1011,13 +1297,25 @@ class Platform:
             )
         elif event_name == "ERASURE_REQUEST":
             self.erase_lead(payload["lead_id"], actor_id=sender_id)
+        elif event_name == "CONTACTED":
+            self._record_contacted_attestations(
+                payload, lead_id=payload["lead_id"], sender_id=sender_id
+            )
 
         details = payload.get("details", {})
         offer_id = details.get("offer_id") if isinstance(details, dict) else None
         post_delivery = next(
-            (delivery for delivery in deliveries
-             if delivery["kind"] == "post" and (not offer_id or delivery["offer_id"] == offer_id)
-             and (is_admin or sender_id == delivery["buyer_id"] or sender_id == row["sender_id"])),
+            (
+                delivery
+                for delivery in deliveries
+                if delivery["kind"] == "post"
+                and (not offer_id or delivery["offer_id"] == offer_id)
+                and (
+                    is_admin
+                    or sender_id == delivery["buyer_id"]
+                    or sender_id == row["sender_id"]
+                )
+            ),
             None,
         )
         if post_delivery:
@@ -1028,9 +1326,14 @@ class Platform:
                 reason = None
                 seconds = None
                 if event_name in {"DISPUTED", "REFUNDED"}:
-                    status, reason = event_name.lower(), f"lifecycle_{event_name.lower()}"
+                    status, reason = (
+                        event_name.lower(),
+                        f"lifecycle_{event_name.lower()}",
+                    )
                 elif event_name in {"CALL_OUTCOME", "CALL_ENDED", "CALL_CONNECTED"}:
-                    status, reason, seconds = self._evaluate_call_outcome(offer, details)
+                    status, reason, seconds = self._evaluate_call_outcome(
+                        offer, details
+                    )
                 elif event_name in {"DELIVERED", "ACCEPTED"}:
                     status, reason = "payable", "buyer_acceptance"
                 if status:
@@ -1040,16 +1343,27 @@ class Platform:
                         lead_id=payload["lead_id"],
                         buyer_id=offer["buyer_id"],
                         month_key=self._month_key(offer),
-                        channel=post_payload.get("channel", "call" if "call" in post_payload else "lead"),
+                        channel=post_payload.get(
+                            "channel", "call" if "call" in post_payload else "lead"
+                        ),
                         status=status,
                         price_cents=int(post_payload.get("price_cents", 0)),
-                        currency=str(post_payload.get("currency", offer.get("currency", ""))),
+                        currency=str(
+                            post_payload.get("currency", offer.get("currency", ""))
+                        ),
                         reason=reason,
                         call_seconds=seconds,
                     )
-        return build_ack(envelope, sender_id=self.config.platform_id, status="RECEIVED", lead_id=payload["lead_id"])
+        return build_ack(
+            envelope,
+            sender_id=self.config.platform_id,
+            status="RECEIVED",
+            lead_id=payload["lead_id"],
+        )
 
-    def upload_attachment(self, *, headers: dict[str, str], body: bytes) -> dict[str, Any]:
+    def upload_attachment(
+        self, *, headers: dict[str, str], body: bytes
+    ) -> dict[str, Any]:
         self._validate_test_header(headers)
         owner_id = header(headers, "X-LCP-Sender-Id")
         idempotency_key = header(headers, "X-LCP-Idempotency-Key")
@@ -1057,16 +1371,23 @@ class Platform:
         attachment_id = header(headers, "X-LCP-Attachment-Id") or f"att_{uuid4().hex}"
         purpose = header(headers, "X-LCP-Attachment-Purpose") or "supporting_document"
         filename = header(headers, "X-LCP-Filename") or "attachment.bin"
-        content_type = (header(headers, "Content-Type") or "").split(";", 1)[0].strip().lower()
+        content_type = (
+            (header(headers, "Content-Type") or "").split(";", 1)[0].strip().lower()
+        )
         digest = (header(headers, "X-LCP-Content-SHA256") or "").lower()
         expires_header = header(headers, "X-LCP-Attachment-Expires-At")
         expires_value = parse_iso_datetime(expires_header) if expires_header else None
         if expires_header and expires_value is None:
-            raise RequestError("Attachment expiry must be an RFC 3339 date-time", "LCP-100")
+            raise RequestError(
+                "Attachment expiry must be an RFC 3339 date-time", "LCP-100"
+            )
         if expires_value is not None and expires_value <= datetime.now(timezone.utc):
             raise RequestError("Attachment expiry must be in the future", "LCP-100")
         if not owner_id or not idempotency_key or not lead_id or not digest:
-            raise RequestError("Attachment identity, lead, idempotency, and content hash headers are required", "LCP-003")
+            raise RequestError(
+                "Attachment identity, lead, idempotency, and content hash headers are required",
+                "LCP-003",
+            )
         self.auth.authenticate(
             sender_id=owner_id,
             headers=headers,
@@ -1076,16 +1397,24 @@ class Platform:
             required_scope="attachment:write",
         )
         if len(body) == 0 or len(body) > self.config.max_attachment_bytes:
-            raise RequestError("Attachment size is outside the configured limit", "LCP-001", 413)
+            raise RequestError(
+                "Attachment size is outside the configured limit", "LCP-001", 413
+            )
         if content_type not in self.config.allowed_attachment_content_types:
             raise RequestError("Attachment content type is not allowed", "LCP-100", 415)
         try:
             FileAttachmentStore.validate_metadata(
-                attachment_id=attachment_id, filename=filename, content_type=content_type, size_bytes=len(body)
+                attachment_id=attachment_id,
+                filename=filename,
+                content_type=content_type,
+                size_bytes=len(body),
             )
         except AttachmentError as exc:
             raise RequestError(str(exc), "LCP-100") from exc
-        if not re.fullmatch(r"[a-f0-9]{64}", digest) or hashlib.sha256(body).hexdigest() != digest:
+        if (
+            not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or hashlib.sha256(body).hexdigest() != digest
+        ):
             raise RequestError("Attachment content hash is invalid", "LCP-100")
         residency_header = header(headers, "X-LCP-Data-Residency")
         residency_value = residency_header or self.config.attachment_residency
@@ -1099,9 +1428,12 @@ class Platform:
         except AttachmentError as exc:
             raise RequestError(str(exc), "LCP-100") from exc
         if self.config.attachment_allowed_residencies and residency not in {
-            validate_residency(value) for value in self.config.attachment_allowed_residencies
+            validate_residency(value)
+            for value in self.config.attachment_allowed_residencies
         }:
-            raise RequestError("Attachment residency is not permitted by this deployment", "LCP-100")
+            raise RequestError(
+                "Attachment residency is not permitted by this deployment", "LCP-100"
+            )
         try:
             scan = self.attachment_scanner.scan(
                 body,
@@ -1111,17 +1443,29 @@ class Platform:
         except AttachmentError as exc:
             raise RequestError(str(exc), "LCP-100") from exc
         if self.config.attachment_scan_required and scan.status != "clean":
-            raise RequestError("Attachment did not pass the required malware scan", "LCP-100")
+            raise RequestError(
+                "Attachment did not pass the required malware scan", "LCP-100"
+            )
         existing = self.store.get_attachment_by_idempotency(owner_id, idempotency_key)
         if existing:
             if existing["sha256"] != digest or existing["lead_id"] != lead_id:
-                raise RequestError("Attachment idempotency key was reused with different content", "LCP-005", 409)
+                raise RequestError(
+                    "Attachment idempotency key was reused with different content",
+                    "LCP-005",
+                    409,
+                )
             return self._attachment_metadata(existing)
         existing_id = self.store.get_attachment(attachment_id)
         if existing_id:
-            if existing_id["owner_id"] == owner_id and existing_id["sha256"] == digest and existing_id["lead_id"] == lead_id:
+            if (
+                existing_id["owner_id"] == owner_id
+                and existing_id["sha256"] == digest
+                and existing_id["lead_id"] == lead_id
+            ):
                 return self._attachment_metadata(existing_id)
-            raise RequestError("Attachment ID is already assigned to another file", "LCP-005", 409)
+            raise RequestError(
+                "Attachment ID is already assigned to another file", "LCP-005", 409
+            )
         try:
             storage_ref = self.attachments.put(
                 attachment_id,
@@ -1134,16 +1478,27 @@ class Platform:
         except AttachmentError as exc:
             raise RequestError(str(exc), "LCP-500", 500) from exc
         metadata = {
-            "attachment_id": attachment_id, "lead_id": lead_id, "owner_id": owner_id,
-            "idempotency_key": idempotency_key, "purpose": purpose, "filename": filename,
-            "content_type": content_type, "size_bytes": len(body), "sha256": digest,
-            "storage_ref": storage_ref, "residency": residency,
-            "scan_status": scan.status, "scan_engine": scan.engine, "scanned_at": scan.scanned_at,
+            "attachment_id": attachment_id,
+            "lead_id": lead_id,
+            "owner_id": owner_id,
+            "idempotency_key": idempotency_key,
+            "purpose": purpose,
+            "filename": filename,
+            "content_type": content_type,
+            "size_bytes": len(body),
+            "sha256": digest,
+            "storage_ref": storage_ref,
+            "residency": residency,
+            "scan_status": scan.status,
+            "scan_engine": scan.engine,
+            "scanned_at": scan.scanned_at,
             "encryption": self.attachments.encryption,
             "expires_at": format_iso_datetime(expires_value) if expires_value else None,
         }
         if not self.store.insert_attachment(metadata):
-            existing = self.store.get_attachment_by_idempotency(owner_id, idempotency_key)
+            existing = self.store.get_attachment_by_idempotency(
+                owner_id, idempotency_key
+            )
             self.attachments.delete(storage_ref)
             if existing:
                 return self._attachment_metadata(existing)
@@ -1154,7 +1509,12 @@ class Platform:
             action="attachment.uploaded",
             resource_type="attachment",
             resource_id=attachment_id,
-            metadata={"lead_id": lead_id, "purpose": purpose, "size_bytes": len(body), "sha256": digest},
+            metadata={
+                "lead_id": lead_id,
+                "purpose": purpose,
+                "size_bytes": len(body),
+                "sha256": digest,
+            },
         )
         row = self.store.get_attachment(attachment_id)
         assert row is not None
@@ -1164,9 +1524,13 @@ class Platform:
     def _attachment_metadata(row: Any) -> dict[str, Any]:
         metadata: dict[str, Any] = {
             "attachment_id": row["attachment_id"],
-            "purpose": row["purpose"], "filename": row["filename"],
-            "content_type": row["content_type"], "size_bytes": row["size_bytes"],
-            "sha256": row["sha256"], "storage_ref": row["storage_ref"], "created_at": row["created_at"],
+            "purpose": row["purpose"],
+            "filename": row["filename"],
+            "content_type": row["content_type"],
+            "size_bytes": row["size_bytes"],
+            "sha256": row["sha256"],
+            "storage_ref": row["storage_ref"],
+            "created_at": row["created_at"],
             "residency": row["residency"],
             "malware_scan": {
                 "status": row["scan_status"],
@@ -1179,7 +1543,9 @@ class Platform:
             metadata["expires_at"] = row["expires_at"]
         return metadata
 
-    def download_attachment(self, attachment_id: str, *, headers: dict[str, str]) -> tuple[bytes, dict[str, str]]:
+    def download_attachment(
+        self, attachment_id: str, *, headers: dict[str, str]
+    ) -> tuple[bytes, dict[str, str]]:
         row = self.store.get_attachment(attachment_id)
         if not row or row["status"] != "AVAILABLE":
             raise RequestError("Attachment not found", "LCP-003", 404)
@@ -1187,7 +1553,12 @@ class Platform:
             self.store.expire_attachment(attachment_id)
             self._process_attachment_deletions()
             raise RequestError("Attachment not found", "LCP-003", 404)
-        sender_id = self.auth.authenticate(sender_id=header(headers, "X-LCP-Sender-Id"), headers=headers, body=b"", mutating=False)
+        sender_id = self.auth.authenticate(
+            sender_id=header(headers, "X-LCP-Sender-Id"),
+            headers=headers,
+            body=b"",
+            mutating=False,
+        )
         authorized = (
             sender_id == row["owner_id"]
             or self.auth.has_scope(sender_id, "platform:admin")
@@ -1195,7 +1566,8 @@ class Platform:
         )
         if not authorized:
             self.store.insert_audit(
-                tenant_id=self.auth.tenant_for(row["owner_id"]) or self.config.routing_tenant_id,
+                tenant_id=self.auth.tenant_for(row["owner_id"])
+                or self.config.routing_tenant_id,
                 actor_id=sender_id,
                 action="attachment.download_denied",
                 resource_type="attachment",
@@ -1204,7 +1576,8 @@ class Platform:
             )
             raise RequestError("Attachment not found", "LCP-003", 404)
         self.store.insert_audit(
-            tenant_id=self.auth.tenant_for(row["owner_id"]) or self.config.routing_tenant_id,
+            tenant_id=self.auth.tenant_for(row["owner_id"])
+            or self.config.routing_tenant_id,
             actor_id=sender_id,
             action="attachment.downloaded",
             resource_type="attachment",
@@ -1212,10 +1585,15 @@ class Platform:
             metadata={"lead_id": row["lead_id"]},
         )
         try:
-            content = self.attachments.read(row["storage_ref"], expected_sha256=row["sha256"])
+            content = self.attachments.read(
+                row["storage_ref"], expected_sha256=row["sha256"]
+            )
         except AttachmentError as exc:
             raise RequestError(str(exc), "LCP-500", 500) from exc
-        return content, {"Content-Type": row["content_type"], "Content-Disposition": f'attachment; filename="{row["filename"]}"'}
+        return content, {
+            "Content-Type": row["content_type"],
+            "Content-Disposition": f'attachment; filename="{row["filename"]}"',
+        }
 
     def _validate_test_header(self, headers: dict[str, str]) -> None:
         marker = header(headers, "X-LCP-Test")
@@ -1248,7 +1626,9 @@ class Platform:
             return
         raise RequestError("Lead not found", "LCP-003", 404)
 
-    def lead_status(self, lead_id: str, requester_id: str | None = None) -> dict[str, Any]:
+    def lead_status(
+        self, lead_id: str, requester_id: str | None = None
+    ) -> dict[str, Any]:
         row = self.store.get_lead(lead_id)
         if not row:
             raise RequestError("Lead not found", "LCP-003", 404)
@@ -1276,14 +1656,23 @@ class Platform:
                 and delivery["buyer_id"] == requester_id
                 and delivery["status"] == "DELIVERED"
             }
-            decisions = [decision for decision in decisions if decision["buyer_id"] == requester_id]
-            payables = [payable for payable in payables if payable["buyer_id"] == requester_id]
+            decisions = [
+                decision
+                for decision in decisions
+                if decision["buyer_id"] == requester_id
+            ]
+            payables = [
+                payable for payable in payables if payable["buyer_id"] == requester_id
+            ]
             filtered_events = []
             for event in events:
                 payload = event["lcp"].get("payload", {})
                 details = payload.get("details", {})
                 sender = event["lcp"].get("message", {}).get("sender_id")
-                if sender == requester_id or details.get("offer_id") in winning_offer_ids:
+                if (
+                    sender == requester_id
+                    or details.get("offer_id") in winning_offer_ids
+                ):
                     filtered_events.append(payload)
             events_view = filtered_events
         else:
@@ -1297,7 +1686,9 @@ class Platform:
             "events": events_view,
             "match_decisions": decisions,
             "payable_records": payables,
-            "attachments": [self._attachment_metadata(attachment) for attachment in attachments],
+            "attachments": [
+                self._attachment_metadata(attachment) for attachment in attachments
+            ],
         }
         if row["expires_at"] is not None:
             result["expires_at"] = row["expires_at"]
@@ -1307,7 +1698,11 @@ class Platform:
 
     def capabilities(self) -> dict[str, Any]:
         return {
-            "lcp_versions": ["1.0.0"],
+            # LEP-0003 Compatibility (F6): every element is a FULL
+            # major.minor.patch semver; peers compare parsed (major == 1 and
+            # minor >= 1), never string literals or prefixes. 1.1.0
+            # advertises the slot/contacted surface and CONTACTED reporting.
+            "lcp_versions": ["1.0.0", "1.1.0"],
             "message_types": ["lead", "call", "ping", "bid", "post", "ack", "event"],
             "verticals": [
                 {"id": path.stem, "schema_version": "1.0.0"}
@@ -1315,8 +1710,29 @@ class Platform:
             ],
             "countries": [],
             "auth_methods": ["bearer", "hmac"],
-            "events": ["DELIVERED", "ACCEPTED", "REJECTED", "DISPUTED", "REFUNDED", "EXPIRED", "CONVERTED", "ARCHIVED", "CALL_OFFERED", "CALL_CONNECTED", "CALL_ENDED", "CALL_OUTCOME"],
-            "attachments": {"upload": True, "authenticated_download": True, "max_bytes": self.config.max_attachment_bytes},
+            # LEP-0003 §4 (F5/T6): CONTACTED is reportable by a delivered,
+            # scoped buyer and must be advertised (the §8 surface the
+            # compatibility gate relies on).
+            "events": [
+                "DELIVERED",
+                "ACCEPTED",
+                "REJECTED",
+                "DISPUTED",
+                "REFUNDED",
+                "EXPIRED",
+                "CONVERTED",
+                "ARCHIVED",
+                "CALL_OFFERED",
+                "CALL_CONNECTED",
+                "CALL_ENDED",
+                "CALL_OUTCOME",
+                "CONTACTED",
+            ],
+            "attachments": {
+                "upload": True,
+                "authenticated_download": True,
+                "max_bytes": self.config.max_attachment_bytes,
+            },
             "conformance_level": "L3",
         }
 
@@ -1337,7 +1753,9 @@ class Platform:
         if relative.is_absolute() or ".." in relative.parts:
             raise RequestError("Schema not found", "LCP-007", 404)
         if name.startswith("verticals/"):
-            path = self.validator.vertical_root / f"{name.removeprefix('verticals/')}.json"
+            path = (
+                self.validator.vertical_root / f"{name.removeprefix('verticals/')}.json"
+            )
         else:
             path = self.validator.schema_root / f"{name}.json"
         if not path.exists():
@@ -1347,9 +1765,13 @@ class Platform:
 
     @staticmethod
     def _body(envelope: dict[str, Any]) -> bytes:
-        return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
 
-    def _validate_transport(self, message: dict[str, Any], headers: dict[str, str]) -> None:
+    def _validate_transport(
+        self, message: dict[str, Any], headers: dict[str, str]
+    ) -> None:
         test_header = next(
             (value for key, value in headers.items() if key.lower() == "x-lcp-test"),
             None,
@@ -1361,21 +1783,44 @@ class Platform:
         if self.config.test_mode and not message_is_test:
             raise RequestError("Sandbox accepts only test messages", "LCP-013", 400)
         if not self.config.test_mode and message_is_test:
-            raise RequestError("Test messages must use a sandbox endpoint", "LCP-013", 400)
+            raise RequestError(
+                "Test messages must use a sandbox endpoint", "LCP-013", 400
+            )
         if self.config.test_mode and not header_is_test:
-            raise RequestError("Sandbox requests require X-LCP-Test: true", "LCP-013", 400)
+            raise RequestError(
+                "Sandbox requests require X-LCP-Test: true", "LCP-013", 400
+            )
 
-    def _validate_attachment_references(self, payload: dict[str, Any], owner_id: str) -> None:
+    def _validate_attachment_references(
+        self, payload: dict[str, Any], owner_id: str
+    ) -> None:
         for attachment in payload.get("attachments", []):
             attachment_id = attachment.get("attachment_id")
-            row = self.store.get_attachment(str(attachment_id)) if attachment_id else None
+            row = (
+                self.store.get_attachment(str(attachment_id)) if attachment_id else None
+            )
             if not row or row["status"] != "AVAILABLE":
                 raise RequestError("Referenced attachment is not available", "LCP-003")
             if row["owner_id"] != owner_id or row["lead_id"] != payload.get("lead_id"):
-                raise RequestError("Referenced attachment is not owned by this publisher lead", "LCP-002", 401)
-            for field in ("filename", "content_type", "size_bytes", "sha256", "storage_ref", "residency", "encryption"):
+                raise RequestError(
+                    "Referenced attachment is not owned by this publisher lead",
+                    "LCP-002",
+                    401,
+                )
+            for field in (
+                "filename",
+                "content_type",
+                "size_bytes",
+                "sha256",
+                "storage_ref",
+                "residency",
+                "encryption",
+            ):
                 if field in attachment and str(attachment[field]) != str(row[field]):
-                    raise RequestError("Referenced attachment metadata does not match stored content", "LCP-100")
+                    raise RequestError(
+                        "Referenced attachment metadata does not match stored content",
+                        "LCP-100",
+                    )
 
     def _validate_envelope(self, envelope: dict[str, Any]) -> None:
         # SPEC §5/§6: message.type is a closed allowlist and a value outside

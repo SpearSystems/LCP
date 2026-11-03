@@ -111,8 +111,10 @@ class EventIdempotencyConflict(ValueError):
 
 
 def _candidate_string_values(value: Any) -> set[str] | None:
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
     ):
         return None
     return set(value)
@@ -183,7 +185,11 @@ def _candidate_requirement_values(
             continue
         if path != "channel":
             parts = path.split(".")
-            if len(parts) != 2 or parts[0] not in _CANDIDATE_ALLOWED_PATH_ROOTS or not parts[1]:
+            if (
+                len(parts) != 2
+                or parts[0] not in _CANDIDATE_ALLOWED_PATH_ROOTS
+                or not parts[1]
+            ):
                 uncertain = True
                 continue
         if operator not in _CANDIDATE_ALLOWED_OPERATORS:
@@ -201,13 +207,17 @@ def _candidate_requirement_values(
                 if not isinstance(value, str) or not value:
                     uncertain = True
                 else:
-                    service_values = {value} if service_values is None else service_values & {value}
+                    service_values = (
+                        {value} if service_values is None else service_values & {value}
+                    )
         elif operator == "in":
             values = _candidate_string_values(predicate.get("values"))
             if values is None:
                 uncertain = True
             elif path == "attributes.service_type":
-                service_values = values if service_values is None else service_values & values
+                service_values = (
+                    values if service_values is None else service_values & values
+                )
         elif operator == "between":
             minimum = predicate.get("min")
             maximum = predicate.get("max")
@@ -250,12 +260,16 @@ def _offer_candidate_dimensions(offer: Mapping[str, Any]) -> list[tuple[str, str
     uncertain = uncertain or invalid_countries or "countries" not in offer
 
     state_regions, invalid_regions = _candidate_optional_values(offer, "state_regions")
-    postal_codes, invalid_postal_codes = _candidate_optional_values(offer, "postal_codes")
+    postal_codes, invalid_postal_codes = _candidate_optional_values(
+        offer, "postal_codes"
+    )
     uncertain = uncertain or invalid_regions or invalid_postal_codes
 
     attribute_equals = offer.get("attribute_equals", {})
     attribute_in = offer.get("attribute_in", {})
-    if not isinstance(attribute_equals, Mapping) or not isinstance(attribute_in, Mapping):
+    if not isinstance(attribute_equals, Mapping) or not isinstance(
+        attribute_in, Mapping
+    ):
         uncertain = True
         attribute_equals = {}
         attribute_in = {}
@@ -291,7 +305,9 @@ def _offer_candidate_dimensions(offer: Mapping[str, Any]) -> list[tuple[str, str
     service_type = _candidate_intersection(service_type, requirement_values)
 
     countries = _candidate_intersection(countries, area_values.get("country_code"))
-    state_regions = _candidate_intersection(state_regions, area_values.get("state_region"))
+    state_regions = _candidate_intersection(
+        state_regions, area_values.get("state_region")
+    )
     postal_codes = _candidate_intersection(postal_codes, area_values.get("postal_code"))
 
     if uncertain:
@@ -318,7 +334,9 @@ def _offer_candidate_dimensions(offer: Mapping[str, Any]) -> list[tuple[str, str
 class Store:
     """Thread-safe SQLite store with explicit transaction boundaries."""
 
-    def __init__(self, path: str | Path, *, pii_encryption_key: str | bytes | None = None):
+    def __init__(
+        self, path: str | Path, *, pii_encryption_key: str | bytes | None = None
+    ):
         self.path = Path(path)
         self._cipher = EnvelopeCipher(pii_encryption_key)
         if str(self.path) != ":memory:":
@@ -366,23 +384,33 @@ class Store:
             return max(0, int((current - parsed).total_seconds()))
 
         routing_pending = [row for row in routing_rows if row["status"] == "PENDING"]
-        routing_processing = [row for row in routing_rows if row["status"] == "PROCESSING"]
+        routing_processing = [
+            row for row in routing_rows if row["status"] == "PROCESSING"
+        ]
         routing_leases_expired = [
-            row for row in routing_processing
-            if row["lease_until"] is not None and str(row["lease_until"]) <= current_text
+            row
+            for row in routing_processing
+            if row["lease_until"] is not None
+            and str(row["lease_until"]) <= current_text
         ]
         delivery_pending = [row for row in delivery_rows if row["status"] == "PENDING"]
         delivery_retry = [row for row in delivery_rows if row["status"] == "RETRY"]
-        delivery_processing = [row for row in delivery_rows if row["status"] == "PROCESSING"]
+        delivery_processing = [
+            row for row in delivery_rows if row["status"] == "PROCESSING"
+        ]
         delivery_leases_expired = [
-            row for row in delivery_processing
-            if row["lease_until"] is not None and str(row["lease_until"]) <= current_text
+            row
+            for row in delivery_processing
+            if row["lease_until"] is not None
+            and str(row["lease_until"]) <= current_text
         ]
         deletion_pending = [row for row in deletion_rows if row["status"] == "PENDING"]
         deletion_retry = [row for row in deletion_rows if row["status"] == "RETRY"]
         deletion_failed = [row for row in deletion_rows if row["status"] == "FAILED"]
         dead_letter_open = [row for row in dead_letter_rows if row["status"] == "OPEN"]
-        dead_letter_quarantined = [row for row in dead_letter_rows if row["status"] == "QUARANTINED"]
+        dead_letter_quarantined = [
+            row for row in dead_letter_rows if row["status"] == "QUARANTINED"
+        ]
 
         return {
             "generated_at": current_text,
@@ -393,10 +421,12 @@ class Store:
                     1 for row in dead_letter_open if row["queue_type"] == "routing"
                 ),
                 "lease_expired": len(routing_leases_expired),
-                "oldest_pending_age_seconds": age(min(
-                    (row["created_at"] for row in routing_pending),
-                    default=None,
-                )),
+                "oldest_pending_age_seconds": age(
+                    min(
+                        (row["created_at"] for row in routing_pending),
+                        default=None,
+                    )
+                ),
             },
             "delivery": {
                 "pending": len(delivery_pending),
@@ -407,23 +437,36 @@ class Store:
                     1 for row in dead_letter_open if row["queue_type"] == "delivery"
                 ),
                 "lease_expired": len(delivery_leases_expired),
-                "oldest_due_age_seconds": age(min(
-                    (row["created_at"] for row in delivery_pending + delivery_retry),
-                    default=None,
-                )),
+                "oldest_due_age_seconds": age(
+                    min(
+                        (
+                            row["created_at"]
+                            for row in delivery_pending + delivery_retry
+                        ),
+                        default=None,
+                    )
+                ),
             },
             "attachments": {
                 "scanner_backlog": sum(
-                    1 for row in attachment_rows
+                    1
+                    for row in attachment_rows
                     if row["scan_status"] in {"not_scanned", "pending", "retry"}
                 ),
                 "deletion_pending": len(deletion_pending),
                 "deletion_retry": len(deletion_retry),
                 "deletion_failed": len(deletion_failed),
-                "oldest_deletion_age_seconds": age(min(
-                    (row["created_at"] for row in deletion_pending + deletion_retry + deletion_failed),
-                    default=None,
-                )),
+                "oldest_deletion_age_seconds": age(
+                    min(
+                        (
+                            row["created_at"]
+                            for row in deletion_pending
+                            + deletion_retry
+                            + deletion_failed
+                        ),
+                        default=None,
+                    )
+                ),
             },
             "dead_letters": {
                 "open": len(dead_letter_open),
@@ -457,6 +500,7 @@ class Store:
                     sender_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
                     scopes_json TEXT NOT NULL DEFAULT '["*"]',
+                    lcp_versions_json TEXT,
                     hmac_secret TEXT,
                     previous_hmac_secret TEXT,
                     api_key_hash TEXT,
@@ -630,6 +674,13 @@ class Store:
                     timestamp TEXT NOT NULL,
                     envelope_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS contacted_parties (
+                    lead_id TEXT NOT NULL,
+                    digest TEXT NOT NULL,
+                    reported_by TEXT NOT NULL,
+                    reported_at TEXT NOT NULL,
+                    PRIMARY KEY (lead_id, digest)
+                );
                 CREATE TABLE IF NOT EXISTS routing_jobs (
                     lead_id TEXT PRIMARY KEY,
                     status TEXT NOT NULL DEFAULT 'PENDING',
@@ -715,6 +766,16 @@ class Store:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leads_consent_expiry ON leads(suppressed, consent_expires_at)"
             )
+            # LEP-0003 §5 item 2 (T3): durable uniqueness of an awarded slot.
+            # Restricted to awarded posts so ping/event bookkeeping rows stay
+            # unrestricted; a fresh duplicate would fail startup loudly rather
+            # than silently drop history (see docs/OPERATIONS.md).
+            db.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_deliveries_post_award
+                    ON deliveries(lead_id, offer_id) WHERE kind = 'post'
+                """
+            )
             self._backfill_offer_candidate_index(db)
 
     def _backfill_offer_candidate_index(self, db: Any) -> None:
@@ -759,22 +820,32 @@ class Store:
             row[1] for row in db.execute("PRAGMA table_info(credentials)").fetchall()
         }
         if "tenant_id" not in columns:
-            db.execute("ALTER TABLE credentials ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+            db.execute(
+                "ALTER TABLE credentials ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'"
+            )
         if "scopes_json" not in columns:
-            db.execute("ALTER TABLE credentials ADD COLUMN scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'")
+            db.execute(
+                "ALTER TABLE credentials ADD COLUMN scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'"
+            )
         if "api_key_salt" not in columns:
             db.execute("ALTER TABLE credentials ADD COLUMN api_key_salt TEXT")
+        if "lcp_versions_json" not in columns:
+            db.execute("ALTER TABLE credentials ADD COLUMN lcp_versions_json TEXT")
         lead_columns = {
             row[1] for row in db.execute("PRAGMA table_info(leads)").fetchall()
         }
         if "tenant_id" not in lead_columns:
-            db.execute("ALTER TABLE leads ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+            db.execute(
+                "ALTER TABLE leads ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'"
+            )
         if "expires_at" not in lead_columns:
             db.execute("ALTER TABLE leads ADD COLUMN expires_at TEXT")
         if "consent_expires_at" not in lead_columns:
             db.execute("ALTER TABLE leads ADD COLUMN consent_expires_at TEXT")
         if "suppressed" not in lead_columns:
-            db.execute("ALTER TABLE leads ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0")
+            db.execute(
+                "ALTER TABLE leads ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0"
+            )
         for row in db.execute("SELECT lead_id, envelope_json FROM leads").fetchall():
             try:
                 stored_envelope = self.decode_envelope(row["envelope_json"])
@@ -794,7 +865,9 @@ class Store:
             row[1] for row in db.execute("PRAGMA table_info(offers)").fetchall()
         }
         if "tenant_id" not in offer_columns:
-            db.execute("ALTER TABLE offers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+            db.execute(
+                "ALTER TABLE offers ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'"
+            )
         if "vertical" not in offer_columns:
             db.execute("ALTER TABLE offers ADD COLUMN vertical TEXT")
         for row in db.execute("SELECT offer_id, offer_json FROM offers").fetchall():
@@ -821,15 +894,25 @@ class Store:
             row[1] for row in db.execute("PRAGMA table_info(attachments)").fetchall()
         }
         if "residency" not in attachment_columns:
-            db.execute("ALTER TABLE attachments ADD COLUMN residency TEXT NOT NULL DEFAULT 'TEST'")
+            db.execute(
+                "ALTER TABLE attachments ADD COLUMN residency TEXT NOT NULL DEFAULT 'TEST'"
+            )
         if "scan_status" not in attachment_columns:
-            db.execute("ALTER TABLE attachments ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'not_scanned'")
+            db.execute(
+                "ALTER TABLE attachments ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'not_scanned'"
+            )
         if "scan_engine" not in attachment_columns:
-            db.execute("ALTER TABLE attachments ADD COLUMN scan_engine TEXT NOT NULL DEFAULT 'unknown'")
+            db.execute(
+                "ALTER TABLE attachments ADD COLUMN scan_engine TEXT NOT NULL DEFAULT 'unknown'"
+            )
         if "scanned_at" not in attachment_columns:
-            db.execute("ALTER TABLE attachments ADD COLUMN scanned_at TEXT NOT NULL DEFAULT ''")
+            db.execute(
+                "ALTER TABLE attachments ADD COLUMN scanned_at TEXT NOT NULL DEFAULT ''"
+            )
         if "encryption" not in attachment_columns:
-            db.execute("ALTER TABLE attachments ADD COLUMN encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
+            db.execute(
+                "ALTER TABLE attachments ADD COLUMN encryption TEXT NOT NULL DEFAULT 'application_encrypted'"
+            )
         if "expires_at" not in attachment_columns:
             db.execute("ALTER TABLE attachments ADD COLUMN expires_at TEXT")
         db.execute(
@@ -876,6 +959,17 @@ class Store:
             )
             """
         )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contacted_parties (
+                lead_id TEXT NOT NULL,
+                digest TEXT NOT NULL,
+                reported_by TEXT NOT NULL,
+                reported_at TEXT NOT NULL,
+                PRIMARY KEY (lead_id, digest)
+            )
+            """
+        )
 
     # ─── Credentials ──────────────────────────────────────────────────────
 
@@ -885,6 +979,7 @@ class Store:
         *,
         tenant_id: str = "default",
         scopes: list[str] | None = None,
+        lcp_versions: list[str] | None = None,
         hmac_secret: str | None = None,
         previous_hmac_secret: str | None = None,
         api_key: str | None = None,
@@ -898,12 +993,13 @@ class Store:
             db.execute(
                 """
                 INSERT INTO credentials
-                    (sender_id, tenant_id, scopes_json, hmac_secret, previous_hmac_secret, api_key_hash,
+                    (sender_id, tenant_id, scopes_json, lcp_versions_json, hmac_secret, previous_hmac_secret, api_key_hash,
                      api_key_salt, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(sender_id) DO UPDATE SET
                     tenant_id=excluded.tenant_id,
                     scopes_json=excluded.scopes_json,
+                    lcp_versions_json=excluded.lcp_versions_json,
                     hmac_secret=excluded.hmac_secret,
                     previous_hmac_secret=excluded.previous_hmac_secret,
                     api_key_hash=excluded.api_key_hash,
@@ -915,6 +1011,7 @@ class Store:
                     sender_id,
                     tenant_id,
                     json.dumps(scopes if scopes is not None else ["*"]),
+                    json.dumps(lcp_versions) if lcp_versions is not None else None,
                     hmac_secret,
                     previous_hmac_secret,
                     api_key_hash,
@@ -978,12 +1075,16 @@ class Store:
                     action,
                     resource_type,
                     resource_id,
-                    json.dumps(audit_metadata, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(
+                        audit_metadata, separators=(",", ":"), ensure_ascii=False
+                    ),
                     now_iso(),
                 ),
             )
 
-    def list_audit_events(self, resource_type: str, resource_id: str) -> list[dict[str, Any]]:
+    def list_audit_events(
+        self, resource_type: str, resource_id: str
+    ) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._connection.execute(
                 """
@@ -1023,13 +1124,20 @@ class Store:
                     updated_at=excluded.updated_at
                 """,
                 (
-                    mapping["mapping_id"], mapping["publisher_id"], mapping["form_key"],
-                    mapping["version"], int(mapping.get("active", True)),
-                    json.dumps(mapping, separators=(",", ":"), ensure_ascii=False), timestamp, timestamp,
+                    mapping["mapping_id"],
+                    mapping["publisher_id"],
+                    mapping["form_key"],
+                    mapping["version"],
+                    int(mapping.get("active", True)),
+                    json.dumps(mapping, separators=(",", ":"), ensure_ascii=False),
+                    timestamp,
+                    timestamp,
                 ),
             )
 
-    def list_mappings(self, publisher_id: str | None = None, *, active_only: bool = False) -> list[dict[str, Any]]:
+    def list_mappings(
+        self, publisher_id: str | None = None, *, active_only: bool = False
+    ) -> list[dict[str, Any]]:
         query = "SELECT mapping_json FROM publisher_mappings"
         clauses: list[str] = []
         values: list[Any] = []
@@ -1062,10 +1170,17 @@ class Store:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    f"mapapp_{uuid4().hex}", mapping["mapping_id"], mapping["publisher_id"],
-                    mapping["form_key"], mapping["version"],
-                    hashlib.sha256(source_record_id.encode("utf-8")).hexdigest() if source_record_id else None,
-                    lead_id, source_digest, now_iso(),
+                    f"mapapp_{uuid4().hex}",
+                    mapping["mapping_id"],
+                    mapping["publisher_id"],
+                    mapping["form_key"],
+                    mapping["version"],
+                    hashlib.sha256(source_record_id.encode("utf-8")).hexdigest()
+                    if source_record_id
+                    else None,
+                    lead_id,
+                    source_digest,
+                    now_iso(),
                 ),
             )
 
@@ -1079,7 +1194,9 @@ class Store:
 
     # ─── Rate limiting ─────────────────────────────────────────────────────
 
-    def consume_rate_limit(self, sender_id: str, *, limit: int, now: datetime | None = None) -> bool:
+    def consume_rate_limit(
+        self, sender_id: str, *, limit: int, now: datetime | None = None
+    ) -> bool:
         current = now or datetime.now(timezone.utc)
         window_start = current.strftime("%Y-%m-%dT%H:%M:00Z")
         with self.transaction() as db:
@@ -1110,7 +1227,9 @@ class Store:
                 "SELECT * FROM attachments WHERE attachment_id = ?", (attachment_id,)
             ).fetchone()
 
-    def get_attachment_by_idempotency(self, owner_id: str, idempotency_key: str) -> sqlite3.Row | None:
+    def get_attachment_by_idempotency(
+        self, owner_id: str, idempotency_key: str
+    ) -> sqlite3.Row | None:
         with self._lock:
             return self._connection.execute(
                 "SELECT * FROM attachments WHERE owner_id = ? AND idempotency_key = ?",
@@ -1131,13 +1250,24 @@ class Store:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        metadata["attachment_id"], metadata["lead_id"], metadata["owner_id"],
-                        metadata["idempotency_key"], metadata["purpose"], metadata["filename"],
-                        metadata["content_type"], metadata["size_bytes"], metadata["sha256"],
-                        metadata["storage_ref"], metadata.get("residency", "TEST"),
-                        metadata.get("scan_status", "not_scanned"), metadata.get("scan_engine", "unknown"),
-                        metadata.get("scanned_at", timestamp), metadata.get("encryption", "application_encrypted"),
-                        metadata.get("expires_at"), timestamp, timestamp,
+                        metadata["attachment_id"],
+                        metadata["lead_id"],
+                        metadata["owner_id"],
+                        metadata["idempotency_key"],
+                        metadata["purpose"],
+                        metadata["filename"],
+                        metadata["content_type"],
+                        metadata["size_bytes"],
+                        metadata["sha256"],
+                        metadata["storage_ref"],
+                        metadata.get("residency", "TEST"),
+                        metadata.get("scan_status", "not_scanned"),
+                        metadata.get("scan_engine", "unknown"),
+                        metadata.get("scanned_at", timestamp),
+                        metadata.get("encryption", "application_encrypted"),
+                        metadata.get("expires_at"),
+                        timestamp,
+                        timestamp,
                     ),
                 )
             except sqlite3.IntegrityError:
@@ -1171,7 +1301,9 @@ class Store:
                 "UPDATE attachments SET status = 'EXPIRED', updated_at = ? WHERE attachment_id = ?",
                 (timestamp, attachment_id),
             )
-            self._enqueue_attachment_deletion(db, row["attachment_id"], row["storage_ref"], timestamp)
+            self._enqueue_attachment_deletion(
+                db, row["attachment_id"], row["storage_ref"], timestamp
+            )
 
     def list_expired_attachments(self, at: str | None = None) -> list[sqlite3.Row]:
         with self._lock:
@@ -1184,7 +1316,9 @@ class Store:
                 (at or now_iso(),),
             ).fetchall()
 
-    def _enqueue_attachment_deletion(self, db: Any, attachment_id: str, storage_ref: str, timestamp: str) -> None:
+    def _enqueue_attachment_deletion(
+        self, db: Any, attachment_id: str, storage_ref: str, timestamp: str
+    ) -> None:
         db.execute(
             """
             INSERT INTO attachment_deletion_jobs
@@ -1196,7 +1330,14 @@ class Store:
                 next_attempt_at=excluded.next_attempt_at,
                 updated_at=excluded.updated_at
             """,
-            (f"delete_{uuid4().hex}", attachment_id, storage_ref, timestamp, timestamp, timestamp),
+            (
+                f"delete_{uuid4().hex}",
+                attachment_id,
+                storage_ref,
+                timestamp,
+                timestamp,
+                timestamp,
+            ),
         )
 
     def enqueue_attachment_deletion(self, attachment_id: str, storage_ref: str) -> None:
@@ -1241,14 +1382,18 @@ class Store:
                 "SELECT * FROM leads WHERE lead_id = ?", (lead_id,)
             ).fetchone()
 
-    def get_lead_by_idempotency(self, sender_id: str, idempotency_key: str) -> sqlite3.Row | None:
+    def get_lead_by_idempotency(
+        self, sender_id: str, idempotency_key: str
+    ) -> sqlite3.Row | None:
         with self._lock:
             return self._connection.execute(
                 "SELECT * FROM leads WHERE sender_id = ? AND idempotency_key = ?",
                 (sender_id, idempotency_key),
             ).fetchone()
 
-    def insert_lead(self, envelope: dict[str, Any], *, status: str, tenant_id: str = "default") -> bool:
+    def insert_lead(
+        self, envelope: dict[str, Any], *, status: str, tenant_id: str = "default"
+    ) -> bool:
         message = envelope["lcp"]["message"]
         payload = envelope["lcp"]["payload"]
         lead_id = payload["lead_id"]
@@ -1275,8 +1420,12 @@ class Store:
                         int(message.get("test", False)),
                         payload.get("attributes", {}).get("vertical"),
                         payload.get("location", {}).get("country_code"),
-                        format_iso_datetime(expiry) if (expiry := envelope_expiry(envelope)) else None,
-                        format_iso_datetime(consent_expiry) if (consent_expiry := envelope_consent_expiry(envelope)) else None,
+                        format_iso_datetime(expiry)
+                        if (expiry := envelope_expiry(envelope))
+                        else None,
+                        format_iso_datetime(consent_expiry)
+                        if (consent_expiry := envelope_consent_expiry(envelope))
+                        else None,
                         0,
                         self.encode_envelope(envelope),
                         timestamp,
@@ -1328,7 +1477,9 @@ class Store:
                 (at or now_iso(),),
             ).fetchall()
 
-    def _redact_undelivered_for_lead(self, db: Any, lead_id: str, reason: str, timestamp: str) -> None:
+    def _redact_undelivered_for_lead(
+        self, db: Any, lead_id: str, reason: str, timestamp: str
+    ) -> None:
         rows = db.execute(
             """
             SELECT delivery_id, envelope_json FROM deliveries
@@ -1344,7 +1495,12 @@ class Store:
                     lease_until = NULL, last_error = ?, updated_at = ?
                 WHERE delivery_id = ?
                 """,
-                (self._redact_envelope(row["envelope_json"]), reason[:500], timestamp, row["delivery_id"]),
+                (
+                    self._redact_envelope(row["envelope_json"]),
+                    reason[:500],
+                    timestamp,
+                    row["delivery_id"],
+                ),
             )
         db.execute(
             "UPDATE routing_jobs SET status = 'DONE', lease_owner = NULL, lease_until = NULL, updated_at = ? WHERE lead_id = ?",
@@ -1387,8 +1543,12 @@ class Store:
                 VALUES (?, ?, ?, 'lead.suppressed', 'lead', ?, ?, ?)
                 """,
                 (
-                    f"audit_{uuid4().hex}", row["tenant_id"], actor_id, lead_id,
-                    json.dumps({"reason": reason}, separators=(",", ":")), timestamp,
+                    f"audit_{uuid4().hex}",
+                    row["tenant_id"],
+                    actor_id,
+                    lead_id,
+                    json.dumps({"reason": reason}, separators=(",", ":")),
+                    timestamp,
                 ),
             )
         return True
@@ -1411,7 +1571,9 @@ class Store:
         current = str(row["status"])
         if current == status:
             return None
-        direct_post = current == "NEW" and status == "POSTED" and reason == "direct_delivery"
+        direct_post = (
+            current == "NEW" and status == "POSTED" and reason == "direct_delivery"
+        )
         if not direct_post and status not in LEGAL_LEAD_TRANSITIONS.get(current, set()):
             raise InvalidStatusTransition(
                 f"Invalid lead status transition {current} -> {status}"
@@ -1484,10 +1646,14 @@ class Store:
                     (now_iso(), lead_id),
                 )
 
-    def claim_routing_jobs(self, worker_id: str, *, limit: int = 20, lease_seconds: int = 60) -> list[sqlite3.Row]:
+    def claim_routing_jobs(
+        self, worker_id: str, *, limit: int = 20, lease_seconds: int = 60
+    ) -> list[sqlite3.Row]:
         current = datetime.now(timezone.utc)
         now_value = current.strftime("%Y-%m-%dT%H:%M:%SZ")
-        lease_until = (current + timedelta(seconds=lease_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lease_until = (current + timedelta(seconds=lease_seconds)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         with self.transaction() as db:
             rows = db.execute(
                 """
@@ -1758,8 +1924,12 @@ class Store:
         """
         attributes = payload.get("attributes", {})
         location = payload.get("location", {})
-        vertical = attributes.get("vertical") if isinstance(attributes, Mapping) else None
-        country = location.get("country_code") if isinstance(location, Mapping) else None
+        vertical = (
+            attributes.get("vertical") if isinstance(attributes, Mapping) else None
+        )
+        country = (
+            location.get("country_code") if isinstance(location, Mapping) else None
+        )
         if not isinstance(vertical, str) or not isinstance(country, str):
             return []
 
@@ -1772,7 +1942,9 @@ class Store:
             params.append(tenant_id)
         state = location.get("state_region") if isinstance(location, Mapping) else None
         postal = location.get("postal_code") if isinstance(location, Mapping) else None
-        service_type = attributes.get("service_type") if isinstance(attributes, Mapping) else None
+        service_type = (
+            attributes.get("service_type") if isinstance(attributes, Mapping) else None
+        )
 
         def exists(dimension: str, value: Any | None = None) -> str:
             clause = ["i.offer_id = o.offer_id", "i.dimension = ?"]
@@ -1780,26 +1952,38 @@ class Store:
             if value is not None:
                 clause.append("i.value = ?")
                 params.append(value)
-            return "EXISTS (SELECT 1 FROM candidate_index AS i WHERE " + " AND ".join(clause) + ")"
+            return (
+                "EXISTS (SELECT 1 FROM candidate_index AS i WHERE "
+                + " AND ".join(clause)
+                + ")"
+            )
 
         def optional_dimension(dimension: str, value: Any) -> str:
             return "(NOT " + exists(dimension) + " OR " + exists(dimension, value) + ")"
 
         where.append("NOT " + exists("impossible"))
-        where.append("(" + exists("fallback") + " OR (" + " AND ".join(
-            [
-                exists("vertical", vertical),
-                exists("country_code", country),
-                optional_dimension("state_region", state),
-                optional_dimension("postal_code", postal),
-                optional_dimension("service_type", service_type),
-            ]
-        ) + "))")
+        where.append(
+            "("
+            + exists("fallback")
+            + " OR ("
+            + " AND ".join(
+                [
+                    exists("vertical", vertical),
+                    exists("country_code", country),
+                    optional_dimension("state_region", state),
+                    optional_dimension("postal_code", postal),
+                    optional_dimension("service_type", service_type),
+                ]
+            )
+            + "))"
+        )
         if not active_only:
             where = [condition for condition in where if condition != "o.active = 1"]
         query = (
             "WITH candidate_index AS (" + cte + ") "
-            "SELECT o.offer_json FROM offers AS o WHERE " + " AND ".join(where) + " ORDER BY o.offer_id"
+            "SELECT o.offer_json FROM offers AS o WHERE "
+            + " AND ".join(where)
+            + " ORDER BY o.offer_id"
         )
         with self._lock:
             rows = self._connection.execute(query, params).fetchall()
@@ -1871,7 +2055,15 @@ class Store:
             ).fetchone()
         return row is not None
 
-    def insert_ping(self, ping: dict[str, Any], *, lead_id: str, offer_id: str, buyer_id: str, expires_at: str) -> bool:
+    def insert_ping(
+        self,
+        ping: dict[str, Any],
+        *,
+        lead_id: str,
+        offer_id: str,
+        buyer_id: str,
+        expires_at: str,
+    ) -> bool:
         message = ping["lcp"]["message"]
         ping_id = ping["lcp"]["payload"]["ping_id"]
         timestamp = now_iso()
@@ -1928,6 +2120,35 @@ class Store:
                 """,
                 (at or now_iso(),),
             ).fetchall()
+
+    def claim_expired_open_pings(self, at: str | None = None) -> list[sqlite3.Row]:
+        """Expire-and-claim sweep input for the auction-close re-route (LEP-0003 §5 item 3).
+
+        Each returned ping was moved from OPEN to EXPIRED by THIS caller's
+        transaction (the conditional UPDATE is the claim), so no two workers
+        re-route the same expiry. The Postgres store overrides with
+        ``FOR UPDATE SKIP LOCKED`` to avoid blocking; the base path is exact
+        under the store lock plus writer serialization.
+        """
+        current = at or now_iso()
+        claimed: list[sqlite3.Row] = []
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM pings
+                WHERE status = 'OPEN' AND expires_at <= ?
+                ORDER BY expires_at, ping_id
+                """,
+                (current,),
+            ).fetchall()
+            for row in rows:
+                cursor = db.execute(
+                    "UPDATE pings SET status = 'EXPIRED', updated_at = ? WHERE ping_id = ? AND status = 'OPEN'",
+                    (current, row["ping_id"]),
+                )
+                if cursor.rowcount == 1:
+                    claimed.append(row)
+        return claimed
 
     def count_offer_deliveries(self, offer_id: str, *, since: str | None = None) -> int:
         query = "SELECT COUNT(*) AS count FROM deliveries WHERE offer_id = ? AND kind = 'post' AND status NOT IN ('FAILED', 'REDACTED')"
@@ -2027,8 +2248,19 @@ class Store:
                     updated_at=excluded.updated_at
                 """,
                 (
-                    f"pay_{offer_id}_{lead_id}", offer_id, lead_id, buyer_id, month_key, channel,
-                    status, price_cents, currency, reason, call_seconds, timestamp, timestamp,
+                    f"pay_{offer_id}_{lead_id}",
+                    offer_id,
+                    lead_id,
+                    buyer_id,
+                    month_key,
+                    channel,
+                    status,
+                    price_cents,
+                    currency,
+                    reason,
+                    call_seconds,
+                    timestamp,
+                    timestamp,
                 ),
             )
 
@@ -2046,7 +2278,13 @@ class Store:
                 "SELECT status, COUNT(*) AS count FROM payable_records WHERE offer_id = ? AND month_key = ? GROUP BY status",
                 (offer_id, month_key),
             ).fetchall()
-        summary = {"pending": 0, "payable": 0, "not_payable": 0, "disputed": 0, "refunded": 0}
+        summary = {
+            "pending": 0,
+            "payable": 0,
+            "not_payable": 0,
+            "disputed": 0,
+            "refunded": 0,
+        }
         for row in rows:
             summary[str(row["status"])] = int(row["count"])
         summary["total"] = sum(summary.values())
@@ -2114,6 +2352,121 @@ class Store:
                 (at or now_iso(), at or now_iso()),
             ).fetchall()
 
+    def _lock_lead_for_award(self, db: Any, lead_id: str) -> None:
+        """Serialize the slot-accounting decision for one lead within a transaction.
+
+        The SQLite store already serializes writers (BEGIN IMMEDIATE under the
+        store lock), so this base hook is a no-op. The Postgres store overrides
+        it with a transaction-scoped advisory lock (see the deadlock analysis
+        in ``postgres.py``) so two OS processes cannot both read the budget
+        and both write an award (LEP-0003 §5 item 1; dossier rows 14-16).
+        Implementations MUST NOT take locks on any table other than by the
+        award write itself - a ``FOR UPDATE`` on ``leads`` here deadlocked
+        against schema-bootstrap DDL (CI run 41561553846).
+        """
+
+    def try_award_post(
+        self,
+        *,
+        lead_id: str,
+        ping_id: str | None,
+        offer_id: str,
+        buyer_id: str,
+        envelope: dict[str, Any],
+        webhook_url: str,
+        max_buyers: int,
+    ) -> str:
+        """The single write-time award decision of LEP-0003 §5.
+
+        Evaluates the remaining buyer-unit budget and writes the post in ONE
+        transaction. Per §1 "Units (normative)" the budget counts distinct
+        awarded buyers, not delivered copies: an already-awarded buyer may
+        receive additional ``(lead, offer)`` copies inside its single slot; a
+        new buyer is refused once ``max_buyers`` distinct buyers hold the
+        lead; any second post for the same ``(lead, offer)`` is refused. The
+        partial unique index ``idx_deliveries_post_award`` is the durable
+        backstop for application bugs (§5 item 2, T3), and cross-process
+        Postgres races are serialized by the lead advisory transaction lock
+        (§5 item 1, T2).
+
+        The check and the write fuse into ONE ``INSERT ... SELECT`` so the
+        transaction's first table-level request on ``deliveries`` is the
+        RowExclusive the write needs - there is no AccessShare-from-a-lead
+        read that later upgrades to RowExclusive. That upgrade window is a
+        real deadlock shape: a bootstrap transaction holding a granted
+        ``deliveries`` ALTER and a queued intake INSERT cycle against the
+        award transaction's granted budget SELECT (locally reproduced on
+        Postgres 16.15, 4 workers x 500 records; CI run 41561553846 was the
+        cross-table variant of the same class). Advisory waits are outside
+        the table-lock graph, so the award path can never be a deadlock
+        participant on ``deliveries``.
+
+        Returns ``"awarded"``, ``"duplicate_offer"``, or ``"budget_exhausted"``.
+        """
+        message = envelope["lcp"]["message"]
+        timestamp = now_iso()
+        budget = max(1, int(max_buyers))
+        with self.transaction() as db:
+            self._lock_lead_for_award(db, lead_id)
+            try:
+                cursor = db.execute(
+                    """
+                    INSERT INTO deliveries
+                        (delivery_id, lead_id, ping_id, offer_id, buyer_id, kind,
+                         message_id, idempotency_key, webhook_url, envelope_json,
+                         status, attempts, next_attempt_at, created_at, updated_at)
+                    SELECT ?, ?, ?, ?, ?, 'post', ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?
+                    FROM (SELECT 1) AS award_seed
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM deliveries existing
+                        WHERE existing.lead_id = ? AND existing.offer_id = ?
+                          AND existing.kind = 'post'
+                    )
+                      AND (
+                        EXISTS (
+                            SELECT 1 FROM deliveries held
+                            WHERE held.lead_id = ? AND held.buyer_id = ?
+                              AND held.kind = 'post'
+                        )
+                        OR (SELECT COUNT(DISTINCT buyers.buyer_id)
+                            FROM deliveries buyers
+                            WHERE buyers.lead_id = ? AND buyers.kind = 'post') < ?
+                      )
+                    ON CONFLICT(message_id) DO NOTHING
+                    """,
+                    (
+                        message["id"],
+                        lead_id,
+                        ping_id,
+                        offer_id,
+                        buyer_id,
+                        message["id"],
+                        message["idempotency_key"],
+                        webhook_url,
+                        self.encode_envelope(envelope),
+                        timestamp,
+                        timestamp,
+                        timestamp,
+                        lead_id,
+                        offer_id,
+                        lead_id,
+                        buyer_id,
+                        lead_id,
+                        budget,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                # The durable (lead, offer) award index caught a racing write
+                # the decision snapshot could not see yet.
+                return "duplicate_offer"
+            if cursor.rowcount == 1:
+                return "awarded"
+            refused = db.execute(
+                "SELECT 1 FROM deliveries WHERE lead_id = ? AND offer_id = ? AND kind = 'post' LIMIT 1",
+                (lead_id, offer_id),
+            ).fetchone()
+            return "duplicate_offer" if refused else "budget_exhausted"
+
     def claim_due_deliveries(
         self,
         worker_id: str,
@@ -2168,7 +2521,15 @@ class Store:
                         lease_owner = NULL, lease_until = NULL, updated_at = ?
                     WHERE delivery_id = ? AND lease_owner = ?
                     """,
-                    (status, attempts, next_attempt_at, last_error, now_iso(), delivery_id, worker_id),
+                    (
+                        status,
+                        attempts,
+                        next_attempt_at,
+                        last_error,
+                        now_iso(),
+                        delivery_id,
+                        worker_id,
+                    ),
                 )
             else:
                 db.execute(
@@ -2177,16 +2538,32 @@ class Store:
                     SET status = ?, attempts = ?, next_attempt_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL, updated_at = ?
                     WHERE delivery_id = ?
                     """,
-                    (status, attempts, next_attempt_at, last_error, now_iso(), delivery_id),
+                    (
+                        status,
+                        attempts,
+                        next_attempt_at,
+                        last_error,
+                        now_iso(),
+                        delivery_id,
+                    ),
                 )
 
-    def has_delivery_for_offer(self, lead_id: str, offer_id: str, kind: str) -> bool:
+    def count_awarded_buyers(self, lead_id: str) -> int:
+        """Distinct awarded buyers for a lead (the slot budget consumed).
+
+        LEP-0003 §1 "Units (normative)": slots count buyers, not copies; this
+        is the only quantity the budget and ``slots_available`` are measured
+        against.
+        """
         with self._lock:
             row = self._connection.execute(
-                "SELECT 1 FROM deliveries WHERE lead_id = ? AND offer_id = ? AND kind = ? LIMIT 1",
-                (lead_id, offer_id, kind),
+                """
+                SELECT COUNT(DISTINCT buyer_id) AS count
+                FROM deliveries WHERE lead_id = ? AND kind = 'post'
+                """,
+                (lead_id,),
             ).fetchone()
-        return row is not None
+        return int(row["count"])
 
     def has_delivery_for_buyer(self, lead_id: str, buyer_id: str) -> bool:
         with self._lock:
@@ -2223,7 +2600,9 @@ class Store:
                 (event_id,),
             ).fetchone()
 
-    def insert_event(self, lead_id: str, event_name: str, envelope: dict[str, Any]) -> bool:
+    def insert_event(
+        self, lead_id: str, event_name: str, envelope: dict[str, Any]
+    ) -> bool:
         payload = envelope["lcp"]["payload"]
         event_id = envelope["lcp"]["message"]["id"]
         encoded = self.encode_envelope(envelope)
@@ -2260,6 +2639,51 @@ class Store:
                 (lead_id,),
             ).fetchall()
         return [self.decode_envelope(row["envelope_json"]) for row in rows]
+
+    # ─── Contacted parties (LEP-0003 §3/§4) ────────────────────────────────
+
+    def record_contacted_digests(
+        self,
+        lead_id: str,
+        digests: list[str],
+        *,
+        reported_by: str,
+        reported_at: str,
+    ) -> int:
+        """Merge reported digests into the per-lead contacted SET (LEP-0003 §4).
+
+        Reports are at-least-once: retried reports with fresh message ids
+        merge by digest set (set union), so the contacted set never grows
+        from a duplicate digest and no digest for a lead is ever silently
+        dropped. The router has already validated entry shape and count;
+        entries are authenticated-sender attestations the platform cannot
+        verify without plaintext (record trust model).
+        """
+        inserted = 0
+        with self.transaction() as db:
+            for digest in digests:
+                cursor = db.execute(
+                    """
+                    INSERT INTO contacted_parties
+                        (lead_id, digest, reported_by, reported_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(lead_id, digest) DO NOTHING
+                    """,
+                    (lead_id, digest, reported_by, reported_at),
+                )
+                inserted += cursor.rowcount
+        return inserted
+
+    def list_contacted_digests(self, lead_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT digest, reported_by, reported_at
+                FROM contacted_parties WHERE lead_id = ?
+                ORDER BY reported_at, digest
+                """,
+                (lead_id,),
+            ).fetchall()
 
     def erase_lead(self, lead_id: str, *, actor_id: str = "operator") -> bool:
         """Redact consumer data and cancel undelivered payloads for a lead.
@@ -2332,11 +2756,22 @@ class Store:
                     (timestamp, attachment["attachment_id"]),
                 )
                 self._enqueue_attachment_deletion(
-                    db, attachment["attachment_id"], attachment["storage_ref"], timestamp
+                    db,
+                    attachment["attachment_id"],
+                    attachment["storage_ref"],
+                    timestamp,
                 )
             db.execute(
                 "UPDATE routing_jobs SET status = 'DONE', lease_owner = NULL, lease_until = NULL, updated_at = ? WHERE lead_id = ?",
                 (timestamp, lead_id),
+            )
+            # Contacted digests are pseudonymized derived values of consumer
+            # contact data (LEP-0003 privacy/retention: "erasure semantics
+            # extend unchanged"), and without the lead's plaintext they are
+            # unusable. Remove them with the erasure.
+            db.execute(
+                "DELETE FROM contacted_parties WHERE lead_id = ?",
+                (lead_id,),
             )
             db.execute(
                 """
@@ -2377,7 +2812,13 @@ class Store:
         else:
             payload = {}
         return self.encode_envelope(
-            {"lcp": {"version": envelope["lcp"]["version"], "message": message, "payload": payload}}
+            {
+                "lcp": {
+                    "version": envelope["lcp"]["version"],
+                    "message": message,
+                    "payload": payload,
+                }
+            }
         )
 
     def all_pings_terminal(self, lead_id: str) -> bool:

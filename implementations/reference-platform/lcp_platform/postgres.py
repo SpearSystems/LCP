@@ -133,12 +133,19 @@ class PostgresStore(Store):
             "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'"
         )
         db.execute(
+            "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS lcp_versions_json TEXT"
+        )
+        db.execute(
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
         )
         db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS expires_at TEXT")
         db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS consent_expires_at TEXT")
-        db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS suppressed INTEGER NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'")
+        db.execute(
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suppressed INTEGER NOT NULL DEFAULT 0"
+        )
+        db.execute(
+            "ALTER TABLE offers ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
+        )
         db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS vertical TEXT")
         for row in db.execute("SELECT offer_id, offer_json FROM offers").fetchall():
             stored_offer = json.loads(_decode_text(row["offer_json"]))
@@ -150,14 +157,26 @@ class PostgresStore(Store):
                     row["offer_id"],
                 ),
             )
-        db.execute("CREATE INDEX IF NOT EXISTS idx_offers_discovery ON offers(active, tenant_id, vertical, offer_id)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_offers_discovery ON offers(active, tenant_id, vertical, offer_id)"
+        )
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_owner TEXT")
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_until TEXT")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'not_scanned'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'not_scanned'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'"
+        )
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TEXT")
 
     def close(self) -> None:
@@ -279,3 +298,48 @@ class PostgresStore(Store):
                     (worker_id, lease_until, now_value, row["delivery_id"]),
                 )
         return rows
+
+    def _lock_lead_for_award(self, db: Any, lead_id: str) -> None:
+        """Serialize per-lead award decisions across OS processes (LEP-0003 §5 item 1).
+
+        Uses the transaction-scoped ADVISORY lock named as the §5 alternative
+        ("``SELECT ... FOR UPDATE`` / advisory lock in the same transaction as
+        the delivery write"). The advisory flavour is REQUIRED here, not
+        cosmetic: taking ``FOR UPDATE`` on the lead row made the award
+        transaction hold a RowShare lock on ``leads`` across the
+        ``deliveries`` INSERT, and the per-process bootstrap transaction
+        (``CREATE``/``ALTER`` chain over ``deliveries`` and ``leads`` in one
+        transaction) can then deadlock against it - CI run 41561553846,
+        'PostgreSQL 18.4 scale and candidate-index regression', 4/500 intake
+        INSERTs aborted with DeadlockDetected (P154 INSERT waits
+        RowExclusive on deliveries held-blocked by P158 ``ALTER TABLE leads
+        ADD COLUMN ...`` which waits AccessExclusive on leads held as
+        RowShare by P154). An advisory lock serializes the same award races
+        without ever joining the table-lock graph, so DDL can never cycle
+        against intake; the partial unique award index remains the durable
+        backstop, and ``_open_platform`` in the benchmark only retries
+        bootstrap-side lock victims - never intake ones.
+        """
+        db.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (lead_id,))
+
+    def claim_expired_open_pings(self, at: str | None = None) -> list[Any]:
+        """FOR UPDATE SKIP LOCKED expiry claim (LEP-0003 §5 item 3)."""
+        current = at or now_iso()
+        claimed: list[Any] = []
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM pings
+                WHERE status = 'OPEN' AND expires_at <= ?
+                ORDER BY expires_at, ping_id
+                FOR UPDATE SKIP LOCKED
+                """,
+                (current,),
+            ).fetchall()
+            for row in rows:
+                db.execute(
+                    "UPDATE pings SET status = 'EXPIRED', updated_at = ? WHERE ping_id = ?",
+                    (current, row["ping_id"]),
+                )
+                claimed.append(row)
+        return claimed
