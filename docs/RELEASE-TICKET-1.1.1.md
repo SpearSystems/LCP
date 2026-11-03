@@ -45,7 +45,7 @@ Read back from each registry API after the tag workflows completed:
 | RubyGems | `lcp-sdk` | 1.1.1 |
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | 1.1.1 |
 | Swift Package Manager | repository tag | v1.1.1 |
-| Go module proxy | `…/implementations/sdk/go` | submodule tag `implementations/sdk/go/v1.1.1` (root tags only produce pseudo-versions for a nested module — see §5) |
+| Go module | `…/implementations/sdk/go` | `v1.1.1` resolves against the submodule tag (`GOPROXY=direct go get …@v1.1.1` succeeds); proxy.golang.org was still serving a cached miss for the new tag at publication time and resolves on cache expiry — root `vX.Y.Z` tags only produce pseudo-versions for a nested module, see §5 |
 | Packagist | `spearsystems/lcp-sdk` | mirror repository `SpearSystems/lcp-sdk-php` tagged `v1.1.1`; Packagist submission still pending |
 
 ## 4. Reference container
