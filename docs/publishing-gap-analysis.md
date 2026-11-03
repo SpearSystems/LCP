@@ -114,9 +114,9 @@ LCP is structurally solid — spec, schemas, test vectors, conformance runner, M
 
 ### 14. Batch endpoint
 **Source:** LEX OpenAPI defines `POST /messages/batch` (up to 100 messages per call, non-transactional).
-**LCP status:** SPEC.md §10 TODO mentions `submit_leads_batch` as planned for v1.1.
-**Recommendation:** No change — already tracked. Note that LEX's non-transactional batch semantics (some succeed, some fail) is the right pattern when LCP adds it.
-**Priority:** NONE — already planned.
+**LCP status:** SPEC.md §10 records `submit_leads_batch` as a future MCP/REST surface. LEP-0001 (bounded batch + event subscriptions) is Deferred pending its trigger, so batch is not scheduled for v1.1.
+**Recommendation:** No change — tracked by LEP-0001. Note that LEX's non-transactional batch semantics (some succeed, some fail) is the right pattern when LCP adds it.
+**Priority:** NONE — trigger-gated (LEP-0001 Deferred).
 
 ### 15. Subscription / webhook filtering message type
 **Source:** LEX has a `SUBSCRIPTION` message type for registering routing preferences and webhook filters.

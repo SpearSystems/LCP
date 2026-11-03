@@ -1118,9 +1118,13 @@ The official reference MCP server (see
 the core never depends on MCP.
 
 > **Future:** `submit_leads_batch` and `subscribe_to_events` (webhook/
-> push delivery) are planned for v1.1. The current single-item, pull-
-> based tools are sufficient for v1.0 but will not scale to high-volume
-> agent submission.
+> push delivery) are **not** part of v1.1. LEP-0001 is Deferred until its
+> trigger is met — independent publishers need bulk intake, backfills, or
+> materially lower request overhead, or polling at volume becomes costly —
+> and revival requires a revised record with adopter evidence and
+> vocabulary harmonisation with the shipped `capabilities().events`
+> surface (see [LEP-REGISTRY.md](governance/LEP-REGISTRY.md)). The current
+> single-item, pull-based tools remain the supported agent surface.
 
 ## 11. Governance
 
@@ -1177,7 +1181,8 @@ core changes. Audit checklist:
 - [x] Fill extension registry format (namespace, registration, payload location).
 - [x] Write CLA full text (`governance/CLA.md`).
 - [x] Publish decision — repository is public under Apache 2.0 (see [RELEASE.md](docs/RELEASE.md) for the tagged release record).
-- [ ] Spec site (LEX-style) — deferred to v1.1 (see §14).
+- [ ] Spec site (LEX-style) — trigger-gated: publish only once a maintained
+  canonical-source workflow exists (see §14); not part of v1.1.
 
 ## 14. Review-log appendix
 
@@ -1215,7 +1220,13 @@ Findings from the deep-research review
 | No exclusivity model | Added `exclusivity` + `max_buyers` | §3 |
 | Settlement/billing scope ambiguous | Added scope statement to §1 | §1 |
 
-### Should-fix — deferred to v1.1
+### Should-fix — open (trigger-gated, unscheduled)
+
+v1.1.0 delivered the LEP-driven set (canonical timestamps and cross-SDK
+interop, shared-lead slots, request history, extensions and
+`FINAL_PRICING`, attestation verification). The findings below remain open
+opportunities gated on the trigger in each row; none is a commitment to
+v1.1 or v1.2.
 
 | Finding | Trigger | Planned resolution |
 |---|---|---|
