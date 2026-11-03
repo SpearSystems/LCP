@@ -7,8 +7,9 @@
   dispositioned; see "Revision 2026-11-03 (post-dossier)"; same-day
   wire-landing pointers + status reconciliation, see "Wire-landing
   pointers" in that section)
-- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized
-  (post-dossier revision #157 + re-review #161 dispositions)
+- **Status:** **Implemented** — accepted 2026-11-03; implemented and
+  verified same day (wire #166, platform #168, SDK helpers #171; T1–T10
+  executed per #160)
 
 ## Decision (maintainer, 2026-11-03)
 
@@ -725,9 +726,15 @@ one-sentence §8.
   lands (a) verbatim in SPEC §8 and (b) in `api/lcp-openapi.yaml`
   (pattern `^\d+\.\d+\.\d+$`, required) — parsed `major == 1` /
   `minor >= m` membership, never string literals or prefixes; coverage
-  row CAP-07 green via L3-008/-011/-020. (c) T10's platform test remains
-  an open gate at #160, and no record text implies exact-string `1.1`
-  membership anymore — the only `1.1`-literal mention above is the
+  row CAP-07 green via L3-008/-011/-020. (c) T10 is satisfied by the
+  platform lane's
+  `plat: test_slots_available_only_advertised_to_v11_receivers_and_never_zero`
+  (both gate directions: slot fields present toward a full-semver v1.1
+  advertisement, absent toward v1.0-only, never-zero) plus the full-semver
+  element assertion in
+  `plat: test_buyer_scoped_contacted_event_accepted_and_advertised`;
+  coverage row CAP-01 flipped green. No record text implies exact-string
+  `1.1` membership — the only `1.1`-literal mention above is the
   quoted *earlier wording* this section replaced.
 - **Implementation-phase spec text:** SPEC.md §6 SHOULD gain one
   clarifying sentence recording that closed-object additions rely on
