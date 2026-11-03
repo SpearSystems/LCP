@@ -117,6 +117,16 @@ Documented deviations, deliberate and time-bound:
   lifecycle has not been established. Do not enable it midway through a
   release; make it the first commit of a planned migration.
 
+### Container package visibility
+
+A container package is created **private** even when its linked repository is
+public, and the organization must permit public packages before the setting can
+be changed (once public, it cannot be made private again). `container-release.yml`
+now asserts an anonymous pull token and a digest manifest fetch before it writes
+the release metadata, so a private image fails the release loudly instead of
+shipping. If that step fails: open the package's settings, switch visibility to
+public, then re-run the job.
+
 ## Create the protected `release` environment
 
 In **Settings → Environments**, create an environment named exactly `release`:

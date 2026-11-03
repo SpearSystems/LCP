@@ -124,6 +124,26 @@ jobs:
             "oci://${IMAGE_REF}@${IMAGE_DIGEST}" \
             --predicate-type "https://cyclonedx.org/bom" \
             --repo "${GITHUB_REPOSITORY}"
+      - name: Assert the published package is publicly pullable
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          repo="${IMAGE_REF#ghcr.io/}"
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:${repo}:pull" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token", ""))')"
+          if [ -z "${token}" ]; then
+            echo "::error::GHCR refused an anonymous pull token for ${repo}: the package is not public."
+            echo "::error::A new package starts private - visibility is not inherited from the repository."
+            echo "::error::Make it public in the package's settings (or have an organization owner allow public packages), then re-run this job."
+            exit 1
+          fi
+          curl -fsS -o /dev/null \
+            -H "Authorization: Bearer ${token}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/${repo}/manifests/${IMAGE_DIGEST}"
+          echo "Anonymous pull confirmed for ${repo}@${IMAGE_DIGEST}."
       - name: Write immutable container metadata
         id: metadata
         env:
