@@ -4,7 +4,9 @@
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-02
 - **Last revised:** 2026-11-03 (ARB L-Platform dossier findings F1–F10
-  dispositioned; see "Revision 2026-11-03 (post-dossier)")
+  dispositioned; see "Revision 2026-11-03 (post-dossier)"; same-day
+  wire-landing pointers + status reconciliation, see "Wire-landing
+  pointers" in that section)
 - **Status:** **Accepted** — accepted 2026-11-03; implementation authorized
   (post-dossier revision #157 + re-review #161 dispositions)
 
@@ -97,7 +99,10 @@ events exchange `phone_hash`/`email_hash` values keyed per pair
   below; never oversell) — plus contacted-hash propagation on post and
   `CONTACTED` event ingestion.
 - **REST/OpenAPI, MCP, SDKs, vectors:** change-gated at implementation
-  time — listed in the impact section, **not** authorized by this Draft.
+  time — listed in the impact section. The 2026-11-03 acceptance (see
+  Decision) authorizes that work under the phase-gates T1–T10 (#160) and
+  the roadmap change-gates; the pre-acceptance Draft authorized none of
+  it.
 - **Not in scope:** slot *pricing* policy (per-buyer bidding strategy
   stays in offers/extensions), cross-pair contact visibility (a buyer
   never sees another buyer's keyed hashes), refund accounting rules
@@ -248,12 +253,22 @@ Additive optional field on `post` (`schemas/post.json`):
   #153 **T9** publishes executed vectors
   (`lcp-sdk-dedup-hash-001..N`, run by all ten SDKs and the reference
   platform, closing ledger row `SEC-08`).
+  Reality pointer (2026-11-03): wire PR #166 (open) publishes
+  the pinned preimage→digest pairs as `test-vectors/sdk/contact-hash.json`
+  — the identical entry form under a different file name, with
+  `lcp-contact-hash-phone-001` / `lcp-contact-hash-email-001` recomputing
+  byte-exactly to the two digests below — and its SPEC §9 landing keeps
+  the phone rule verbatim while the email canonical stays
+  proposed-gated (new coverage row `SEC-14`). `SEC-08` remains a gap
+  until the executed-across-all-SDKs vectors publish: that file is the
+  **T9 starting set**, not T9 satisfied.
 - **Reference digests for implementation conformance.** Proposed
   fixture form for the vector file `test-vectors/sdk/dedup-hash.json`:
   entries of
   `{"name": …, "secret": "<pair secret, UTF-8>", "domain": "phone|email", "preimage": "<canonical string>", "digest": "<lowercase hex HMAC-SHA256>"}`.
-  Until that file publishes, these two locally computed digests are
-  the conformance targets (python3 `hmac` at 2026-11-03 over the
+  Until the executed set publishes (#166 pins these same two values in
+  `contact-hash.json`), these two locally computed digests remain the
+  operative conformance targets (python3 `hmac` at 2026-11-03 over the
   example pair secret bytes `pair-secret-for-vectors-0123456789`):
   - phone `+15125550147` →
     `c47aff331606437528b34b7f919eb37704e87ee35eed80e52cfa36826a4a2e12`
@@ -331,6 +346,11 @@ re-keying) — per recipient pair for subsequent posts. `submitEvent`
   HMACs are unmatchable by anyone outside the pair **and
   unverifiable-by-design for the receiver**; disputes ride the
   existing ack/rejection paths (abuse list below).
+  Reality pointer: #166 (open) lands the 64-hex and
+  32-entries-per-report MUSTs in SPEC §4 verbatim; its `post.json`
+  carries an implementation-side `maxItems: 100` on the post direction
+  (see the array-bound Deferred question) while this report-direction
+  bound stays **32**.
 - **Replay and accumulation (corrects the earlier claim).** The event
   store dedupes by the event **`message.id`**, not by
   `idempotency_key`: `lifecycle_events.event_id TEXT PRIMARY KEY` and
@@ -600,7 +620,11 @@ top-level conditional — `if properties.exclusivity == "exclusive"`
 (and present) `then properties.slots_available const 1` — and the
 negative vector `lcp-neg-exclusive-multislot-001` lands in
 `test-vectors/sdk/validation-corpus.json` plus
-`test-vectors/sdk/negative/` (#153 **T7**). With that conditional the
+`test-vectors/sdk/negative/` (#153 **T7**). Reality pointer: #166
+(open) ships exactly this — the conditional as
+`schemas/ping.json`'s top-level `allOf`, and the vector in
+`test-vectors/sdk/negative/slot-fields.json` (with accept control) plus
+the corpus. With that conditional the
 overlay run recorded in the Revision section **rejects** this
 construction; without it, neither schema nor vector would.
 
@@ -697,7 +721,14 @@ one-sentence §8.
   `plat: test_capabilities_lcp_versions_gate_match_rule` asserts the
   element format and both gate directions. Invalid example D below
   illustrates the *absence* of this rule's protection; with (a)–(c)
-  landed it is the mechanism.
+  landed it is the mechanism. Reality pointer: #166 (open)
+  lands (a) verbatim in SPEC §8 and (b) in `api/lcp-openapi.yaml`
+  (pattern `^\d+\.\d+\.\d+$`, required) — parsed `major == 1` /
+  `minor >= m` membership, never string literals or prefixes; coverage
+  row CAP-07 green via L3-008/-011/-020. (c) T10's platform test remains
+  an open gate at #160, and no record text implies exact-string `1.1`
+  membership anymore — the only `1.1`-literal mention above is the
+  quoted *earlier wording* this section replaced.
 - **Implementation-phase spec text:** SPEC.md §6 SHOULD gain one
   clarifying sentence recording that closed-object additions rely on
   version negotiation while the ignore-unknown rule covers open objects
@@ -812,8 +843,9 @@ with a revisit trigger.
 
 ## SDK, OpenAPI, MCP, conformance, and operational impact
 
-Draft status does **not** authorize any of the following; they are the
-implementation-phase change gates (roadmap: "conformance vectors, SDK
+Pre-acceptance Draft status authorized none of the following; the
+2026-11-03 acceptance makes them the authorized implementation plan,
+still under the implementation-phase change gates (roadmap: "conformance vectors, SDK
 helpers, and OpenAPI/MCP surfaces updated together"; `governance/LEP.md`
 traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
 
@@ -826,14 +858,21 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   `^[a-f0-9]{64}$`, min 0; no `uniqueItems` — duplicates merge
   receiver-side per §4). No `$defs/exclusivity` change; no
   `event.json` change (`details` stays open by design; the report
-  rule is ingest behavior, §4).
+  rule is ingest behavior, §4). Reality pointer: #166 (open)
+  ships these three schema changes as drafted, adding `maxItems: 100` on
+  the post array (implementation bound; rationale in the schema
+  `$comment` — the protocol question stays Deferred below).
 - **Examples:** new positive examples (this document's four) added to
-  `examples/`; the four invalid shapes land in the negative corpus
+  `examples/`; #166 lands all four (as `ping-slots.json`,
+  `bid-slots.json`, `post-contacted.json`, `event-contacted.json`),
+  validated by the
+  runner; the four invalid shapes land in the negative corpus
   (`test-vectors/sdk/validation-corpus.json` and message-level vectors).
 - **Conformance vectors:** valid ping-with-slots/bid-with-claim/
   post-with-hashes roundtrip; SHA-1-shaped and short-digest rejection;
   exclusive+multi-slot contradiction rejection **by the new schema
-  conditional** (`lcp-neg-exclusive-multislot-001`, T7); oversell
+  conditional** (`lcp-neg-exclusive-multislot-001`, T7 — landed in #166's
+  `slot-fields.json` + corpus); oversell
   attempt yields no post beyond the distinct-buyer budget — including
   the two-pass concurrent and two-process Postgres races
   (`plat:…`, T2/T3/T4, platform behavior vectors, L2/L3); scoped-buyer
@@ -842,7 +881,9 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   semantics (`plat: test_contacted_report_replay_is_idempotent`, T8);
   capability
   `lcp_versions` semver match rule (T10); published `dedup-hash`
-  vectors executed by the reference platform and all ten SDKs (T9);
+  vectors executed by the reference platform and all ten SDKs (T9;
+  #166 publishes the pinned pairs as `contact-hash.json` — starting set,
+  executed SDK runs still open);
   `CONTACTED` event accepted as open-enum value with pass-through
   storage (L1 rule regression — recorded honestly:
   `test-vectors/conformance.py` ignores each vector's `checks` array
@@ -850,7 +891,9 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   `event_open_enum_pass_through` on `L3-006`
   (`test-vectors/l3-advanced.json:287`) are currently decorative
   (routed O3) — the implementation PR wires `checks` or ships real
-  platform tests); absent-vs-empty `contacted_hashes` distinction in
+  platform tests; reality pointer: #166 (open) wires the
+  `checks` arrays in `test-vectors/conformance.py`, so the labels are
+  honored and O3 is closed at the wire surface); absent-vs-empty `contacted_hashes` distinction in
   both directions (§4); and a tooling test that validates every
   fenced `### Valid example` block in `governance/LEPs/*.md` through
   the platform's own `SchemaValidator` (#153 **T1**,
@@ -977,7 +1020,9 @@ observations; durable conversions tracked at
 Draft adversarially against `SPEC.md`, `schemas/`, `verticals/`, and
 the reference platform's award path. This revision dispositions F1–F10
 **in the record**; it changes no status, no registry row, and
-authorizes no implementation (Draft gates unchanged). Dispositions:
+authorizes no implementation (Draft gates unchanged at the time; the
+same-day acceptance in the Decision section supersedes the Draft
+framing — see the closing paragraphs of this section). Dispositions:
 
 | Finding | What changed here |
 |---|---|
@@ -1045,10 +1090,61 @@ applies all six (citations re-verified at the branch SHA):
   F9's conversion) was never named; added to the impact/conformance
   list alongside T1–T7/T9/T10 and pointed to from F9's disposition row.
 
-**Status unchanged: Draft.** The registry row already records the
-2026-11-03 maintainer directive; the ARB charter voids the `0bbc1437`
-verdict for the changed surface, so the next step is a fresh dossier
-run on this revision — not acceptance.
+**Wire-landing pointers (2026-11-03, post-acceptance record
+maintenance).** Wire PR [#166](https://github.com/SpearSystems/LCP/pull/166)
+(`feat/lep3-wire-schemas`; **open at the time these
+pointers were written** — each names the PR, not `main`) carries the
+schema/vector surface this record proposed. Inline pointers cite the
+PR alone — deliberately SHA-free, because the head churned during
+coordination: first verified at `7335cc4`, re-verified at `4f9f80c`
+(rebase + amend; no shape change), then at the live head `1f1279e` —
+which adds explicit `"error_code": null, "error_name": null` to the
+`slot-fields.json` accept control (java/kotlin format-lint fix) and
+nothing else — where the battery
+re-ran green (**ALL 51 PASSED**, the record's four valid examples PASS
+through the platform `SchemaValidator` against the PR's native schemas,
+and its landed `event-contacted.json` carries the byte-exact RF-1
+bytes). Two handoff-cited SHAs — `1587d8c` (never existed) and
+`c565e55` (a runner-refactor attempt the wire lane confirms never
+landed) — were **not on the remote** when checked (verified via GitHub; on
+squash-merge the PR page is the durable authority for the shipped
+bytes, and these SHA-free pointers need no maintenance either way). Where shipped bytes match a
+proposal, the in-place "Reality pointer" notes above record it. The
+deltas a reader of this record needs: (i) the proposed vector file name
+`dedup-hash.json` ships as `contact-hash.json` with the **identical
+entry form** — a name choice, not a shape change; (ii) `post.contacted_hashes`
+adds an implementation bound `maxItems: 100` (`$comment` rationale) while
+the record's post-direction cap question stays Deferred and the
+report-direction bound stays **32**; (iii) the T9 vectors file lands as
+the pinned **starting set** — `SEC-08` remains a gap and the new
+coverage row `SEC-14` records the gated-email state (the wire lane's
+intended `CAP-05`/`SEC-10` ids collided with existing rows and landed
+as `CAP-07`/`SEC-14`; row `CNF-03` is flipped green by the same amend —
+the unknown-label guard is verified present in the runner at the cited
+head, and the lane's planted unknown-check/not-fired proofs are their
+recorded evidence);
+(iv) `test-vectors/conformance.py` honors
+`checks` arrays (O3 closed at the wire surface; **ALL 51 tests PASSED**
+re-run at `4f9f80c`) and this document's four
+valid examples land under `examples/` — all four additionally validate
+**PASS** through the platform `SchemaValidator` against #166's native
+schemas at that head, and its landed `event-contacted.json` carries the
+byte-exact RF-1 digest; (v) SPEC §8 carries the F6(a)
+parsed-semver rule verbatim and OpenAPI the (b) pattern.
+None of this changes the proposed shapes; per the
+Decision, any wire-shape deviation discovered in implementation returns
+this record to Review.
+
+**Status at the time of the revision: Draft.** The registry row then
+recorded the 2026-11-03 maintainer directive; the ARB charter voided the
+`0bbc1437` verdict for the changed surface, so the next step was a fresh
+dossier run on this revision — not acceptance. **Superseded 2026-11-03:**
+the re-dossier ran (verdict FINDINGS, record-level RF-1–RF-6 applied in
+#161 exactly as prescribed), and the maintainer recorded **Acceptance**
+in the Decision section above (`2a2816d`; registry @ `958e042`). The
+record's status is **Accepted**; implementation proceeds under the
+phase-gates T1–T10 tracked at #160 — those gates remain open, and the
+wire surface (#166) is in review.
 
 ## Deferred questions
 
@@ -1091,7 +1187,11 @@ run on this revision — not acceptance.
   draft (a lead's contact attempts are naturally bounded); if a real
   deployment reports bulk suppression syncs through this field, cap it
   and route bulk to a dedicated mechanism. Trigger: observed array sizes
-  in production posts.
+  in production posts. Reality pointer: #166 (open) ships an
+  implementation-side `maxItems: 100` on the post direction with the
+  bulk-misuse rationale in the schema `$comment`; the protocol-level
+  cap/ordering question stays deferred with the trigger unchanged (the
+  32-entry report-direction bound is normative, not deferred — §4).
 - **Direct buyer→buyer exchange.** This design routes everything through
   the platform/publisher that holds the pair secrets. A peer-to-peer
   variant (buyers exchanging keyed hashes without the platform) changes
