@@ -73,6 +73,7 @@
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
   gates, published SDK coordinates, signed release records, SBOMs, and adopter
   verification commands.
+- [v1.1.1 release record](RELEASE-TICKET-1.1.1.md) — published patch (§9 post response window) and registry coordinates
 - [v1.1.0 release record](RELEASE-TICKET-1.1.0.md) — published minor, registry coordinates, container digest, and carried follow-ups
 - [v1.0.2 release record](RELEASE-TICKET-1.0.2.md) — published patch and evidence
 - [v1.0.1 release record](RELEASE-TICKET-1.0.1.md) — published patch and evidence
