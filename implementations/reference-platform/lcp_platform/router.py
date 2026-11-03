@@ -44,7 +44,7 @@ from .storage import (
     now_iso,
     parse_iso_datetime,
 )
-from .validation import ValidationError, SchemaValidator
+from .validation import MESSAGE_TYPES, ValidationError, SchemaValidator
 
 
 class RequestError(ValueError):
@@ -1378,6 +1378,30 @@ class Platform:
                     raise RequestError("Referenced attachment metadata does not match stored content", "LCP-100")
 
     def _validate_envelope(self, envelope: dict[str, Any]) -> None:
+        # SPEC §5/§6: message.type is a closed allowlist and a value outside
+        # it is LCP-006 UNKNOWN_MESSAGE_TYPE, not the generic validation
+        # catch-all (issue #131). This structural check runs ahead of schema
+        # validation and re-codes exactly that one axis; every other schema
+        # violation keeps LCP-100.
+        lcp = envelope.get("lcp") if isinstance(envelope, dict) else None
+        message = lcp.get("message") if isinstance(lcp, dict) else None
+        if (
+            isinstance(message, dict)
+            and "type" in message
+            and message["type"] not in MESSAGE_TYPES
+        ):
+            raise RequestError(
+                f"Unknown message type {message['type']!r}",
+                "LCP-006",
+                400,
+                details=[
+                    (
+                        f"{message['type']!r} is not one of the closed "
+                        f"message.type allowlist {list(MESSAGE_TYPES)} "
+                        "at lcp/message/type"
+                    )
+                ],
+            )
         try:
             self.validator.require_valid_envelope(envelope)
         except ValidationError as exc:

@@ -378,12 +378,10 @@ class AdversarialE2ETests(unittest.TestCase):
         service = PlatformService(platform)
 
         # (4a) Type outside the closed enum. SPEC §6/§7: message.type is a
-        # closed allowlist and the envelope schema states unknown types
-        # "trigger LCP-006"; the reference platform's schema gate currently
-        # refuses with LCP-100 VALIDATION_ERROR instead (still 400, still
-        # structured, still no intake). Code divergence tracked in
-        # https://github.com/SpearSystems/LCP/issues/131 — the rejection
-        # itself is what this test locks.
+        # closed allowlist and an unknown type triggers LCP-006
+        # UNKNOWN_MESSAGE_TYPE (issue #131): the platform's structural gate
+        # re-codes that one violation ahead of generic schema validation;
+        # every other validation failure keeps LCP-100.
         lead = _load_lead("adv-unknown-001", idempotency_key="adv-unknown-key-a")
         lead["lcp"]["message"]["type"] = "profit_share"
         headers, body = _signed_headers(lead, PUBLISHER_SECRET)
@@ -395,7 +393,7 @@ class AdversarialE2ETests(unittest.TestCase):
         self.assertEqual(len(refused["errors"]), 1)
         error = refused["errors"][0]
         self.assertEqual(set(error) >= {"code", "message"}, True)
-        self.assertEqual(error["code"], "LCP-100")
+        self.assertEqual(error["code"], "LCP-006")
         self.assertTrue(error["details"], "structured error must explain the failure")
         self.assertTrue(
             any("not one of" in str(detail) for detail in error["details"]),
