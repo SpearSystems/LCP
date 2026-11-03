@@ -214,6 +214,25 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   unbounded empty DATA frames DoS). Folded into v1.1 — no patch release
   for the published 1.0.2 crate; the fix ships with the next release.
 
+### Coverage grind (matrix wave 2026-11-03)
+
+- 34 SPEC-clause rows moved gap→green by executed tests across errors/
+  capabilities, enum + provenance passthroughs, message lifecycle
+  (scrub tri-state, dispute resolution edges, rejection_reason, full §8
+  offer-restriction battery), sandbox both-direction enforcement, per-
+  sender rate limiting with Retry-After, MCP discovery/passthrough, and
+  idempotency-key header/envelope equality at both enforcement points.
+- New `tools/check_universal_core.py`: the mechanical consumer for the
+  SPEC §12 universal-core audit (14 checks, incl. demographics-absent
+  and metrics-absent pins); wired into the Test workflow's tooling job.
+- Test-only additions: `test_gap_errors_caps`, `test_gap_enum_message`
+  (+ `test-vectors/sdk/enum-passthrough-corpus.json`), `test_gap_mcp_surface`,
+  `test_gap_compliance_lifecycle_offers`, `test_gap_security` (+ SDK
+  `test_security_noncorrelation`).
+- Discovered spec-vs-code defects filed (wire-visible, so fixed via
+  issues not test patches): #176, #177, #179, #180, #181, #182, #192,
+  #193. Coverage matrix truth: 127 green / 8 gap / 9 exempt of 144.
+
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,
