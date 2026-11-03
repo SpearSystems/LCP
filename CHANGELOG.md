@@ -280,7 +280,19 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   non-empty base64url segments, no padding) with corpus vectors sdk-024–028
   (SEC-15). `conformance_level` now follows the enforced mode: `L3` in
   `enforce`, `L2` in `observe` — closing the false-L3 claim reported in #192.
-
+- **Request-history log lookup (LEP-0005, accepted 2026-11-03).**
+  `GET /v1/lcp/history/requests` and the MCP `get_request_history` tool: a
+  paginated, filtered read surface over the platform's own audit tables
+  (metadata only — no raw envelope bodies, no plaintext contacts). Rows are
+  projected through a single tenant decision point
+  (`lcp_platform/history.py`), contact fields appear only as the requester's
+  per-pair HMAC or are absent, contact-shaped `lead_id` values are omitted at
+  emission, `ack` is a legal filter that matches no stored row, and erased
+  leads persist as `ERASED` rows that no keyed-hash filter can match. The row
+  shape ships as `schemas/history-request-row.json` (a read-surface schema,
+  excluded from the SDK validation bundles by design). Python SDK gains
+  `LCPClient.request_with_headers()` (additive) so the MCP adapter can surface
+  pagination values inside the tool result as the record requires.
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,

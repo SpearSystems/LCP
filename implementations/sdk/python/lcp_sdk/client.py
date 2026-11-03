@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import quote
 
 import httpx
@@ -137,6 +137,35 @@ class LCPClient:
         idempotency_key: str | None = None,
         test: bool = False,
     ) -> dict[str, Any]:
+        """Perform one LCP request and return the decoded JSON body."""
+        data, _headers = self.request_with_headers(
+            method,
+            path,
+            payload=payload,
+            params=params,
+            idempotency_key=idempotency_key,
+            test=test,
+        )
+        return data
+
+    def request_with_headers(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        test: bool = False,
+    ) -> tuple[dict[str, Any], Mapping[str, str]]:
+        """Perform one LCP request and return ``(body, response headers)``.
+
+        Surface used by consumers that need transport metadata the JSON body
+        cannot carry — e.g. the MCP adapter's request-history pagination
+        (LEP-0005 §3 requires the adapter to surface the header values inside
+        the tool result). Signing, retries, and error mapping are identical to
+        :meth:`request`; this method is the single implementation of both.
+        """
         body = b""
         if payload is not None:
             body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
@@ -174,7 +203,7 @@ class LCPClient:
             except ValueError:
                 data = {"raw": response.text}
             if response.is_success:
-                return data
+                return data, response.headers
             if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
                 retry_after = response.headers.get("Retry-After")
                 delay = float(retry_after) if retry_after and retry_after.isdigit() else 2**attempt

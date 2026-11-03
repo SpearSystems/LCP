@@ -427,6 +427,165 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/OfferDiscovery'
+  /history/requests:
+    get:
+      tags:
+      - History
+      summary: Query the request-history audit surface
+      operationId: listRequestHistory
+      description: |
+        Paginated read surface over the platform's request audit records
+        (LEP-0005, accepted 2026-11-03). Rows carry metadata only: no raw
+        envelope bodies, and contact-derived values appear only as the
+        requester's per-pair HMAC (`caller_phone_hash`) or are absent.
+        Authorization requires the `history:read` scope; row visibility is
+        scoped to the caller's tenant and to requests the caller sent or
+        received, and erased leads never match. Pagination metadata travels in
+        `X-LCP-Result-Count`, `X-LCP-Total-Results`, and `Link`.
+      parameters:
+      - name: request_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Exact stored message id.
+      - name: lead_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Publisher record handle.
+      - name: message_type
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [lead, call, ping, bid, post, ack, event]
+        description: Stored record class. `ack` is a legal filter value with no stored rows in v1.
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Stored status (open vocabulary per the protocol's open-enum rule).
+      - name: vertical
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: caller_phone_hash
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        description: Per-pair HMAC of the caller's phone. Plaintext is rejected (400 LCP-001).
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+        description: Inclusive lower bound on record creation, whole-second UTC.
+      - name: to
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+        description: Inclusive upper bound on record creation, whole-second UTC.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+        description: Page size. Out of range is rejected (400 LCP-001), never clamped.
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque keyset cursor taken from a previous page's `Link` header.
+      responses:
+        '200':
+          description: Page of history rows
+          headers:
+            X-LCP-Result-Count:
+              description: Rows in this page.
+              schema:
+                type: integer
+                minimum: 0
+            X-LCP-Total-Results:
+              description: Rows in scope for this caller, before the page cut.
+              schema:
+                type: integer
+                minimum: 0
+            Link:
+              description: RFC 8288 next-page link when more rows exist.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [request_id, message_type, direction, status, created_at]
+                      properties:
+                        request_id:
+                          type: string
+                          format: uuid
+                        lead_id:
+                          type: string
+                          maxLength: 64
+                          description: Omitted at the projection when the stored handle is contact-shaped.
+                        message_type:
+                          type: string
+                          enum: [lead, call, ping, bid, post, event]
+                        direction:
+                          type: string
+                          enum: [received, sent]
+                        status:
+                          type: string
+                        sender_id:
+                          type: string
+                        receiver_id:
+                          type: string
+                        vertical:
+                          type: string
+                          nullable: true
+                        test:
+                          type: boolean
+                        price_cents:
+                          type: integer
+                          minimum: 0
+                        currency:
+                          type: string
+                          pattern: '^[A-Z]{3}$'
+                        caller_phone_hash:
+                          type: string
+                          pattern: '^[a-f0-9]{64}$'
+                        expires_at:
+                          type: string
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+        '400':
+          description: Malformed or unknown parameter, plaintext phone, non-canonical timestamp, or out-of-range limit (LCP-001).
+        '401':
+          description: Authentication failure or missing `history:read` scope (LCP-002).
+        '429':
+          description: Rate limited (LCP-011) with `Retry-After`.
   /bids:
     post:
       tags:

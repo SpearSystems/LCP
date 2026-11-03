@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/history-request-row.json",
+  "title": "LCP History Request Row (LEP-0005 draft overlay)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "message_type",
+    "direction",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The stored envelope's message.id \u2014 the reference pattern's 'token'."
+    },
+    "lead_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$",
+      "not": {
+        "pattern": "(?<![-\\w])\\d{10,15}|^[0-9 .()+-]{10,}$|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+      },
+      "description": "Publisher-supplied record handle, pinned at the projection (rule 6): anchored charset plus refusal of the \u00a73 contact shapes \u2014 a leading 10-15 digit phone run, an all-digits/punctuation value, or an email address cannot ride a history row; hyphen-delimited digit segments (uuid-style ids) intentionally pass."
+    },
+    "message_type": {
+      "enum": [
+        "lead",
+        "call",
+        "ping",
+        "bid",
+        "post",
+        "event"
+      ],
+      "description": "Stored-record classes only. 'ack' is excluded: acks are response artifacts, no table backs them (row universe, below; Deferred questions)."
+    },
+    "direction": {
+      "enum": [
+        "received",
+        "sent"
+      ],
+      "description": "From the platform's side: an inbound envelope it received, or an outbound record it sent/delivered."
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$",
+      "description": "Stored record status (open pass-through per \u00a76 \u2014 the vocabulary stays open; the shape is pinned, rule 6)."
+    },
+    "sender_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "receiver_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "vertical": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "test": {
+      "type": "boolean"
+    },
+    "price_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minor units only (LEP-0003 units discipline); currency travels separately."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "caller_phone_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Per-pair HMAC keyed to the REQUESTING credential. Absent \u2014 never blank \u2014 when the rule in the next section omits it."
+    },
+    "expires_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "updated_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    }
+  }
+}

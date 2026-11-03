@@ -1883,6 +1883,24 @@ class Platform:
             ),
         }
 
+    def request_history(
+        self,
+        query: str,
+        *,
+        sender_id: str,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """LEP-0005 read surface (accepted 2026-11-03).
+
+        Thin by design: the tenant predicate, row projection, identifier pins,
+        per-pair hashing and page cut all live in ``history.history_rows`` —
+        the record's single decision point. This method must not add a second
+        filter; see the module docstring.
+        """
+        from . import history
+
+        return history.serve(self, query, sender_id=sender_id, headers=headers)
+
     def public_offers(self, vertical: str | None = None) -> dict[str, Any]:
         offers = []
         for offer in self.store.list_offers(
