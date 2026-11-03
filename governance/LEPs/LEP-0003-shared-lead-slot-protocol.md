@@ -1199,9 +1199,12 @@ wire surface (#166) has since landed on `main` (merge commit
   and route bulk to a dedicated mechanism. Trigger: observed array sizes
   in production posts. Reality pointer: #166 (merged) ships an
   implementation-side `maxItems: 100` on the post direction with the
-  bulk-misuse rationale in the schema `$comment`; the protocol-level
-  cap/ordering question stays deferred with the trigger unchanged (the
-  32-entry report-direction bound is normative, not deferred — §4).
+  bulk-misuse rationale in the schema `$comment`; **ratified** by the
+  maintainer 2026-11-03 (closes #169) — the post-direction cap is now
+  part of the shipped surface, and any future lift is an additive MINOR
+  with its own record note; bulk sync stays out of scope (dedicated
+  mechanism trigger unchanged). The 32-entry report-direction bound is
+  normative — §4.
 - **Direct buyer→buyer exchange.** This design routes everything through
   the platform/publisher that holds the pair secrets. A peer-to-peer
   variant (buyers exchanging keyed hashes without the platform) changes
