@@ -98,9 +98,95 @@ class LCPClient:
         params = {"vertical": vertical} if vertical else None
         return self.get("/v1/lcp/offers", params=params)
 
+    def get_with_headers(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """GET returning ``(legacy-shaped body, response headers)`` (LEP-0005).
+
+        MCP tool results are content blocks, not HTTP responses: the adapter
+        MUST surface pagination values inside the result object, so it needs
+        the headers the plain ``get`` helper drops.
+        """
+        try:
+            data, headers = self._client.request_with_headers("GET", path, params=params)
+            return _with_metadata(data, 200, True), dict(headers)
+        except LCPHTTPError as exc:
+            body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}
+            return _with_metadata(body, exc.status_code, False), {}
+
+    def get_request_history(
+        self,
+        *,
+        request_id: str | None = None,
+        lead_id: str | None = None,
+        message_type: str | None = None,
+        status: str | None = None,
+        vertical: str | None = None,
+        caller_phone_hash: str | None = None,
+        from_: str | None = None,
+        to: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """LEP-0005 history query with pagination surfaced in the result."""
+        params = {
+            key: value
+            for key, value in {
+                "request_id": request_id,
+                "lead_id": lead_id,
+                "message_type": message_type,
+                "status": status,
+                "vertical": vertical,
+                "caller_phone_hash": caller_phone_hash,
+                "from": from_,
+                "to": to,
+                "limit": limit,
+                "cursor": cursor,
+            }.items()
+            if value is not None
+        }
+        result, headers = self.get_with_headers(
+            "/v1/lcp/history/requests", params=params or None
+        )
+        if result.get("_ok"):
+            result["pagination"] = {
+                "result_count": _as_int(headers.get("x-lcp-result-count")),
+                "total_results": _as_int(headers.get("x-lcp-total-results")),
+                "next_cursor": _cursor_from_link(headers.get("link")),
+            }
+        return result
+
 
 def _with_metadata(data: dict[str, Any], status_code: int, ok: bool) -> dict[str, Any]:
     result = dict(data)
     result["_status_code"] = status_code
     result["_ok"] = ok
     return result
+
+
+def _as_int(value: str | None) -> int:
+    try:
+        return int(value or 0)
+    except ValueError:
+        return 0
+
+
+def _cursor_from_link(link: str | None) -> str | None:
+    """Extract ``cursor`` from a ``Link: <url>; rel="next"`` header."""
+    if not link:
+        return None
+    for part in link.split(","):
+        if 'rel="next"' not in part:
+            continue
+        start = part.find("<")
+        end = part.find(">", start + 1)
+        if start < 0 or end < 0:
+            continue
+        url = part[start + 1 : end]
+        # urllib keeps this dependency-free and correct for encoded cursors.
+        from urllib.parse import parse_qs, urlparse
+
+        values = parse_qs(urlparse(url).query).get("cursor")
+        if values:
+            return values[0]
+    return None

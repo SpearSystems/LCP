@@ -141,6 +141,40 @@ async def _list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="get_request_history",
+            description=(
+                "Query the LCP request history (LEP-0005): paginated audit rows for "
+                "requests this credential sent or received. Filters: request_id, "
+                "lead_id, message_type, status, vertical, caller_phone_hash "
+                "(per-pair HMAC), from/to (whole-second ISO timestamps), limit "
+                "(1-200, default 50), cursor. Rows carry metadata only — never raw "
+                "envelope bodies or plaintext contacts. Pagination is returned in "
+                "the result's `pagination` object (MCP results have no headers)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "request_id": {"type": "string", "description": "Exact message id (UUID)."},
+                    "lead_id": {"type": "string", "description": "Publisher record handle."},
+                    "message_type": {
+                        "type": "string",
+                        "enum": ["lead", "call", "ping", "bid", "post", "ack", "event"],
+                        "description": "'ack' is a legal filter with no stored rows in v1.",
+                    },
+                    "status": {"type": "string", "description": "Open status vocabulary (§6)."},
+                    "vertical": {"type": "string"},
+                    "caller_phone_hash": {
+                        "type": "string",
+                        "description": "64-hex per-pair HMAC of the caller's phone (never plaintext).",
+                    },
+                    "from": {"type": "string", "description": "Inclusive lower bound, YYYY-MM-DDTHH:MM:SSZ."},
+                    "to": {"type": "string", "description": "Inclusive upper bound, YYYY-MM-DDTHH:MM:SSZ."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                    "cursor": {"type": "string", "description": "Opaque cursor from a previous page."},
+                },
+            },
+        ),
+        types.Tool(
             name="list_offers",
             description="List active offers available to the authenticated sender. Optionally filter by vertical.",
             inputSchema={
@@ -233,6 +267,21 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
 
     elif name == "get_capabilities":
         result = client.get_capabilities()
+        return _tool_result(result)
+
+    elif name == "get_request_history":
+        result = client.get_request_history(
+            request_id=arguments.get("request_id"),
+            lead_id=arguments.get("lead_id"),
+            message_type=arguments.get("message_type"),
+            status=arguments.get("status"),
+            vertical=arguments.get("vertical"),
+            caller_phone_hash=arguments.get("caller_phone_hash"),
+            from_=arguments.get("from"),
+            to=arguments.get("to"),
+            limit=arguments.get("limit"),
+            cursor=arguments.get("cursor"),
+        )
         return _tool_result(result)
 
     elif name == "list_offers":

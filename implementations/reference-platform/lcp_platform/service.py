@@ -149,6 +149,12 @@ class PlatformService:
             return self._response(200, self.platform.store.metrics())
         if route == "/v1/lcp/capabilities":
             return self._response(200, self.platform.capabilities())
+        if route == "/v1/lcp/history/requests":
+            sender_id = self._authenticate_read(headers, required_scope="history:read")
+            payload, extra_headers = self.platform.request_history(
+                query, sender_id=sender_id, headers=headers
+            )
+            return self._response(200, payload, extra_headers=extra_headers)
         if route.startswith("/v1/lcp/attachments/"):
             attachment_id = route.removeprefix("/v1/lcp/attachments/")
             content, attachment_headers = self.platform.download_attachment(attachment_id, headers=headers)

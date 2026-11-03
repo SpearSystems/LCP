@@ -37,10 +37,18 @@ MODEL_FILES = {
 }
 REQUIRED_MODELS = ("Lead", "Call", "Ping", "Post", "Bid", "Ack", "Event", "Offer")
 
+# See tools/generate_sdk_models.NON_MESSAGE_SCHEMAS: read-surface schemas are
+# excluded from the SDK bundle/manifest just like the generator excludes them.
+NON_MESSAGE_SCHEMAS = frozenset({"history-request-row.json"})
+
 
 def expected_manifest() -> dict[str, object]:
     files = sorted(
-        list((ROOT / "schemas").glob("*.json"))
+        [
+            path
+            for path in (ROOT / "schemas").glob("*.json")
+            if path.name not in NON_MESSAGE_SCHEMAS
+        ]
         + list((ROOT / "verticals").glob("*.json"))
     )
     return {
@@ -131,7 +139,11 @@ def main() -> int:
         if name == "python":
             for src in sorted(
                 [
-                    *(ROOT / "schemas").glob("*.json"),
+                    *(
+                        path
+                        for path in (ROOT / "schemas").glob("*.json")
+                        if path.name not in NON_MESSAGE_SCHEMAS
+                    ),
                     *(ROOT / "verticals").glob("*.json"),
                 ]
             ):
