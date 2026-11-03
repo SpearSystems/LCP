@@ -146,7 +146,15 @@ ALL gates hold (L-Judge enforces each):
 - **G4** Every substantive claim carries command + observed output;
   non-reproducible statements are marked as inference.
 - **G5** Durable findings converted to CI tests or tracked waivers before
-  lane close.
+  lane close. Enforcement is the L-Judge's reading of the dossier plus the
+  finding ledger, not a separate CI job: dossiers are published as issue
+  comments rather than repository artifacts, so a checker would have to
+  scrape GitHub and could only validate text shape, never whether a finding
+  is genuinely covered. A finding that lands as a test is additionally held
+  by the coverage matrix once its clause is mapped, which is the durable
+  half of this gate. (Decision recorded 2026-11-03 when closing the
+  LEP-0004 implementation findings; the CI-conversion idea was assessed and
+  rejected as unverifiable.)
 - **G6** Verdict is one of `PASS`, `FINDINGS`, `BLOCKED`, `INCONCLUSIVE` and
   is consistent with the evidence; L-Judge has accepted the dossier.
 

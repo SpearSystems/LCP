@@ -150,6 +150,12 @@ distribution undefined); #193 delivered-post ack-deadline leg unshipped
 | ERR-011 | §5 LCP-011 RATE_LIMITED ↔ 429 with Retry-After | platform | plat:test_rate_limited_intake_returns_lcp011_with_retry_after | green |
 | ERR-012 | §5 LCP-012 SIGNATURE_INVALID ↔ 401 (recognized sender; signature/replay axis only — bearer-key mismatches are identity, LCP-002, see ERR-002/#142) | platform+sdk | plat:test_http_requires_json_and_idempotency_headers (asserts the LCP-012 emitted by the service.py:115 pre-check), plat:test_tampered_signature_and_body_rejected_no_side_effects, sdk-py:test_stale_signature_is_rejected, lcp-sdk-hmac-001, lcp-neg-sig-001 | green |
 | ERR-013 | §5 LCP-013 TEST_TRAFFIC_POLICY (flag/header disagreement, wrong-side traffic) | platform+corpus | plat:test_production_endpoint_rejects_test_traffic, lcp-neg-mode-001 | green |
+| ERR-014 | §5 LCP-012: missing `X-LCP-Timestamp` or `X-LCP-Signature` on the HMAC path is a replay-protection failure → 401 LCP-012 | platform | plat:test_missing_timestamp_header_is_lcp012, plat:test_missing_signature_header_is_lcp012 | green |
+| ERR-015 | §5 LCP-012: a malformed or timezone-naive timestamp is a replay-protection failure → 401 LCP-012 | platform | plat:test_malformed_timestamp_is_lcp012, plat:test_naive_timestamp_is_lcp012 | green |
+| ERR-016 | §5 LCP-012: replay window is inclusive and symmetric — absolute offset at the window accepted, one second beyond rejected | platform | plat:test_replay_window_boundary_is_inclusive_and_symmetric | green |
+| ERR-017 | §5 LCP-012: mutating routes require `X-LCP-Idempotency-Key` → 401 LCP-012 | platform | plat:test_mutating_request_without_idempotency_header_is_lcp012 | green |
+| ERR-018 | §5 LCP-012: header idempotency key MUST equal `lcp.message.idempotency_key` → 401 LCP-012 | platform | plat:test_header_envelope_idempotency_mismatch_is_lcp012 | green |
+| ERR-019 | §5 LCP-002: a recognized sender lacking the route scope reuses the identity/authorization code LCP-002 (no new code) | platform | plat:test_scope_violation_reuses_lcp002 | green |
 | ERR-100 | §5 LCP-100 VALIDATION_ERROR ↔ 400 catch-all | platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | ERR-500 | §5 LCP-500 INTERNAL_ERROR ↔ 500 | platform | plat:test_fault_injected_store_crash_returns_lcp500_envelope | green |
 | ERR-SHAPE | §5 one error shape (errors[] with code/name/message/field/details) everywhere | schema+platform | L3-005, plat:test_malformed_json_content_type_returns_json_error | green |
