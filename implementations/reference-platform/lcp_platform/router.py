@@ -29,6 +29,7 @@ from .attestation import (
 )
 from .auth import Authenticator, header
 from .crypto import EnvelopeCipher
+from .extensions import extension_problems, redact_extension_pii
 from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
 from .config import PlatformConfig
 from .database import create_store
@@ -41,6 +42,7 @@ from .messages import (
     pair_phone_hash,
     webhook_headers,
 )
+from .pii import has_plaintext_contact
 from .security import SecurityPolicyError, validate_egress_host, validate_webhook_url
 from .storage import (
     EventIdempotencyConflict,
@@ -146,21 +148,9 @@ _CONTACTED_REPORT_LIMIT = 32
 # (`event` row, PII — None). `details` is an open object, so — exactly like
 # LEP-0003 §4's report rules — the rule is enforced at ingest, not in schema:
 # a plaintext contact value anywhere in `details` is a validation rejection,
-# for every event name and both reporting directions (issue #198). Digests
-# and ids are 64-hex/opaque strings and are unaffected; dates are excluded
-# explicitly (a date is not a phone number).
-_EMAIL_SHAPED_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
-# A phone-number RUN inside a longer string. Boundaries are the point: a run
-# may not start or end inside an identifier — letters, digits, `_`, `-`, `.`
-# and `/` are all identifier material, so `ping_550e8400-1`,
-# `OPP-2026-0001234`, `v1.1.0` and the `2026-11-02` tail of an ISO timestamp
-# cannot match, while a run surrounded by whitespace or punctuation is
-# examined. The match length is bounded, so a long opaque id cannot match
-# either.
-_PHONE_RUN_RE = re.compile(r"(?<![\w./-])\+?\(?\d[\d\s().\-]{4,19}\d(?![\w./-])")
-_DATE_ONLY_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
-_PHONE_MIN_DIGITS = 7
-_PHONE_MAX_DIGITS = 15
+# for every event name and both reporting directions (issue #198). The shapes
+# themselves live in `pii.py` because LEP-0006 Track B's extension guard
+# (B.3.4) enforces the same rule on `lead`/`post` extension values.
 # LEP-0006 Track A ingest bounds for the recommended FINAL_PRICING shape
 # (SPEC §4). Minor units only; the ceiling is a typo guard (1,000,000 major
 # units), and a call's contact duration cannot exceed a day.
@@ -171,29 +161,6 @@ _CURRENCY_RE = re.compile(r"\A[A-Z]{3}\Z")
 
 def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _has_plaintext_contact(value: str) -> bool:
-    """Whether a `details` string carries contact data in the clear.
-
-    Two shapes only — an email address, or a phone-number run of 7-15 digits
-    (E.164's ceiling) with separators. A bare `YYYY-MM-DD` is a date, not a
-    phone number, and is skipped before the digit count. Identifier material
-    cannot match: 64-hex is longer than the bounded run, its letters break
-    every candidate, and a run may not begin or end inside a hyphenated,
-    dotted or slashed id. The check is deliberately shape-based, not
-    inferential — no DLP scoring, no normalization of the value it refuses.
-    """
-    if _EMAIL_SHAPED_RE.search(value):
-        return True
-    for match in _PHONE_RUN_RE.finditer(value):
-        candidate = match.group(0)
-        if _DATE_ONLY_RE.match(candidate):
-            continue
-        digits = sum(1 for char in candidate if "0" <= char <= "9")
-        if _PHONE_MIN_DIGITS <= digits <= _PHONE_MAX_DIGITS:
-            return True
-    return False
 
 
 class Platform:
@@ -280,6 +247,10 @@ class Platform:
             raise RequestError(str(exc), "LCP-100") from exc
         payload = envelope["lcp"]["payload"]
         self.validator.require_valid_envelope(envelope)
+        # Same receiver policy as wire intake: a normalized envelope carrying
+        # extensions must already satisfy B.2/B.3.4 before it can be returned
+        # for submission.
+        self._validate_extension_policy(payload)
         self.store.insert_mapping_application(
             mapping=mapping,
             source_record_id=str(payload.get("external_id"))
@@ -396,6 +367,10 @@ class Platform:
         self._verify_agent_attestation(envelope, message, sender_id)
 
         payload = envelope["lcp"]["payload"]
+        # LEP-0006 Track B §B.2/§B.3.4: registered-shape and PII receiver
+        # rules, before matching or persistence — a rejected lead stores
+        # nothing and creates no pings/posts.
+        self._validate_extension_policy(payload)
         lead_expired = is_expired(envelope_expiry(envelope))
         offers = (
             []
@@ -487,6 +462,31 @@ class Platform:
             sender_id=self.config.platform_id,
             status="RECEIVED",
             lead_id=payload["lead_id"],
+        )
+
+    def _validate_extension_policy(self, payload: dict[str, Any]) -> None:
+        """LEP-0006 Track B receiver rules for ``extensions`` (§B.2/§B.3.4).
+
+        The schema already enforces the namespace format and the ``lcp.core.*``
+        reservation. What the core cannot know — the registered
+        ``{org}.form.questions`` shape, the container-size policy bound, and
+        the PII class rule — is enforced here. Reject (``LCP-100``) rather
+        than scrub: the lead record must not persist free-text contacts that
+        hash-keyed suppression and erasure cannot reach. Absent or empty =
+        bit-for-bit v1.0 behavior.
+        """
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict) or not extensions:
+            return
+        problems = extension_problems(
+            extensions, max_total_bytes=self.config.max_extension_bytes
+        )
+        if not problems:
+            return
+        raise RequestError(
+            "Lead extensions failed the receiver policy: " + "; ".join(problems),
+            "LCP-100",
+            details={"field": problems[0].split(" ", 1)[0]},
         )
 
     def _verify_agent_attestation(
@@ -740,6 +740,39 @@ class Platform:
             if self.store.all_pings_terminal(ping["lead_id"]):
                 self._route_lead(ping["lead_id"])
 
+    def _extensions_for_delivery(
+        self, lead_payload: dict[str, Any], buyer_id: str
+    ) -> dict[str, Any] | None:
+        """LEP-0006 Track B §B.1/§B.3.4: extensions that may ride a post.
+
+        Three delivery decisions, in order:
+
+        * absent/empty -> ``None`` (bit-for-bit v1.0 post);
+        * receiver not advertising parsed-semver >= 1.1 -> ``None``; ``lead``
+          and ``post`` are closed objects, so a v1.1 field sent to a v1.0
+          receiver fails its strict allowlist (capability-gated, not
+          ignore-gated);
+        * plaintext contact spans -> redacted deterministically and logged
+          per lead. Ingest already rejects them, so this is the delivery-side
+          backstop the record requires, never a per-recipient exception.
+        """
+        extensions = lead_payload.get("extensions")
+        if not isinstance(extensions, dict) or not extensions:
+            return None
+        if not self.auth.advertises_slot_protocol(buyer_id):
+            return None
+        clean, redacted = redact_extension_pii(extensions)
+        if redacted:
+            self.store.insert_audit(
+                tenant_id=self.config.routing_tenant_id,
+                actor_id=self.config.platform_id,
+                action="lead.extensions_redacted",
+                resource_type="lead",
+                resource_id=str(lead_payload.get("lead_id", "")),
+                metadata={"buyer_id": buyer_id, "fields": redacted},
+            )
+        return clean
+
     def _create_direct_post(
         self, lead_envelope: dict[str, Any], offer: dict[str, Any]
     ) -> bool:
@@ -756,6 +789,9 @@ class Platform:
             buyer_reference=None,
             correlation_id=lead_envelope["lcp"]["message"]["id"],
             contacted_hashes=self._contacted_hashes_for(
+                lead_payload, offer["buyer_id"]
+            ),
+            extensions=self._extensions_for_delivery(
                 lead_payload, offer["buyer_id"]
             ),
         )
@@ -1083,6 +1119,9 @@ class Platform:
                 contacted_hashes=self._contacted_hashes_for(
                     lead_payload, offer["buyer_id"]
                 ),
+                extensions=self._extensions_for_delivery(
+                    lead_payload, offer["buyer_id"]
+                ),
             )
             self.validator.require_valid_envelope(post)
             # LEP-0003 §5 item 1: the remaining-budget check and the post
@@ -1351,7 +1390,7 @@ class Platform:
             if not isinstance(node, str):
                 continue
             value = node.strip()
-            if _has_plaintext_contact(value):
+            if has_plaintext_contact(value):
                 raise RequestError(
                     "Event details must not carry plaintext contact values "
                     f"({path}); contact values travel only as per-pair "

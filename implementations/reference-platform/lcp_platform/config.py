@@ -39,6 +39,13 @@ class PlatformConfig:
     max_delivery_attempts: int = 5
     worker_interval_seconds: float = 1.0
     max_body_bytes: int = 2_000_000
+    # LEP-0006 Track B §B.2: the 32 KiB total for `lead`/`post` `extensions`
+    # is a SHOULD-level, scan-cheap policy bound (a fully shape-conformant
+    # `{org}.form.questions` block can serialize past it; issue #197 tracks
+    # the re-tune). The deployment MAY set a tighter limit; the operative hard
+    # ceiling stays the transport body cap above, so a larger value here is
+    # redundant rather than unsafe.
+    max_extension_bytes: int = 32_768
     max_header_bytes: int = 16_384
     max_webhook_response_bytes: int = 262_144
     rate_limit_per_minute: int = 600
@@ -90,6 +97,10 @@ class PlatformConfig:
     def __post_init__(self) -> None:
         if self.max_body_bytes <= 0 or self.max_header_bytes <= 0:
             raise ValueError("Request size limits must be positive")
+        if self.max_extension_bytes <= 0:
+            # The bound is a policy target, not a transport rule: a value above
+            # max_body_bytes is unreachable, never unsafe, so it is not refused.
+            raise ValueError("The extensions policy bound must be positive")
         if self.max_webhook_response_bytes <= 0:
             raise ValueError("Webhook response limit must be positive")
         if self.max_attachment_bytes <= 0:
@@ -186,6 +197,9 @@ class PlatformConfig:
                 os.environ.get("LCP_WORKER_INTERVAL_SECONDS", "1")
             ),
             max_body_bytes=int(os.environ.get("LCP_MAX_BODY_BYTES", "2000000")),
+            max_extension_bytes=int(
+                os.environ.get("LCP_MAX_EXTENSION_BYTES", "32768")
+            ),
             max_header_bytes=int(os.environ.get("LCP_MAX_HEADER_BYTES", "16384")),
             max_webhook_response_bytes=int(
                 os.environ.get("LCP_MAX_WEBHOOK_RESPONSE_BYTES", "262144")

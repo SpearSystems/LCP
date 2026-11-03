@@ -161,6 +161,17 @@
     },
     "attachments": {
       "$ref": "core.json#/$defs/attachments"
+    },
+    "extensions": {
+      "type": "object",
+      "description": "v1.1 (LEP-0006 Track B): namespaced deployment-specific data (SPEC.md section 6; governance/EXTENSION-REGISTRY.md). Keys MUST follow {org}.{division}.{purpose} - at least three lowercase dot-separated segments - and lcp.core.* is reserved for the core. Values stay deployment-defined: the core does not and cannot validate namespaced payloads. Shape authority for a registered namespace is its record (LEP-0006 section B.2 defines {org}.form.questions: at most 25 entries of question_id/question_text/answer_text, question_text at most 300 and answer_text at most 1000 characters). These are receiver rules, not schema rules: a receiver that implements a registered form.questions namespace MUST validate entries and accept or reject the message (LCP-100), while receivers that do not recognize a namespace ignore its value. Bound hierarchy (LEP-0006 section B.2): the registered form.questions shape ceiling is 133,140 B worst-case UTF-8, receivers SHOULD reject extension totals above the 32 KiB soft policy target (a fully shape-conformant sender can exceed it; issue #197 tracks the re-tune), and the operative hard bound is the transport body cap (max_body_bytes, default 2,000,000 B). Never ping_safe: this field exists only on lead and post - ping/bid/ack keep their strict allowlists - and a platform MUST NOT derive ping attributes, compliance_flags, or any other ping field from extension content. Extension content is lead/post PII-scope content: it inherits section 9 retention and erasure, and question/answer text MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values (those have structured homes in consumer, compliance.consent_evidence[], and attachments[]).",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$",
+        "not": {
+          "pattern": "^lcp\\.core\\."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": false
