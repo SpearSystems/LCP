@@ -2,10 +2,15 @@
 
 > **Release page · Page 3 of 6**
 
-> **Current release:** `v1.0.2` was published on 2026-08-18 from signed tag
-> `v1.0.2`, resolving to commit
-> `7ea57f1aabd0ac583e40541360119468779940c7`. The GitHub release and its signed
+> **Current release:** `v1.1.0` was published on 2026-11-03 from tag
+> `v1.1.0`, resolving to commit
+> `68a22b5f7f36ea6321a21428267fbc5ab8bdf92c`. The GitHub release and its signed
 > evidence assets are available at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.0>, with the release
+> record at [RELEASE-TICKET-1.1.0.md](RELEASE-TICKET-1.1.0.md).
+>
+> **Previous release:** `v1.0.2` (2026-08-18), commit
+> `7ea57f1aabd0ac583e40541360119468779940c7` —
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.0.2>.
 >
 > This page explains how maintainers create a versioned LCP release and how
@@ -189,7 +194,7 @@ release workflow runs on its own evidence before uploading.
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | Central Portal protected credentials and DNS-verified `spear.systems` namespace |
 | crates.io | `lcp-sdk` | crates.io OIDC trusted login; the manually published bootstrap is not the v1 release |
 | RubyGems | `lcp-sdk` | Active RubyGems OIDC trusted publisher, activated by v1.0.0 |
-| Packagist | `spearsystems/lcp-sdk` | Signed tag mirroring |
+| Packagist | `spearsystems/lcp-sdk` | **Not registered** — the package is absent from packagist.org, so tag mirroring does not occur. Install from the signed tag as a Composer VCS repository until an operator submits the package. |
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
 
