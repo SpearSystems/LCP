@@ -134,7 +134,11 @@ class Authenticator:
             if not verify_api_key(
                 presented, str(salt) if salt else None, str(stored) if stored else None
             ):
-                raise AuthenticationError("Invalid bearer credential", "LCP-012")
+                # SPEC §5 keeps the axes distinct: LCP-012 covers HMAC
+                # signature/timestamp failures (replay protection), while a
+                # failed API-key check is an identity failure -> LCP-002
+                # (issue #142, ruling in docs/err-auth-triage.md §3).
+                raise AuthenticationError("Invalid bearer credential", "LCP-002")
         else:
             timestamp = header(headers, "X-LCP-Timestamp")
             signature = header(headers, "X-LCP-Signature")
