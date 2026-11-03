@@ -46,7 +46,7 @@ Read back from each registry API after the tag workflows completed:
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | 1.1.1 |
 | Swift Package Manager | repository tag | v1.1.1 |
 | Go module | `…/implementations/sdk/go` | `v1.1.1` resolves against the submodule tag (`GOPROXY=direct go get …@v1.1.1` succeeds); proxy.golang.org was still serving a cached miss for the new tag at publication time and resolves on cache expiry — root `vX.Y.Z` tags only produce pseudo-versions for a nested module, see §5 |
-| Packagist | `spearsystems/lcp-sdk` | mirror repository `SpearSystems/lcp-sdk-php` tagged `v1.1.1`; Packagist submission still pending |
+| Packagist | `spearsystems/lcp-sdk` | **1.1.1** — registered from the `SpearSystems/lcp-sdk-php` mirror (`composer show -a` resolves v1.1.1) |
 
 ## 4. Reference container
 
@@ -60,10 +60,13 @@ before it writes release metadata, so a private image fails the release.
 
 ## 5. Follow-ups
 
-- **Packagist** — the mirror repo `SpearSystems/lcp-sdk-php` exists, mirrors
-  each tag, and is installable as a Composer VCS repository today. Registering
-  it (`https://packagist.org/packages/submit` with that URL) is a one-time,
-  account-authenticated action; no CI credential is involved.
+- **Packagist** — done. `SpearSystems/lcp-sdk-php` mirrors each LCP tag and
+  `spearsystems/lcp-sdk` is registered, with Packagist's push webhook active so
+  later tags are indexed automatically. Learning recorded: the initial crawl
+  after submission did not pick the already-pushed tag up, and only a
+  subsequent push event (or the package page's **Update** button) indexed
+  `v1.1.1` — a maintainer submitting a new mirror should expect to force that
+  first crawl.
 - **Go module tags** — a module in a subdirectory needs a `subdir/vX.Y.Z` tag;
   root `vX.Y.Z` tags only yield `v0.0.0-…` pseudo-versions. `docs/RELEASE.md`
   now lists this as a release step.

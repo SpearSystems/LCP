@@ -205,7 +205,7 @@ release workflow runs on its own evidence before uploading.
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | Central Portal protected credentials and DNS-verified `spear.systems` namespace |
 | crates.io | `lcp-sdk` | crates.io OIDC trusted login; the manually published bootstrap is not the v1 release |
 | RubyGems | `lcp-sdk` | Active RubyGems OIDC trusted publisher, activated by v1.0.0 |
-| Packagist | `spearsystems/lcp-sdk` | `SpearSystems/lcp-sdk-php` mirrors each LCP tag (Packagist needs `composer.json` at the root); register that repository once at packagist.org. Until it is registered, install the mirror as a Composer VCS repository. |
+| Packagist | `spearsystems/lcp-sdk` | Registered from `SpearSystems/lcp-sdk-php`, which mirrors each LCP tag (Packagist needs `composer.json` at the repository root). Packagist's push webhook keeps it current; a newly added mirror may need one manual **Update** before its first tag is indexed. |
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
 
