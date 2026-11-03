@@ -30,6 +30,14 @@ Registration is **open** — no approval required. To register:
 3. The entry is merged if the format is valid and the namespace does not
    collide with an existing registration or `lcp.core.*`.
 
+Rows may also land **proposed-on-acceptance**: an LEP files its
+namespace rows with the Draft record so the names are visible and
+reserved before the decision — such rows carry `proposed (LEP-NNNN)`
+in the **Since** column instead of a version, are not live until the
+named LEP track is accepted, and registry rows never mark acceptance
+themselves (maintainers record decisions in
+`governance/LEP-REGISTRY.md`).
+
 ### Rejection grounds
 
 A registration is rejected only if:

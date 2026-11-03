@@ -3,7 +3,7 @@
 - **Title:** Marketplace migration extensions: final-pricing feedback (`FINAL_PRICING` event) and `{org}.form.questions` (lead/post `extensions`)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — no implementation authorized; registry rows land as *proposed-on-acceptance*
+- **Status:** **Draft** — no implementation authorized; registry rows land as *proposed-on-acceptance* (ARB dossier findings #185 F1/F3 dispositioned in the "Revision 2026-11-03 (post-dossier)" section; F2 named, open for the implementation PR)
 - **Target version:** v1.1.0 (additive MINOR; Track A carries zero schema change, Track B adds one optional closed-object field to `lead`/`post`)
 - **Discussion:** [#185](https://github.com/SpearSystems/LCP/issues/185)
   (`[LEP] Marketplace migration extensions: final-pricing feedback and {org}.form.questions`)
@@ -206,14 +206,17 @@ Normative semantics:
   `details.ping_id` keys the correction chain. Replay collapses on the
   event `message.id` (the reference platform's existing mechanism:
   same-id-same-bytes → `DUPLICATE`, reuse-with-different-bytes →
-  `LCP-005` 409; `router.py:1229-1252`). Corrections are normal: a
+  `LCP-005` 409; `router.py:1260-1283`). Corrections are normal: a
   later report for the same `(lead_id, ping_id)` **supersedes** the
   earlier one when its payload `timestamp` is newer (ties: higher
   message `id` lexicographic). Receivers SHOULD keep report history and
   MUST expose the superseding view.
 - **PII discipline.** `event` is a non-PII message class (SPEC.md §4
-  table — "None (hashes only)"). A `FINAL_PRICING` report carries no
-  consumer data at all: the contact is identified by `lead_id` alone;
+  table: the `event` row reads `None`, `SPEC.md:341`; the "(hashes
+  only)" qualifier belongs to the `ping` row, `SPEC.md:337` — quote
+  misattribution fixed post-dossier, #185 F3). A `FINAL_PRICING`
+  report carries no consumer data at all: the contact is identified
+  by `lead_id` alone;
   phone/email/hash values MUST NOT appear in `details`. Receivers MUST
   reject PII-bearing reports at ingest (see invalid example A-1; honest
   status recorded there — the open `details` cannot express this in
@@ -223,19 +226,20 @@ Normative semantics:
   and whose `lcp_versions` contains a parsed `major == 1`,
   `minor >= 1` full-semver element (the normative membership rule of
   SPEC.md §8, landed via LEP-0003 F6/T10). The reference platform
-  today: `router.py:1699-1730` advertises thirteen values and
-  `["1.0.0", "1.1.0"]` (`router.py:1705`, `router.py:1716-1730`).
+  today: `router.py:1730-1763` advertises thirteen values and
+  `["1.0.0", "1.1.0"]` (`router.py:1738` reading `validation.py:23`,
+  `router.py:1749-1763`).
   **Zero schema cost, nonzero platform cost (measured path):** the
   publisher-reportable set `_PUBLISHER_EVENT_TYPES`
-  (`router.py:76-81`: `REJECTED`, `DISPUTED`, `CONSENT_WITHDRAWN`,
+  (`router.py:107-112`: `REJECTED`, `DISPUTED`, `CONSENT_WITHDRAWN`,
   `ERASURE_REQUEST`) does not contain `FINAL_PRICING`, and the sender
-  authorization at `router.py:1219-1226` rejects any other name with
+  authorization at `router.py:1250-1258` rejects any other name with
   `LCP-002` ("Sender is not authorized for this lead event").
   Acceptance therefore obligates the implementation PR to add
   `FINAL_PRICING` to `_PUBLISHER_EVENT_TYPES` behind the v1.1 gate and
   advertise it — the exact F5/T6 correction pattern LEP-0003 recorded.
   `FINAL_PRICING` MUST NOT be added to `_EVENT_STATUS_TARGETS`
-  (`router.py:67-75`): it asserts no lifecycle transition; a price
+  (`router.py:74-82`): it asserts no lifecycle transition; a price
   report does not move `status` (see §3 status transition table,
   SPEC.md:260).
 
@@ -324,9 +328,37 @@ registers `lcp.form.questions`; other adopters register
   `answer_text` required string, **≤ 1000 characters**; **no other keys**
   (strings only — nested objects are out of the registered shape, which
   keeps content scanning tractable).
-- Total serialized `extensions` object: receivers SHOULD reject beyond
-  **32 KiB** (a deployment MAY set tighter limits, MUST NOT loosen the
-  shape bounds above).
+- Total serialized `extensions` object — the bound hierarchy, with the
+  arithmetic (computed post-dossier, #185 F1 / #197; measured plant in
+  the Revision section): the shape bounds above admit a worst-case
+  shape-legal `form.questions` block — 25 entries, `question_id` at
+  the 64-character maximum, `question_text` 300, `answer_text` 1000 —
+  serializing to **35,640 bytes** ASCII (25 × (1300 + 64) + 1,540
+  structural) and **133,140 bytes** worst-case UTF-8 (`maxLength`
+  counts codepoints; 4-byte text: 25 × (4 × 1300 + 64) + 1,540). Both
+  exceed 32 KiB. Receivers SHOULD reject `extensions` totals beyond
+  **32 KiB** (32,768 B) — an auditable, cheap-to-scan abuse target
+  that is explicitly a **soft policy bound**, not a schema property:
+  a fully shape-conformant worst-case sender exceeds it, so a
+  receiver that hard-rejects at 32 KiB rejects shape-legal messages.
+  Reconciling the policy target with the shape ceiling (lower the
+  per-field bounds until the worst case fits, or move the total
+  bound) is the Review re-tune decision tracked in
+  [#197](https://github.com/SpearSystems/LCP/issues/197); this
+  revision states the arithmetic without renumbering the proposed
+  bounds (the B.1/B.2 fences carry committed plant digests and
+  Track B is unimplemented — the numbers are a Review item, not a
+  silent record-side choice). A deployment MAY set tighter limits
+  and MUST NOT loosen the shape bounds above. Values under
+  **unrecognized namespaces** are
+  schema-unbounded (B.1's `additionalProperties: true`; measured: a
+  1,000,000-byte value under `acme.a.b` PASSES the overlay). The
+  operative hard ceiling on the wire is the transport body cap: the
+  reference platform rejects request bodies above `max_body_bytes` —
+  default **2,000,000 bytes** (`config.py:37`, enforced pre-parse at
+  `service.py:103-105` as `LCP-001` 413; live 413 measured in the
+  Revision battery) — capping whole messages of every class,
+  `extensions` included.
 - A receiver that has implemented support for a registered
   `form.questions` namespace MUST validate entries against this shape
   and MUST either accept the message or reject it (`LCP-100`) with the
@@ -377,8 +409,14 @@ registers `lcp.form.questions`; other adopters register
      delete the stored lead/post record wholesale; this LEP states
      explicitly that `extensions` is in that record's PII scope — free
      text must never live in a side store excluded from erasure).
-   - **Egress/abuse volume.** Bounds (B.2) cap the spray surface; a
-     32 KiB ceiling per message is auditable and cheap to scan.
+   - **Egress/abuse volume.** B.2 states the hierarchy with the
+     arithmetic (post-dossier, #185 F1): shape bounds cap the
+     worst-case shape-legal registered block at 133,140 bytes; the
+     32 KiB SHOULD is a scan-cheap soft policy target above that, not
+     a schema ceiling; unrecognized-namespace values are
+     schema-unbounded and land on the transport body cap (default 2
+     MB, `config.py:37` / `service.py:103-105`) as the operative hard
+     bound — #197 tracks the bounds re-tune at Review.
    - **Platform MAY scrub/truncate, deterministically.** A platform MAY
      apply a deterministic redaction pass (pattern-based
      contact-identifier redaction) or truncate over-bound values before
@@ -749,8 +787,8 @@ unchanged blocks.)*
 }
 ```
 
-Violates the event class's PII rule (SPEC.md §4: `event` — "None (hashes
-only)") and this record's ingest MUST: receivers MUST reject
+Violates the event class's PII rule (SPEC.md §4 table: `event` PII —
+`None`, `SPEC.md:341`) and this record's ingest MUST: receivers MUST reject
 `FINAL_PRICING` reports whose `details` contain contact-identifier
 values (phone/email forms, digits strings matching the §9 preimage
 normalization inputs). **Honest status of "reject":** the shape validates —
@@ -927,7 +965,7 @@ attestation model (`event:submit` scope + HMAC per SPEC.md §9) — the
 same "unverifiable-by-design" honesty LEP-0003 recorded for contact
 reports. Bounds (integer minor units, ≤ 10^8, `duration_seconds` ≤
 86400, required ISO-4217) refuse typo/fuzz payloads; correction chains
-are keyed, monotone-expire, and auditable (`router.py:1229-1252` event
+are keyed, monotone-expire, and auditable (`router.py:1260-1283` event
 dedup unchanged). Replay: same-id collapse + `LCP-005` id-reuse
 rejection, inherited mechanisms. Rate limits apply per §9.
 
@@ -947,15 +985,26 @@ certify spec consistency, not privacy fitness — the D7 DLP MUST-vs-MAY
 question is explicitly routed to that reviewer rather than assumed
 settled.
 
-**Track B — security/abuse.** Size bounds cap storage/scan DoS; the
-`propertyNames` pattern refuses misleading un-namespaced and
-`lcp.core.*`-claimed keys at the schema boundary (measured);
-value-content policing is receiver behavior against the registered
-shape (stated boundary, tests named). `offer_extensions.py` precedent
-applies to matching only: implementations MUST NOT execute extension
-values as code (the offer surface's own `$comment` rule extends to
-lead/post `extensions` by this record: values are data, no predicate or
-expression semantics).
+**Track B — security/abuse.** The DoS story is B.2's three-tier bound
+with the arithmetic stated there (post-dossier revision, #185 F1):
+shape bounds cap the worst-case shape-legal registered block at
+133,140 bytes (measured plants: 35,640 B ASCII / 133,140 B UTF-8
+worst — `REJ` on the published tree, `PASS` under the overlay); the
+32 KiB SHOULD is a receiver policy target, not a schema ceiling; and
+values under unrecognized namespaces are schema-unbounded (1 MB plant
+`PASS`), so the operative hard bound is the transport body cap —
+default 2,000,000 bytes (`config.py:37`, enforced pre-parse at
+`service.py:103-105`; measured `LCP-001` 413 at 2,102,518 B in the
+Revision battery). The `propertyNames` pattern refuses misleading
+un-namespaced and `lcp.core.*`-claimed keys at the schema boundary
+(measured); value-content policing is receiver behavior against the
+registered shape (stated boundary, tests named).
+`offer_extensions.py` precedent applies to matching only:
+implementations MUST NOT execute extension values as code (the offer
+surface's own `description` rule — `schemas/offer.json:250` — extends
+to lead/post `extensions` by this record: values are data, no
+predicate or expression semantics; pointer fixed post-dossier, #185
+F3 — the rule was never in a `$comment`).
 
 **Universal-core audit (SPEC.md §12), per item on the delta:**
 
@@ -993,7 +1042,7 @@ expression semantics).
 - **v1.0 bit-compatibility:** `extensions` absent = identical v1.0
   validation and routing (Track B); `FINAL_PRICING` unknown = stored and
   passed through by any §6-conformant receiver, and never triggers a
-  status transition (`router.py:67-75` unchanged; §3 transition table,
+  status transition (`router.py:74-82` unchanged; §3 transition table,
   SPEC.md:260).
 - **Capability-gated directionality (normative):** Track A gated on the
   receiver's `events` advertisement + parsed `lcp_versions` ≥ 1.1 (§8);
@@ -1047,10 +1096,12 @@ none of it). Per-surface impact:
   passes the extension object through transparently.
 - **Reference platform (implementation-phase obligations, named):**
   - Track A: add `FINAL_PRICING` to `_PUBLISHER_EVENT_TYPES`
-    (`router.py:76-81`) gated on v1.1; advertise it in
-    `capabilities().events` (`router.py:1716-1730`); price-report ingest
-    (bounds + supersedes chain + PII rejection per A-1); store reports;
-    MUST NOT touch `_EVENT_STATUS_TARGETS` (`router.py:67-75`).
+    (`router.py:107-112`) gated on v1.1; advertise it in
+    `capabilities().events` (`router.py:1749-1763`); price-report ingest
+    (bounds + supersedes chain + PII rejection per A-1, landed as the
+    §4 class test named under Conformance impact — #198, not a
+    `FINAL_PRICING` special case); store reports;
+    MUST NOT touch `_EVENT_STATUS_TARGETS` (`router.py:74-82`).
   - Track B: accept `extensions` on lead intake, carry it in delivery
     posts, apply configured redaction policy with per-lead logging,
     include extension bytes in erasure purge scope (B.3.4).
@@ -1066,7 +1117,21 @@ none of it). Per-surface impact:
   `plat: test_final_pricing_supersedes_by_timestamp`) rather than schema
   vectors, plus a capability-gate test
   (`plat: test_publisher_final_pricing_accepted_and_advertised` —
-  scoped-publisher credential path, mirroring T6). Track B: lead/post
+  scoped-publisher credential path, mirroring T6), and the
+  **generalized class test** `plat: test_event_details_pii_reject` —
+  deterministic; asserts plaintext phone/email-shaped `details`
+  values are ingest-rejected for **every** publisher-reportable
+  event name under the SPEC.md §4 class rule, not
+  `FINAL_PRICING`-specifically (ARB-Security F2 /
+  [#198](https://github.com/SpearSystems/LCP/issues/198)). #198 is
+  pre-existing shipped v1.0 behavior — measured at the dossier head:
+  a `CONSENT_WITHDRAWN` report with a plaintext phone in `details`
+  is accepted and persisted (`RECEIVED`, plaintext in the stored
+  envelope; `router.py:1284-1285` runs the ingest validator only for
+  `CONTACTED`, `_validate_contact_report` at `router.py:1160`) — so
+  this record names the obligation for the Track A implementation
+  PR (generalize the validator, or an explicit tracked waiver) and
+  authorizes no fix of it here. Track B: lead/post
   `extensions` accept vectors in the SDK validation corpus
   (`test-vectors/sdk/validation-corpus.json`, same entry form
   `test-vectors/sdk/contact-hash.json` shipped for LEP-0003); negatives
@@ -1235,3 +1300,154 @@ Per-track, implementation gated on that track's acceptance:
   refuse non-conforming content — a delivery-availability tradeoff the
   named privacy reviewer should adjudicate. **Trigger:** this LEP's
   Review window (decision item, not an after-acceptance surprise).
+
+## Revision 2026-11-03 (post-dossier)
+
+Record-only revision resolving the ARB L-Security dossier on
+[#185](https://github.com/SpearSystems/LCP/issues/185) (tracked
+findings [#197](https://github.com/SpearSystems/LCP/issues/197),
+[#198](https://github.com/SpearSystems/LCP/issues/198),
+[#199](https://github.com/SpearSystems/LCP/issues/199)), reviewed at
+SHA `49e84794ae61ef8c50ff0269460ff2b39905f0e0` and re-validated on
+this PR's base `origin/main` = `052970226f90cef220ea31f98946736f8fbaf563`
+(#207). **Status stays Draft**: no implementation is authorized; every
+`plat:` test named in this revision belongs to the implementation PR
+(G5), not to this record. `governance/LEP-REGISTRY.md`, the coverage
+matrix, and the CHANGELOG are untouched; the only edit outside this
+record is the one-sentence status definition in
+`governance/EXTENSION-REGISTRY.md` Registration section (lines 33–39,
+F3-2) — no registry row, `Since` value, or status is touched.
+
+### Why the code citations moved (re-pin)
+
+The dossier head is an ancestor of this base; `8ec93dc` (§5 intake
+error codings) and its pinning test landed after the draft's anchors
+were verified, moving `router.py` by ~100 lines. Every `router.py`
+anchor was re-pinned against this base and re-executed:
+`67-75`→`74-82` (`_EVENT_STATUS_TARGETS`, still seven entries),
+`76-81`→`107-112` (`_PUBLISHER_EVENT_TYPES`, still the same four),
+`1219-1226`→`1250-1258` (`LCP-002` sender gate),
+`1229-1252`→`1260-1283` (event dedup / `LCP-005`),
+`1699-1730`→`1730-1763` (capabilities advertisement),
+`1705`→`1738` (`lcp_versions`, now read from
+`SUPPORTED_LCP_VERSIONS`, `validation.py:23` — values still
+`("1.0.0", "1.1.0")`, thirteen events advertised),
+`1716-1730`→`1749-1763` (the events list). No other cited surface
+moved: `git diff --stat 49e8479..0529702` over the cited files touches
+only `router.py`, `validation.py`, `schemas/core.json` (no
+line-citations into it from this record), and
+`test-vectors/l1-envelope.json` (not cited by this record).
+
+### Findings → edits
+
+| Dossier item | Disposition in record |
+|---|---|
+| **F1 (#197)** — shape-legal worst case (35,640 B ASCII / 133,140 B UTF-8) collides with the 32 KiB SHOULD; unrecognized-namespace values schema-unbounded; transport cap unstated | B.2's total-bound bullet (331–361) rewritten as the three-tier bound with the arithmetic shown in-record and the re-tune explicitly routed: shape ceiling **133,140 B** (decomposition `25 × (4·1300 + 64) + 1,540` structural+serialization bytes, default JSON separators — matches the measured plant below), 32 KiB = **soft policy target** stated honestly (a receiver hard-rejecting there rejects shape-legal messages), operative **hard bound = transport body cap** (`max_body_bytes` default 2,000,000; `config.py:37`, `service.py:103-105`; live `LCP-001` 413 measured at 2,102,518 B). B.3.4 "Egress/abuse volume" (412–419) and the Track B security/abuse paragraph (988–1007) restated to the same hierarchy. Framing chosen: transport-as-hard-bound with the SHOULD re-worded as a soft target and the computed worst case shown (disposition option 2). The alternative framing — lowering per-field caps so the worst case fits 32 KiB — is recorded as the Review re-tune decision in #197 rather than silently taken here: the B.1/B.2 fences carry committed plant digests, Track B is unimplemented, and the numbers are a Review item alongside D7 (the record's own routing). No schema-object text changed; both trees re-run: `REJ` published / `PASS` overlay for the worst-case shape (X-maxshape) and the 1 MB unknown-namespace blob (X-1mb). |
+| **F2 (#198)** — plaintext-phone `CONSENT_WITHDRAWN` accepted and persisted today (pre-existing shipped v1.0 behavior) | No record-side fix — the gap predates and outranks this record; nothing outside these two files' text was touched. Track A's named implementation-phase obligations gained the generalized class test `plat: test_event_details_pii_reject` (Conformance impact, 1121–1134): plaintext phone/email-shaped `details` values ingest-rejected for **every** publisher-reportable event name under the SPEC §4 class rule, with the honest cross-ref to #198 and the measured call-site fact (`router.py:1284-1285` validates only `CONTACTED`; `_validate_contact_report` def at `router.py:1160`). The Reference-platform obligations bullet (1098–1104) points at it — "not a `FINAL_PRICING` special case". The record authorizes the implementation PR to generalize the validator or land an explicit tracked waiver; F2 stays open on the #185 disposition checklist until that PR lands. |
+| **F3 (#199)** | (1) SPEC §4 misattribution fixed at both sites — PII-discipline bullet (214–223) and invalid example A-1 (790–791): the `event` row reads `None` (`SPEC.md:341`); "(hashes only)" is the `ping` row (`SPEC.md:337`). (2) `governance/EXTENSION-REGISTRY.md` Registration section defines **proposed-on-acceptance** (33–39): rows land pre-decision with the Draft for name visibility/reservation, carry `proposed (LEP-NNNN)` in **Since** instead of a version, are not live until the named LEP track is accepted, and registry rows never mark acceptance themselves — decisions live in `governance/LEP-REGISTRY.md`. (3) values-are-data pointer fixed by measurement: the rule sits in `schemas/offer.json:250` `description`, never in a `$comment` (Track B security/abuse paragraph, 988–1007). |
+
+### Battery re-run (executed 2026-11-03, post-edit)
+
+Environment: repo `.venv` (Python 3.12.12, `jsonschema 4.26.0`) —
+identical harness version to the dossier. The dossier's consolidated
+harness (fence extraction → B.1 overlay → 14-row battery) re-executed
+against the edited record reproduced every verdict verbatim: schema
+trees and all committed fences untouched (`json blocks found: 9`; the
+five committed fence digests identical pre- and post-edit; the
+max-shape serialization digest matches the dossier's plant P14,
+`84d2f2990f049ab7…`). The adversarial plants re-ran: size math
+(F1's arithmetic, both serialization trees), the C11 leak sweep over
+all twelve example envelopes (only `lead`/`post` pass under the
+overlay — never-ping_safe remains structural), the C12 projection
+probes on the `home_services` vertical (`free_text` slot and enum
+slot both refused; a valid control ping passes — probe sanity added
+this run), and the live-router C5–C8 sequence verbatim. New
+measurement for the F1 framing: the transport-cap probe —
+`PlatformService.dispatch` rejects a 2,102,518-byte lead body with
+`LCP-001` 413 before any schema validation, proving the operative
+hard ceiling; the 133,140-byte shape-legal worst case and the 1 MB
+unknown-namespace blob both still `PASS` the overlay. Transcript
+(record state pre-append of this section: `2cc07cc46ecd9798…`;
+`jsonschema 4.26.0`):
+
+```text
+record sha256: 2cc07cc46ecd9798
+json blocks found: 9
+fence 'Valid example — Track A'                8688effd
+fence 'Valid lead example'                     776eb04f
+fence 'Valid post example'                     d5565398
+fence 'Track B — `extensions`'                 11979e09
+fence 'Invalid example B-3'                    3489ddc2
+A-valid    pub:PASS | ovl:PASS
+A-inv-1    pub:PASS | ovl:PASS
+A-inv-2    pub:PASS | ovl:PASS
+B-valid-1  pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-valid-2  pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-inv-1    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+B-inv-2    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'lcp.core.form_questions' should not be valid under {'pattern': '^lcp\\.core\\.'} at extensions
+B-inv-3    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root)
+B-inv-4    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-inv-5    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+X-2seg     pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'acme.questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+X-upper    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'ACME.Form.Questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+X-1mb      pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+X-maxshape pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+
+== size math ==
+maxshape ASCII: 35640 bytes sha256 84d2f2990f049ab7d41ef8841fc2eaf8b7337a9ec326dc6884e6b735c8c228b8
+maxshape UTF-8 worst: 133140 bytes
+32 KiB = 32768 | ASCII over: True | UTF-8 over: True
+b-inv-5 shape: 62425
+
+== C11 sweep (P13 onto every example) ==
+ack.json             pub:REJ ovl:REJ
+bid-slots.json       pub:REJ ovl:REJ
+bid.json             pub:REJ ovl:REJ
+call.json            pub:REJ ovl:REJ
+event-contacted.json pub:REJ ovl:REJ
+event.json           pub:REJ ovl:REJ
+lead.json            pub:REJ ovl:PASS
+mva-call.json        pub:REJ ovl:REJ
+ping-slots.json      pub:REJ ovl:REJ
+ping.json            pub:REJ ovl:REJ
+post-contacted.json  pub:REJ ovl:PASS
+post.json            pub:REJ ovl:PASS
+
+== C12 projection probes (home_services vertical) ==
+attributes.free_text pub: REJ: attributes.free_text is not tagged ping_safe: true in vertical 'home_services' | ovl: REJ: attributes.free_text is not tagged ping_safe: true in vertic
+attributes.service_type pub: REJ: 'Call Jane at 0412 345 678' is not one of ['roofing', 'gutters', 'downspouts', 'plumbing', 'hvac', 'electrical | ovl: REJ: 'Call Jane at 0412 345 678' is not one of ['roofing', 'gutte
+control home_services ping pub: PASS | ovl: PASS
+
+== live router (C5-C8) ==
+FINAL_PRICING today -> LCP-002 401: Sender is not authorized for this lead event
+control ack: RECEIVED
+replay ack: DUPLICATE
+id reuse -> LCP-005
+PII details ack: RECEIVED
+plaintext persisted: True
+
+== transport cap probe ==
+body bytes: 2102518
+dispatch status: 413 {"errors": [{"code": "LCP-001", "message": "Request body is too large"}], "request_id": "req_568ede98ec7d45b4a0a41ebe62f95d0d"}
+```
+
+This section adds no `json` fences; re-running the harness against the
+completed record extracts identically (`json blocks found: 9`, the
+same fence digests, the same verdict rows), so the revision is
+non-perturbative to the battery.
+
+Repository gates on the revised record:
+
+```text
+check_doc_citations.py  : 393 citation(s) checked, 0 broken [advisory]
+test_lep_wire_examples  : Ran 3 tests — OK   (T1, published tree)
+check_reserved_fields.py: passed (87 core field names)
+check_universal_core.py : 14/14 machine-checkable §12 checks passed
+check_lep_registry.py   : passed (8 proposals; status unchanged: Draft)
+conformance.py          : ALL 56 tests PASSED
+```
+
+Remaining for the implementation PR (unticked in the #185 disposition
+checklist by design, G5): the named `plat:` tests, the Track B schema
+landing, the #197 bounds re-tune, and the #198 generalized ingest
+validator — Review decision items alongside D7.
