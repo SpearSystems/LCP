@@ -1,29 +1,16 @@
-# MVA and attachments
+# Secure attachments
 
 > **Integration page · Page 2 of 6**
 >
 > **Previous:** [Calls and telephony](CALLS-AND-TELEPHONY.md) · **Next:** [Monthly quotas](MONTHLY-QUOTAS.md)
 
-The dedicated `mva` vertical is for motor-vehicle-accident leads. It uses
-controlled qualification bands for pings and keeps exact dates, free text,
-medical detail, contracts, and evidence in the full post or protected source
-system.
-
-## MVA fields
-
-The initial schema covers:
-
-- accident type and age band;
-- injury presence and severity band;
-- medical-treatment and emergency-service indicators;
-- police-report and insurance indicators;
-- fault position and representation status;
-- vehicle/passenger bands;
-- claim stage; and
-- `evidence_available` presence indicators.
-
-The actual documents are not placed in `attributes` or `ping.attributes`.
-They are uploaded separately and referenced by attachment metadata.
+Attachments carry document evidence — a signed contract, a consent capture, a
+photo, a proof of install — without putting bytes or free text in a lead
+payload. The capability is **vertical-neutral**: any lead or post may reference
+uploaded files by metadata, and a vertical schema decides only which purposes
+apply to it. Documents, free text, and any detail a vertical keeps out of
+`attributes` travel as attachment metadata, never inline (see
+[Vertical schemas](VERTICALS.md)).
 
 ## Upload model
 
@@ -44,13 +31,13 @@ requests, using the raw binary body:
 Required upload headers include:
 
 ```text
-X-LCP-Sender-Id: publisher_mva
-X-LCP-Lead-Id: mva-lead-001
+X-LCP-Sender-Id: publisher_acme
+X-LCP-Lead-Id: lead-001
 X-LCP-Attachment-Id: att_contract_001
 X-LCP-Attachment-Purpose: signed_contract
 X-LCP-Filename: synthetic-contract.pdf
 X-LCP-Content-SHA256: <lowercase-sha256>
-X-LCP-Idempotency-Key: publisher-mva-attachment-001
+X-LCP-Idempotency-Key: publisher-attachment-001
 Content-Type: application/pdf
 ```
 
@@ -73,11 +60,11 @@ Required production settings include:
 
 ```bash
 export LCP_ATTACHMENT_BACKEND=s3
-export LCP_ATTACHMENT_OBJECT_BUCKET=lcp-attachments-au
+export LCP_ATTACHMENT_OBJECT_BUCKET=lcp-attachments
 export LCP_ATTACHMENT_OBJECT_PREFIX=lcp/attachments
-export LCP_ATTACHMENT_OBJECT_REGION=ap-southeast-2
-export LCP_ATTACHMENT_OBJECT_RESIDENCY=AU
-export LCP_ATTACHMENT_ALLOWED_RESIDENCIES=AU
+export LCP_ATTACHMENT_OBJECT_REGION=<region>
+export LCP_ATTACHMENT_OBJECT_RESIDENCY=<COUNTRY>
+export LCP_ATTACHMENT_ALLOWED_RESIDENCIES=<COUNTRY>
 export LCP_ATTACHMENT_OBJECT_KMS_KEY_ID='<KMS key ARN or provider key id>'
 export LCP_ATTACHMENT_SCANNER=clamav
 export LCP_ATTACHMENT_SCAN_REQUIRED=true

@@ -48,8 +48,10 @@
   named service areas, safe operators, and dynamic deployment guidance.
 - [Calls and telephony](CALLS-AND-TELEPHONY.md) — post-call and real-time
   transfer boundaries, call posts, outcome events, and payable duration rules.
-- [MVA and attachments](MVA-ATTACHMENTS.md) — MVA schema, encrypted file
-  uploads, authenticated downloads, and retention/erasure controls.
+- [Secure attachments](ATTACHMENTS.md) — encrypted file uploads,
+  authenticated downloads, and retention/erasure controls (vertical-neutral).
+- [Vertical schemas](VERTICALS.md) — the typed extension block, the six
+  shipped verticals, and what a vertical may not contain.
 - [Monthly quotas](MONTHLY-QUOTAS.md) — payable pacing and per-offer target
   reporting for buyer minimums.
 - [Buyer onboarding](BUYER-ONBOARDING.md) — buyer offers, auction bids,

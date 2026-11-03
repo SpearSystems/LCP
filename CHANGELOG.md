@@ -323,6 +323,13 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   retry/dead-letter semantics are documented in the operations guide with
   the delivered-post acknowledgement deadline recorded as a v1.2 design item
   (#193).
+- **Documentation is vertical-neutral.** The attachment capability (upload,
+  HMAC raw-body signing, storage, scanning, retention/erasure) moved out of a
+  vertical-branded page into [Secure attachments](docs/ATTACHMENTS.md), and
+  the vertical-schema rules plus the shipped `verticals/` examples live in
+  [Vertical schemas](docs/VERTICALS.md). Capability examples in the
+  calls/quotas/onboarding guides no longer carry a vertical's name or ids. No
+  wire, schema, or vertical-id change.
 
 ### Governance and verification (ARB wave 0–1.5)
 

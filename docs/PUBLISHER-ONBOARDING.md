@@ -76,7 +76,7 @@ Build a deterministic mapping from the source platform into the canonical
 | Contact preference | `payload.contact_window` and consumer fields | Carry a consumer's stated availability and preferred contact method. |
 | Duplicate policy | `message.idempotency_key` | Generate once per logical submission and persist it in an outbox. |
 | Brand/form attribution | `provenance.brand_id`, `form_id`, `flow_key` | Keep these stable across mapping versions so reporting and disputes remain explainable. |
-| MVA evidence | `attachments[]` | Upload documents through the authenticated attachment endpoint; send metadata, not binary content, in the lead/call envelope. |
+| Document evidence | `attachments[]` | Upload documents through the authenticated attachment endpoint; send metadata, not binary content, in the lead/call envelope. |
 
 A publisher-provided quality signal is a declaration, not an LCP-certified
 fact. Buyers should be able to distinguish `lead_quality` and provenance
@@ -140,12 +140,13 @@ sandbox. Test requests must carry both envelope `test: true` and
 
 ## 5. Upload evidence and submit attachments
 
-For MVA contracts, medical records, insurance documents, or call evidence, upload
+For contracts, medical records, insurance documents, or call evidence in any
+vertical, upload
 the bytes first with `POST /v1/lcp/attachments`, signed over the raw bytes and
 including `X-LCP-Lead-Id`, `X-LCP-Content-SHA256`, `X-LCP-Filename`, and
 `X-LCP-Attachment-Purpose`. Add the returned metadata to the lead or call
 payload. The platform verifies ownership and hash integrity before accepting
-the message. See [MVA and attachments](MVA-ATTACHMENTS.md).
+the message. See [secure attachments](ATTACHMENTS.md).
 
 ## 6. Handle acknowledgements and failures
 

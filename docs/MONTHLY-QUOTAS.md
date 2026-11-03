@@ -2,18 +2,18 @@
 
 > **Integration page · Page 2 of 6**
 >
-> **Previous:** [MVA and attachments](MVA-ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)
+> **Previous:** [Secure attachments](ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)
 
 A buyer can configure a monthly payable target on each offer. This is useful
-when one buyer has separate MVA-call, home-services-call, and mortgage-lead
-offers and expects, for example, 300 payable outcomes from each.
+when one buyer has separate call, home-services, and mortgage lead offers and
+expects, for example, 300 payable outcomes from each.
 
 ## One offer per commercial stream
 
 Use separate offer IDs even when the buyer is the same:
 
 ```text
-buyer_001 / buyer-mva-call
+buyer_001 / buyer-call-outcomes
 buyer_001 / buyer-home-services-call
 buyer_001 / buyer-mortgage-leads
 ```
@@ -81,7 +81,7 @@ A useful buyer dashboard is:
 
 ```text
 Offer                       Target  Payable  Pending  Disputed  Remaining
-buyer-mva-call                  300       286       11         3         14
+buyer-call-outcomes              300       286       11         3         14
 buyer-home-services-call        300       319        4         1          0
 buyer-mortgage-leads             300       244       28         5         56
 ```
@@ -102,4 +102,4 @@ controls, such as:
 It must not bypass consent, source allowlists, DNC rules, geography, or
 vertical eligibility merely to hit a number.
 
-**Previous:** [MVA and attachments](MVA-ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)
+**Previous:** [Secure attachments](ATTACHMENTS.md) · **Next:** [Buyer onboarding](BUYER-ONBOARDING.md)
