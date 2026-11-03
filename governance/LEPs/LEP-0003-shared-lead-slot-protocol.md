@@ -5,12 +5,30 @@
 - **Date:** 2026-11-02
 - **Last revised:** 2026-11-03 (ARB L-Platform dossier findings F1–F10
   dispositioned; see "Revision 2026-11-03 (post-dossier)")
-- **Status:** **Draft** — not accepted, not implemented; post-dossier
-  revision awaiting a fresh ARB run (charter: the verdict certified at
-  `0bbc1437` is void for this changed surface)
+- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized
+  (post-dossier revision #157 + re-review #161 dispositions)
+
+## Decision (maintainer, 2026-11-03)
+
+**Accepted.** Recorded by the maintainer (randybeno) under the ARB
+sign-off model. Basis: independent re-review of the revised record
+(<https://github.com/SpearSystems/LCP/issues/124#issuecomment-6591860350>)
+— all ten first-round findings verified resolved at `22258eb` by
+execution (including byte-exact reproduction of the oversell race fix
+design and both reference contact-hash digests), verdict FINDINGS with
+only record-level items RF-1–RF-6, every one of which was applied in
+PR #161 exactly as the re-review prescribed (RF-1 digest recomputed per
+the F7 rule, not padded). Implementation proceeds under the named
+phase-gates T1–T10 tracked at
+[#160](https://github.com/SpearSystems/LCP/issues/160); the change-gates
+of `docs/V1.1-ROADMAP.md` §Change gates apply as a unit (schemas,
+examples, vectors, SDK bundles + manifests, OpenAPI/MCP, compat notes,
+changelog). Any wire-shape deviation discovered during implementation
+returns this record to Review before merge.
 - **Target version:** v1.1.0 (MINOR; see Compatibility and versioning)
 - **Evidence corrections applied:** valid post-example `exclusivity` block
-  fixed per ARB retro-audit at `dee5584` (no status change; remains Draft)
+  fixed per ARB retro-audit at `dee5584` (superseded by the 2026-11-03
+  revision and acceptance above)
 - **Discussion:** [#124](https://github.com/SpearSystems/LCP/issues/124)
   (`[LEP] Shared-lead slot allocation and contacted-party dedup exchange`)
 - **Roadmap trigger:** `docs/V1.1-ROADMAP.md`, Phase 6, "Shared-lead slot
