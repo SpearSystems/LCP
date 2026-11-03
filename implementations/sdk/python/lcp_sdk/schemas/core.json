@@ -20,7 +20,7 @@
         "phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, e164). 64 hex chars." },
         "dob": { "type": "string", "format": "date", "description": "Sensitive." },
         "email_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "HMAC-SHA256(shared_secret, normalized_email). For dedup in ping. Same per-pair model as phone_hash." },
-        "locale": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Z][a-zA-Z]{1,7})?$", "description": "BCP-47 language tag (e.g. en-AU, es-US)." }
+        "locale": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$", "description": "BCP-47 language tag (e.g. en-AU, es-US)." }
       },
       "anyOf": [
         { "required": ["email"] },
