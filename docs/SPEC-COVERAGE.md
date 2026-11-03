@@ -144,7 +144,7 @@ idempotency header + code/message assertions) is credited under ERR-002.
 | CNF-01 | §7 L1 tier: envelope+required+idempotency+ack+timestamps | conformance-runner | L1-001, L1-002, L1-003, L1-004, L1-005, L1-006, L1-007, L1-008 | green |
 | CNF-02 | §7 L2 tier: lifecycle + ping/post split + compliance records | conformance-runner | L2-003, L2-007, L2-009 | green |
 | CNF-03 | §7 L3 tier: dedup fingerprints + capability discovery + attestation verification | conformance-runner | L3-001, L3-010, L3-014, L3-020 | green(dedup-fingerprint shape checks and the §8 capability-gate membership check are implemented in the runner as of LEP-0003; attestation via L3-001) |
-| CAP-01 | §8 GET /v1/lcp/capabilities response shape (versions, types, verticals, countries, auth, events, conformance_level) | platform+mcp | plat:test_buyer_scoped_contacted_event_accepted_and_advertised | gap(events advertisement + full-semver v1.1 element now asserted; remaining fields and the §8 gate-match rule await T10 per #153) |
+| CAP-01 | §8 GET /v1/lcp/capabilities response shape (versions, types, verticals, countries, auth, events, conformance_level) | platform+mcp | plat:test_buyer_scoped_contacted_event_accepted_and_advertised, plat:test_slots_available_only_advertised_to_v11_receivers_and_never_zero | green |
 | CAP-02 | §8 capacity block advisory; over-cap may be rejected (LCP-011 or REJECTED ack) | platform | - | gap(no capacity test found) |
 | CAP-04 | §8 delivery_windows filter vertical+channel time windows | platform | plat:test_delivery_window_filters_vertical_and_channel | green |
 | CAP-07 | §8 lcp_versions full-semver elements; parsed minor>=m membership gates v1.1 wire fields (LEP-0003 F6) | runner+schema | L3-008, L3-011, L3-020 | green |
