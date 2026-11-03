@@ -323,6 +323,12 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   retry/dead-letter semantics are documented in the operations guide with
   the delivered-post acknowledgement deadline recorded as a v1.2 design item
   (#193).
+- **Forward promises match what shipped.** SPEC §10 no longer says batch
+  submission and event subscriptions are "planned for v1.1" (LEP-0001 is
+  Deferred, trigger-gated), and the §14 should-fix table is retitled
+  trigger-gated/unscheduled instead of "deferred to v1.1". The spec site stays
+  trigger-gated. Roadmap LEP rows now record closed versus open gates
+  (LEP-0002 interop CI landed, LEP-0003 cap ratified, D7 decided on LEP-0006).
 - **Documentation is vertical-neutral.** The attachment capability (upload,
   HMAC raw-body signing, storage, scanning, retention/erasure) moved out of a
   vertical-branded page into [Secure attachments](docs/ATTACHMENTS.md), and
