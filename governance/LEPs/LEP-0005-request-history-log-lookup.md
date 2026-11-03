@@ -256,7 +256,7 @@ rows and keyed child rows on columns the child tables do not have.
 | `leads` (`storage.py:512`) | `lead`, `call` | `received` | own columns | own column | own column |
 | `pings` (`storage.py:623`) | `ping` | `sent` (platform → buyer) | platform id / `buyer_id` column | own column (`OPEN`/`EXPIRED`/`WON`/`SUPPRESSED`) | own column |
 | `bids` (`storage.py:635`) | `bid` | `received` (buyer → platform) | `buyer_id` column / platform id | `decision` column (`accept`/`reject`/`pass`) | `received_at` |
-| `deliveries` (`storage.py:650`) | `post`, `event` (outbound webhook records, `kind ∈ ping/event/post`) | `sent` | platform id / `buyer_id` column | own column (`PENDING`/`RETRY`/`DELIVERED` (`router.py:1044`)/`FAILED`/`REDACTED`) | own column |
+| `deliveries` (`storage.py:650`) | `post`, `event` (outbound webhook records; a `kind=ping` delivery attempt projects onto its `pings` row's `status`/timestamps rather than minting a duplicate row) | `sent` | platform id / `buyer_id` column | own column (`PENDING`/`RETRY`/`DELIVERED` (`router.py:1044`)/`FAILED`/`REDACTED`) | own column |
 | `lifecycle_events` (`storage.py:670`) | `event` (persisted lifecycle record) | per stored envelope direction | stored envelope `message.sender_id`/`receiver_id` | `event_name` column (`DELIVERED`/`ACCEPTED`/…, §4 event enum, open) | `timestamp` column |
 
 **No `ack` rows.** `ack` (§4, `SPEC.md:494`) is a response constructed
@@ -468,9 +468,10 @@ downstream re-decides):
    rule that "authorization is computed from the authenticated credential,
    never from query text". A `tenant` query parameter does not exist and
    MUST NOT be added.
-3. **Child-table attribution.** `pings`/`bids`/`deliveries`/
-   `lifecycle_events`/`dead_letter_jobs` carry no `tenant_id` column
-   (`storage.py:623-675`, `storage.py:718-741`); every child row is
+3. **Child-table attribution.** The row-minting child tables — `pings`/
+   `bids`/`deliveries`/`lifecycle_events` — carry no `tenant_id` column
+   (nor does `dead_letter_jobs`, which is out of the v1 row universe
+   anyway; `storage.py:623-675`, `storage.py:718-741`); every child row is
    attributed by joining its `lead_id` to the `leads` parent inside the
    same builder. A child row with no parent is unattributable and
    excluded.
