@@ -256,6 +256,16 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   issues not test patches): #176, #177, #179, #180, #181, #182, #192,
   #193. Coverage matrix truth: 127 green / 8 gap / 9 exempt of 144.
 
+### Fixed
+
+- Reference platform: `capabilities()` advertises `conformance_level: "L2"`
+  instead of `"L3"`. SPEC §7 defines L3 as agent binding (attestation
+  *verification*); the platform validates the attestation's shape only, so
+  the L3 claim was false while forged and free-text attestations ingested
+  (#192). This is Phase 0 of the accepted LEP-0008 record; L3 is
+  re-advertised only when enforce-mode verification ships with its V13–V24
+  gates. Regression pin: `plat:test_conformance_level_is_l2_until_attestation_verification_is_live`.
+
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,

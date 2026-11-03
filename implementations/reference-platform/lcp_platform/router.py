@@ -1766,7 +1766,12 @@ class Platform:
                 "authenticated_download": True,
                 "max_bytes": self.config.max_attachment_bytes,
             },
-            "conformance_level": "L3",
+            # Phase 0 (LEP-0008, ratified 2026-11-03): L3 requires agent
+            # attestation *verification* (§7). This platform validates the
+            # attestation shape only, so it advertises L2 until enforcement
+            # is live — advertising L3 here is a false conformance claim
+            # (issue #192 reproduced forged/free-text attestations ingesting).
+            "conformance_level": "L2",
         }
 
     def public_offers(self, vertical: str | None = None) -> dict[str, Any]:
