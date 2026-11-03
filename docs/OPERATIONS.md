@@ -111,6 +111,34 @@ storage layer.
   (deployment concern mirroring SPEC §9). Rotate between leads, or accept
   that the affected lead's dedup history restarts.
 
+## Delivery retry and dead-letter behaviour
+
+Shipped semantics an operator must know when a buyer webhook is unhealthy
+(recorded here because the delivered-post acknowledgement deadline remains a
+design item — issue #193 — and the lead status does not encode delivery
+failure):
+
+- Each delivery attempt uses the offer's `webhook_timeout_seconds` (default
+  **10 s**) as the HTTP read timeout. A timed-out or non-2xx response is a
+  failed attempt.
+- Failures move the delivery row `PENDING`/`RETRY` → `FAILED` and, after the
+  retry budget is exhausted, into `dead_letter_jobs` with status `OPEN` and a
+  `last_error`. `GET /v1/lcp/metrics` reports `delivery.{pending,retry,failed,
+  dead_letter}` and queue age.
+- The **lead** keeps its routing status (`POSTED`); nothing in the current
+  contract expires it because of a delivery failure. A buyer that never
+  receives the webhook therefore has to be reconciled from the dead-letter
+  queue, not from lead status.
+- Operator commands (audited, `platform:admin`):
+  `lcp-platform-admin dead-letter list --status OPEN`,
+  `dead-letter replay --job-id <id>`, `dead-letter quarantine --job-id <id>`.
+  `list` prints lead IDs and error strings — keep it out of tickets and chat.
+- Buyer-side deadlines: the buyer should acknowledge within the delivery
+  window its agreement defines; the platform does not currently re-offer or
+  expire a posted lead on a buyer's silence (design deferred to v1.2, #193).
+  Treat a silent buyer as an operational escalation, not as a state the
+  platform will resolve.
+
 ## Deployment procedure
 
 1. Review schema/spec/changelog changes.
