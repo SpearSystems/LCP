@@ -168,6 +168,11 @@
       ],
       "description": "Hint to buyer: is this an exclusive or shared lead?"
     },
+    "slots_available": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "v1.1 (LEP-0003): remaining buyer-award slots of this lead that can still be sold at ping time, INCLUDING the slot this ping's recipient may win. A slot counts a distinct awarded buyer, never delivered copies (SPEC.md §3 slot semantics). For exclusivity 'exclusive' this MUST be 1 — the one-slot special case (enforced by the top-level conditional in this schema). Absent = the platform does not advertise slot state (v1.0 behavior). A platform MUST NOT send slots_available: 0; zero remaining means stop pinging. Non-PII integer count carrying no consumer data: it joins the ping strict allowlist as a reviewed non-PII field, and conformance keeps rejecting every other field outside the allowlist (LCP-008 PII_IN_PING protection preserved) and every attribute not tagged ping_safe: true in the vertical schema. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1."
+    },
     "dedup_window_hours": {
       "type": "integer",
       "minimum": 1,
@@ -178,5 +183,25 @@
       "format": "date-time"
     }
   },
+  "allOf": [
+    {
+      "$comment": "LEP-0003 §1/F8 (invalid example B): exclusive is exactly the one-slot special case. When the exclusivity hint is present and 'exclusive', slots_available MUST be 1 — an exclusive ping advertising more is a semantic error, rejected by this conditional, not just by prose. Absent slots_available stays legal (v1.0 behavior).",
+      "if": {
+        "properties": {
+          "exclusivity": {
+            "const": "exclusive"
+          }
+        },
+        "required": ["exclusivity"]
+      },
+      "then": {
+        "properties": {
+          "slots_available": {
+            "const": 1
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

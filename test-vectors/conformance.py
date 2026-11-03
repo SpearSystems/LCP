@@ -21,6 +21,7 @@ import argparse
 from datetime import datetime
 import json
 import os
+import re
 import sys
 from uuid import UUID
 from pathlib import Path
@@ -299,17 +300,613 @@ def validate_message(envelope: dict) -> List[str]:
     return errors
 
 
+# --- Named checks registry ---------------------------------------------------
+#
+# Each vector's `checks` array names the rules the runner must actually
+# exercise for it (SPEC.md §7 tiers; #153 routed observation O3 — the
+# labels were decorative because the runner never read the key). A check
+# function returns the list of violations of its own rule (empty = rule
+# holds). Polarity: expect=pass vectors require zero violations for every
+# named check; expect=fail vectors require the named rule to have FIRED
+# (schema-dimension checks fire when their dimension carries errors;
+# semantic rules fire when they compute violations) so a negative vector
+# passes only for the reason it claims.
+
+
+def _payload_of(envelope: dict) -> dict:
+    return envelope.get("lcp", {}).get("payload", {})
+
+
+def _dim_errors(errors: List[str], prefix: str) -> List[str]:
+    return [e for e in errors if e.startswith(f"{prefix}:")]
+
+
+def _schema_check(prefix: str):
+    def check(vector: dict, envelope: dict, errors: List[str]) -> List[str]:
+        # The violation list IS the dimension's error list; run_checks applies
+        # polarity (pass: must be empty; fail: must be non-empty to fire).
+        return _dim_errors(errors, prefix)
+
+    return check
+
+
+_FULL_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+# v1.1 wire fields introduced by LEP-0003; the capability gate (SPEC.md §4/§8)
+# forbids sending any of them toward a receiver whose §8 lcp_versions
+# advertisement does not parse to major == 1, minor >= 1.
+_V11_FIELDS_BY_TYPE = {
+    "ping": ["slots_available"],
+    "bid": ["slots_claimed"],
+    "post": ["contacted_hashes"],
+    "event": ["details.contacted_hashes"],
+}
+_ALL_V11_FIELDS = ["slots_available", "slots_claimed", "contacted_hashes"]
+
+
+def _advertised_supports_minor(
+    advertised: List[str], minor: int
+) -> tuple[bool, List[str]]:
+    """SPEC.md §8 membership rule: parsed full-semver comparison only."""
+    problems: List[str] = []
+    supports = False
+    for element in advertised:
+        match = _FULL_SEMVER_RE.match(str(element))
+        if not match:
+            problems.append(
+                f"CAPABILITY_GATE: lcp_versions element {element!r} is not a "
+                "full major.minor.patch semantic version (SPEC.md §8)"
+            )
+            continue
+        major, minor_n, _patch = (
+            int(match.group(1)),
+            int(match.group(2)),
+            int(match.group(3)),
+        )
+        if major == 1 and minor_n >= minor:
+            supports = True
+    return supports, problems
+
+
+def _v11_fields_present(msg_type: str, payload: dict) -> List[str]:
+    found: List[str] = []
+    for field in _V11_FIELDS_BY_TYPE.get(msg_type, []):
+        if field == "details.contacted_hashes":
+            details = payload.get("details")
+            if isinstance(details, dict) and "contacted_hashes" in details:
+                found.append(field)
+        elif field in payload:
+            found.append(field)
+    return found
+
+
+def _check_capability_gate(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    advertised = vector.get("receiver_lcp_versions")
+    if not isinstance(advertised, list):
+        return [
+            "CAPABILITY_GATE: vector names capability_gate_slot_fields_v11 without declaring receiver_lcp_versions"
+        ]
+    payload = _payload_of(envelope)
+    msg_type = envelope.get("lcp", {}).get("message", {}).get("type", "")
+    present = _v11_fields_present(msg_type, payload)
+    supports, problems = _advertised_supports_minor(advertised, 1)
+    if present and not supports:
+        problems.append(
+            f"CAPABILITY_GATE: v1.1 field(s) {', '.join(present)} sent toward a "
+            f"receiver advertising {advertised!r} — no parsed 1.x element with minor >= 1 "
+            "(SPEC.md §8 membership rule; §4 capability gate; LEP-0003 invalid example D)"
+        )
+    return problems
+
+
+def _contact_hash_entries(payload: dict, field: str) -> List[str]:
+    value = payload.get(field)
+    return value if isinstance(value, list) else []
+
+
+def _bad_hash_entries(entries: List[str]) -> List[str]:
+    return [
+        f"digest entry {entry!r} fails the ^[a-f0-9]{{64}}$ per-pair HMAC form (SPEC.md §9)"
+        for entry in entries
+        if not (isinstance(entry, str) and re.fullmatch(r"[a-f0-9]{64}", entry))
+    ]
+
+
+def _check_contacted_hashes_shape(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    if "contacted_hashes" not in payload:
+        return []
+    entries = _contact_hash_entries(payload, "contacted_hashes")
+    problems = _bad_hash_entries(entries)
+    if len(entries) > 100:
+        problems.append(
+            f"contacted_hashes carries {len(entries)} entries, above the bounded post "
+            "direction maxItems 100 (LEP-0003 Deferred questions; bulk sync is not a post)"
+        )
+    return problems
+
+
+def _check_contacted_report_shape(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    details = payload.get("details")
+    if not isinstance(details, dict) or "contacted_hashes" not in details:
+        return []
+    entries = _contact_hash_entries(details, "contacted_hashes")
+    if entries == []:
+        return [
+            "an empty CONTACTED report contacted_hashes must not be sent ([] asserts nothing in the report direction; SPEC.md §4)"
+        ]
+    problems = _bad_hash_entries(entries)
+    if len(entries) > 32:
+        problems.append(
+            f"CONTACTED report carries {len(entries)} entries, above the 32-per-report ingest bound (SPEC.md §4)"
+        )
+    return problems
+
+
+def _check_slots_available_min(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    if "slots_available" not in payload:
+        return []
+    value = payload["slots_available"]
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return []
+    return [
+        f"slots_available {value!r} violates minimum 1 — zero remaining means stop pinging (SPEC.md §3/§4, LEP-0003 §1)"
+    ]
+
+
+def _check_exclusive_single_slot(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    if (
+        payload.get("exclusivity") == "exclusive"
+        and "slots_available" in payload
+        and payload["slots_available"] != 1
+    ):
+        return [
+            "exclusive lead advertising slots_available "
+            f"{payload['slots_available']!r} contradicts the one-slot special case (LEP-0003 invalid example B; schema conditional)"
+        ]
+    return []
+
+
+def _check_slots_claimed_single_award(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    if "slots_claimed" not in payload:
+        return []
+    value = payload["slots_claimed"]
+    if value == 1:
+        return []
+    return [
+        f"slots_claimed {value!r} outside the v1.1 single-slot range 1..1 (LEP-0003 §2, #153 T5 deferral)"
+    ]
+
+
+def _check_ping_allowlist_no_pii(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    allowed = set(load_schema("ping").get("properties", {}))
+    extra = sorted(k for k in payload if k not in allowed)
+    return [
+        f"LCP-008 PII_IN_PING: ping payload field {k!r} outside the strict allowlist"
+        for k in extra
+    ]
+
+
+def _check_event_open_enum(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    event = payload.get("event")
+    if not isinstance(event, str) or not event:
+        return ["event payload lacks an event name (open enum, SPEC.md §4/§6)"]
+    return _dim_errors(errors, "event")
+
+
+def _check_event_open_enum_pass_through(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    event = payload.get("event")
+    classic = {
+        "DELIVERED",
+        "ACCEPTED",
+        "REJECTED",
+        "DISPUTED",
+        "REFUNDED",
+        "EXPIRED",
+        "CONVERTED",
+        "ARCHIVED",
+    }
+    if not isinstance(event, str) or not event:
+        return ["event payload lacks an event name"]
+    if event in classic:
+        # still a valid message; the pass-through property is simply untested here
+        return _dim_errors(errors, "event")
+    return _dim_errors(errors, "event")
+
+
+def _check_consumer_required_fields(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    consumer = _payload_of(envelope).get("consumer")
+    if not isinstance(consumer, dict):
+        return ["payload.consumer missing"]
+    has_name = ("full_name" in consumer) or (
+        "first_name" in consumer and "last_name" in consumer
+    )
+    if not has_name:
+        return ["payload.consumer carries no resolvable name (first+last or full_name)"]
+    return []
+
+
+def _check_consumer_full_pii(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    consumer = _payload_of(envelope).get("consumer")
+    if not isinstance(consumer, dict):
+        return ["post payload.consumer missing"]
+    if not ({"first_name", "last_name"} <= set(consumer) or "full_name" in consumer):
+        return ["post consumer lacks name PII"]
+    if not (consumer.get("phone") or consumer.get("email")):
+        return ["post consumer lacks contact PII (phone/email)"]
+    return []
+
+
+def _check_compliance_full_evidence(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    compliance = _payload_of(envelope).get("compliance")
+    if not isinstance(compliance, dict) or "consent_evidence" not in compliance:
+        return [
+            "post payload.compliance.consent_evidence missing (SPEC.md §7 L2 compliance records)"
+        ]
+    return []
+
+
+def _check_compliance_evidence_array(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    compliance = _payload_of(envelope).get("compliance")
+    evidence = (
+        compliance.get("consent_evidence") if isinstance(compliance, dict) else None
+    )
+    if not isinstance(evidence, list):
+        return ["compliance.consent_evidence is not an array"]
+    return []
+
+
+def _check_location_required(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    location = _payload_of(envelope).get("location")
+    if not isinstance(location, dict) or not location.get("country_code"):
+        return ["payload.location.country_code missing"]
+    return []
+
+
+def _check_location_state_or_postal(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    location = _payload_of(envelope).get("location")
+    if not isinstance(location, dict):
+        return ["payload.location missing"]
+    if not (location.get("state_region") or location.get("postal_code")):
+        return [
+            "location carries neither state_region nor postal_code (US/AU conditional, SPEC.md §3)"
+        ]
+    return []
+
+
+def _check_attributes_vertical_version(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    attributes = _payload_of(envelope).get("attributes")
+    if not isinstance(attributes, dict):
+        return ["payload.attributes missing"]
+    if "vertical" not in attributes or "schema_version" not in attributes:
+        return ["payload.attributes lacks vertical/schema_version envelope keys"]
+    return []
+
+
+def _check_call_block_required(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    call = _payload_of(envelope).get("call")
+    if not isinstance(call, dict):
+        return ["payload.call missing"]
+    missing = [k for k in ("call_id", "status", "started_at") if k not in call]
+    return [f"payload.call missing required {m}" for m in missing]
+
+
+def _check_otp_closed_object(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    compliance = _payload_of(envelope).get("compliance")
+    if not isinstance(compliance, dict):
+        return []
+    definition = load_schema("core").get("$defs", {}).get("compliance", {})
+
+    def walk(node: Any, schema: dict, path: str) -> List[str]:
+        problems: List[str] = []
+        if not isinstance(node, dict):
+            return problems
+        props = schema.get("properties", {})
+        for key, value in node.items():
+            sub = props.get(key)
+            if sub is None:
+                problems.append(
+                    f"{path}{key!r} is not a defined compliance field — compliance/otp "
+                    "are closed objects (planted codes/evidence forbidden, SPEC.md §4)"
+                )
+                continue
+            if isinstance(value, dict):
+                problems.extend(walk(value, sub, f"{path}{key}."))
+        return problems
+
+    return walk(compliance, definition, "compliance.")
+
+
+def _check_ping_compliance_flags_presence_only(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    return check_compliance_flags(_payload_of(envelope))
+
+
+def _check_attestation_present(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    provenance = _payload_of(envelope).get("provenance") or {}
+    agent = provenance.get("agent") if isinstance(provenance, dict) else None
+    if not isinstance(agent, dict) or not agent.get("attestation"):
+        return [
+            "provenance.agent.attestation missing (SPEC.md §10 requires a verifiable token)"
+        ]
+    return []
+
+
+def _check_agent_provenance(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    provenance = _payload_of(envelope).get("provenance") or {}
+    if not isinstance(provenance.get("agent"), dict):
+        return ["provenance.agent missing"]
+    return []
+
+
+def _check_no_vendor_fields_in_core(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    attributes = payload.get("attributes") or {}
+    vertical = attributes.get("vertical") if isinstance(attributes, dict) else None
+    schema = _vertical_schemas.get(vertical or "", {})
+    vendor = set(schema.get("properties", {})) - {"vertical", "schema_version"}
+    shadow = sorted(k for k in payload if k in vendor)
+    return (
+        [
+            f"top-level payload key {k!r} duplicates a vertical attribute field — vertical data lives in attributes (SPEC.md §12)"
+        ]
+        if shadow
+        else []
+    )
+
+
+def _check_errors_array_multiple(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    ack_errors = _payload_of(envelope).get("errors")
+    if not isinstance(ack_errors, list) or len(ack_errors) < 2:
+        return ["ack errors array must carry multiple error objects (SPEC.md §4/§5)"]
+    return []
+
+
+def _check_ack_no_errors_when_accepted(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _payload_of(envelope)
+    if payload.get("status") in {"RECEIVED", "VALIDATED", "ACCEPTED"} and payload.get(
+        "errors"
+    ):
+        return ["ack accepted but carries a non-empty errors array"]
+    return []
+
+
+def _check_exclusivity_field(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    if not isinstance(_payload_of(envelope).get("exclusivity"), dict):
+        return ["payload.exclusivity missing"]
+    return []
+
+
+def _check_expiry_field(vector: dict, envelope: dict, errors: List[str]) -> List[str]:
+    payload = _payload_of(envelope)
+    expiry = payload.get("expiry")
+    if isinstance(expiry, dict) and (
+        expiry.get("expires_at") or expiry.get("ttl_seconds")
+    ):
+        return []
+    if payload.get("expires_at") or payload.get("ttl_seconds"):
+        return []
+    return [
+        "payload carries no expiry (expiry{expires_at,ttl_seconds} or expires_at/ttl_seconds missing)"
+    ]
+
+
+def _check_required_fields(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    message = envelope.get("lcp", {}).get("message", {})
+    missing = [
+        k
+        for k in (
+            "id",
+            "type",
+            "timestamp",
+            "sender_id",
+            "receiver_id",
+            "idempotency_key",
+        )
+        if k not in message
+    ]
+    if missing:
+        return [f"message header missing required {m}" for m in missing]
+    return []
+
+
+def _check_idempotency_key(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    key = envelope.get("lcp", {}).get("message", {}).get("idempotency_key")
+    if not isinstance(key, str) or not key:
+        return ["message.idempotency_key missing or empty"]
+    return []
+
+
+def _check_uuid_message_id(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    raw = envelope.get("lcp", {}).get("message", {}).get("id")
+    try:
+        if UUID(str(raw)).version != 4:
+            return [f"message.id {raw!r} is not UUID v4"]
+    except ValueError:
+        return [f"message.id {raw!r} is not a UUID"]
+    return []
+
+
+_CANON_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def _check_iso_timestamp(vector: dict, envelope: dict, errors: List[str]) -> List[str]:
+    ts = envelope.get("lcp", {}).get("message", {}).get("timestamp")
+    if not isinstance(ts, str) or not _CANON_TS_RE.match(ts):
+        return [
+            "message.timestamp is not the canonical whole-second UTC form YYYY-MM-DDTHH:MM:SSZ (LEP-0002, SPEC.md §9)"
+        ]
+    return []
+
+
+def _check_status_transition_graph(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    # Implemented by the transitions branch of run_vector; registered here so
+    # the name resolves and is honored.
+    return []
+
+
+CHECKS = {
+    "envelope_schema": _schema_check("envelope"),
+    "lead_schema": _schema_check("lead"),
+    "call_schema": _schema_check("call"),
+    "ping_schema": _schema_check("ping"),
+    "post_schema": _schema_check("post"),
+    "ack_schema": _schema_check("ack"),
+    "bid_schema": _schema_check("bid"),
+    "event_schema": _schema_check("event"),
+    "required_fields": _check_required_fields,
+    "idempotency_key": _check_idempotency_key,
+    "uuid_message_id": _check_uuid_message_id,
+    "iso_timestamp": _check_iso_timestamp,
+    "status_transition_graph": _check_status_transition_graph,
+    "ping_allowlist_no_pii": _check_ping_allowlist_no_pii,
+    "ping_safe_attributes_only": lambda v, e, errs: check_ping_safe(_payload_of(e)),
+    "ping_compliance_flags_presence_only": _check_ping_compliance_flags_presence_only,
+    "consumer_required_fields": _check_consumer_required_fields,
+    "consumer_full_pii": _check_consumer_full_pii,
+    "compliance_full_evidence": _check_compliance_full_evidence,
+    "compliance_evidence_array": _check_compliance_evidence_array,
+    "location_required": _check_location_required,
+    "location_state_or_postal": _check_location_state_or_postal,
+    "attributes_vertical_version": _check_attributes_vertical_version,
+    "call_block_required": _check_call_block_required,
+    "otp_closed_object": _check_otp_closed_object,
+    "event_open_enum": _check_event_open_enum,
+    "event_open_enum_pass_through": _check_event_open_enum_pass_through,
+    "agent_provenance": _check_agent_provenance,
+    "attestation_present": _check_attestation_present,
+    "no_vendor_fields_in_core": _check_no_vendor_fields_in_core,
+    "ack_no_errors_when_accepted": _check_ack_no_errors_when_accepted,
+    "errors_array_multiple": _check_errors_array_multiple,
+    "exclusivity_field": _check_exclusivity_field,
+    "expiry_field": _check_expiry_field,
+    # LEP-0003 (v1.1) surface:
+    "capability_gate_slot_fields_v11": _check_capability_gate,
+    "slots_available_min": _check_slots_available_min,
+    "exclusive_single_slot_conditional": _check_exclusive_single_slot,
+    "slots_claimed_single_award": _check_slots_claimed_single_award,
+    "contacted_hashes_shape": _check_contacted_hashes_shape,
+    "contacted_report_shape": _check_contacted_report_shape,
+}
+
+
+def run_checks(
+    vector: dict, envelope: dict, errors: List[str]
+) -> Tuple[List[str], List[str]]:
+    """Resolve every named check against polarity (see registry header).
+
+    Returns (violations, meta_failures). Violations are conformance errors
+    contributed by the rules themselves (merged into the vector's error
+    list so negative vectors can match their expected error text);
+    meta_failures mark a negative vector whose specific named rule did
+    NOT fire — those reject the vector outright so a negative can never
+    pass by accident via some unrelated error.
+    """
+    expect = vector.get("expect", "pass")
+    violations: List[str] = []
+    meta_failures: List[str] = []
+    for name in vector.get("checks", []):
+        found = CHECKS[name](vector, envelope, errors)
+        if expect == "pass":
+            violations.extend(f"CHECK {name}: {v}" for v in found)
+        elif found:
+            violations.extend(f"CHECK {name}: {v}" for v in found)
+        else:
+            meta_failures.append(
+                f"CHECK {name}: vector expects failure from this rule but it did not fire"
+            )
+    return violations, meta_failures
+
+
 def run_vector(vector: dict) -> TestResult:
     """Run a single test vector."""
     vid = vector.get("id", "?")
     name = vector.get("name", "?")
     expect = vector.get("expect", "pass")
+    checks = vector.get("checks", [])
+
+    # Every named check must have a real implementation in the runner —
+    # honoring the `checks` array per #153 (routed observation O3): a label
+    # with no implementation fails the vector instead of decorating it.
+    unknown = [c for c in checks if c not in CHECKS]
+    if unknown:
+        return TestResult(
+            vid,
+            name,
+            False,
+            [f"CHECK_UNREGISTERED: no implementation for check {c!r}" for c in unknown],
+        )
 
     # Special case: status transition table test
     if "transitions" in vector:
         failures: List[str] = []
         for t in vector["transitions"]:
             from_s = t["from"]
+
             to_s = t["to"]
             expected_valid = t["valid"]
             actual_valid = is_valid_transition(from_s, to_s)
@@ -333,6 +930,10 @@ def run_vector(vector: dict) -> TestResult:
         return TestResult(vid, name, False, ["no file or payload in vector"])
 
     errors = validate_message(envelope)
+    check_violations, check_meta = run_checks(vector, envelope, errors)
+    errors = errors + check_violations
+    if check_meta:
+        return TestResult(vid, name, False, check_meta)
 
     if expect == "pass":
         if errors:

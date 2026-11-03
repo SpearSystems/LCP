@@ -315,6 +315,19 @@ This models the commercial reality of lead selling (exclusive vs.
 shared leads) — distinct from `pricing.is_duplicate_resub`, which
 addresses accidental resubmission.
 
+**Slot semantics (v1.1, LEP-0003).** The budget `max_buyers` counts
+**distinct awarded buyers**, not delivered copies: one awarded buyer
+consumes exactly **one slot** regardless of how many matching offers
+they hold, while delivery remains per `(lead, offer)` — so the number
+of delivered post copies for a lead can legally exceed the budget
+(a single awarded buyer holding two matching offers receives two posts
+inside their one slot). `exclusivity: "exclusive"` is exactly the
+one-slot special case. The undeclared case is normative: a `shared`
+lead without `max_buyers` has a slot budget of **1**. A conformant
+platform MUST NOT award more distinct buyers than the budget (never
+oversell) and MUST NOT advertise zero remaining slots — zero remaining
+means stop pinging, not ping with zero (see §4 `slots_available`).
+
 ## 4. Message types
 
 | Type | Purpose | PII |
@@ -383,8 +396,20 @@ listed below are permitted — any other field is a validation error
 | `floor_price_cents` | integer | |
 | `currency` | string | ISO 4217. |
 | `exclusivity` | string | `exclusive` or `shared` — hint to buyer. |
+| `slots_available` | integer | v1.1 (LEP-0003): remaining buyer-award slots INCLUDING this recipient's possible win, `minimum: 1`; `1` when `exclusivity` is `exclusive` (schema-enforced conditional). Absent = no slot state advertised (v1.0). Non-PII count; MUST NOT be `0`. |
 | `dedup_window_hours` | integer | Sender hint: how many hours to dedup against. |
 | `expires_at` | string (datetime) | Optional ping expiry. |
+
+**Capability gate (v1.1 slot fields).** A sender MUST include
+`slots_available` (and likewise `slots_claimed`, `contacted_hashes`,
+and `CONTACTED` reports, §4/§9) only when the receiving endpoint's
+§8 capability advertisement supports v1.1 — `lcp_versions` parsed as
+full `major.minor.patch` semver containing an element with
+`major == 1` and `minor >= 1` — never as a string literal or prefix
+match (§8). Slot fields toward a receiver advertising only v1.0 are a
+conformance failure: the receiver's strict v1.0 allowlist validation
+rejects them (`LCP-008`/`LCP-100`), which is the boundary the gate
+exists to prevent.
 
 The conformance runner mechanically validates:
 1. Ping payload has no fields outside the allowlist (`additionalProperties: false`).
@@ -405,7 +430,15 @@ lead yet, only the ping attributes.
 | `estimated_contact_seconds` | integer | Estimated time-to-contact. For speed-to-contact routing. |
 | `buyer_reference` | string | Buyer's internal tracking reference. |
 | `reject_reason` | string | Why rejected (e.g. `out_of_hours`, `capacity_full`, `vertical_mismatch`). Open enum. |
-| `capacity_remaining` | integer | Remaining capacity after this bid. Helps platform route future pings. |
+| `capacity_remaining` | integer | Remaining capacity after this bid. Helps the platform route future pings. |
+| `slots_claimed` | integer | v1.1 (LEP-0003): buyer slots this buyer claims if selected. `minimum: 1, maximum: 1` at v1.1 — single-slot awards only (multi-slot agency claims are deferred; the schema enforces the cap). Only meaningful with `decision: accept`; absent = 1. |
+
+A slot claim is a **request, not a reservation**: the platform awards
+slots at **post** time (delivery is the claim event; bids are
+non-binding — losers receive no further messages). The platform MUST
+NOT award more buyer slots than remain (§3 slot semantics).
+`slots_claimed` is capability-gated exactly like the ping-side slot
+field (§4 capability gate; §8).
 
 The ping/bid/post flow:
 
@@ -433,7 +466,30 @@ max_allowed_price_cents, price_guardrails, is_duplicate_resub,
 payable_definition, payable_status, dispute_window_hours,
 dispute_window_expires_at}`, `matched_preferences`,
 `consumer` (full), `location`, `compliance` (full evidence),
-`attributes`, `provenance`, optional `exclusivity`.
+`attributes`, `provenance`, optional `exclusivity`, optional
+`contacted_hashes`.
+
+**`contacted_hashes` (v1.1, LEP-0003).** Array of strings, each
+matching `^[a-f0-9]{64}$`, bounded by `maxItems: 100` (post direction;
+the report direction has its own 32-entry ingest bound below). The
+field carries the parties already contacted for this lead by the
+publisher or prior slot holders — a **hash exchange**, not a data
+handover: every entry is `HMAC-SHA256(pair_secret, contact-preimage)`
+keyed with the **receiving buyer's per-pair secret** (§9), re-keyed by
+the platform per recipient pair. A buyer matches entries against the
+hashes it already holds (earlier `phone_hash`/`email_hash` values and
+its suppression lists); no match data leaks because digests computed
+under one pair's secret are unmatchable by any other pair. **Trust
+model: format + count sanity only.** The platform cannot verify that a
+reported digest matches a real contact — verification would require
+every pair's secret and normalization — so entries are
+authenticated-sender attestations scoped to one `lead_id`, and
+disputes ride the existing ack/rejection paths. **The reference
+platform hashes phone only today; email-form entries are gated** —
+none ship until §9's normalization pin plus the executed dedup-hash
+vectors land (#153 T9). Absent = no contact reports; `[]` = the
+platform attests no prior contacts (the two are distinct). Capability-
+gated like the slot fields (§8).
 
 ### ack
 
@@ -507,6 +563,41 @@ Buyers receiving this event MUST delete the lead data and respond with
 an `ack`. The event open enumeration supports both `CONSENT_WITHDRAWN`
 and `ERASURE_REQUEST` without schema changes.
 
+For `CONTACTED` events (a slot holder attempted contact with a party
+on the lead; v1.1, LEP-0003 §4), `details` SHOULD include
+`contacted_hashes` (same per-pair keyed rule as post §4),
+`contacted_at` (datetime), and `via` (`phone` | `email` | `sms` |
+`chat`; open enum). Buyers SHOULD report every first contact attempt
+on purchased leads. The reporting direction is capability-gated like
+the slot fields (§8). Normative ingest behavior (`event.details` stays
+open by design, so this is a receiver rule, not a schema rule):
+
+- Receivers MUST reject `CONTACTED` reports whose
+  `details.contacted_hashes` contains an entry failing
+  `^[a-f0-9]{64}$` or exceeds **32 entries per report**, and MUST
+  treat oversized or malformed reports as a validation rejection, not
+  a store.
+- Beyond shape and count the trust model is explicit: keyed HMACs are
+  unverifiable-by-design for the receiver (verification would require
+  the pair's plaintext and normalization), so entries are
+  authenticated-sender attestations scoped to one `lead_id`.
+- Contact reports are **at-least-once**: exact re-sends of the same
+  event `message.id` collapse receiver-side; retried reports with new
+  ids are merged by digest set (the contacted set per lead accumulates
+  as a set union; the wire array carries no `uniqueItems`, duplicates
+  are tolerated but meaningless).
+- The absent-vs-`[]` rule carries to the report direction: absent =
+  nothing to report (don't send); `[]` MUST NOT be sent as an event
+  detail (it asserts nothing).
+- A platform that accepts `CONTACTED` reports MUST list `CONTACTED`
+  in its §8 capability `events` advertisement — buyers gate the
+  reporting direction on that surface.
+
+The platform stores reported digests and re-keys them onto subsequent
+posts **only from plaintext it holds** (the lead values it delivered);
+a received digest cannot be re-keyed (re-HMAC of a report digest is
+not the target pair's digest; §9).
+
 ## 5. Error taxonomy
 
 | Code | Name | HTTP |
@@ -567,6 +658,12 @@ endpoint receives test traffic.
   and an opaque, authenticated `storage_ref`; raw file bytes MUST NOT be put
   in an LCP JSON envelope or ping.
 - Unknown optional fields ignored; unknown message types → structured error.
+  The ignore-unknown rule covers **open** objects (`event.details`,
+  vertical `attributes` extensions); additions to **closed** objects
+  (`additionalProperties: false` — ping, bid, post, lead, ack, core
+  `$defs/exclusivity`) are not ignorable by a schema-validating receiver,
+  so they rely on version negotiation: senders gate v1.1 fields on the
+  receiver's §8 capability advertisement as specified in §4/§8.
 
 ### Open vs. closed enumerations
 
@@ -599,6 +696,23 @@ additive MINOR change, not a breaking MAJOR change.
 `GET /v1/lcp/capabilities` → `{ lcp_versions, message_types,
 verticals[{id, schema_version}], countries, auth_methods, events,
 conformance_level, delivery_windows[], capacity }`.
+
+**Version-string membership (v1.1, LEP-0003 F6, normative).** Every
+`lcp_versions` element MUST be a full `major.minor.patch` semantic
+version (`^\d+\.\d+\.\d+$`). A peer supports protocol extensions of
+minor `m` when its advertised set contains an element with
+`major == 1` and `minor >= m`; senders MUST compare parsed versions,
+never string literals or prefixes (exact membership of `1.1` is
+unsatisfiable by the full-semver forms the same section mandates, and
+prefix matching on `1.1` wrongly matches `1.10.0`). Every endpoint
+that initiates traffic to a counterparty (ping senders included) MUST
+host `GET /v1/lcp/capabilities` for that counterparty. Consequences:
+v1.1 slot fields (`slots_available`, `slots_claimed`,
+`contacted_hashes`) and `CONTACTED` reports are gated on a receiver's
+set containing a v1.1-or-higher minor element (e.g. `1.1.0`); a sender
+MUST NOT send those fields to a receiver advertising v1.0 minors only,
+because the receiver's closed-object allowlist rejects them (§4
+capability gate, §6 closed-vs-open rule).
 
 ### capacity
 
@@ -753,6 +867,50 @@ behavior.
   useless.
 - The spec does not define key distribution — that is a deployment
   concern (bilateral agreement between publisher and buyer).
+
+### Contact hashes (slot-holder dedup, v1.1, LEP-0003)
+
+`contacted_hashes` entries (post §4, `CONTACTED` report details §4)
+use the **same per-pair HMAC-SHA256 model as `phone_hash`** — keyed
+with the secret shared with the message's receiver:
+
+`contact_hash = HMAC-SHA256(pair_secret, contact_preimage)`
+
+- **Preimage normalization (normative).** The only hash-input behavior
+  this protocol implements is hashing the **wire value verbatim,
+  byte-for-byte**: for phone entries the preimage is the
+  `consumer.phone` string the platform delivered, unchanged — no
+  folding, no stripping, no separator handling (the reference
+  platform's `phone_hash` builder is the executed baseline, and
+  `consumer.phone` is E.164 by core schema, so the verbatim value IS
+  the E.164 form on conforming traffic). **The reference platform
+  hashes phone only today.**
+- **Email preimages (candidate canonical; gated).** The proposed
+  canonical for `normalized_email` — and the rule the pinned vectors
+  were computed under — is: trim surrounding whitespace, ASCII-lowercase
+  the domain, keep the local-part bytes verbatim, and treat
+  plus-addresses as distinct (no stripping). It is a **pin-in-progress,
+  not yet shipped behavior**: no email-form `contacted_hashes` entry
+  ships until this canonical is confirmed and the executed dedup-hash
+  vectors (#153 **T9**, `lcp-sdk-dedup-hash-001..N`, run by all ten
+  SDKs and the reference platform) publish. Divergent-but-plausible
+  normalization produces *different digests silently*, so the vectors
+  are the interop guarantee, not the prose.
+- **Pinned reference vectors.** `test-vectors/sdk/contact-hash.json`
+  pins preimage→digest pairs (pair secret `pair-secret-for-vectors-0123456789`):
+  phone `+15125550147` and the email canonical example are byte-exact
+  recomputable by any implementation; SDK builders and the platform
+  MUST reproduce every row (lowercase-hex output, UTF-8 input bytes).
+- **Re-keying requires the plaintext.** HMAC of a *received* digest
+  under another pair's secret is not a re-key; a platform may re-key
+  only from contact values it holds in plaintext (the leads it
+  delivered), never from reported digests.
+- **Never unsalted digests.** The unsalted SHA-1 contact hashes used
+  by the reference commercial network are explicitly NOT adopted —
+  phone and email keyspaces are enumerable, so unsalted digests invert
+  by lookup (the same weakness §14 blocker B3 removed from
+  `phone_hash`). SHA-1 anywhere in a contact-hash path is a
+  conformance failure.
 
 ### Agent attestation
 

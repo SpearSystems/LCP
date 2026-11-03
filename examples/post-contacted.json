@@ -1,0 +1,30 @@
+{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "c20e8400-0000-4000-8000-000000000103",
+      "type": "post",
+      "timestamp": "2026-11-02T10:21:00Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_002",
+      "correlation_id": "bb1e8400-0000-4000-8000-000000000102",
+      "idempotency_key": "platform-001-post-lead_def456",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_def456",
+      "delivered_at": "2026-11-02T10:21:00Z",
+      "price_cents": 2900,
+      "currency": "USD",
+      "buyer_id": "buyer_002",
+      "consumer": { "full_name": "Jordan Reyes", "phone": "+15125550147" },
+      "location": { "country_code": "US", "state_region": "TX", "postal_code": "78701" },
+      "attributes": { "vertical": "home_services", "schema_version": "1.0.0" },
+      "exclusivity": { "exclusivity": "shared", "max_buyers": 2 },
+      "contacted_hashes": [
+        "3f02a7c9d15e8b46a2c9f0d3b7e1a58c4d92f6b0a3c8e1d47f9b2c5a0d6e8f13",
+        "9d4b17e0c26a8f53d1e7b94c0a26f8d35b1e7c9a4f2d60b8e1c3a5d7f9b2c4e6"
+      ]
+    }
+  }
+}

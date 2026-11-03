@@ -1,0 +1,30 @@
+{
+  "suite": "lcp-sdk-contact-hash",
+  "version": 1,
+  "description": "LEP-0003 \u00a73 / SPEC.md \u00a79 pinned contact-hash preimage->digest pairs (the dedup-hash reference vectors, #153 T9 starting set). Every SDK dedup/contacted-hash builder and the reference platform MUST reproduce each digest byte-exactly; divergence kills cross-pair dedup silently, so these rows are the interop guarantee the prose cannot provide. Recompute rule: lowercase-hex HMAC-SHA256 over UTF-8 bytes: hmac.new(secret.encode('utf-8'), preimage.encode('utf-8'), hashlib.sha256).hexdigest(). Naming note: LEP-0003 \u00a73 proposed the file name dedup-hash.json; this lane lands the identical fixture form under test-vectors/sdk/contact-hash.json.",
+  "algorithm": "HMAC-SHA256",
+  "secret": "pair-secret-for-vectors-0123456789",
+  "encoding": "utf-8 (secret and preimage); output lowercase hex",
+  "preimage_rules": {
+    "phone": "Verbatim wire bytes: the consumer.phone string exactly as delivered on the post (E.164 by core schema on conforming traffic); no folding, stripping, or reformatting (LEP-0003 \u00a73; the reference platform's messages.py builder is the executed baseline).",
+    "email": "Proposed canonical (pin-in-progress): trim surrounding whitespace, ASCII-lowercase the domain, keep local-part bytes verbatim, plus-addresses distinct. GATED: no email-form contacted_hashes entry ships until SPEC.md \u00a79's pin is confirmed and the executed #153 T9 vectors publish; the reference platform hashes phone only today."
+  },
+  "vectors": [
+    {
+      "name": "lcp-contact-hash-phone-001",
+      "secret": "pair-secret-for-vectors-0123456789",
+      "domain": "phone",
+      "preimage": "+15125550147",
+      "digest": "c47aff331606437528b34b7f919eb37704e87ee35eed80e52cfa36826a4a2e12",
+      "note": "Equals what messages.py:89-93 computes for that value and secret (LEP-0003 \u00a73 phone reference digest; the valid CONTACTED example's single entry)."
+    },
+    {
+      "name": "lcp-contact-hash-email-001",
+      "secret": "pair-secret-for-vectors-0123456789",
+      "domain": "email",
+      "preimage": "Jordan@example.com",
+      "digest": "d28da9b5424990cf7ac6000cf4e04537ca487929e71cef12f91191f29f78a6c4",
+      "note": "Proposal fixture per LEP-0003 \u00a73 (the \u00a79 pin may still move it); recomputes byte-exactly under the proposed canonical above."
+    }
+  ]
+}

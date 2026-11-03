@@ -245,6 +245,7 @@ A ping is a strict non-PII allowlist for buyer discovery and bidding.
 | `ping.floor_price_cents` | non-negative integer | `req` | Minimum bid price in minor currency units. |
 | `ping.currency` | ISO 4217 | `req` | Bid currency. |
 | `ping.exclusivity` | `exclusive` or `shared` | optional | Commercial sharing hint. |
+| `ping.slots_available` | positive integer | optional (v1.1) | `non-PII`. Remaining buyer-award slots including the recipient's possible win; `1` when `exclusivity` is `exclusive`; never `0`. Capability-gated on §8 `lcp_versions` minor >= 1. |
 | `ping.dedup_window_hours` | positive integer | optional | Sender deduplication hint. |
 | `ping.expires_at` | RFC 3339 date-time | optional | Ping expiry. |
 
@@ -277,6 +278,7 @@ A post is full lead delivery to the winning buyer.
 | `post.attachments[]` | attachment array | optional | Evidence references. |
 | `post.provenance` | provenance object | optional | Origin metadata. |
 | `post.exclusivity` | routing block | optional | Sharing hint. |
+| `post.contacted_hashes` | array of 64-char lowercase hex | optional (v1.1) | `non-PII`. Parties already contacted for this lead, each `HMAC-SHA256(receiving buyer's pair secret, preimage)` per SPEC.md §9; max 100 entries; absent = no reports, `[]` = attested no prior contacts. |
 
 `post.pricing` may contain floor, premium, final, uncapped, and maximum allowed
 prices; `price_guardrails`; `is_duplicate_resub`; `payable_definition`;
@@ -302,7 +304,7 @@ Each error contains required `code` (`LCP-###`) and `message`, with optional
 | Path | Type / format | Presence | Meaning |
 |---|---|---|---|
 | `event.lead_id` | string | `req` | Affected lead. |
-| `event.event` | open string | `req` | Lifecycle event such as `DELIVERED`, `ACCEPTED`, `REJECTED`, `DISPUTED`, `REFUNDED`, `EXPIRED`, `CONVERTED`, or `ARCHIVED`. |
+| `event.event` | open string | `req` | Lifecycle event such as `DELIVERED`, `ACCEPTED`, `REJECTED`, `DISPUTED`, `REFUNDED`, `EXPIRED`, `CONVERTED`, `ARCHIVED`, or `CONTACTED` (v1.1; `details.contacted_hashes` per-pair keyed, ≤32 per report). |
 | `event.timestamp` | RFC 3339 date-time | `req` | Event time. |
 | `event.details` | object | optional | Event-specific non-normative details. |
 | `event.external_reference` | string | optional | Partner or system reference. |
@@ -321,6 +323,7 @@ Unknown event values must be stored and passed through.
 | `bid.buyer_reference` | string | optional | Buyer's internal bid reference. |
 | `bid.reject_reason` | open string | optional | Reason for rejecting or passing. |
 | `bid.capacity_remaining` | non-negative integer | optional | Buyer's remaining capacity. |
+| `bid.slots_claimed` | integer 1..1 | optional (v1.1) | Slots claimed if selected; a request, not a reservation — awarded at post time. Multi-slot claims deferred past v1.1. |
 
 ### 3.8 `offer`
 

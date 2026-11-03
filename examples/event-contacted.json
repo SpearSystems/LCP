@@ -1,0 +1,27 @@
+{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "ee0e8400-0000-4000-8000-000000000104",
+      "type": "event",
+      "timestamp": "2026-11-02T10:26:00Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": "c20e8400-0000-4000-8000-000000000103",
+      "idempotency_key": "buyer-002-event-lead_def456-contacted-1",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_def456",
+      "event": "CONTACTED",
+      "timestamp": "2026-11-02T10:25:41Z",
+      "details": {
+        "contacted_hashes": [
+          "c47aff331606437528b34b7f919eb37704e87ee35eed80e52cfa36826a4a2e12"
+        ],
+        "contacted_at": "2026-11-02T10:25:41Z",
+        "via": "phone"
+      }
+    }
+  }
+}

@@ -161,6 +161,16 @@
     },
     "exclusivity": {
       "$ref": "core.json#/$defs/exclusivity"
+    },
+    "contacted_hashes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "maxItems": 100,
+      "$comment": "No uniqueItems (LEP-0003 §4): the wire array tolerates duplicates; the receiver merges by digest set per lead (at-least-once + set-union accumulation). maxItems 100: the record leaves the post-direction array bound open as a Deferred question ('a lead's contact attempts are naturally bounded'); this implementation bound is set generously above any realistic per-lead contact history so no conformant sender is clipped, while keeping the post payload bounded and rejecting bulk-suppression-sync misuse of this field (bulk sync stays out of scope; if production posts ever approach this bound, bulk routes to a dedicated mechanism). The CONTACTED event-report direction has its own tighter ingest bound (32 entries per report, SPEC.md §4).",
+      "description": "v1.1 (LEP-0003 §3): parties already contacted for this lead by the publisher or prior slot holders, re-keyed under THIS receiving buyer's per-pair secret. Each entry is HMAC-SHA256(pair_secret, contact-preimage) — lowercase 64-hex, the same form as phone_hash (SPEC.md §9); the unsalted SHA-1-shaped digest of the reference network is explicitly NOT adopted (enumerable keyspaces invert it; §14 blocker B3). The platform matches digests only against values it holds in plaintext for this pair and cannot verify reported digests without the plaintext — the trust model is format + count sanity plus authenticated-sender attestation, scoped to one lead_id. Absent = the platform has no contact reports; [] = the platform attests no prior contacts (the two are distinct). Preimage rules and the phone-only/email-gated state are normative in SPEC.md §9. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1."
     }
   },
   "additionalProperties": false

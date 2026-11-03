@@ -333,6 +333,729 @@
         }
       },
       "checks": ["lead_schema", "exclusivity_field", "expiry_field"]
+    },
+    {
+      "id": "L3-008",
+      "name": "valid_ping_slots_available_v11",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a71: shared ping advertising remaining buyer-award slots to a v1.1-advertising receiver. Non-PII count on the strict allowlist.",
+      "file": "ping-slots.json",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0"
+      ],
+      "checks": [
+        "ping_schema",
+        "ping_allowlist_no_pii",
+        "ping_safe_attributes_only",
+        "slots_available_min",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-009",
+      "name": "valid_bid_slots_claimed_v11",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a72: single-slot claim (minimum 1, maximum 1) alongside accept; fulfilled at post award.",
+      "file": "bid-slots.json",
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "bid_schema",
+        "slots_claimed_single_award",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-010",
+      "name": "valid_post_contacted_hashes_v11",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a73: per-pair keyed contacted hashes on the post (phone-form only per the \u00a79 gate); each entry 64 lowercase hex.",
+      "file": "post-contacted.json",
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "post_schema",
+        "contacted_hashes_shape",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-011",
+      "name": "valid_contacted_event_report_v11",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a74: CONTACTED report on the open event enum (zero schema cost); details digest is the \u00a73 phone reference digest (byte-exact, recomputable from test-vectors/sdk/contact-hash.json).",
+      "file": "event-contacted.json",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0"
+      ],
+      "checks": [
+        "event_schema",
+        "event_open_enum_pass_through",
+        "contacted_report_shape",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-012",
+      "name": "valid_post_contacted_empty_attestation",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a73/\u00a74 absent-vs-empty: contacted_hashes [] is a positive attestation of no prior contacts and must validate.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d30e8400-0000-4000-8000-000000000111",
+            "type": "post",
+            "timestamp": "2026-11-02T10:31:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_003",
+            "correlation_id": null,
+            "idempotency_key": "platform-001-post-lead_e789",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_e789",
+            "delivered_at": "2026-11-02T10:31:00Z",
+            "price_cents": 2900,
+            "currency": "USD",
+            "buyer_id": "buyer_003",
+            "consumer": {
+              "full_name": "Alex Kim",
+              "phone": "+15125550148"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "78701"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "contacted_hashes": []
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "post_schema",
+        "contacted_hashes_shape",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-013",
+      "name": "valid_exclusive_single_slot",
+      "expect": "pass",
+      "description": "LEP-0003 \u00a71: exclusive is exactly the one-slot special case \u2014 exclusive + slots_available 1 must validate under the conditional.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d40e8400-0000-4000-8000-000000000112",
+            "type": "ping",
+            "timestamp": "2026-11-02T10:32:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_003",
+            "correlation_id": null,
+            "idempotency_key": "platform-001-ping-ping_e789-001",
+            "test": true
+          },
+          "payload": {
+            "ping_id": "ping_e789",
+            "lead_reference": "ref_e789",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "TX",
+            "postal_code": "78701",
+            "vertical": "home_services",
+            "attributes": {
+              "service_type": "gutters",
+              "budget_band": "1000_5000"
+            },
+            "floor_price_cents": 2400,
+            "currency": "USD",
+            "exclusivity": "exclusive",
+            "slots_available": 1
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "ping_schema",
+        "ping_allowlist_no_pii",
+        "ping_safe_attributes_only",
+        "slots_available_min",
+        "exclusive_single_slot_conditional",
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-014",
+      "name": "invalid_contacted_hash_sha1_40hex",
+      "expect": "fail",
+      "error_contains": "does not match",
+      "description": "LEP-0003 invalid example A: unsalted SHA-1-shaped 40-hex contacted hash rejected by the 64-lowercase-hex pattern; the reference network's invertible digest is never adopted (SPEC.md \u00a79, \u00a714 B3).",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d50e8400-0000-4000-8000-000000000114",
+            "type": "post",
+            "timestamp": "2026-11-02T10:21:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": "bb1e8400-0000-4000-8000-000000000102",
+            "idempotency_key": "platform-001-post-lead_def456",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_def456",
+            "delivered_at": "2026-11-02T10:21:00Z",
+            "price_cents": 2900,
+            "currency": "USD",
+            "buyer_id": "buyer_002",
+            "consumer": {
+              "full_name": "Jordan Reyes",
+              "phone": "+15125550147"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "78701"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 2
+            },
+            "contacted_hashes": [
+              "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+            ]
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "post_schema",
+        "contacted_hashes_shape"
+      ]
+    },
+    {
+      "id": "L3-015",
+      "name": "invalid_contacted_hash_short_digest",
+      "expect": "fail",
+      "error_contains": "does not match",
+      "description": "RF-1 defect class: a 63-hex string (odd-length/truncated digest) fails the ^[a-f0-9]{64}$ shape \u2014 the exact defect the ARB re-dossier caught in the record's own example.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d60e8400-0000-4000-8000-000000000115",
+            "type": "post",
+            "timestamp": "2026-11-02T10:21:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": "bb1e8400-0000-4000-8000-000000000102",
+            "idempotency_key": "platform-001-post-lead_def456",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_def456",
+            "delivered_at": "2026-11-02T10:21:00Z",
+            "price_cents": 2900,
+            "currency": "USD",
+            "buyer_id": "buyer_002",
+            "consumer": {
+              "full_name": "Jordan Reyes",
+              "phone": "+15125550147"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "78701"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 2
+            },
+            "contacted_hashes": [
+              "5a1c9e3b7d0f2a6c8e4b1d9f3a7c5e2b8d4f6a0c1e3b5d7f9a2c4e6b8d0f1a3"
+            ]
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "post_schema",
+        "contacted_hashes_shape"
+      ]
+    },
+    {
+      "id": "L3-016",
+      "name": "invalid_contacted_hashes_over_bound",
+      "expect": "fail",
+      "error_contains": "is too long",
+      "description": "101 contacted_hashes entries exceed the bounded post-direction maxItems 100; bulk suppression sync MUST NOT ride this field (LEP-0003 Deferred questions).",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d70e8400-0000-4000-8000-000000000116",
+            "type": "post",
+            "timestamp": "2026-11-02T10:21:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": "bb1e8400-0000-4000-8000-000000000102",
+            "idempotency_key": "platform-001-post-lead_def456",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_def456",
+            "delivered_at": "2026-11-02T10:21:00Z",
+            "price_cents": 2900,
+            "currency": "USD",
+            "buyer_id": "buyer_002",
+            "consumer": {
+              "full_name": "Jordan Reyes",
+              "phone": "+15125550147"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "78701"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 2
+            },
+            "contacted_hashes": [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "0000000000000000000000000000000000000000000000000000000000000004",
+              "0000000000000000000000000000000000000000000000000000000000000005",
+              "0000000000000000000000000000000000000000000000000000000000000006",
+              "0000000000000000000000000000000000000000000000000000000000000007",
+              "0000000000000000000000000000000000000000000000000000000000000008",
+              "0000000000000000000000000000000000000000000000000000000000000009",
+              "000000000000000000000000000000000000000000000000000000000000000a",
+              "000000000000000000000000000000000000000000000000000000000000000b",
+              "000000000000000000000000000000000000000000000000000000000000000c",
+              "000000000000000000000000000000000000000000000000000000000000000d",
+              "000000000000000000000000000000000000000000000000000000000000000e",
+              "000000000000000000000000000000000000000000000000000000000000000f",
+              "0000000000000000000000000000000000000000000000000000000000000010",
+              "0000000000000000000000000000000000000000000000000000000000000011",
+              "0000000000000000000000000000000000000000000000000000000000000012",
+              "0000000000000000000000000000000000000000000000000000000000000013",
+              "0000000000000000000000000000000000000000000000000000000000000014",
+              "0000000000000000000000000000000000000000000000000000000000000015",
+              "0000000000000000000000000000000000000000000000000000000000000016",
+              "0000000000000000000000000000000000000000000000000000000000000017",
+              "0000000000000000000000000000000000000000000000000000000000000018",
+              "0000000000000000000000000000000000000000000000000000000000000019",
+              "000000000000000000000000000000000000000000000000000000000000001a",
+              "000000000000000000000000000000000000000000000000000000000000001b",
+              "000000000000000000000000000000000000000000000000000000000000001c",
+              "000000000000000000000000000000000000000000000000000000000000001d",
+              "000000000000000000000000000000000000000000000000000000000000001e",
+              "000000000000000000000000000000000000000000000000000000000000001f",
+              "0000000000000000000000000000000000000000000000000000000000000020",
+              "0000000000000000000000000000000000000000000000000000000000000021",
+              "0000000000000000000000000000000000000000000000000000000000000022",
+              "0000000000000000000000000000000000000000000000000000000000000023",
+              "0000000000000000000000000000000000000000000000000000000000000024",
+              "0000000000000000000000000000000000000000000000000000000000000025",
+              "0000000000000000000000000000000000000000000000000000000000000026",
+              "0000000000000000000000000000000000000000000000000000000000000027",
+              "0000000000000000000000000000000000000000000000000000000000000028",
+              "0000000000000000000000000000000000000000000000000000000000000029",
+              "000000000000000000000000000000000000000000000000000000000000002a",
+              "000000000000000000000000000000000000000000000000000000000000002b",
+              "000000000000000000000000000000000000000000000000000000000000002c",
+              "000000000000000000000000000000000000000000000000000000000000002d",
+              "000000000000000000000000000000000000000000000000000000000000002e",
+              "000000000000000000000000000000000000000000000000000000000000002f",
+              "0000000000000000000000000000000000000000000000000000000000000030",
+              "0000000000000000000000000000000000000000000000000000000000000031",
+              "0000000000000000000000000000000000000000000000000000000000000032",
+              "0000000000000000000000000000000000000000000000000000000000000033",
+              "0000000000000000000000000000000000000000000000000000000000000034",
+              "0000000000000000000000000000000000000000000000000000000000000035",
+              "0000000000000000000000000000000000000000000000000000000000000036",
+              "0000000000000000000000000000000000000000000000000000000000000037",
+              "0000000000000000000000000000000000000000000000000000000000000038",
+              "0000000000000000000000000000000000000000000000000000000000000039",
+              "000000000000000000000000000000000000000000000000000000000000003a",
+              "000000000000000000000000000000000000000000000000000000000000003b",
+              "000000000000000000000000000000000000000000000000000000000000003c",
+              "000000000000000000000000000000000000000000000000000000000000003d",
+              "000000000000000000000000000000000000000000000000000000000000003e",
+              "000000000000000000000000000000000000000000000000000000000000003f",
+              "0000000000000000000000000000000000000000000000000000000000000040",
+              "0000000000000000000000000000000000000000000000000000000000000041",
+              "0000000000000000000000000000000000000000000000000000000000000042",
+              "0000000000000000000000000000000000000000000000000000000000000043",
+              "0000000000000000000000000000000000000000000000000000000000000044",
+              "0000000000000000000000000000000000000000000000000000000000000045",
+              "0000000000000000000000000000000000000000000000000000000000000046",
+              "0000000000000000000000000000000000000000000000000000000000000047",
+              "0000000000000000000000000000000000000000000000000000000000000048",
+              "0000000000000000000000000000000000000000000000000000000000000049",
+              "000000000000000000000000000000000000000000000000000000000000004a",
+              "000000000000000000000000000000000000000000000000000000000000004b",
+              "000000000000000000000000000000000000000000000000000000000000004c",
+              "000000000000000000000000000000000000000000000000000000000000004d",
+              "000000000000000000000000000000000000000000000000000000000000004e",
+              "000000000000000000000000000000000000000000000000000000000000004f",
+              "0000000000000000000000000000000000000000000000000000000000000050",
+              "0000000000000000000000000000000000000000000000000000000000000051",
+              "0000000000000000000000000000000000000000000000000000000000000052",
+              "0000000000000000000000000000000000000000000000000000000000000053",
+              "0000000000000000000000000000000000000000000000000000000000000054",
+              "0000000000000000000000000000000000000000000000000000000000000055",
+              "0000000000000000000000000000000000000000000000000000000000000056",
+              "0000000000000000000000000000000000000000000000000000000000000057",
+              "0000000000000000000000000000000000000000000000000000000000000058",
+              "0000000000000000000000000000000000000000000000000000000000000059",
+              "000000000000000000000000000000000000000000000000000000000000005a",
+              "000000000000000000000000000000000000000000000000000000000000005b",
+              "000000000000000000000000000000000000000000000000000000000000005c",
+              "000000000000000000000000000000000000000000000000000000000000005d",
+              "000000000000000000000000000000000000000000000000000000000000005e",
+              "000000000000000000000000000000000000000000000000000000000000005f",
+              "0000000000000000000000000000000000000000000000000000000000000060",
+              "0000000000000000000000000000000000000000000000000000000000000061",
+              "0000000000000000000000000000000000000000000000000000000000000062",
+              "0000000000000000000000000000000000000000000000000000000000000063",
+              "0000000000000000000000000000000000000000000000000000000000000064",
+              "0000000000000000000000000000000000000000000000000000000000000065"
+            ]
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "post_schema",
+        "contacted_hashes_shape"
+      ]
+    },
+    {
+      "id": "L3-017",
+      "name": "invalid_slots_available_zero",
+      "expect": "fail",
+      "error_contains": "less than the minimum",
+      "description": "LEP-0003 \u00a71: a platform MUST NOT send slots_available 0 \u2014 zero remaining means stop pinging; the schema minimum 1 rejects.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d80e8400-0000-4000-8000-000000000117",
+            "type": "ping",
+            "timestamp": "2026-11-02T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": null,
+            "idempotency_key": "platform-001-ping-ping_002-001",
+            "test": true
+          },
+          "payload": {
+            "ping_id": "ping_002",
+            "lead_reference": "ref_qwe456",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "TX",
+            "postal_code": "78701",
+            "vertical": "home_services",
+            "attributes": {
+              "service_type": "gutters",
+              "budget_band": "1000_5000"
+            },
+            "floor_price_cents": 2400,
+            "currency": "USD",
+            "exclusivity": "shared",
+            "slots_available": 0,
+            "dedup_window_hours": 24,
+            "expires_at": "2026-11-02T10:25:05Z"
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "ping_schema",
+        "slots_available_min"
+      ]
+    },
+    {
+      "id": "L3-018",
+      "name": "invalid_slots_claimed_multi",
+      "expect": "fail",
+      "error_contains": "greater than the maximum",
+      "description": "LEP-0003 \u00a72/F4: slots_claimed 2 is out of range for v1.1 (maximum 1) \u2014 multi-slot agency claims have no delivery path and are deferred (#153 T5).",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "d90e8400-0000-4000-8000-000000000118",
+            "type": "bid",
+            "timestamp": "2026-11-02T10:20:08Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": "770e8400-0000-4000-8000-000000000101",
+            "idempotency_key": "buyer-002-bid-ping_002-001",
+            "test": true
+          },
+          "payload": {
+            "ping_id": "ping_002",
+            "decision": "accept",
+            "bid_price_cents": 2900,
+            "currency": "USD",
+            "estimated_contact_seconds": 30,
+            "slots_claimed": 2,
+            "capacity_remaining": 12
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "bid_schema",
+        "slots_claimed_single_award"
+      ]
+    },
+    {
+      "id": "L3-019",
+      "name": "invalid_exclusive_multislot",
+      "expect": "fail",
+      "error_contains": "was expected",
+      "description": "LEP-0003 invalid example B (message-level twin of lcp-neg-exclusive-multislot-001): exclusive lead advertising 3 slots contradicts the one-slot special case; rejected by the ping schema conditional, not just by prose (#153 T7/F8).",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "da0e8400-0000-4000-8000-000000000119",
+            "type": "ping",
+            "timestamp": "2026-11-02T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": null,
+            "idempotency_key": "platform-001-ping-ping_002-001",
+            "test": true
+          },
+          "payload": {
+            "ping_id": "ping_002",
+            "lead_reference": "ref_qwe456",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "TX",
+            "postal_code": "78701",
+            "vertical": "home_services",
+            "attributes": {
+              "service_type": "gutters",
+              "budget_band": "1000_5000"
+            },
+            "floor_price_cents": 2400,
+            "currency": "USD",
+            "exclusivity": "exclusive",
+            "slots_available": 3,
+            "dedup_window_hours": 24,
+            "expires_at": "2026-11-02T10:25:05Z"
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "ping_schema",
+        "exclusive_single_slot_conditional"
+      ]
+    },
+    {
+      "id": "L3-020",
+      "name": "invalid_slot_ping_to_v10_receiver",
+      "expect": "fail",
+      "error_contains": "CAPABILITY_GATE",
+      "description": "LEP-0003 invalid example D: slots_available toward a receiver advertising only 1.0.0. Schema-valid in isolation, but the capability gate (SPEC.md \u00a78 parsed-semver membership, \u00a74 send-time rule) forbids the send \u2014 the receiver's closed v1.0 allowlist would reject it, so this is a sender conformance failure.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "db0e8400-0000-4000-8000-00000000011a",
+            "type": "ping",
+            "timestamp": "2026-11-02T10:20:05Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": null,
+            "idempotency_key": "platform-001-ping-ping_002-001",
+            "test": true
+          },
+          "payload": {
+            "ping_id": "ping_002",
+            "lead_reference": "ref_qwe456",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "TX",
+            "postal_code": "78701",
+            "vertical": "home_services",
+            "attributes": {
+              "service_type": "gutters",
+              "budget_band": "1000_5000"
+            },
+            "floor_price_cents": 2400,
+            "currency": "USD",
+            "exclusivity": "shared",
+            "slots_available": 2,
+            "dedup_window_hours": 24,
+            "expires_at": "2026-11-02T10:25:05Z"
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.0.0"
+      ],
+      "checks": [
+        "capability_gate_slot_fields_v11"
+      ]
+    },
+    {
+      "id": "L3-021",
+      "name": "invalid_contacted_report_over_ingest_bound",
+      "expect": "fail",
+      "error_contains": "32-per-report",
+      "description": "LEP-0003 \u00a74: a CONTACTED report with 33 contacted_hashes entries exceeds the 32-per-report ingest bound \u2014 a conformant receiver MUST reject (validation rejection, not a store). Schemas cannot see this (event details are open by design), so the conformance runner enforces it.",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "dc0e8400-0000-4000-8000-00000000011b",
+            "type": "event",
+            "timestamp": "2026-11-02T10:26:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": "c20e8400-0000-4000-8000-000000000103",
+            "idempotency_key": "buyer-002-event-lead_def456-contacted-1",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_def456",
+            "event": "CONTACTED",
+            "timestamp": "2026-11-02T10:25:41Z",
+            "details": {
+              "contacted_hashes": [
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                "0000000000000000000000000000000000000000000000000000000000000002",
+                "0000000000000000000000000000000000000000000000000000000000000003",
+                "0000000000000000000000000000000000000000000000000000000000000004",
+                "0000000000000000000000000000000000000000000000000000000000000005",
+                "0000000000000000000000000000000000000000000000000000000000000006",
+                "0000000000000000000000000000000000000000000000000000000000000007",
+                "0000000000000000000000000000000000000000000000000000000000000008",
+                "0000000000000000000000000000000000000000000000000000000000000009",
+                "000000000000000000000000000000000000000000000000000000000000000a",
+                "000000000000000000000000000000000000000000000000000000000000000b",
+                "000000000000000000000000000000000000000000000000000000000000000c",
+                "000000000000000000000000000000000000000000000000000000000000000d",
+                "000000000000000000000000000000000000000000000000000000000000000e",
+                "000000000000000000000000000000000000000000000000000000000000000f",
+                "0000000000000000000000000000000000000000000000000000000000000010",
+                "0000000000000000000000000000000000000000000000000000000000000011",
+                "0000000000000000000000000000000000000000000000000000000000000012",
+                "0000000000000000000000000000000000000000000000000000000000000013",
+                "0000000000000000000000000000000000000000000000000000000000000014",
+                "0000000000000000000000000000000000000000000000000000000000000015",
+                "0000000000000000000000000000000000000000000000000000000000000016",
+                "0000000000000000000000000000000000000000000000000000000000000017",
+                "0000000000000000000000000000000000000000000000000000000000000018",
+                "0000000000000000000000000000000000000000000000000000000000000019",
+                "000000000000000000000000000000000000000000000000000000000000001a",
+                "000000000000000000000000000000000000000000000000000000000000001b",
+                "000000000000000000000000000000000000000000000000000000000000001c",
+                "000000000000000000000000000000000000000000000000000000000000001d",
+                "000000000000000000000000000000000000000000000000000000000000001e",
+                "000000000000000000000000000000000000000000000000000000000000001f",
+                "0000000000000000000000000000000000000000000000000000000000000020",
+                "0000000000000000000000000000000000000000000000000000000000000021"
+              ],
+              "contacted_at": "2026-11-02T10:25:41Z",
+              "via": "phone"
+            }
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "contacted_report_shape"
+      ]
+    },
+    {
+      "id": "L3-022",
+      "name": "invalid_contacted_report_empty_array",
+      "expect": "fail",
+      "error_contains": "must not be sent",
+      "description": "LEP-0003 \u00a74: details.contacted_hashes [] MUST NOT be sent as an event detail ([] asserts nothing in the report direction; absent = nothing to report).",
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "dd0e8400-0000-4000-8000-00000000011c",
+            "type": "event",
+            "timestamp": "2026-11-02T10:26:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": "c20e8400-0000-4000-8000-000000000103",
+            "idempotency_key": "buyer-002-event-lead_def456-contacted-1",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_def456",
+            "event": "CONTACTED",
+            "timestamp": "2026-11-02T10:25:41Z",
+            "details": {
+              "contacted_hashes": [],
+              "contacted_at": "2026-11-02T10:25:41Z",
+              "via": "phone"
+            }
+          }
+        }
+      },
+      "receiver_lcp_versions": [
+        "1.1.0"
+      ],
+      "checks": [
+        "contacted_report_shape"
+      ]
     }
   ]
 }

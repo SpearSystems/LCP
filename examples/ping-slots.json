@@ -1,0 +1,31 @@
+{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "770e8400-0000-4000-8000-000000000101",
+      "type": "ping",
+      "timestamp": "2026-11-02T10:20:05Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_002",
+      "correlation_id": null,
+      "idempotency_key": "platform-001-ping-ping_002-001",
+      "test": true
+    },
+    "payload": {
+      "ping_id": "ping_002",
+      "lead_reference": "ref_qwe456",
+      "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "country_code": "US",
+      "state_region": "TX",
+      "postal_code": "78701",
+      "vertical": "home_services",
+      "attributes": { "service_type": "gutters", "budget_band": "1000_5000" },
+      "floor_price_cents": 2400,
+      "currency": "USD",
+      "exclusivity": "shared",
+      "slots_available": 2,
+      "dedup_window_hours": 24,
+      "expires_at": "2026-11-02T10:25:05Z"
+    }
+  }
+}
