@@ -208,6 +208,7 @@ def build_post(
     buyer_reference: str | None,
     correlation_id: str,
     contacted_hashes: list[str] | None = None,
+    extensions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     lead = lead_envelope["lcp"]["payload"]
     payload: dict[str, Any] = {
@@ -245,6 +246,12 @@ def build_post(
         # LEP-0003 §3: per-pair re-keyed contact digests, attached only for
         # v1.1-capable receivers (capability-gated, not ignore-gated).
         payload["contacted_hashes"] = contacted_hashes
+    if extensions is not None:
+        # LEP-0006 Track B §B.1: the extension rides the delivery itself, so
+        # the buyer has the questions when it works the lead. The caller
+        # gates on the receiver's advertised versions and screens the values;
+        # both are delivery decisions, not message-builder decisions.
+        payload["extensions"] = extensions
     return _envelope(
         "post",
         platform_id,
@@ -253,7 +260,9 @@ def build_post(
         correlation_id=correlation_id,
         idempotency_key=f"{platform_id}-post-{lead['lead_id']}-{offer['offer_id']}",
         test=lead_envelope["lcp"]["message"].get("test", False),
-        version="1.1.0" if contacted_hashes is not None else "1.0.0",
+        version="1.1.0"
+        if contacted_hashes is not None or extensions is not None
+        else "1.0.0",
     )
 
 
