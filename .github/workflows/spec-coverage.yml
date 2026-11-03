@@ -1,9 +1,12 @@
 name: Spec Coverage Matrix
 
-# Advisory gate (ARB plan §3.1, wave W1). Reports only for now:
-# W5 flips this to blocking by removing `continue-on-error` below and
-# adding `--fail-on-gap` to the checker step, once the gap backlog in
-# docs/SPEC-COVERAGE.md closes to zero.
+# Advisory gate (ARB plan §3.1, wave W1). Reports only for now.
+# W5 flip condition (plan §3.1): remove `continue-on-error` and add
+# `--fail-on-gap` once the gap backlog in docs/SPEC-COVERAGE.md closes to
+# zero. Status 2026-11-03: 8 gaps remain, every one a filed spec-vs-code
+# issue (#176/#177/#179/#180/#181/#182/#192/#193); structural drift (bad
+# rows, orphan ids, green-without-tests) already fails this job — only
+# gap COUNTING stays advisory until the issues close.
 
 on:
   push:

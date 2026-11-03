@@ -39,18 +39,24 @@ LCP-002 — recorded under ERR-002 and closed by #142: the auth.py bearer
 branch now emits LCP-002, and the strengthened test (matching fresh
 idempotency header + code/message assertions) is credited under ERR-002.
 
-Gap-grind wave 2026-11-03 (#174/#178/#183/#184/#189): 26 rows flipped
-green by executed tests (errors/caps, enum+message passthroughs, sandbox
-both-directions, per-sender rate limiting, MCP discovery/passthrough, and
-the mechanical SPEC §12 universal-core audit `tool:check_universal_core`
-covering UNI-01/CORE-01/CON-08/ATR-06). Discovered spec-vs-code defects
-tracked as open issues (fixing each is wire-visible, hence issue-not-patch):
+Gap-grind wave 2026-11-03 (#174/#178/#183/#184/#189/#194/#195): 34 rows
+flipped green by executed tests (errors/caps, enum+message passthroughs,
+sandbox both-directions, per-sender rate limiting, MCP discovery/
+passthrough, scrub tri-state, dispute resolution both edges, the full §8
+offer-restriction battery, security equality/non-correlation/gate-hold
+pins, and the mechanical SPEC §12 universal-core audit
+`tool:check_universal_core` covering UNI-01/CORE-01/CON-08/ATR-06).
+Discovered spec-vs-code defects tracked as open issues (fixing each is
+wire-visible, hence issue-not-patch):
 #176 LCP-009 never emitted; #177 `pricing.is_duplicate_resub` never
 computed; #179 published locale pattern rejects valid BCP-47 (es-419,
 zh-Hans-CN); #180 timezone unvalidated (IANA claim is description-only);
 #181 unsupported `lcp.version` silently accepted (no LCP-007 negotiation
-path); #182 LCP-010 never emitted. Rows CON-06, LOC-03, MSG-POST-03,
-ERR-007, ERR-009, ERR-010 remain gaps referencing those issues by design.
+path); #182 LCP-010 never emitted; #192 agent attestation never verified
+while `conformance_level: "L3"` is advertised (LEP-material: key
+distribution undefined); #193 delivered-post ack-deadline leg unshipped
+(lead stays POSTED). Matrix truth now 127 green / 8 gap / 9 exempt of
+144 — every remaining gap cites its issue.
 
 <!-- SPEC-COVERAGE-MATRIX:BEGIN version=1 columns=clause,gist,surface,tests,status -->
 | clause | gist | surface | tests | status |
@@ -80,7 +86,7 @@ ERR-007, ERR-009, ERR-010 remain gaps referencing those issues by design.
 | CMP-03 | §3 consent_evidence extensible to new frameworks without core change | schema+runner | L3-004 | green |
 | CMP-04 | §3 OTP code MUST NOT be included (only verified hash/timestamp) | schema+runner | L2-015, L2-016 | green |
 | CMP-05 | §3 consent_expires_at: no contact after expiry | platform | plat:test_retention_boundaries_stop_expired_and_unconsented_routing | green |
-| CMP-06 | §3 scrubs[] tri-state semantics (clean/flagged/blocked; blocked leads rejected) | schema | - | gap(no vectors or platform behavior for scrub results) |
+| CMP-06 | §3 scrubs[] tri-state semantics (clean/flagged/blocked; blocked leads rejected) | schema | plat:test_scrub_states_validate_store_and_emit, plat:test_scrub_entry_shape_and_type_passthrough, plat:test_offer_scrub_tristate_rejection | green |
 | CMP-08 | §3 consent_evidence entry shape (type/provider/token_or_url; URI valid) | schema+corpus | sdk-009, L3-004 | green |
 | PRV-01 | §3 provenance enums (source_type, acquisition_method, incentive_type, platform_source) open — pass through unknowns | schema+runner | plat:test_unknown_provenance_values_pass_through_to_delivered_post, ep-005 | green |
 | PRV-02 | §3 agent provenance {agent_id, acting_for, attestation} when source_type=agent | schema+runner | L3-001 | green |
@@ -97,7 +103,7 @@ ERR-007, ERR-009, ERR-010 remain gaps referencing those issues by design.
 | STA-01 | §3 status set published: 11 values | schema+platform | L2-005, plat:test_legal_transition_table_matches_conformance_graph | green |
 | STA-02 | §3 only table-declared transitions legal; illegal → LCP-004 | platform+runner | L3-002, plat:test_lifecycle_events_enforce_transitions_roles_and_idempotency | green |
 | STA-03 | §3 terminal states (CONVERTED/REFUNDED/REJECTED/ARCHIVED/EXPIRED/DUPLICATE) have no outgoing edges | platform | plat:test_expiry_uses_legal_transition_graph | green |
-| STA-04 | §3 dispute resolution paths DISPUTED→ACCEPTED and DISPUTED→REFUNDED | platform | - | gap(no platform lifecycle test exercises either resolution path) |
+| STA-04 | §3 dispute resolution paths DISPUTED→ACCEPTED and DISPUTED→REFUNDED | platform | plat:test_disputed_resolution_paths_both_edges_with_payable_side | green |
 | STA-05 | §3 lead expiry: expires_at/ttl_seconds → platform transitions to EXPIRED | schema+platform | L3-007, plat:test_expiry_uses_legal_transition_graph | green |
 | EXC-01 | §3 exclusivity exclusive or shared, default shared | schema+runner | L3-007 | green |
 | EXC-02 | §3 max_buyers bounds how many buyers receive a shared lead (no over-award) | platform | plat:test_exclusive_lead_overaward_refused_single_post_only, plat:test_direct_offer_creates_post_without_auction, plat:test_slot_budget_never_oversells_under_concurrent_award, plat:test_slot_budget_two_process_postgres_race, plat:test_second_post_for_same_lead_offer_is_refused, plat:test_max_buyers_bounds_distinct_buyers | green |
@@ -164,7 +170,7 @@ ERR-007, ERR-009, ERR-010 remain gaps referencing those issues by design.
 | CAP-05 | §8 countries is ISO 3166-1 alpha-2 and replaces legacy markets | platform | plat:test_capabilities_countries_is_alpha2_and_replaces_legacy_markets | green |
 | CAP-06 | §8 routing_mode direct posts at offer floor without auction | platform | plat:test_direct_offer_creates_post_without_auction | green |
 | OFR-01 | §8 platform filters candidate offers against declared restrictions before pinging | platform | plat:test_matching_returns_explainable_reasons, plat:test_versioned_publisher_mapping_normalizes_otp_and_audits_without_source_pii, plat:test_versioned_profiles_match_and_explain_failures | green |
-| OFR-02 | §8 restriction field battery (excluded_source_types, excluded_acquisition_methods, reject_incentivized, excluded_incentive_types, require_verified_email, max_spam_risk_score, excluded_claim_language, require_consent_evidence, reject_dnc_flagged, reject_litigator_flagged, reject_blacklist_flagged, min_data_completeness, allowed_publisher_ids, allowed_brand_ids) | schema+platform | - | gap(only require_verified_phone + attribute_equals + profiles asserted today) |
+| OFR-02 | §8 restriction field battery (excluded_source_types, excluded_acquisition_methods, reject_incentivized, excluded_incentive_types, require_verified_email, max_spam_risk_score, excluded_claim_language, require_consent_evidence, reject_dnc_flagged, reject_litigator_flagged, reject_blacklist_flagged, min_data_completeness, allowed_publisher_ids, allowed_brand_ids) | schema+platform | plat:test_offer_restriction_battery_14_fields_all_branches | green(14 §8 battery fields + shipped extras branch-by-branch; see #194 for full id list) |
 | OFR-03 | §8 monthly payable quotas: minimum, maximum, monitor/pace/hard_cap policy | platform | plat:test_call_outcome_marks_payable_and_reports_monthly_pacing, plat:test_postgres_offer_discovery_quota_and_candidate_filtering | green |
 | VERT-01 | §3 attributes validated against the vertical schema (unknown product type rejected) | schema+corpus | sdk-011 | green |
 | OFFER-01 | §8 offer discovery shape: floor price + currency required | schema+corpus | sdk-013, sdk-014 | green |
@@ -175,14 +181,14 @@ ERR-007, ERR-009, ERR-010 remain gaps referencing those issues by design.
 | SEC-04b | §9 raw-body/canonical-string parity across all 10 SDKs | sdk-all | lcp-neg-sig-001, lcp-neg-sig-002, lcp-neg-sig-003, lcp-neg-sig-004 | green |
 | SEC-05 | §9 requests outside the replay window rejected before PII processing | sdk-python | sdk-py:test_stale_signature_is_rejected, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
 | SEC-05b | §9 replay-window rejection in every SDK + platform pre-PII ordering | sdk-all+platform | plat:test_replayed_signed_requests_window_and_idempotency_enforced, lcp-neg-replay-001, lcp-neg-replay-002, lcp-neg-replay-003, lcp-neg-replay-004, lcp-neg-replay-005 | green |
-| SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | - | gap(presence tested; equality of header vs envelope never asserted) |
+| SEC-06 | §9 X-LCP-Idempotency-Key MUST match lcp.message.idempotency_key on mutating messages | platform | plat:test_sec06_mismatched_header_key_refused_before_ingest, plat:test_sec06_matched_header_key_accepted, plat:test_sec06_hmac_verifier_also_refuses_divergent_keys | green |
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
-| SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |
-| SEC-09 | §9 agent attestation: signed JWT verifiable against published key; free text non-conformant | schema+platform | - | gap(L3-001 positive shape only; no verification or forged-token rejection test) |
-| SEC-14 | §9 contact-hash preimage normalization: phone verbatim wire bytes; email proposed canonical, entries gated pending T9 | runner+schema | L3-010, L3-011, L3-014, L3-015, sdk-017, sdk-019, sdk-020 | gap(pinned preimage->digest pairs land as test-vectors/sdk/contact-hash.json; email-form entries gated behind the §9 pin + #153 T9 executed vectors across all ten SDKs and the reference platform) |
+| SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | plat:test_sec08_two_pair_secrets_give_noncorrelated_paired_digests, sdk-py:test_security_noncorrelation | green |
+| SEC-09 | §9 agent attestation: signed JWT verifiable against published key; free text non-conformant | schema+platform | - | gap(attestation VERIFICATION shipped on no surface; forged/free-text attestations ingest while L3 is advertised — wire-visible + key-distribution undefined, LEP-material, tracked #192) |
+| SEC-14 | §9 contact-hash preimage normalization: phone verbatim wire bytes; email proposed canonical, entries gated pending T9 | runner+schema | L3-010, L3-011, L3-014, L3-015, sdk-017, sdk-019, sdk-020, plat:test_sec14_email_form_entries_are_never_emitted, plat:test_sec14_email_only_reports_emit_no_contacted_entries | green(gate pinned behaviorally: email canonical computes across SDKs (#171), emission stays §9-gated pending T9 wire landing) |
 | SEC-10 | §9 rate limits per sender enforced with LCP-011 + Retry-After | platform | plat:test_rate_limit_is_per_sender_not_global | green |
 | SEC-11 | §9 webhooks MUST carry the same HMAC signature; insecure webhook sinks refused | platform+sdk | plat:test_production_policy_rejects_insecure_webhook, sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers | green |
-| SEC-12 | §9 agent-as-consumer 30s response timeout → auto-EXPIRED and re-offer | platform | - | gap(timeout policy not exercised) |
+| SEC-12 | §9 agent-as-consumer 30s response timeout → auto-EXPIRED and re-offer | platform | plat:test_sec12_default_agent_window_is_thirty_seconds, plat:test_sec12_unanswered_window_auto_expires_the_lead, plat:test_sec12_timed_out_agent_does_not_block_the_responder | gap(ping-side 30s window + expiry sweep + non-blocking responder shipped; delivered-post ack deadline leg unshipped — tracked #193) |
 | SEC-13 | §9 PII at rest: persisted envelopes authenticated+encrypted; credential digests salted | platform | plat:test_persisted_envelopes_are_authenticated_and_encrypted, plat:test_stored_digest_is_salted, plat:test_digest_is_not_plain_sha256, plat:test_each_credential_gets_its_own_salt, plat:test_missing_salt_or_digest_never_verifies, plat:test_hash_and_verify_round_trip | green |
 | PII-01 | §1/§9 ping carries non-PII attributes + hashes only; full PII flows only in post | schema+runner | L2-003, L2-004, sdk-002 | green |
 | PII-02 | §9 retention policies per contract; expired/unconsented routing stopped | platform | plat:test_retention_boundaries_stop_expired_and_unconsented_routing | green |
