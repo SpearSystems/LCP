@@ -1,12 +1,11 @@
 name: Spec Coverage Matrix
 
-# Advisory gate (ARB plan §3.1, wave W1). Reports only for now.
-# W5 flip condition (plan §3.1): remove `continue-on-error` and add
-# `--fail-on-gap` once the gap backlog in docs/SPEC-COVERAGE.md closes to
-# zero. Status 2026-11-03: 8 gaps remain, every one a filed spec-vs-code
-# issue (#176/#177/#179/#180/#181/#182/#192/#193); structural drift (bad
-# rows, orphan ids, green-without-tests) already fails this job — only
-# gap COUNTING stays advisory until the issues close.
+# BLOCKING gate (ARB plan §3.1, W5 flip 2026-11-03). The gap backlog
+# reached zero: every former gap was closed by a shipped test, an issue
+# fixed and verified, or an explicit exempt decision (LOC-03 breaking-class
+# tightening; SEC-17 publisher-MUST with the D7 platform-MAY decision).
+# A new gap row now fails CI until it carries tests or a documented
+# exemption — the matrix cannot drift back open silently.
 
 on:
   push:
@@ -18,15 +17,14 @@ permissions:
 
 jobs:
   matrix:
-    name: SPEC-to-test coverage matrix (advisory)
+    name: SPEC-to-test coverage matrix
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Check coverage matrix structure and vector mapping
-        run: python tools/check_coverage_matrix.py
+        run: python tools/check_coverage_matrix.py --fail-on-gap
       - name: Run coverage-matrix gate unit tests
         run: python -m unittest tools.tests.test_check_coverage_matrix -v

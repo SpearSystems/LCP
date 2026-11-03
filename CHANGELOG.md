@@ -301,6 +301,19 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   lead + buyer pair); a second buyer on a shared lead is explicitly not a
   duplicate resubmission. Maintainer ruling A recorded on #177.
 
+### Changed
+
+- **Spec-coverage matrix is now a blocking gate.** The gap backlog reached
+  zero (139 green / 0 gap / 11 exempt of 150 clauses): every former gap is
+  either a shipped test, a fixed-and-verified issue, or an explicit exempt
+  decision. `--fail-on-gap` runs in CI, so a new untested clause fails the
+  build instead of silently reopening the ledger. LEP-0006's D7 question is
+  decided (platform-side non-contact PII detection stays MAY; the publisher
+  MUST governs; `SEC-17` records the exemption) and the delivery
+  retry/dead-letter semantics are documented in the operations guide with
+  the delivered-post acknowledgement deadline recorded as a v1.2 design item
+  (#193).
+
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,

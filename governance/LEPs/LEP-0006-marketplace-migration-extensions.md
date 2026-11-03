@@ -1324,11 +1324,21 @@ Per-track, implementation gated on that track's acceptance:
   namespaces policy applies" surface (redaction policy varies by
   platform). **Trigger:** interop friction when one platform redacts and
   another rejects.
-- **D7 — DLP MUST vs MAY (B.3.4).** If the platform-side redaction is
-  elevated from MAY to a universal MUST, the platform must be able to
-  refuse non-conforming content — a delivery-availability tradeoff the
-  named privacy reviewer should adjudicate. **Trigger:** this LEP's
-  Review window (decision item, not an after-acceptance surprise).
+- **D7 — DLP MUST vs MAY (B.3.4): DECIDED 2026-11-03 (maintainer).**
+  The platform side stays **MAY** (best-effort), with the publisher MUST
+  governing. Rationale: the shipped implementation already rejects
+  *deterministically detectable* contact shapes at lead ingest (LCP-100,
+  nothing stored) and redacts them at post emission with a per-lead audit
+  row; non-contact shapes named by this question (street address,
+  government identifier, payment credential, consent token/evidence)
+  have no deterministic detector, so elevating the platform side to a
+  universal MUST would require a DLP dependency and would make delivery
+  availability depend on an unverifiable classifier — the tradeoff this
+  question flagged. Structured homes for those values (core `consumer`/
+  `location`/`compliance` fields) remain the conformant route.
+  **Revisit trigger:** an adopter requires platform-enforced non-contact
+  PII detection, or a maintained DLP dependency becomes acceptable to the
+  project — either reopens this as a Review item.
 
 ## Revision 2026-11-03 (post-dossier)
 
