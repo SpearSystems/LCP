@@ -422,6 +422,20 @@ class AttestationGateTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(self._error(response)["code"], "LCP-100")
         self.assertIsNone(platform.store.get_lead("v1-padded"))
+        # Oversize token: §2 maxLength is the byte axis; 8193 bytes → 400.
+        oversize = "A" * (attestations.MAX_TOKEN_BYTES + 1)
+        status, response = self._post(
+            platform, self._lead(oversize, lead_id="v1-oversize")
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(self._error(response)["code"], "LCP-100")
+        # A lone-surrogate JSON string can never be a compact JWS and must
+        # not reach an encoding crash: shape rejection stays 400 LCP-100.
+        status, response = self._post(
+            platform, self._lead("\ud800", lead_id="v1-surrogate")
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(self._error(response)["code"], "LCP-100")
 
     # ─── V2: forged HS256 (the #192 row-2 probe class) ────────────────────
 

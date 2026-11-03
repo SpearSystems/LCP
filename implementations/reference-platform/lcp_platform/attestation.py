@@ -163,8 +163,10 @@ class AttestationBinding:
 
 def token_digest(token: str) -> str:
     """``tok_sha256_16``: SHA-256 over the full compact token bytes, first 16
-    hex characters (revision F8 input definition)."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+    hex characters (revision F8 input definition). ``surrogatepass`` keeps
+    the hash total over any JSON-deodable value; conformant tokens are pure
+    ASCII anyway (the shape gate runs first on every verify path)."""
+    return hashlib.sha256(token.encode("utf-8", "surrogatepass")).hexdigest()[:16]
 
 
 def check_attestation_shape(token: str) -> None:
@@ -172,14 +174,16 @@ def check_attestation_shape(token: str) -> None:
     with schema-style pointer text for a non-compact-JWS or oversize value
     (free text, ``alg:none`` detached, padded segments, 1/2/4 segments,
     > 8192 bytes)."""
-    if len(token.encode("utf-8")) > MAX_TOKEN_BYTES:
-        raise AttestationShapeError(
-            f"attestation is greater than the {MAX_TOKEN_BYTES} byte limit "
-            f"at {ATTESTATION_POINTER}"
-        )
     if not _SHAPE_PATTERN.fullmatch(token):
         raise AttestationShapeError(
             f"{token!r} does not match '{SHAPE_PATTERN_SOURCE}' "
+            f"at {ATTESTATION_POINTER}"
+        )
+    # The pattern admits only the ASCII base64url alphabet and dots, so the
+    # byte length is the character length — exactly the §2 maxLength axis.
+    if len(token) > MAX_TOKEN_BYTES:
+        raise AttestationShapeError(
+            f"attestation is greater than the {MAX_TOKEN_BYTES} byte limit "
             f"at {ATTESTATION_POINTER}"
         )
 
