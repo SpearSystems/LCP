@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import threading
 import unittest
 
 from lcp_sdk import (
+    LCPClient,
+    LCPHTTPError,
     SchemaValidator,
     SignatureError,
     build_envelope,
@@ -118,6 +122,90 @@ class SDKTests(unittest.TestCase):
             "ping_safe_001", "mortgage", {"loan_type": "refinance"}
         )
         self.assertEqual(validator.validate_envelope(envelope), [])
+
+
+class _RefusingHandler(BaseHTTPRequestHandler):
+    """Serves one canned 401 whose message carries a do-not-log marker."""
+
+    def do_GET(self):
+        payload = (
+            b'{"errors":[{"code":"LCP-002","message":"jane.smith@example.com '
+            b'+61412345678 DO-NOT-LOG"}],"request_id":"req-server-1"}'
+        )
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-LCP-Request-Id", "req-server-1")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:  # keep output clean
+        pass
+
+
+class HTTPErrorHygieneTests(unittest.TestCase):
+    """#136: LCPHTTPError must not embed the response body in str()/repr().
+
+    Exceptions end up in logs and tracebacks; a body echoed there leaks
+    whatever the server put in it (PII in error messages, arbitrarily large
+    payloads). The body stays on ``.body`` for programmatic access, bounded,
+    while the error string carries status + request id only — the pattern the
+    TypeScript (LcpHttpError) and Go (HTTPError) SDKs already follow.
+    """
+
+    def test_error_string_excludes_body_keeps_status_and_request_id(self) -> None:
+        body = {
+            "errors": [{"code": "LCP-002", "message": "jane.smith DO-NOT-LOG"}],
+            "request_id": "req-42",
+        }
+        error = LCPHTTPError(401, body, request_id="req-42")
+        for rendered in (str(error), repr(error)):
+            self.assertNotIn("DO-NOT-LOG", rendered)
+            self.assertNotIn("jane.smith", rendered)
+            self.assertIn("401", rendered)
+            self.assertIn("req-42", rendered)
+        # Body stays available verbatim when it fits the documented bound.
+        self.assertEqual(error.body, body)
+
+    def test_body_is_bounded_for_operator_debugging(self) -> None:
+        from lcp_sdk.client import MAX_BODY_CHARS
+
+        huge = "x" * (MAX_BODY_CHARS + 10_000)
+        str_error = LCPHTTPError(500, huge)
+        self.assertLessEqual(len(str_error.body), MAX_BODY_CHARS + 64)
+        self.assertTrue(str_error.body.endswith("[truncated]"))
+
+        # A structured body past the bound collapses to a preview marker;
+        # one inside the bound is kept intact so callers can read codes.
+        big = {"errors": [{"code": "LCP-100", "message": "y" * (MAX_BODY_CHARS + 1)}]}
+        dict_error = LCPHTTPError(400, big)
+        self.assertEqual(dict_error.body["truncated"], True)
+        self.assertLessEqual(len(dict_error.body["preview"]), MAX_BODY_CHARS + 64)
+        small = {"errors": [{"code": "LCP-002", "message": "Unknown sender"}]}
+        self.assertEqual(LCPHTTPError(401, small).body, small)
+
+    def test_client_error_carries_server_request_id_and_hides_body(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _RefusingHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            client = LCPClient(
+                f"http://127.0.0.1:{server.server_address[1]}",
+                api_key="any-key",
+                max_retries=0,
+            )
+            with self.assertRaises(LCPHTTPError) as caught:
+                client.query_lead_status("lead_1")
+            error = caught.exception
+            self.assertEqual(error.status_code, 401)
+            self.assertEqual(error.request_id, "req-server-1")
+            self.assertNotIn("DO-NOT-LOG", str(error))
+            self.assertNotIn("DO-NOT-LOG", repr(error))
+            # Structured access is intact for callers that need the details.
+            self.assertEqual(error.body["errors"][0]["code"], "LCP-002")
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":
