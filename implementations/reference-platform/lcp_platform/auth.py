@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 
 from .api_keys import hash_api_key, verify_api_key
 from .config import PlatformConfig
@@ -57,6 +58,7 @@ def signature_for(
 
 def _timestamp_is_fresh(timestamp: str, max_skew_seconds: int) -> bool:
     from datetime import datetime, timezone
+
     try:
         signed_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     except ValueError:
@@ -64,7 +66,10 @@ def _timestamp_is_fresh(timestamp: str, max_skew_seconds: int) -> bool:
     if signed_at.tzinfo is None:
         return False
     now = datetime.now(timezone.utc)
-    return abs((now - signed_at.astimezone(timezone.utc)).total_seconds()) <= max_skew_seconds
+    return (
+        abs((now - signed_at.astimezone(timezone.utc)).total_seconds())
+        <= max_skew_seconds
+    )
 
 
 class Authenticator:
@@ -93,6 +98,8 @@ class Authenticator:
                 )
             if "scopes" in external:
                 principal["scopes_json"] = json.dumps(external["scopes"])
+            if "lcp_versions" in external:
+                principal["lcp_versions_json"] = json.dumps(external["lcp_versions"])
             principal.setdefault("hmac_secret", None)
             principal.setdefault("previous_hmac_secret", None)
             principal.setdefault("api_key_hash", None)
@@ -112,7 +119,9 @@ class Authenticator:
         """Authenticate and return the authenticated sender ID."""
         header_sender = header(headers, "X-LCP-Sender-Id")
         if sender_id and header_sender and sender_id != header_sender:
-            raise AuthenticationError("Sender header does not match the envelope", "LCP-002")
+            raise AuthenticationError(
+                "Sender header does not match the envelope", "LCP-002"
+            )
         sender_id = sender_id or header_sender
         authorization = header(headers, "Authorization") or ""
         if not sender_id and authorization.lower().startswith("bearer "):
@@ -146,11 +155,15 @@ class Authenticator:
             if not timestamp or not signature:
                 raise AuthenticationError("HMAC headers are required", "LCP-012")
             if not _timestamp_is_fresh(timestamp, self.config.replay_window_seconds):
-                raise AuthenticationError("Timestamp is outside the replay window", "LCP-012")
+                raise AuthenticationError(
+                    "Timestamp is outside the replay window", "LCP-012"
+                )
             if mutating and not header_key:
                 raise AuthenticationError("Idempotency header is required", "LCP-012")
             if header_key and idempotency_key and header_key != idempotency_key:
-                raise AuthenticationError("Header/body idempotency keys differ", "LCP-012")
+                raise AuthenticationError(
+                    "Header/body idempotency keys differ", "LCP-012"
+                )
             candidate_secrets = [
                 credential["hmac_secret"],
                 credential["previous_hmac_secret"],
@@ -166,7 +179,9 @@ class Authenticator:
                 raise AuthenticationError("Invalid HMAC signature", "LCP-012")
 
         if required_scope and not self.has_scope(sender_id, required_scope):
-            raise AuthenticationError("Sender is not authorized for this operation", "LCP-002")
+            raise AuthenticationError(
+                "Sender is not authorized for this operation", "LCP-002"
+            )
         return sender_id
 
     def has_scope(self, sender_id: str, required_scope: str) -> bool:
@@ -186,7 +201,11 @@ class Authenticator:
 
     def tenant_for(self, sender_id: str) -> str | None:
         principal = self.principal(sender_id)
-        return str(principal["tenant_id"]) if principal and principal.get("tenant_id") else None
+        return (
+            str(principal["tenant_id"])
+            if principal and principal.get("tenant_id")
+            else None
+        )
 
     def scopes_for(self, sender_id: str) -> set[str]:
         principal = self.principal(sender_id)
@@ -201,6 +220,48 @@ class Authenticator:
             decoded = json.loads(str(raw_scopes))
         except (TypeError, ValueError):
             return set()
-        if not isinstance(decoded, list) or not all(isinstance(scope, str) for scope in decoded):
+        if not isinstance(decoded, list) or not all(
+            isinstance(scope, str) for scope in decoded
+        ):
             return set()
         return set(decoded)
+
+    def lcp_versions_for(self, sender_id: str) -> list[str]:
+        """The protocol versions a peer advertises in its capability surface.
+
+        Absent/blank means the peer never advertised: conservative default is
+        v1.0-only, so v1.1 fields are never sent to it (LEP-0003 Compatibility:
+        slot fields are capability-gated, not ignore-gated).
+        """
+        principal = self.principal(sender_id)
+        if not principal:
+            return []
+        raw = principal.get("lcp_versions_json")
+        if isinstance(raw, memoryview):
+            raw = raw.tobytes().decode("utf-8")
+        elif isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        if raw is None:
+            return []
+        try:
+            decoded = json.loads(str(raw))
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(decoded, list):
+            return []
+        return [element for element in decoded if isinstance(element, str)]
+
+    def advertises_slot_protocol(self, sender_id: str) -> bool:
+        """LEP-0003 §8 gate, normed at F6: a peer supports protocol extensions
+        of minor ``m`` when its advertised set contains a FULL ``major.minor.patch``
+        element with ``major == 1`` and ``minor >= m``. Compared as parsed
+        semver - never as the string literal ``"1.1"`` and never as a prefix
+        (which would also match ``1.10.0``). Malformed elements do not count.
+        """
+        for element in self.lcp_versions_for(sender_id):
+            match = re.fullmatch(
+                r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", element.strip()
+            )
+            if match and int(match.group(1)) == 1 and int(match.group(2)) >= 1:
+                return True
+        return False

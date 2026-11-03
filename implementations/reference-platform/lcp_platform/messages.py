@@ -23,11 +23,12 @@ def _envelope(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
     test: bool = False,
+    version: str = "1.0.0",
 ) -> dict[str, Any]:
     message_id = str(uuid4())
     return {
         "lcp": {
-            "version": "1.0.0",
+            "version": version,
             "message": {
                 "id": message_id,
                 "type": message_type,
@@ -35,12 +36,30 @@ def _envelope(
                 "sender_id": sender_id,
                 "receiver_id": receiver_id,
                 "correlation_id": correlation_id,
-                "idempotency_key": idempotency_key or f"{sender_id}-{message_type}-{message_id}",
+                "idempotency_key": idempotency_key
+                or f"{sender_id}-{message_type}-{message_id}",
                 "test": test,
             },
             "payload": payload,
         }
     }
+
+
+def pair_phone_hash(secret: str, phone: str) -> str:
+    """Per-pair HMAC-SHA256 over the verbatim wire phone bytes (SPEC §9, LEP-0003 §3).
+
+    The platform-side instance of the per-pair rule:
+    ``hmac.new(buyer_secret.encode(), phone.encode(), sha256)`` over the
+    delivered ``consumer.phone`` string - no folding, no stripping, no
+    separator handling (``messages.py`` preimage rule; the record norms it to
+    "the preimage is the ``consumer.phone`` string the platform delivered,
+    hashed under the receiving buyer's pair secret"). Email is NOT hashed
+    here: this platform build has no email hashing path (it never had one
+    pre-LEP-0003); the email-form re-key path ships with the dedup-hash wave
+    - SPEC §9 now pins the canonical and contact-hash.json publishes the
+    pairs - so no email-form digest is ever emitted by this lane.
+    """
+    return hmac.new(secret.encode(), phone.encode(), hashlib.sha256).hexdigest()
 
 
 def build_ack(
@@ -79,6 +98,7 @@ def build_ping(
     *,
     platform_id: str,
     buyer_secret: str,
+    slots_available: int | None = None,
 ) -> tuple[dict[str, Any], str]:
     lead_message = lead_envelope["lcp"]["message"]
     lead = lead_envelope["lcp"]["payload"]
@@ -88,15 +108,15 @@ def build_ping(
     vertical = attributes.get("vertical", offer["vertical"])
     phone = consumer.get("phone")
     if phone:
-        phone_hash = hmac.new(
-            buyer_secret.encode(), phone.encode(), hashlib.sha256
-        ).hexdigest()
+        phone_hash = pair_phone_hash(buyer_secret, phone)
     else:
         phone_hash = consumer.get("phone_hash")
     if not phone_hash:
         raise ValueError("A routable lead must contain phone or phone_hash")
 
-    vertical_path = Path(__file__).resolve().parents[3] / "verticals" / f"{vertical}.json"
+    vertical_path = (
+        Path(__file__).resolve().parents[3] / "verticals" / f"{vertical}.json"
+    )
     safe_attributes: dict[str, Any] = {}
     if vertical_path.exists():
         with vertical_path.open(encoding="utf-8") as handle:
@@ -110,7 +130,9 @@ def build_ping(
     submitted_at = lead.get("submitted_at") or lead_message["timestamp"]
     try:
         submitted = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
-        age_minutes = max(0, int((datetime.now(timezone.utc) - submitted).total_seconds() // 60))
+        age_minutes = max(
+            0, int((datetime.now(timezone.utc) - submitted).total_seconds() // 60)
+        )
     except ValueError:
         age_minutes = 0
     expires_at = (
@@ -156,6 +178,12 @@ def build_ping(
         payload["postal_code"] = location["postal_code"]
     if lead.get("exclusivity", {}).get("max_buyers"):
         payload["exclusivity"] = lead["exclusivity"]["exclusivity"]
+    if slots_available is not None:
+        # LEP-0003 §1: remaining buyer-award slots including this recipient's.
+        # The router passes this only for receivers whose §8 capability
+        # advertisement parses to v1.1 (never literal "1.1" matching);
+        # non-advertising receivers get bit-for-bit v1.0 bytes.
+        payload["slots_available"] = slots_available
     return (
         _envelope(
             "ping",
@@ -165,6 +193,7 @@ def build_ping(
             correlation_id=lead_message["id"],
             idempotency_key=f"{platform_id}-ping-{ping_id}",
             test=lead_message.get("test", False),
+            version="1.1.0" if slots_available is not None else "1.0.0",
         ),
         expires_at,
     )
@@ -178,12 +207,15 @@ def build_post(
     price_cents: int,
     buyer_reference: str | None,
     correlation_id: str,
+    contacted_hashes: list[str] | None = None,
 ) -> dict[str, Any]:
     lead = lead_envelope["lcp"]["payload"]
     payload: dict[str, Any] = {
         "lead_id": lead["lead_id"],
         "delivered_at": now_iso(),
-        "submitted_at": lead.get("submitted_at", lead_envelope["lcp"]["message"]["timestamp"]),
+        "submitted_at": lead.get(
+            "submitted_at", lead_envelope["lcp"]["message"]["timestamp"]
+        ),
         "offer_id": offer["offer_id"],
         "price_cents": price_cents,
         "currency": offer["currency"],
@@ -209,6 +241,10 @@ def build_post(
         "vertical": offer["vertical"],
         "countries": offer["countries"],
     }
+    if contacted_hashes is not None:
+        # LEP-0003 §3: per-pair re-keyed contact digests, attached only for
+        # v1.1-capable receivers (capability-gated, not ignore-gated).
+        payload["contacted_hashes"] = contacted_hashes
     return _envelope(
         "post",
         platform_id,
@@ -217,6 +253,7 @@ def build_post(
         correlation_id=correlation_id,
         idempotency_key=f"{platform_id}-post-{lead['lead_id']}-{offer['offer_id']}",
         test=lead_envelope["lcp"]["message"].get("test", False),
+        version="1.1.0" if contacted_hashes is not None else "1.0.0",
     )
 
 
@@ -253,7 +290,9 @@ def webhook_headers(
     secret: str,
     timestamp: str | None = None,
 ) -> tuple[bytes, dict[str, str]]:
-    body = json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     message = envelope["lcp"]["message"]
     timestamp = timestamp or now_iso()
     idempotency_key = message["idempotency_key"]

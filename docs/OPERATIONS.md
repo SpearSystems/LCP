@@ -73,6 +73,44 @@ The reference platform exposes only aggregate metrics. Example response shape:
 }
 ```
 
+### Shared-lead slot budget and contact reports
+
+LEP-0003 makes slot accounting a platform invariant: the budget counts
+**distinct awarded buyers** (`max_buyers`; an undeclared `shared` lead has a
+budget of 1; `exclusive` is the one-slot special case), the check and the
+award write happen in one transaction, and a partial unique index
+(`(lead_id, offer_id)` where `kind = 'post'`) backs the invariant at the
+storage layer.
+
+- **Alerts that must never fire.** Oversell attempts (any second awarded
+  buyer beyond `max_buyers`, or any second post row for an already-awarded
+  `(lead, offer)`) must run permanently zero - a nonzero count is a
+  conformance bug, page on it. Same rule for zero-slot pings
+  (`slots_available: 0` on the wire; the platform stops pinging instead).
+- **Steady-state metrics** (rollout §4): slot-consumption histogram and
+  time-to-sold-out per shared lead; `CONTACTED` report rate and
+  contacted-hash match rate per post; duplicate-contact dispute rate.
+- **Upgrade order.** `initialize()` creates the award index on startup. A
+  database that already contains duplicate post rows for one
+  `(lead_id, offer_id)` - possible only through the pre-LEP-0003 race -
+  will **fail startup loudly**. Reconcile those rows under change control
+  before upgrading (billing review: both copies may have been delivered);
+  never silently delete ledger history.
+- **Capability gating is the emission switch.** Slot/contacted fields are
+  sent only to receivers whose credential record advertises a full
+  `major.minor.patch` element with `major == 1` and `minor >= 1`
+  (`lcp_versions` in `upsert_credential`; parsed comparison, never string
+  prefix - an element like `"1.1"` or `"1.10.0"` does not open the gate for
+  v1.1). Non-advertising receivers keep receiving bit-for-bit v1.0 bytes.
+  Rollback = stop advertising and/or drop the v1.1 element; no data-format
+  migration is needed (slot counters are reconstructible from delivery
+  history; contacted digests are disposable derived data).
+- **Pair-secret rotation invalidates prior contacted hashes.** Contacted
+  digests are HMACs under a pair secret; rotating a secret mid-lead means
+  earlier reports for that pair can no longer be re-keyed or matched
+  (deployment concern mirroring SPEC §9). Rotate between leads, or accept
+  that the affected lead's dedup history restarts.
+
 ## Deployment procedure
 
 1. Review schema/spec/changelog changes.

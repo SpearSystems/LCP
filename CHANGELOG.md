@@ -122,6 +122,54 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   pass while real credentials (including values pasted over the
   `REPLACE_ME` sentinels) fail.
 
+### LEP-0003: shared-lead slot accounting and the CONTACTED exchange (reference platform)
+
+- **Slot accounting enforcement (LEP-0003 §5, blocking tests T2/T3/T4):**
+  awards now flow through a single write-time decision point
+  (`Store.try_award_post`) that counts **distinct awarded buyers** (the §1
+  normative unit; `exclusive` = one slot, undeclared `shared` = 1, copies
+  never consume the budget) and writes the post in one transaction -
+  `SELECT ... FOR UPDATE` on the lead row under Postgres, BEGIN IMMEDIATE
+  under SQLite. A partial unique index on `(lead_id, offer_id) WHERE
+  kind = 'post'` makes double awards impossible at the storage layer (the
+  advisory `has_delivery_for_offer` read-then-insert pair is removed);
+  the auction-close sweep claims expired pings exactly once
+  (`claim_expired_open_pings`, `FOR UPDATE SKIP LOCKED` on Postgres); the
+  candidate filter refuses bids that arrived at/after a ping's expiry
+  boundary or rode erased/rejected pings. Named gates:
+  `test_slot_budget_never_oversells_under_concurrent_award`,
+  `test_slot_budget_two_process_postgres_race` (mirrors the ARB dossier
+  harness; runs in CI against the Test job's `postgres:16` service via
+  `LCP_TEST_POSTGRES_URL`), `test_second_post_for_same_lead_offer_is_refused`,
+  `test_max_buyers_bounds_distinct_buyers`.
+- **CONTACTED reporting (T6/T8):** a delivered buyer with scoped
+  `event:submit` credentials can report `CONTACTED` (previously refused by
+  the closed `_BUYER_EVENT_TYPES`); the event is advertised in
+  `capabilities().events`, replay dedupes by the event `message.id`
+  (exact re-sends collapse to a `DUPLICATE` ack), and retried reports
+  merge by digest **set** (§4 at-least-once semantics,
+  `test_contacted_report_replay_is_idempotent`). Ingest enforces the §4
+  MUSTs - entries must match `^[a-f0-9]{64}$`, 1-32 per report, `[]`
+  refused - as validation rejections, not stores. Reported digests are
+  stored per lead (`contacted_parties`, erasure-integrated) and re-keyed
+  onto later posts **only from plaintext the platform delivered** (phone
+  only, verbatim preimage; email-form entries stay behind the SPEC §9 pin
+  + T9 vectors).
+- **Capability-gated v1.1 fields:** `slots_available` and
+  `contacted_hashes` are emitted only to receivers whose credential
+  record advertises a full-semver `lcp_versions` element with
+  `major == 1, minor >= 1` (parsed comparison, never string literal or
+  prefix - F6/T10 rule), with envelope version `1.1.0`; non-advertising
+  receivers keep bit-for-bit v1.0 bytes. The platform never pings a
+  zero-remaining lead and never advertises `slots_available: 0`.
+  `capabilities().lcp_versions` now advertises `["1.0.0", "1.1.0"]`.
+- **Wire-example recurrence gate (T1/RF-1):**
+  `tools/tests/test_lep_wire_examples.py` validates every fenced
+  `### Valid example` block in `governance/LEPs/*.md` through the
+  platform's own `SchemaValidator` and asserts the `contacted_hashes`
+  digest **shape** (length 64 included) directly - with a planted-bug
+  self-test proving a 63-hex value fails.
+
 ### LEP-0002: canonical timestamp generation and cross-SDK interop
 
 - **SDKs (Java/Kotlin/Rust):** envelope default-timestamp and HMAC

@@ -133,12 +133,19 @@ class PostgresStore(Store):
             "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS scopes_json TEXT NOT NULL DEFAULT '[\"*\"]'"
         )
         db.execute(
+            "ALTER TABLE credentials ADD COLUMN IF NOT EXISTS lcp_versions_json TEXT"
+        )
+        db.execute(
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
         )
         db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS expires_at TEXT")
         db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS consent_expires_at TEXT")
-        db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS suppressed INTEGER NOT NULL DEFAULT 0")
-        db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'")
+        db.execute(
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS suppressed INTEGER NOT NULL DEFAULT 0"
+        )
+        db.execute(
+            "ALTER TABLE offers ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
+        )
         db.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS vertical TEXT")
         for row in db.execute("SELECT offer_id, offer_json FROM offers").fetchall():
             stored_offer = json.loads(_decode_text(row["offer_json"]))
@@ -150,14 +157,26 @@ class PostgresStore(Store):
                     row["offer_id"],
                 ),
             )
-        db.execute("CREATE INDEX IF NOT EXISTS idx_offers_discovery ON offers(active, tenant_id, vertical, offer_id)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_offers_discovery ON offers(active, tenant_id, vertical, offer_id)"
+        )
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_owner TEXT")
         db.execute("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lease_until TEXT")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'not_scanned'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''")
-        db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'")
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS residency TEXT NOT NULL DEFAULT 'TEST'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'not_scanned'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scan_engine TEXT NOT NULL DEFAULT 'unknown'"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS scanned_at TEXT NOT NULL DEFAULT ''"
+        )
+        db.execute(
+            "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'"
+        )
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TEXT")
 
     def close(self) -> None:
@@ -279,3 +298,35 @@ class PostgresStore(Store):
                     (worker_id, lease_until, now_value, row["delivery_id"]),
                 )
         return rows
+
+    def _lock_lead_for_award(self, db: Any, lead_id: str) -> None:
+        """Serialize per-lead award decisions across OS processes (LEP-0003 §5 item 1).
+
+        The lead row lock is taken inside the SAME transaction that reads the
+        distinct-buyer budget and writes the award, so two replicas cannot
+        both pass the budget check for the final slot (dossier rows 14-16);
+        the partial unique award index remains the durable backstop.
+        """
+        db.execute("SELECT 1 FROM leads WHERE lead_id = ? FOR UPDATE", (lead_id,))
+
+    def claim_expired_open_pings(self, at: str | None = None) -> list[Any]:
+        """FOR UPDATE SKIP LOCKED expiry claim (LEP-0003 §5 item 3)."""
+        current = at or now_iso()
+        claimed: list[Any] = []
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM pings
+                WHERE status = 'OPEN' AND expires_at <= ?
+                ORDER BY expires_at, ping_id
+                FOR UPDATE SKIP LOCKED
+                """,
+                (current,),
+            ).fetchall()
+            for row in rows:
+                db.execute(
+                    "UPDATE pings SET status = 'EXPIRED', updated_at = ? WHERE ping_id = ?",
+                    (current, row["ping_id"]),
+                )
+                claimed.append(row)
+        return claimed
