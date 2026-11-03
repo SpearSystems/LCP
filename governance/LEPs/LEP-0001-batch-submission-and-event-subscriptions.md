@@ -3,8 +3,31 @@
 - **Title:** Bounded batch submission and event subscriptions
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-08-18
-- **Status:** **Draft** — not accepted, not implemented
+- **Status:** **Deferred** — deferred 2026-11-03; revisit on trigger
 - **Target version:** v1.1.0 (MINOR; see Compatibility and versioning)
+
+## Decision (maintainer, 2026-11-03)
+
+**Deferred (deferred-not-ready).** Recorded by the maintainer
+(randybeno) on the basis of the first independent ARB review of this
+proposal — dossier: <https://github.com/SpearSystems/LCP/issues/164#issuecomment-6592471520>.
+The decision rules in `LEP.md` require at least two independent adopters or
+a documented interoperability necessity before adding universal message
+types; the repo shows one non-independent adopter and the roadmap's own
+volume trigger is arithmetically unmet by its published baselines (F1).
+The proposal additionally collides with machinery shipped after its
+August draft (F2–F5: event-vocabulary mismatch with `capabilities().events`
+and the LEP-0003 CONTACTED surface, replay/signing interplay with the now
+canonical LEP-0002 timestamp, unenforceable PII claims while
+`event.details` stays open, ack-contract shadowing in the batch response).
+
+Disposition: the numbers and this record remain permanent. A revived
+proposal MUST be a new or revised record that (a) cites concrete adopter
+evidence or interop necessity, (b) harmonizes the event vocabulary and
+subscription delivery with the shipped capability-gated, whole-second,
+per-pair-HMAC machinery, and (c) keeps the trigger evidence in its Problem
+statement. The deferred surfaces otherwise remain exactly as the roadmap
+§Deferred lists them.
 
 ## Problem statement and evidence
 
