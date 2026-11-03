@@ -129,9 +129,15 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   (`Store.try_award_post`) that counts **distinct awarded buyers** (the §1
   normative unit; `exclusive` = one slot, undeclared `shared` = 1, copies
   never consume the budget) and writes the post in one transaction -
-  `SELECT ... FOR UPDATE` on the lead row under Postgres, BEGIN IMMEDIATE
-  under SQLite. A partial unique index on `(lead_id, offer_id) WHERE
-  kind = 'post'` makes double awards impossible at the storage layer (the
+  a transaction-scoped advisory lock (`pg_advisory_xact_lock`) per lead
+  under Postgres (the §5-sanctioned mechanism; the earlier
+  `SELECT ... FOR UPDATE` on the lead row deadlocked against concurrent
+  schema-bootstrap DDL under the 4-worker delivery benchmark - CI run
+  41561553846 - and the award path now takes no table lock beyond the
+  delivery write itself, asserted by `test_award_path_holds_no_ddl_or_lead_locks`),
+  BEGIN IMMEDIATE under SQLite. A partial unique index on `(lead_id,
+  offer_id) WHERE kind = 'post'` makes double awards impossible at the
+  storage layer (the
   advisory `has_delivery_for_offer` read-then-insert pair is removed);
   the auction-close sweep claims expired pings exactly once
   (`claim_expired_open_pings`, `FOR UPDATE SKIP LOCKED` on Postgres); the

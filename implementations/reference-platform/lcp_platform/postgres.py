@@ -302,12 +302,25 @@ class PostgresStore(Store):
     def _lock_lead_for_award(self, db: Any, lead_id: str) -> None:
         """Serialize per-lead award decisions across OS processes (LEP-0003 §5 item 1).
 
-        The lead row lock is taken inside the SAME transaction that reads the
-        distinct-buyer budget and writes the award, so two replicas cannot
-        both pass the budget check for the final slot (dossier rows 14-16);
-        the partial unique award index remains the durable backstop.
+        Uses the transaction-scoped ADVISORY lock named as the §5 alternative
+        ("``SELECT ... FOR UPDATE`` / advisory lock in the same transaction as
+        the delivery write"). The advisory flavour is REQUIRED here, not
+        cosmetic: taking ``FOR UPDATE`` on the lead row made the award
+        transaction hold a RowShare lock on ``leads`` across the
+        ``deliveries`` INSERT, and the per-process bootstrap transaction
+        (``CREATE``/``ALTER`` chain over ``deliveries`` and ``leads`` in one
+        transaction) can then deadlock against it - CI run 41561553846,
+        'PostgreSQL 18.4 scale and candidate-index regression', 4/500 intake
+        INSERTs aborted with DeadlockDetected (P154 INSERT waits
+        RowExclusive on deliveries held-blocked by P158 ``ALTER TABLE leads
+        ADD COLUMN ...`` which waits AccessExclusive on leads held as
+        RowShare by P154). An advisory lock serializes the same award races
+        without ever joining the table-lock graph, so DDL can never cycle
+        against intake; the partial unique award index remains the durable
+        backstop, and ``_open_platform`` in the benchmark only retries
+        bootstrap-side lock victims - never intake ones.
         """
-        db.execute("SELECT 1 FROM leads WHERE lead_id = ? FOR UPDATE", (lead_id,))
+        db.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (lead_id,))
 
     def claim_expired_open_pings(self, at: str | None = None) -> list[Any]:
         """FOR UPDATE SKIP LOCKED expiry claim (LEP-0003 §5 item 3)."""

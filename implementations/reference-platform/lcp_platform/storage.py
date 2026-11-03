@@ -2357,9 +2357,12 @@ class Store:
 
         The SQLite store already serializes writers (BEGIN IMMEDIATE under the
         store lock), so this base hook is a no-op. The Postgres store overrides
-        it with ``SELECT ... FOR UPDATE`` on the lead row so two OS processes
-        cannot both read the budget and both write an award (LEP-0003 §5
-        item 1; dossier rows 14-16).
+        it with a transaction-scoped advisory lock (see the deadlock analysis
+        in ``postgres.py``) so two OS processes cannot both read the budget
+        and both write an award (LEP-0003 §5 item 1; dossier rows 14-16).
+        Implementations MUST NOT take locks on any table other than by the
+        award write itself - a ``FOR UPDATE`` on ``leads`` here deadlocked
+        against schema-bootstrap DDL (CI run 41561553846).
         """
 
     def try_award_post(
@@ -2383,23 +2386,28 @@ class Store:
         lead; any second post for the same ``(lead, offer)`` is refused. The
         partial unique index ``idx_deliveries_post_award`` is the durable
         backstop for application bugs (§5 item 2, T3), and cross-process
-        Postgres races are serialized by the lead row lock (§5 item 1, T2).
+        Postgres races are serialized by the lead advisory transaction lock
+        (§5 item 1, T2).
+
+        The check and the write fuse into ONE ``INSERT ... SELECT`` so the
+        transaction's first table-level request on ``deliveries`` is the
+        RowExclusive the write needs - there is no AccessShare-from-a-lead
+        read that later upgrades to RowExclusive. That upgrade window is a
+        real deadlock shape: a bootstrap transaction holding a granted
+        ``deliveries`` ALTER and a queued intake INSERT cycle against the
+        award transaction's granted budget SELECT (locally reproduced on
+        Postgres 16.15, 4 workers x 500 records; CI run 41561553846 was the
+        cross-table variant of the same class). Advisory waits are outside
+        the table-lock graph, so the award path can never be a deadlock
+        participant on ``deliveries``.
 
         Returns ``"awarded"``, ``"duplicate_offer"``, or ``"budget_exhausted"``.
         """
         message = envelope["lcp"]["message"]
         timestamp = now_iso()
+        budget = max(1, int(max_buyers))
         with self.transaction() as db:
             self._lock_lead_for_award(db, lead_id)
-            awarded = db.execute(
-                "SELECT buyer_id, offer_id FROM deliveries WHERE lead_id = ? AND kind = 'post'",
-                (lead_id,),
-            ).fetchall()
-            if any(row["offer_id"] == offer_id for row in awarded):
-                return "duplicate_offer"
-            buyers = {row["buyer_id"] for row in awarded}
-            if buyer_id not in buyers and len(buyers) >= max(1, int(max_buyers)):
-                return "budget_exhausted"
             try:
                 cursor = db.execute(
                     """
@@ -2407,7 +2415,23 @@ class Store:
                         (delivery_id, lead_id, ping_id, offer_id, buyer_id, kind,
                          message_id, idempotency_key, webhook_url, envelope_json,
                          status, attempts, next_attempt_at, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)
+                    SELECT ?, ?, ?, ?, ?, 'post', ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?
+                    FROM (SELECT 1) AS award_seed
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM deliveries existing
+                        WHERE existing.lead_id = ? AND existing.offer_id = ?
+                          AND existing.kind = 'post'
+                    )
+                      AND (
+                        EXISTS (
+                            SELECT 1 FROM deliveries held
+                            WHERE held.lead_id = ? AND held.buyer_id = ?
+                              AND held.kind = 'post'
+                        )
+                        OR (SELECT COUNT(DISTINCT buyers.buyer_id)
+                            FROM deliveries buyers
+                            WHERE buyers.lead_id = ? AND buyers.kind = 'post') < ?
+                      )
                     ON CONFLICT(message_id) DO NOTHING
                     """,
                     (
@@ -2416,7 +2440,6 @@ class Store:
                         ping_id,
                         offer_id,
                         buyer_id,
-                        "post",
                         message["id"],
                         message["idempotency_key"],
                         webhook_url,
@@ -2424,13 +2447,25 @@ class Store:
                         timestamp,
                         timestamp,
                         timestamp,
+                        lead_id,
+                        offer_id,
+                        lead_id,
+                        buyer_id,
+                        lead_id,
+                        budget,
                     ),
                 )
             except sqlite3.IntegrityError:
                 # The durable (lead, offer) award index caught a racing write
-                # that the in-transaction budget read could not see yet.
+                # the decision snapshot could not see yet.
                 return "duplicate_offer"
-            return "awarded" if cursor.rowcount == 1 else "duplicate_offer"
+            if cursor.rowcount == 1:
+                return "awarded"
+            refused = db.execute(
+                "SELECT 1 FROM deliveries WHERE lead_id = ? AND offer_id = ? AND kind = 'post' LIMIT 1",
+                (lead_id, offer_id),
+            ).fetchone()
+            return "duplicate_offer" if refused else "budget_exhausted"
 
     def claim_due_deliveries(
         self,

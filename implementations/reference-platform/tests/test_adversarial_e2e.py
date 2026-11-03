@@ -32,6 +32,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import hmac
+import inspect
 import json
 import multiprocessing
 import os
@@ -937,6 +938,58 @@ class SlotBudgetTests(_AuctionFixtureMixin, unittest.TestCase):
         platform._route_lead("adv-slotunique-001")
         platform.process_once()
         self.assertEqual(len(_posts_for(platform, "adv-slotunique-001")), 1)
+
+    # ─── Scale regression: the award path must not join the table-lock graph ─
+
+    def test_award_path_holds_no_ddl_or_lead_locks(self) -> None:
+        """Static guard for the deadlock CI run 41561553846 exposed (4/500
+        intake INSERTs aborted under 'PostgreSQL 18.4 scale and candidate-index
+        regression', 4 workers x 500 records).
+
+        Cause: the first-cut Postgres award lock was ``SELECT ... FOR UPDATE``
+        on the lead row - a RowShare on ``leads`` held across the
+        ``deliveries`` INSERT - while the per-process bootstrap transaction
+        (``CREATE``/``ALTER`` over ``deliveries`` AND ``leads`` in ONE
+        transaction, the pre-existing ``_migrate_sqlite_columns`` chain) held
+        its granted ``deliveries`` AccessExclusive and waited for ``leads``.
+        Cycle, deadlock detector, intake errors (the benchmark's
+        ``_open_platform`` retry only absorbs BOOTSTRAP-side victims).
+        The award lock is therefore the §5-sanctioned transaction-scoped
+        ADVISORY lock, which lives outside the table-lock graph entirely.
+        Cheap boring guard (the benchmark job itself is the real gate): the
+        award decision path may contain no DDL and must take no row/table
+        locks on non-delivery relations.
+        """
+        import ast
+        import textwrap
+
+        from lcp_platform.postgres import PostgresStore
+        from lcp_platform.storage import Store
+
+        targets = {
+            "Store.try_award_post": Store.try_award_post,
+            "Store._lock_lead_for_award": Store._lock_lead_for_award,
+            "PostgresStore._lock_lead_for_award": PostgresStore._lock_lead_for_award,
+        }
+        for name, fn in targets.items():
+            tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            body = tree.body[0].body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(getattr(body[0], "value", None), ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                body = body[1:]  # strip the docstring: it quotes the banned SQL
+            code = ast.unparse(ast.Module(body=body, type_ignores=[]))
+            with self.subTest(source=name):
+                self.assertNotIn("CREATE ", code)
+                self.assertNotIn("ALTER ", code)
+                self.assertNotIn("DROP ", code)
+                self.assertNotIn("FOR UPDATE", code)
+                self.assertNotIn("FROM leads", code)
+        pg_src = inspect.getsource(PostgresStore._lock_lead_for_award)
+        self.assertIn("pg_advisory_xact_lock", pg_src)
 
     # ─── §5 item 3: expiry sweep claims under a lock/lease ─────────────────
 
