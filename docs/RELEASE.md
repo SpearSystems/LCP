@@ -270,6 +270,21 @@ metadata and records it as the manifest's `container` object; the offline
 verifier rejects a manifest whose container reference, digest, commit, or
 metadata file does not match. Deploy only the digest recorded there.
 
+> **Pre-flight (learned 2026-11-03):** a new container package is created
+> **private** even when the linked repository is public — inheritance covers
+> access permissions, not visibility — and an organization that restricts
+> public packages blocks the visibility change entirely. Before announcing a
+> release, confirm `docker pull` works without credentials:
+>
+> ```bash
+> curl -s "https://ghcr.io/token?scope=repository:spearsystems/lcp-reference-platform:pull" \
+>   | grep -q '"token"' && echo "anonymous pull OK"
+> gh api /orgs/SpearSystems/packages/container/lcp-reference-platform --jq .visibility
+> ```
+>
+> Making a package public is irreversible on GitHub; treat the first release
+> that publishes a new package as the decision point.
+
 Resolve the tag to a digest, then verify all controls before admission:
 
 ```bash

@@ -81,12 +81,16 @@ Immutable digest for `v1.1.0`; recorded from `lcp-container-release.json`
 (`workflow_run_id` 41637333052, commit `68a22b5`). Deploy the digest, never the
 movable tag.
 
-**Visibility caveat:** at publication time the GHCR package rejects anonymous
-token grants (`ghcr.io/token?scope=repository:spearsystems/lcp-reference-platform:pull`
-returns `UNAUTHORIZED`, while a known-public package grants one), so
-`docker pull` needs an authenticated credential until the package visibility is
-switched to public. That is an organization package setting, not a workflow
-step.
+**Access verified public:** the package grants an anonymous pull token and
+serves both the `v1.1.0` tag and the digest above (`ghcr.io/v2/…/manifests/…`
+→ `200`), so `docker pull` needs no credential.
+
+A newly published container package starts **private** even when its linked
+repository is public — GitHub inherits access permissions from the repository
+but not visibility — and the organization policy must permit public packages
+before the package setting can be changed. Both were checked during this
+release; `docs/RELEASE.md` and `docs/MAINTAINER-RELEASE-SETUP.md` now carry the
+pre-flight step so the next release cannot ship a private image by accident.
 
 ## 5. Known follow-ups carried out of this release
 
