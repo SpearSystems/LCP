@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-03
+
+Additive MINOR: canonical timestamp generation with a blocking cross-SDK
+signature-interop gate; shared-lead slot allocation with capability-gated
+slot fields and contact-hash exchange; request-history read surface;
+marketplace FINAL_PRICING feedback plus lead/post `extensions` and
+`{org}.form.questions`; verified agent attestation (L3) with
+issuer-anchored JWKS; the ARB review process; and the SPEC §5/§9
+conformance restorations below. No breaking wire change.
+
 ### Fixed
 
 - **Reference platform (#176, #181, #182):** the three §5 intake error
