@@ -45,7 +45,14 @@ from .storage import (
     now_iso,
     parse_iso_datetime,
 )
-from .validation import MESSAGE_TYPES, ValidationError, SchemaValidator
+from .validation import (
+    E164_PATTERN,
+    ISO_3166_1_ALPHA2,
+    MESSAGE_TYPES,
+    SUPPORTED_LCP_VERSIONS,
+    ValidationError,
+    SchemaValidator,
+)
 
 
 class RequestError(ValueError):
@@ -73,6 +80,30 @@ _EVENT_STATUS_TARGETS = {
     "ARCHIVED": "ARCHIVED",
     "EXPIRED": "EXPIRED",
 }
+
+
+def _semver_tuple(value: str) -> tuple[int, int, int]:
+    major, minor, patch = value.split(".")
+    return int(major), int(minor), int(patch)
+
+
+def _lcp_version_supported(version: str) -> bool:
+    # §8 version-string membership applied at the intake boundary: compare
+    # PARSED versions against the advertised supported set, never string
+    # literals or prefixes (§8). A version is supported when the set carries
+    # an element with the same MAJOR and a MINOR >= the envelope's — §6:
+    # "Protocol semver (MAJOR breaking / MINOR additive / PATCH fixes)", so
+    # PATCH upticks ride the minor they belong to. The envelope schema has
+    # already pinned the ^\d+\.\d+\.\d+$ shape when this runs.
+    major, minor, _ = _semver_tuple(version)
+    return any(
+        advertised_major == major and advertised_minor >= minor
+        for advertised_major, advertised_minor, _ in map(
+            _semver_tuple, SUPPORTED_LCP_VERSIONS
+        )
+    )
+
+
 _PUBLISHER_EVENT_TYPES = {
     "REJECTED",
     "DISPUTED",
@@ -1702,7 +1733,9 @@ class Platform:
             # major.minor.patch semver; peers compare parsed (major == 1 and
             # minor >= 1), never string literals or prefixes. 1.1.0
             # advertises the slot/contacted surface and CONTACTED reporting.
-            "lcp_versions": ["1.0.0", "1.1.0"],
+            # This advertisement and the intake LCP-007 negotiation read the
+            # same constant (validation.SUPPORTED_LCP_VERSIONS) — issue #181.
+            "lcp_versions": list(SUPPORTED_LCP_VERSIONS),
             "message_types": ["lead", "call", "ping", "bid", "post", "ack", "event"],
             "verticals": [
                 {"id": path.stem, "schema_version": "1.0.0"}
@@ -1847,6 +1880,32 @@ class Platform:
                     )
                 ],
             )
+        # SPEC §5: "LCP-009 | INVALID_PHONE | 400" over §3
+        # "phone | string | E.164 format." A non-E.164 value on a published
+        # consumer phone axis is the §5 distinct code, not the LCP-100
+        # catch-all (issue #176; the corpus already names the expectation:
+        # test-vectors/l2-lifecycle.json L2-011 "lead_invalid_phone_format"
+        # pins "error_code": "LCP-009"). Same documented ordering point as
+        # the #131 re-code above — this runs ahead of schema validation
+        # because the schema pattern would otherwise swallow the axis into
+        # LCP-100. The schema pattern stays published and un-edited: type
+        # violations (a non-string phone) and every other axis keep LCP-100.
+        payload = lcp.get("payload") if isinstance(lcp, dict) else None
+        consumer = payload.get("consumer") if isinstance(payload, dict) else None
+        if isinstance(consumer, dict):
+            for phone_field in ("phone", "secondary_phone"):
+                value = consumer.get(phone_field)
+                if isinstance(value, str) and not E164_PATTERN.fullmatch(value):
+                    raise RequestError(
+                        f"consumer.{phone_field} is not a valid E.164 phone number",
+                        "LCP-009",
+                        400,
+                        details=[
+                            f"{value!r} does not match the E.164 wire format "
+                            f"(§3: 'E.164 format') at "
+                            f"lcp/payload/consumer/{phone_field}"
+                        ],
+                    )
         try:
             self.validator.require_valid_envelope(envelope)
         except ValidationError as exc:
@@ -1856,6 +1915,53 @@ class Platform:
                 400,
                 details=exc.errors,
             ) from exc
+        # SPEC §5: "LCP-007 | SCHEMA_VERSION_UNSUPPORTED | 422" over §6
+        # "Protocol semver (MAJOR breaking / MINOR additive / PATCH fixes)".
+        # The thing the text names: the envelope's lcp.version — described in
+        # schemas/envelope.json as "Protocol semver (e.g. 1.0.0)" and
+        # identified with the core schema version by §13 ("document that
+        # protocol version = core schema version"); a future major/minor was
+        # silently ACKed and processed as v1 (issue #181). Runs after schema
+        # validation so a MALFORMED version stays the structural LCP-100
+        # axis; only well-formed semvers outside the supported set — the one
+        # constant the §8 capabilities advertisement serves — negotiate away
+        # as 422.
+        version = envelope["lcp"]["version"]
+        if not _lcp_version_supported(version):
+            raise RequestError(
+                f"Protocol version {version!r} is not supported by this endpoint",
+                "LCP-007",
+                422,
+                details=[
+                    f"{version!r} is not a supported protocol version; this "
+                    f"endpoint advertises parsed-semver lcp_versions "
+                    f"{list(SUPPORTED_LCP_VERSIONS)} at lcp/version (§8)"
+                ],
+            )
+        # SPEC §5: "LCP-010 | INVALID_TERRITORY | 422" over §3 "country_code
+        # (ISO 3166-1 alpha-2, REQUIRED)". Pattern-valid but ISO-UNASSIGNED
+        # codes (e.g. "ZZ") previously ACKed and silently matched nothing
+        # (issue #182); they reject here. RULING on casing: §3 mandates no
+        # intake-side normalization, so the wire value is validated as-is —
+        # lowercase "au" never reaches this axis, it is the schema
+        # pattern's LCP-100 violation (messy sources normalize through the
+        # mapping "upper" transform). Deployment territory (offer countries,
+        # §8 "countries") stays a routing concern (matching.py), never an
+        # intake gate.
+        location = payload.get("location") if isinstance(payload, dict) else None
+        if isinstance(location, dict):
+            country_code = location.get("country_code")
+            if isinstance(country_code, str) and country_code not in ISO_3166_1_ALPHA2:
+                raise RequestError(
+                    "location.country_code is not an assigned ISO 3166-1 alpha-2 code",
+                    "LCP-010",
+                    422,
+                    details=[
+                        f"{country_code!r} is not an assigned ISO 3166-1 "
+                        "alpha-2 country code (§3) at "
+                        "lcp/payload/location/country_code"
+                    ],
+                )
 
 
 # sqlite3.Row is intentionally only used as a structural type in this module.

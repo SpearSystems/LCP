@@ -8,6 +8,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Reference platform (#176, #181, #182):** the three §5 intake error
+  codings that had no emission path are restored on the wire.
+  `Platform._validate_envelope` now re-codes the consumer phone axis — a
+  non-E.164 `consumer.phone` / `consumer.secondary_phone` string is rejected
+  `LCP-009 INVALID_PHONE` (400) at the documented #131 ordering point, ahead
+  of schema validation; the published schema pattern is untouched, non-string
+  values and every other axis keep `LCP-100`, and the corpus row L2-011
+  already named this expectation (`"error_code": "LCP-009"`). Version
+  negotiation lands on the same envelope boundary: a well-formed
+  `lcp.version` outside the supported set is rejected `LCP-007
+  SCHEMA_VERSION_UNSUPPORTED` (422) instead of silently ACKed and processed
+  as v1 — the supported set is `validation.SUPPORTED_LCP_VERSIONS`, the one
+  constant the §8 capabilities advertisement serves, so intake and
+  advertisement cannot drift; a malformed version keeps the schema's
+  `LCP-100` pattern axis. And territory: a pattern-valid but ISO 3166-1
+  unassigned `location.country_code` (`"ZZ"`) is rejected `LCP-010
+  INVALID_TERRITORY` (422) instead of silently ACKing into a no-offer match.
+  Ruling: §3 mandates no intake-side country normalization, so lowercase
+  `"au"` stays the schema pattern's `LCP-100` violation (messy sources
+  normalize through the mapping `upper` transform, `test_new_flows.py`).
+  Pinned by `tests/test_gap_intake_error_codes.py` (proposed matrix flips:
+  ERR-007 / ERR-009 / ERR-010; dispositions live in the PR body — the
+  matrix file stays locked).
 - **Reference platform (#142, fixes #142):** a wrong bearer API key for a
   recognized sender now fails with `LCP-002 UNKNOWN_SENDER` instead of
   `LCP-012` — §5 confines LCP-012 to the HMAC signature/timestamp axis, and
