@@ -69,7 +69,9 @@ The reference platform exposes only aggregate metrics. Example response shape:
   "routing": {"pending": 0, "processing": 0, "dead_letter": 0, "lease_expired": 0},
   "delivery": {"pending": 0, "retry": 0, "failed": 0, "dead_letter": 0},
   "attachments": {"scanner_backlog": 0, "deletion_pending": 0, "deletion_failed": 0},
-  "dead_letters": {"open": 0, "quarantined": 0}
+  "dead_letters": {"open": 0, "quarantined": 0},
+  "history": {"queued": 0, "capacity": 1024, "oldest_queued_age_seconds": null,
+              "enqueued": 0, "flushed": 0, "drop_risk": 0, "dropped": 0, "failed": 0}
 }
 ```
 
@@ -110,6 +112,59 @@ storage layer.
   earlier reports for that pair can no longer be re-keyed or matched
   (deployment concern mirroring SPEC §9). Rotate between leads, or accept
   that the affected lead's dedup history restarts.
+
+### LEP-0003 follow-ups (W6-07): email-form entry emission and the multi-slot cap
+
+Two follow-ups closed by decision, not by new wire surface.
+
+**Email/form-relay entry emission (SPEC §9-gated).** A publisher whose entry
+surface is an email/form relay hands the consumer over with no JavaScript
+capture, so nothing on the wire proves how the entry was observed. The
+platform therefore records the entry itself, under the declared open-enum
+`provenance.source_type: "email_form"`, with an `acquisition_method` that
+agrees with the consent recorded on the lead (`warm_transfer` for a recorded
+consented handover; `unknown` when no consent is recorded at all, because a
+deployment MUST NOT claim an acquisition path it has no evidence for). No
+client-observed field is ever added: `provenance.ip_address`, `ip_hash`, and
+`user_agent_hash` stay absent, and a publisher's own `source_type` (anything
+other than the normalizer's `publisher` default) is never rewritten.
+
+- **The gate is two deployment switches, both required.**
+  `LCP_FEATURE_EMAIL_FORM_ENTRY` (default off) and
+  `LCP_EMAIL_FORM_PUBLISHER_IDS` (a comma-separated sender-id allowlist, empty
+  by default) — the declared entry surface. `features.email_form_entry` is
+  advertised only when both are set, so an absent key never means "supported".
+  Rollback = clear the flag or the list; intake is then bit-for-bit unchanged.
+- **Gate off is a refusal, not a mislabel.** A captureless lead from a
+  declared relay sender arriving while the flag is off is refused with
+  `LCP-100 VALIDATION_ERROR` (400; `details` names `provenance.source_type`
+  and `features.email_form_entry`) before anything is stored. Recording it as
+  `publisher` would declare a surface nobody observed, which §9 forbids.
+- **Evidence.** Decisions are replay-stable (the derivation runs before the
+  LCP-005 idempotency comparison, so a replay compares the same derived
+  bytes), and an offer's `excluded_source_types` sees the declared value
+  because the derivation precedes matching. Covered by
+  `plat:test_entry_emitted_when_gate_is_on`,
+  `plat:test_entry_refused_when_gate_is_off`,
+  `plat:test_gate_on_still_requires_a_declared_relay_publisher`, and
+  `plat:test_entry_never_invents_client_capture`
+  (`implementations/reference-platform/tests/test_entry_emission.py`), plus
+  vectors **L2-041** (emitted shape) and **L2-042** (gate-off refusal,
+  `email_form_entry_shape`).
+
+**Multi-slot claims — the deferred decision (schema cap stays 1).** The v1.1
+slot surface keeps `slots_claimed` at `minimum: 1, maximum: 1`: one buyer
+award consumes exactly one slot, and a claim never spans several. This is a
+recorded decision, not an unnoticed limitation. Running more than one slot per
+claim would require a documented LEP revision, with adopter evidence that the
+partial-claim accounting can be made correct: a multi-slot claim is an
+all-or-nothing reservation of N buyer-awards recorded before delivery, so a
+crash, timeout, or partial fulfilment between the claim and the N-th award
+leaves the budget and the delivered copies disagreeing — the exact oversell
+class the single write-time decision point and the `(lead_id, offer_id)` award
+index exist to prevent. Until such a revision lands (and the schema cap moves
+with it), a receiver seeing `slots_claimed > 1` is entitled to treat the bid as
+malformed.
 
 ## Delivery retry and dead-letter behaviour
 
@@ -438,6 +493,172 @@ at a peer) and get a portable, digest-verified report.
   trademark licence, and a hosted instance may not be advertised as one.
   D11 records the condition for revisiting that: a second independent
   operator running the same runner and publishing a matching report.
+
+## Retention, archive, and restore (W4-05/W4-06)
+
+Two retention windows are configuration, both enforced by the worker's
+`process_once` sweep (`Store.sweep_retention`). Both are validated positive at
+startup; changing either is a deployment change, not a hot reload.
+
+| Setting | Default | What it bounds |
+|---|---|---|
+| `LCP_ENVELOPE_RETENTION_DAYS` | **90** | Ciphertext of stored envelopes (leads, pings, bids, lifecycle events, event-stream rows, terminal deliveries). Past the window the payload is rewritten through the same redaction as an erasure: ids, statuses, timestamps, payables, and audit rows stay, the consumer data does not. |
+| `LCP_HISTORY_RETENTION_DAYS` | **365** | `match_decisions`, `match_audits`, and `audit_events`. Past the window a row is **unreadable** (`list_audit_events`, `list_match_decisions`, `list_match_audits`) before the sweep physically deletes it, so a lagging sweep cannot serve expired history. |
+| `LCP_HISTORY_QUEUE_CAPACITY` | **1024** | Depth of the deferred history/decision/audit queue (below). |
+
+- **Reads fail closed.** Decreasing a window makes rows immediately
+  unreachable; it does not wait for the sweep. There is no reader path that
+  bypasses the cutoff — a dispute that needs older evidence must archive
+  before the window closes, not after.
+- **The sweep is batched and interval-gated.** Each pass redacts at most 200
+  envelope rows per table and runs at most once a minute, so a large database
+  never takes a long deletion stall inside the worker loop; run it more
+  aggressively only with the batch size and interval under change control.
+- **No partitioning yet — deliberately.** The windows are enforced by the
+  batched sweep plus the read-time cutoff, not by monthly Postgres partitions
+  or segmented SQLite files. Partitioning needs a data migration on a live
+  table; until an operator needs it for measured scan cost, the batched sweep
+  is the smaller system. If you add it, the read-time cutoff stays: it is the
+  guarantee, the storage layout is an optimisation.
+- **Deletion is not erasure.** A retention-deleted decision/audit row is a
+  scheduled loss, not a legal erasure; keep the erasure trail (`lead.erased`)
+  and the archive ledger separate from retention accounting.
+- **A rotated encryption key shows up as `unreadable`.** Envelope rows that no
+  longer decrypt under the current `LCP_PII_ENCRYPTION_KEY` cannot be rewritten
+  into a redacted envelope, so the sweep counts them
+  (`sweep_retention()["unreadable"]`) and leaves them in place rather than
+  storing a shape readers cannot parse. A nonzero count after a key rotation
+  means those rows still hold ciphertext the current key cannot open — re-key
+  and re-run, or destroy the rows under erasure rules.
+
+### Deferred history writes (W4-05)
+
+Intake no longer writes the audit trail or the match decision/audit rows
+inline: both are queued in the process-local bounded queue
+(`LCP_HISTORY_QUEUE_CAPACITY`) and flushed by the worker. Policy, in order:
+
+1. The write is appended without blocking. The lead row, pings, deliveries,
+   and payables are already committed — the queue is bookkeeping only.
+2. On a full queue the producing thread drains the backlog inline once
+   (bounded work) and retries.
+3. If a concurrent producer refills the queue first, the drop risk is
+   recorded: one `history.write_drop_risk` audit row plus the `drop_risk`
+   counter, then one more drain-and-retry.
+4. Only a third saturation drops the write (`dropped` counter increments, and
+   the request still returns success). A queue write that raises is counted as
+   `failed`, recorded as `history.write_failed`, and never stops the worker.
+
+What this means operationally:
+
+- **Never lost: the lead.** A dropped history row never rolls back, blocks, or
+  fails an intake. Intake latency cannot be extended by a slow audit store.
+- **Reads still see their own writes.** `list_audit_events`,
+  `list_match_decisions`, and `list_match_audits` flush the queue before
+  reading, so an operator never sees a trail that is merely late. `close()`
+  flushes too; the queue is process-local, so a crash **can** lose queued rows.
+- **Alert on the counters.** `GET /v1/lcp/metrics` reports
+  `history.{queued, capacity, oldest_queued_age_seconds, enqueued, flushed,
+  drop_risk, dropped, failed}`. A nonzero `dropped` or `failed`, or a rising
+  `oldest_queued_age_seconds`, means the worker is not keeping up (or history
+  writes are failing) and history depth is degrading — the lead pipeline is
+  still correct, the evidence is not. Page on `dropped > 0`; investigate
+  `oldest_queued_age_seconds` above a few seconds. Raise the capacity only
+  with a matching worker-capacity review: a deeper queue delays evidence
+  rather than making the worker faster.
+
+### Archive and restore
+
+`tools/archive_store.py` (standard library only, safe on a backup host)
+exports retention-bounded rows to deterministic JSONL plus a SHA-256 manifest,
+and restores them into a scratch database for dispute or recovery.
+
+```bash
+# Export a window (repeat --table for several; open the DB read-only)
+python3 tools/archive_store.py export \
+  --database ./data/lcp.sqlite3 \
+  --table leads --table audit_events --table match_decisions \
+  --before 2026-01-01 --out /srv/lcp-archive/2026-Q1.jsonl
+
+# Verify digest and row counts without touching a database
+python3 tools/archive_store.py verify --file /srv/lcp-archive/2026-Q1.jsonl
+
+# Restore into a scratch database (never into production)
+python3 tools/archive_store.py import \
+  --file /srv/lcp-archive/2026-Q1.jsonl --database /srv/scratch/restore.sqlite3
+```
+
+- **Determinism.** Rows are sorted by primary key and serialized canonically,
+  so re-exporting the same database state produces byte-identical output and
+  the same digest. The manifest records that digest, the per-table row counts,
+  and the table DDL needed for a self-contained restore.
+- **Refusal, never a partial restore.** A digest mismatch, a missing
+  terminating newline, a malformed line, or a row-count disagreement with the
+  manifest refuses the import with a non-zero exit and writes nothing. Never
+  hand-edit an archive; re-export instead.
+- **Archives are your retention evidence.** The export appends its digest to a
+  ledger (`<out>.ledger.jsonl` by default, `--ledger` to relocate). The ledger
+  is how you answer "which archives cover which window" during a dispute; keep
+  it with the archives, and treat both as production data.
+
+### Erasure across archives
+
+An erasure must reach archived exports too, so it is enforced in two places:
+
+1. **Before an erasure lands, exports refuse erased subjects.** The exporter
+   reads the erasure set from the source database
+   (`leads.status = 'ERASED'` plus `lead.erased` audit rows) and refuses to
+   write any row whose `lead_id` is in it; `--erasure-set FILE` adds ids that
+   must not appear (one per line, `#` for comments). Emit that file from your
+   erasure queue and the subject is absent from the next fresh export — there
+   is no code path that archives it.
+2. **After an erasure lands, the operator must destroy older archives that
+   cover the subject.** An archive written before the erasure still contains
+   the row, because rewriting an archive is not something a retention tool may
+   do silently. The procedure is:
+
+   1. Read the ledger (`<archive>.ledger.jsonl`) and list every archive whose
+      `before` window is later than the subject's first row.
+   2. Delete those archive files, their manifests, and their ledger entries
+      under the same change control you use for erasure itself; record the
+      archive digests and the deletion in the erasure ticket.
+   3. Re-export from the live database with `--erasure-set` naming the erased
+      subject if you still need the surrounding history under retention.
+   4. Confirm with `archive_store.py verify` on every surviving archive and a
+      fresh `export` that no line names the subject.
+
+Never respond to an erasure by editing an archive in place: the digest no
+longer matches, `import` refuses the file, and the archive can no longer be
+proven intact for any other subject it holds.
+
+### CI capacity thresholds (W4-07)
+
+`.github/workflows/performance.yml` runs the Postgres benchmark against the
+same `postgres:18.4` service profile and publishes the JSON/LOG reports as a
+build artifact. The `--min-*` flags are the threshold table; each one is a
+**regression detector, not a capacity guarantee**:
+
+- They exist to catch a change that makes the platform materially slower (for
+  example an index removed, a lock widened, or write amplification added).
+- They are not a throughput commitment, a sizing input, or an SLA. A green run
+  means "no measured regression on the CI runner profile", not "this
+  deployment handles N records per second".
+- Runner hardware, Postgres version, and dataset shape all move the numbers;
+  re-measure on the target profile before quoting any figure to a customer,
+  and update the thresholds only from a measured run (record the profile in
+  the PR that changes them).
+
+The baseline table below records both the enforced floor and the local
+measurement it was checked against, kept here so a threshold change is a
+visible, reviewed edit rather than a silent one. The measured column is the
+local service profile (macOS arm64, PostgreSQL 16.4, loopback socket, 4
+workers, W4-05/W4-06 code, 2026-11-04); the CI runner is slower, so the
+enforced floors stay below it rather than being raised to it.
+
+| Benchmark | Records | Concurrency | Enforced floor | Measured baseline | Other gates |
+|---|---|---|---|---|---|
+| Candidate index | 2 000 | batch 500 | 100 records/s | 2 029.0 records/s | ≥ 90 % candidate reduction (measured 95.8 %) |
+| Postgres intake | 4 000 | 4 workers | 35 records/s | 291.2 records/s | — |
+| Postgres delivery | 500 | 4 workers, 2 delivery workers, 20 ms webhook latency | 10 records/s, 10 deliveries/s, 5 end-to-end records/s | 437.4 records/s, 47.3 deliveries/s, 36.7 end-to-end records/s | — |
 
 ## Backup and restore
 

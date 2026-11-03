@@ -55,8 +55,38 @@ zh-Hans-CN); #180 timezone unvalidated (IANA claim is description-only);
 path); #182 LCP-010 never emitted; #192 agent attestation never verified
 while `conformance_level: "L3"` is advertised (LEP-material: key
 distribution undefined); #193 delivered-post ack-deadline leg unshipped
-(lead stays POSTED). Matrix truth now 127 green / 8 gap / 9 exempt of
-144 — every remaining gap cites its issue.
+(lead stays POSTED). Matrix truth now 150 green / 0 gap / 11 exempt of
+161 — no gap rows remain.
+
+v1.2 vector wave 2026-11-04 (D2/D4/D5/D7): the thirteen v1.2 vectors are
+mapped to the clauses they prove — `PROCESSED` ack status and its
+post-only rule (MSG-ACK-02), `location.street_address` (LOC-04),
+`provenance.ip_address` (PRV-03), `post.pricing` FX comparability
+(MSG-POST-05), the ping location/provenance/extensions refusals
+(MSG-PING-02/MSG-PING-05), and registered namespaces riding posts
+(MSG-EXT-01).
+
+Bounded-batch wave 2026-11-04 (LEP-0001/W2-01): batch submission is one
+clause, MSG-BATCH-01. The `L2-034`–`L2-036` vector set is back in
+`test-vectors/l2-lifecycle.json` — all-valid per-item receipts in input
+order, a rejected item beside accepted siblings, and the over-cap
+whole-request refusal — and the row cites that set alongside the executed
+reference-platform batch suite
+(`plat:test_all_valid_batch_returns_receipts_in_input_order`,
+`plat:test_invalid_item_does_not_fail_siblings`,
+`plat:test_over_cap_items_rejects_whole_request`).
+
+Subscription and negotiation wave 2026-11-04 (LEP-0001 W3 / LEP-0009 D8):
+five subscription clauses (MSG-SUB-01…05) and eight negotiation clauses
+(MSG-NEG-01…08) map the two new surfaces. Registration, the advertised-event
+allowlist, the wildcard refusal and the consumer-filter refusal are proved by
+L2-037–L2-040; capability gating, round bounds, monotonicity, floor refusal,
+absolute expiry, single-use binding tokens, ping-class PII and tenancy are
+proved by NEG-001–NEG-010 plus their named platform tests. Two rows —
+MSG-SUB-04 (cursor read and replay) and MSG-SUB-05 (signed at-least-once
+delivery with retry/DLQ) — have **no conformance vector yet**: LEP-0001's
+vector list still owes the subscription set, so those rows are green on the
+reference-platform suite alone and say so in place.
 
 <!-- SPEC-COVERAGE-MATRIX:BEGIN version=1 columns=clause,gist,surface,tests,status -->
 | clause | gist | surface | tests | status |
@@ -81,15 +111,17 @@ distribution undefined); #193 delivered-post ack-deadline leg unshipped
 | LOC-01 | §3 location.country_code REQUIRED, ISO 3166-1 alpha-2 | schema+runner | L2-001 | green |
 | LOC-02 | §3 location requires state_region OR postal_code | schema+runner | L2-013, L2-014 | green |
 | LOC-03 | §3 location.timezone is IANA | schema | - | exempt(published contract accepts any string; validation is a breaking-class tightening deferred to a v1.2 plan — #180 closed not-planned with the release-note obligation) |
+| LOC-04 | §3 location.street_address (v1.2 D4): optional core string, ping_safe:false; a ping carrying it is refused (LCP-008) | schema+runner | L2-028, L2-029 | green |
 | CMP-01 | §3 compliance block carries consent evidence fields | schema+runner | L2-001, L3-004 | green |
 | CMP-02 | §3 consent_purposes captures consent scope ("capture it") | schema | - | exempt(advisory guidance; field defined in schemas/core.json) |
 | CMP-03 | §3 consent_evidence extensible to new frameworks without core change | schema+runner | L3-004 | green |
-| CMP-04 | §3 OTP code MUST NOT be included (only verified hash/timestamp) | schema+runner | L2-015, L2-016 | green |
+| CMP-04 | §3 OTP code MUST NOT be included (only verified hash/timestamp) — a planted code is a prohibited-family value (v1.2 D9), refused at intake and never scrubbed | schema+runner | L2-015, L2-016, L3-028 | green |
 | CMP-05 | §3 consent_expires_at: no contact after expiry | platform | plat:test_retention_boundaries_stop_expired_and_unconsented_routing | green |
 | CMP-06 | §3 scrubs[] tri-state semantics (clean/flagged/blocked; blocked leads rejected) | schema | plat:test_scrub_states_validate_store_and_emit, plat:test_scrub_entry_shape_and_type_passthrough, plat:test_offer_scrub_tristate_rejection | green |
 | CMP-08 | §3 consent_evidence entry shape (type/provider/token_or_url; URI valid) | schema+corpus | sdk-009, L3-004 | green |
 | PRV-01 | §3 provenance enums (source_type, acquisition_method, incentive_type, platform_source) open — pass through unknowns | schema+runner | plat:test_unknown_provenance_values_pass_through_to_delivered_post, ep-005 | green |
 | PRV-02 | §3 agent provenance {agent_id, acting_for, attestation} when source_type=agent | schema+runner | L3-001 | green |
+| PRV-03 | §3 provenance.ip_address (v1.2 D5): raw IPv4/IPv6, post-only; ip_hash stays the ping-safe projection, so a ping provenance block is refused (LCP-008) | schema+runner | L2-030, L2-031 | green |
 | ATR-01 | §3 attributes require vertical + schema_version | schema+runner | L2-001 | green |
 | ATR-02 | §3 vertical fields tagged ping_safe; ping with non-tagged field rejected (LCP-008) | conformance-runner | L2-009, L2-009b, L2-009c, L2-009d, sdk-012 | green |
 | ATR-03 | §3 ping attributes only ping_safe:true values, nested objects included | conformance-runner | L2-003 | green |
@@ -116,10 +148,10 @@ distribution undefined); #193 delivered-post ack-deadline leg unshipped
 | MSG-CALL-01 | §4 call message: call block (status, durations, recording, ivr, disposition, queue, agent) | schema+runner | L1-002, L2-002 | green |
 | MSG-CALL-02 | §4 CALL_* lifecycle events carry offer_id/call_status/total_seconds/disposition/transfer_status in details | schema+platform | plat:test_call_lifecycle_events_flow_end_to_end_into_payable_record, ep-009 | green |
 | MSG-PING-01 | §4 ping is a strict allowlist (additionalProperties:false); anything else → LCP-008 | schema+runner | L2-003, L2-007, L2-008, sdk-002 | green |
-| MSG-PING-02 | §4 ping never contains consumer/compliance/provenance blocks | conformance-runner+corpus | L2-007, L2-008, lcp-neg-pii-001 | green |
+| MSG-PING-02 | §4 ping never contains consumer/compliance/provenance/location blocks (v1.2 D4/D5 add the street-address and raw-IP refusals) | conformance-runner+corpus | L2-007, L2-008, L2-029, L2-031, lcp-neg-pii-001 | green |
 | MSG-PING-03 | §4 compliance_flags are presence indicators only — never tokens or evidence | schema+runner | L2-017, L2-018 | green |
 | MSG-PING-04 | §4 ping slots_available (v1.1): integer min 1; exclusive⇒const 1 conditional; never advertise 0 | schema+runner+corpus | L3-008, L3-013, L3-017, L3-019, lcp-neg-exclusive-multislot-001, lcp-neg-slots-zero-001, sdk-015, sdk-022 | green |
-| MSG-PING-05 | §4 ping rejects `extensions` (LEP-0006 §B.3.1): the surface is post-only, never ping_safe — structural, not advisory | schema+runner+platform | L2-019, lcp-neg-extensions-on-ping-001, plat:test_ping_with_extensions_rejected, plat:test_extensions_never_reach_the_ping | green |
+| MSG-PING-05 | §4/LEP-0006 §B.3.1 + v1.2 D6/D9: ping `extensions` admit only namespaces whose registration declares ping safety; every other namespace is refused by name (LCP-008) | schema+runner+platform | L2-019, L2-033, lcp-neg-extensions-on-ping-001, plat:test_ping_with_extensions_rejected, plat:test_extensions_never_reach_the_ping | green |
 | MSG-BID-01 | §4 bid decision accept/reject/pass; bid_price_cents required iff accept | schema+platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | MSG-BID-02 | §4 auction flow: platform collects bids in expiry window, posts winner, losers get no PII | platform | plat:test_ping_bid_post_and_delivery_event_flow, plat:test_indexed_offer_candidates_are_conservative_and_reindex_updates | green |
 | MSG-BID-03 | §4 bid slots_claimed (v1.1): integer, minimum 1 maximum 1 (single-slot awards; multi-slot deferred #153 T5); absent = 1 | schema+runner+corpus | L3-009, L3-018, lcp-neg-claimed-multi-001, sdk-016, sdk-023 | green |
@@ -127,11 +159,27 @@ distribution undefined); #193 delivered-post ack-deadline leg unshipped
 | MSG-POST-02 | §4 post.pricing block (floor/premium/final/uncapped/guardrails/dispute window/payable) | schema | L2-004 | green |
 | MSG-POST-03 | §4 pricing.is_duplicate_resub distinguishes accidental resubmission from exclusivity | platform | plat:test_build_post_emits_the_flag, plat:test_store_helper_tracks_prior_post_deliveries_per_pair | green(#177 ruling A: delivery-side prior-contact dedup keyed on lead+buyer; a second buyer on a shared lead is not a resubmission) |
 | MSG-POST-04 | §4 post contacted_hashes (v1.1): array of per-pair keyed 64-lowercase-hex digests, maxItems 100, absent-vs-[] distinct | schema+runner+corpus | L3-010, L3-012, L3-014, L3-015, L3-016, lcp-neg-contacted-sha1-001, lcp-neg-contacted-63hex-001, lcp-neg-contacted-overbound-001, sdk-021 | green |
-| MSG-EXT-01 | §6/LEP-0006 §B.1 lead+post `extensions` (v1.1): ≥3 lowercase dot-separated namespace segments, lcp.core.* reserved, per-namespace values deployment-defined; delivery capability-gated | schema+runner+corpus+platform | L2-020, L2-021, L2-022, L2-023, sdk-029, sdk-030, lcp-neg-extensions-unnamespaced-001, lcp-neg-extensions-lcpcore-001, plat:test_lead_extensions_persisted_and_delivered_to_v11_buyer, plat:test_extensions_capability_gated_off_v10_buyer | green |
+| MSG-POST-05 | §4 post.pricing multi-currency (v1.2 D7): currency/original_price_cents/fx_rate/fx_source/fx_timestamp/fx_expires_at; cross-currency offers compare only with a present, well-formed (decimal, ≥6 significant digits, no exponent), fresh (≤300s) and consistently sourced rate, else they are excluded with a reason, never coerced | schema+runner | L3-023, L3-024, L3-025, L3-026, L3-027 | green |
+| MSG-EXT-01 | §6/LEP-0006 §B.1 lead+post `extensions` (v1.1): ≥3 lowercase dot-separated namespace segments, lcp.core.* reserved, per-namespace values deployment-defined; delivery capability-gated; registered namespaces (v1.2 D9) ride post unchanged | schema+runner+corpus+platform | L2-020, L2-021, L2-022, L2-023, L2-032, sdk-029, sdk-030, lcp-neg-extensions-unnamespaced-001, lcp-neg-extensions-lcpcore-001, plat:test_lead_extensions_persisted_and_delivered_to_v11_buyer, plat:test_extensions_capability_gated_off_v10_buyer | green |
 | MSG-EXT-02 | LEP-0006 §B.2 registered `{org}.form.questions` shape (25 entries, 300/1000-char text, no other keys) and the total policy bound are receiver rules — the schema does not bound namespaced values | runner+corpus+platform | L2-024, L2-025, sdk-031, sdk-032, plat:test_form_questions_entry_bound_edges, plat:test_form_questions_field_bounds, plat:test_org_open_family_is_validated_too, plat:test_extension_total_over_policy_bound_rejected, plat:test_shape_ceiling_exceeds_default_policy_bound | green |
 | MSG-EVENT-04 | §4 CONTACTED report (v1.1): open-enum pass-through, 64-hex + 32/report ingest bounds, absent-vs-[] | runner+schema | L3-011, L3-021, L3-022 | green |
+| MSG-BATCH-01 | LEP-0001/W2-01 bounded `batch` message (v1.2): `request_id` + `items[]` of {item_id, idempotency_key, lead payload}; each item runs the single-lead path independently (no cross-item transaction) and is answered 207 with one receipt from the closed vocabulary accepted/duplicate/rejected/error, in input order; over the 100-item cap the whole request is refused 413 LCP-001 and no item runs | schema+runner+platform | L2-034, L2-035, L2-036, plat:test_all_valid_batch_returns_receipts_in_input_order, plat:test_invalid_item_does_not_fail_siblings, plat:test_over_cap_items_rejects_whole_request | green(L2-034–L2-036 prove the wrapper shape and one receipt per item in input order, a rejected item alongside accepted siblings under the closed receipt vocabulary, and the 100-item whole-request refusal; the reference-platform suite proves the 207/413 transport, per-item persistence and tenant/gate rules) |
+| MSG-ENTRY-01 | LEP-0003 follow-up (v1.2) email-form entry emission: a declared relay publisher (LCP_EMAIL_FORM_PUBLISHER_IDS) with `features.email_form_entry` advertised records `provenance.source_type: email_form` plus the consent-derived `acquisition_method`; no client-observed field (ip, user agent, client block) is invented; with the gate off the lead is refused LCP-100 before any write | schema+runner+platform | L2-041, L2-042, plat:test_entry_emission_is_gated, plat:test_refuses_when_gate_off | green(L2-041 proves the declared emission shape, L2-042 proves the capability refusal; platform tests cover the gate-off path and the no-invented-client-field rule) |
+| MSG-SUB-01 | LEP-0001/W3-01 (v1.2) `subscription` registration: additive closed-enum message type, authenticated and tenant-scoped, capability advertised only through `features.event_subscriptions` (off by default, so a non-advertising peer never sees the surface), HTTPS callback validated with the SSRF rule, per-subscription secret returned exactly once | schema+runner+platform | L2-037, plat:test_feature_on_advertises_subscription_surface, plat:test_feature_off_answers_like_an_unknown_endpoint, plat:test_registration_secret_returned_once_and_tenant_scoped, plat:test_private_callback_url_is_refused_outside_sandbox | green |
+| MSG-SUB-02 | LEP-0001/W3-01 explicit event allowlist: `event_types` names only the receiver's advertised `capabilities().events` values plus registered extension events; an unadvertised name is refused by name, a wildcard `*` is not a value, and no second vocabulary exists | schema+runner+platform | L2-037, L2-038, L2-040, plat:test_unknown_event_type_is_refused | green |
+| MSG-SUB-03 | LEP-0001/W3-04 privacy-safe filters: the `filter` key set is closed to core enums and identifiers (event_type, message_type, vertical, status, lead_id); consumer, provenance, attributes, contact and security paths are refused by name, so no consumer field can become a predicate | schema+runner+platform | L2-037, L2-039, plat:test_consumer_filter_is_refused_by_name | green |
+| MSG-SUB-04 | LEP-0001/W3-03 cursor read and replay: `?cursor=` paging plus the `replay_from` subscription parameter reproduce the same event set, an expired cursor is an explicit `cursor_expired` error, and a cursor never names another tenant's stream — no conformance vector yet (LEP-0001 still owes the subscription vector set), so the reference-platform suite is the executed proof | schema+platform | plat:test_cursor_paging_and_replay_identity, plat:test_expired_cursor_is_an_explicit_error, plat:test_cursor_is_tenant_scoped | green(no L-level vector yet: LEP-0001's conformance list owes cursor replay and its expired-cursor error; the three platform tests above are the executed proof) |
+| MSG-SUB-05 | LEP-0001/W3-02 signed at-least-once delivery: each attempt is signed per-subscription over the SPEC §9 canonical input with its own timestamp and idempotency key, carries a stable `X-LCP-Event-Id` reused as that key, retries with backoff and lands a dead-letter row after the budget; duplicate bodies are legal and dedupe is by event_id — no conformance vector yet (LEP-0001 owes signature/skew/duplicate/DLQ vectors) | platform | plat:test_delivery_signs_exact_bytes_with_stable_event_id, plat:test_retry_with_backoff_then_dead_letter, plat:test_duplicate_delivery_is_tolerated, plat:test_subscription_only_receives_its_own_tenant_events | green(no L-level vector yet: the signature, duplicate-delivery and retry/DLQ vectors LEP-0001 enumerates are not in test-vectors/; the platform delivery suite is the executed proof) |
+| MSG-NEG-01 | LEP-0009 C1/C2 (v1.2, D8): `quote` and `counter` join the closed `message.type` enum as a MINOR addition; a sender MUST NOT emit either type unless the receiver's parsed-semver `lcp_versions` opens minor >= 2 AND its `features.negotiation` is advertised, and a non-advertising peer still answers LCP-006 | schema+runner+platform | NEG-001, NEG-002, NEG-009, plat:test_negotiation_capability_absence | green |
+| MSG-NEG-02 | LEP-0009 C5 bounded rounds: `max_rounds` defaults to 3 and is hard-capped at 5 (`>5` is LCP-100 at quote intake), `rounds_remaining` echoes the pre-message buyer-counter count and a stale echo is LCP-100, and a buyer counter at 0 is refused `round_limit_exceeded` with the id closed permanently | schema+runner+platform | NEG-004, plat:test_negotiation_round_cap | green |
+| MSG-NEG-03 | LEP-0009 C6 monotone price path: a buyer counter MUST exceed its own previous price and a platform counter MUST NOT fall below its standing ask (a concession is an `accept`, never a lower counter); a refused message consumes no round and leaves the stored price unchanged | runner+platform | NEG-006, plat:test_negotiation_monotone_enforced | green |
+| MSG-NEG-04 | LEP-0009 C6 floor: a price below the restated `floor_price_cents` is refused `below_floor_price` with LCP-100 naming `payload.price_cents`, is never clamped to the floor, and leaves no bid, post or token behind | runner+platform | NEG-003, plat:test_negotiation_floor_refusal_never_clamps | green |
+| MSG-NEG-05 | LEP-0009 C8 absolute expiry: `expires_at` is restated on every message and MUST NOT exceed the ping's expiry or timestamp+TTL ceiling (LCP-100 before any row is written); a message at or after it is refused `negotiation_expired`, and a fresh in-window timestamp extends nothing | schema+runner+platform | NEG-005, plat:test_negotiation_expiry_absolute | green |
+| MSG-NEG-06 | LEP-0009 C7 single-use binding token: `accept` mints `binding_token` (stored as a hash, returned once) which replaces `bid_price_cents` on the buyer's `bid`; the first redemption creates exactly one bid at that price, a same-key same-bytes replay returns the original ack, and a token after REDEEMED or after `binding_expires_at` is `negotiation_closed` | schema+runner+platform | NEG-008, plat:test_negotiation_token_single_use_idempotent | green |
+| MSG-NEG-07 | LEP-0009 C4 ping-class payloads: both types are strictly allowlisted and carry integer minor units, ISO 4217 currency, ids, timestamps and closed reason values only — no consumer field, no contact digest and no free text, so an outside-allowlist or consumer-shaped key is LCP-100/LCP-008 | schema+runner+platform | NEG-001, NEG-007, plat:test_the_shipped_schema_set_loads | green |
+| MSG-NEG-08 | LEP-0009 §4 tenant authorization: a negotiation is scoped to one (tenant, buyer, ping, offer) tuple; another principal presenting its `negotiation_id` receives LCP-002 indistinguishable from "no such negotiation", with no price, round or state disclosed | runner+platform | NEG-010, plat:test_negotiation_tenant_authorization | green |
 | MSG-ACK-01 | §4 ack uses errors[] array — one message can fail multiple fields | schema+runner | L1-003, L3-005 | green |
-| MSG-ACK-02 | §4 ack.status ∈ RECEIVED/VALIDATED/ACCEPTED/REJECTED/DUPLICATE/ERROR | schema+runner | L2-006 | green |
+| MSG-ACK-02 | §4 ack.status ∈ RECEIVED/VALIDATED/ACCEPTED/REJECTED/DUPLICATE/ERROR + PROCESSED (v1.2 D2: post-delivery receipt only; a lead ack carrying it is refused) | schema+runner | L2-006, L2-026, L2-027 | green |
 | MSG-ACK-03 | §4 rejection_reason structured open enum enables publisher automation | schema+platform | plat:test_expired_ping_bid_rejection_emits_structured_rejection_reason, ep-010, ep-011 | green |
 | MSG-EVT-01 | §4 event message: lead_id, event, timestamp, details, external_reference | schema+runner | L2-005 | green |
 | MSG-EVT-02 | §4 CONVERTED/DISPUTED details SHOULD shapes (conversion_value_cents etc.) | schema | - | exempt(SHOULD-level recommendations; details is additionalProperties:true by design) |

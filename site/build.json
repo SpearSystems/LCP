@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "22244befbd24",
+  "build_hash": "175610f7cedd",
   "pages": [
     {
       "path": "assets/site.css",
@@ -78,6 +78,11 @@
       "title": "LCP Ack Message"
     },
     {
+      "path": "schemas/batch.html",
+      "source": "schemas/batch.json",
+      "title": "LCP Batch Message"
+    },
+    {
       "path": "schemas/bid.html",
       "source": "schemas/bid.json",
       "title": "LCP Bid Message"
@@ -91,6 +96,11 @@
       "path": "schemas/core.html",
       "source": "schemas/core.json",
       "title": "LCP Core Definitions"
+    },
+    {
+      "path": "schemas/counter.html",
+      "source": "schemas/counter.json",
+      "title": "LCP Counter Message"
     },
     {
       "path": "schemas/envelope.html",
@@ -131,6 +141,16 @@
       "path": "schemas/post.html",
       "source": "schemas/post.json",
       "title": "LCP Post Message"
+    },
+    {
+      "path": "schemas/quote.html",
+      "source": "schemas/quote.json",
+      "title": "LCP Quote Message"
+    },
+    {
+      "path": "schemas/subscription.html",
+      "source": "schemas/subscription.json",
+      "title": "LCP Subscription Message"
     },
     {
       "path": "spec/00-conformance.html",

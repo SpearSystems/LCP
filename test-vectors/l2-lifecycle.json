@@ -2131,6 +2131,2385 @@
       ]
     },
     {
+      "id": "L2-034",
+      "name": "batch_all_valid_returns_one_receipt_per_item",
+      "expect": "pass",
+      "description": "LEP-0001 W2-01/F5: one `batch` request (request_id + 1..100 items of {item_id, idempotency_key, payload}) wrapping three schema-valid lead payloads is answered with one receipt per item, in input order. Each receipt echoes its item_id, carries a status from the closed vocabulary accepted/duplicate/rejected/error, and an accepted receipt echoes the item's lead_id; the receipt is not the ack.status enum.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b00e8400-e29b-41d4-a716-446655440034",
+            "type": "batch",
+            "timestamp": "2026-11-04T10:00:20Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-123-batch-034",
+            "test": true
+          },
+          "payload": {
+            "request_id": "req-batch-034",
+            "items": [
+              {
+                "item_id": "item-034-001",
+                "idempotency_key": "batch-034-lead-001",
+                "payload": {
+                  "lead_id": "lead_batch_034_001",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith001@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-034-002",
+                "idempotency_key": "batch-034-lead-002",
+                "payload": {
+                  "lead_id": "lead_batch_034_002",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith002@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-034-003",
+                "idempotency_key": "batch-034-lead-003",
+                "payload": {
+                  "lead_id": "lead_batch_034_003",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith003@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "checks": [
+        "envelope_schema",
+        "batch_shape"
+      ],
+      "expected_receipts": [
+        {
+          "item_id": "item-034-001",
+          "status": "accepted",
+          "lead_id": "lead_batch_034_001"
+        },
+        {
+          "item_id": "item-034-002",
+          "status": "accepted",
+          "lead_id": "lead_batch_034_002"
+        },
+        {
+          "item_id": "item-034-003",
+          "status": "accepted",
+          "lead_id": "lead_batch_034_003"
+        }
+      ]
+    },
+    {
+      "id": "L2-035",
+      "name": "batch_rejected_item_does_not_fail_siblings",
+      "expect": "pass",
+      "description": "LEP-0001 W2-02/F5: item 2's lead payload omits the required `channel`, so its receipt is `rejected` with an error object while items 1 and 3 stay `accepted` in the same 207 answer — one bad item never fails the batch and there is no cross-item transaction. The declared receipts pin the closed vocabulary, name the refused item, and stay consistent with the lead schema: a `rejected` item's payload must fail it, an `accepted` item's payload must pass it.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b00e8400-e29b-41d4-a716-446655440035",
+            "type": "batch",
+            "timestamp": "2026-11-04T10:00:25Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-123-batch-035",
+            "test": true
+          },
+          "payload": {
+            "request_id": "req-batch-035",
+            "items": [
+              {
+                "item_id": "item-035-001",
+                "idempotency_key": "batch-035-lead-001",
+                "payload": {
+                  "lead_id": "lead_batch_035_001",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith001@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-035-002",
+                "idempotency_key": "batch-035-lead-002",
+                "payload": {
+                  "lead_id": "lead_batch_035_002",
+                  "status": "NEW",
+                  "consumer": {
+                    "email": "jane.smith002@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-035-003",
+                "idempotency_key": "batch-035-lead-003",
+                "payload": {
+                  "lead_id": "lead_batch_035_003",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith003@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "checks": [
+        "envelope_schema",
+        "batch_shape"
+      ],
+      "expected_receipts": [
+        {
+          "item_id": "item-035-001",
+          "status": "accepted",
+          "lead_id": "lead_batch_035_001"
+        },
+        {
+          "item_id": "item-035-002",
+          "status": "rejected",
+          "lead_id": "lead_batch_035_002",
+          "error": {
+            "code": "LCP-100",
+            "message": "Lead payload failed schema validation",
+            "details": [
+              "payload: 'channel' is a required property"
+            ]
+          }
+        },
+        {
+          "item_id": "item-035-003",
+          "status": "accepted",
+          "lead_id": "lead_batch_035_003"
+        }
+      ]
+    },
+    {
+      "id": "L2-036",
+      "name": "batch_over_cap_refused_whole_request",
+      "expect": "fail",
+      "error_contains": [
+        "request cap is 1..100"
+      ],
+      "description": "LEP-0001 W2-01: 101 items exceed the fixed 100-item request cap, so the whole request is refused (413 LCP-001 at the transport) and no item runs \u2014 a receipt list is never produced for an over-cap wrapper. Every item here is an individually well-formed {item_id, idempotency_key, lead payload}, so the item count is the sole violation.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b00e8400-e29b-41d4-a716-446655440036",
+            "type": "batch",
+            "timestamp": "2026-11-04T10:00:30Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-123-batch-036",
+            "test": true
+          },
+          "payload": {
+            "request_id": "req-batch-036",
+            "items": [
+              {
+                "item_id": "item-036-001",
+                "idempotency_key": "batch-036-lead-001",
+                "payload": {
+                  "lead_id": "lead_batch_036_001",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith001@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-002",
+                "idempotency_key": "batch-036-lead-002",
+                "payload": {
+                  "lead_id": "lead_batch_036_002",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith002@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-003",
+                "idempotency_key": "batch-036-lead-003",
+                "payload": {
+                  "lead_id": "lead_batch_036_003",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith003@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-004",
+                "idempotency_key": "batch-036-lead-004",
+                "payload": {
+                  "lead_id": "lead_batch_036_004",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith004@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-005",
+                "idempotency_key": "batch-036-lead-005",
+                "payload": {
+                  "lead_id": "lead_batch_036_005",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith005@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-006",
+                "idempotency_key": "batch-036-lead-006",
+                "payload": {
+                  "lead_id": "lead_batch_036_006",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith006@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-007",
+                "idempotency_key": "batch-036-lead-007",
+                "payload": {
+                  "lead_id": "lead_batch_036_007",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith007@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-008",
+                "idempotency_key": "batch-036-lead-008",
+                "payload": {
+                  "lead_id": "lead_batch_036_008",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith008@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-009",
+                "idempotency_key": "batch-036-lead-009",
+                "payload": {
+                  "lead_id": "lead_batch_036_009",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith009@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-010",
+                "idempotency_key": "batch-036-lead-010",
+                "payload": {
+                  "lead_id": "lead_batch_036_010",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith010@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-011",
+                "idempotency_key": "batch-036-lead-011",
+                "payload": {
+                  "lead_id": "lead_batch_036_011",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith011@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-012",
+                "idempotency_key": "batch-036-lead-012",
+                "payload": {
+                  "lead_id": "lead_batch_036_012",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith012@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-013",
+                "idempotency_key": "batch-036-lead-013",
+                "payload": {
+                  "lead_id": "lead_batch_036_013",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith013@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-014",
+                "idempotency_key": "batch-036-lead-014",
+                "payload": {
+                  "lead_id": "lead_batch_036_014",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith014@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-015",
+                "idempotency_key": "batch-036-lead-015",
+                "payload": {
+                  "lead_id": "lead_batch_036_015",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith015@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-016",
+                "idempotency_key": "batch-036-lead-016",
+                "payload": {
+                  "lead_id": "lead_batch_036_016",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith016@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-017",
+                "idempotency_key": "batch-036-lead-017",
+                "payload": {
+                  "lead_id": "lead_batch_036_017",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith017@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-018",
+                "idempotency_key": "batch-036-lead-018",
+                "payload": {
+                  "lead_id": "lead_batch_036_018",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith018@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-019",
+                "idempotency_key": "batch-036-lead-019",
+                "payload": {
+                  "lead_id": "lead_batch_036_019",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith019@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-020",
+                "idempotency_key": "batch-036-lead-020",
+                "payload": {
+                  "lead_id": "lead_batch_036_020",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith020@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-021",
+                "idempotency_key": "batch-036-lead-021",
+                "payload": {
+                  "lead_id": "lead_batch_036_021",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith021@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-022",
+                "idempotency_key": "batch-036-lead-022",
+                "payload": {
+                  "lead_id": "lead_batch_036_022",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith022@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-023",
+                "idempotency_key": "batch-036-lead-023",
+                "payload": {
+                  "lead_id": "lead_batch_036_023",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith023@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-024",
+                "idempotency_key": "batch-036-lead-024",
+                "payload": {
+                  "lead_id": "lead_batch_036_024",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith024@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-025",
+                "idempotency_key": "batch-036-lead-025",
+                "payload": {
+                  "lead_id": "lead_batch_036_025",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith025@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-026",
+                "idempotency_key": "batch-036-lead-026",
+                "payload": {
+                  "lead_id": "lead_batch_036_026",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith026@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-027",
+                "idempotency_key": "batch-036-lead-027",
+                "payload": {
+                  "lead_id": "lead_batch_036_027",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith027@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-028",
+                "idempotency_key": "batch-036-lead-028",
+                "payload": {
+                  "lead_id": "lead_batch_036_028",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith028@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-029",
+                "idempotency_key": "batch-036-lead-029",
+                "payload": {
+                  "lead_id": "lead_batch_036_029",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith029@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-030",
+                "idempotency_key": "batch-036-lead-030",
+                "payload": {
+                  "lead_id": "lead_batch_036_030",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith030@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-031",
+                "idempotency_key": "batch-036-lead-031",
+                "payload": {
+                  "lead_id": "lead_batch_036_031",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith031@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-032",
+                "idempotency_key": "batch-036-lead-032",
+                "payload": {
+                  "lead_id": "lead_batch_036_032",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith032@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-033",
+                "idempotency_key": "batch-036-lead-033",
+                "payload": {
+                  "lead_id": "lead_batch_036_033",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith033@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-034",
+                "idempotency_key": "batch-036-lead-034",
+                "payload": {
+                  "lead_id": "lead_batch_036_034",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith034@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-035",
+                "idempotency_key": "batch-036-lead-035",
+                "payload": {
+                  "lead_id": "lead_batch_036_035",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith035@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-036",
+                "idempotency_key": "batch-036-lead-036",
+                "payload": {
+                  "lead_id": "lead_batch_036_036",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith036@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-037",
+                "idempotency_key": "batch-036-lead-037",
+                "payload": {
+                  "lead_id": "lead_batch_036_037",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith037@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-038",
+                "idempotency_key": "batch-036-lead-038",
+                "payload": {
+                  "lead_id": "lead_batch_036_038",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith038@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-039",
+                "idempotency_key": "batch-036-lead-039",
+                "payload": {
+                  "lead_id": "lead_batch_036_039",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith039@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-040",
+                "idempotency_key": "batch-036-lead-040",
+                "payload": {
+                  "lead_id": "lead_batch_036_040",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith040@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-041",
+                "idempotency_key": "batch-036-lead-041",
+                "payload": {
+                  "lead_id": "lead_batch_036_041",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith041@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-042",
+                "idempotency_key": "batch-036-lead-042",
+                "payload": {
+                  "lead_id": "lead_batch_036_042",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith042@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-043",
+                "idempotency_key": "batch-036-lead-043",
+                "payload": {
+                  "lead_id": "lead_batch_036_043",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith043@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-044",
+                "idempotency_key": "batch-036-lead-044",
+                "payload": {
+                  "lead_id": "lead_batch_036_044",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith044@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-045",
+                "idempotency_key": "batch-036-lead-045",
+                "payload": {
+                  "lead_id": "lead_batch_036_045",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith045@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-046",
+                "idempotency_key": "batch-036-lead-046",
+                "payload": {
+                  "lead_id": "lead_batch_036_046",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith046@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-047",
+                "idempotency_key": "batch-036-lead-047",
+                "payload": {
+                  "lead_id": "lead_batch_036_047",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith047@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-048",
+                "idempotency_key": "batch-036-lead-048",
+                "payload": {
+                  "lead_id": "lead_batch_036_048",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith048@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-049",
+                "idempotency_key": "batch-036-lead-049",
+                "payload": {
+                  "lead_id": "lead_batch_036_049",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith049@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-050",
+                "idempotency_key": "batch-036-lead-050",
+                "payload": {
+                  "lead_id": "lead_batch_036_050",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith050@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-051",
+                "idempotency_key": "batch-036-lead-051",
+                "payload": {
+                  "lead_id": "lead_batch_036_051",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith051@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-052",
+                "idempotency_key": "batch-036-lead-052",
+                "payload": {
+                  "lead_id": "lead_batch_036_052",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith052@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-053",
+                "idempotency_key": "batch-036-lead-053",
+                "payload": {
+                  "lead_id": "lead_batch_036_053",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith053@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-054",
+                "idempotency_key": "batch-036-lead-054",
+                "payload": {
+                  "lead_id": "lead_batch_036_054",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith054@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-055",
+                "idempotency_key": "batch-036-lead-055",
+                "payload": {
+                  "lead_id": "lead_batch_036_055",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith055@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-056",
+                "idempotency_key": "batch-036-lead-056",
+                "payload": {
+                  "lead_id": "lead_batch_036_056",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith056@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-057",
+                "idempotency_key": "batch-036-lead-057",
+                "payload": {
+                  "lead_id": "lead_batch_036_057",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith057@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-058",
+                "idempotency_key": "batch-036-lead-058",
+                "payload": {
+                  "lead_id": "lead_batch_036_058",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith058@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-059",
+                "idempotency_key": "batch-036-lead-059",
+                "payload": {
+                  "lead_id": "lead_batch_036_059",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith059@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-060",
+                "idempotency_key": "batch-036-lead-060",
+                "payload": {
+                  "lead_id": "lead_batch_036_060",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith060@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-061",
+                "idempotency_key": "batch-036-lead-061",
+                "payload": {
+                  "lead_id": "lead_batch_036_061",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith061@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-062",
+                "idempotency_key": "batch-036-lead-062",
+                "payload": {
+                  "lead_id": "lead_batch_036_062",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith062@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-063",
+                "idempotency_key": "batch-036-lead-063",
+                "payload": {
+                  "lead_id": "lead_batch_036_063",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith063@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-064",
+                "idempotency_key": "batch-036-lead-064",
+                "payload": {
+                  "lead_id": "lead_batch_036_064",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith064@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-065",
+                "idempotency_key": "batch-036-lead-065",
+                "payload": {
+                  "lead_id": "lead_batch_036_065",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith065@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-066",
+                "idempotency_key": "batch-036-lead-066",
+                "payload": {
+                  "lead_id": "lead_batch_036_066",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith066@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-067",
+                "idempotency_key": "batch-036-lead-067",
+                "payload": {
+                  "lead_id": "lead_batch_036_067",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith067@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-068",
+                "idempotency_key": "batch-036-lead-068",
+                "payload": {
+                  "lead_id": "lead_batch_036_068",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith068@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-069",
+                "idempotency_key": "batch-036-lead-069",
+                "payload": {
+                  "lead_id": "lead_batch_036_069",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith069@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-070",
+                "idempotency_key": "batch-036-lead-070",
+                "payload": {
+                  "lead_id": "lead_batch_036_070",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith070@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-071",
+                "idempotency_key": "batch-036-lead-071",
+                "payload": {
+                  "lead_id": "lead_batch_036_071",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith071@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-072",
+                "idempotency_key": "batch-036-lead-072",
+                "payload": {
+                  "lead_id": "lead_batch_036_072",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith072@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-073",
+                "idempotency_key": "batch-036-lead-073",
+                "payload": {
+                  "lead_id": "lead_batch_036_073",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith073@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-074",
+                "idempotency_key": "batch-036-lead-074",
+                "payload": {
+                  "lead_id": "lead_batch_036_074",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith074@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-075",
+                "idempotency_key": "batch-036-lead-075",
+                "payload": {
+                  "lead_id": "lead_batch_036_075",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith075@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-076",
+                "idempotency_key": "batch-036-lead-076",
+                "payload": {
+                  "lead_id": "lead_batch_036_076",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith076@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-077",
+                "idempotency_key": "batch-036-lead-077",
+                "payload": {
+                  "lead_id": "lead_batch_036_077",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith077@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-078",
+                "idempotency_key": "batch-036-lead-078",
+                "payload": {
+                  "lead_id": "lead_batch_036_078",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith078@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-079",
+                "idempotency_key": "batch-036-lead-079",
+                "payload": {
+                  "lead_id": "lead_batch_036_079",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith079@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-080",
+                "idempotency_key": "batch-036-lead-080",
+                "payload": {
+                  "lead_id": "lead_batch_036_080",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith080@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-081",
+                "idempotency_key": "batch-036-lead-081",
+                "payload": {
+                  "lead_id": "lead_batch_036_081",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith081@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-082",
+                "idempotency_key": "batch-036-lead-082",
+                "payload": {
+                  "lead_id": "lead_batch_036_082",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith082@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-083",
+                "idempotency_key": "batch-036-lead-083",
+                "payload": {
+                  "lead_id": "lead_batch_036_083",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith083@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-084",
+                "idempotency_key": "batch-036-lead-084",
+                "payload": {
+                  "lead_id": "lead_batch_036_084",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith084@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-085",
+                "idempotency_key": "batch-036-lead-085",
+                "payload": {
+                  "lead_id": "lead_batch_036_085",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith085@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-086",
+                "idempotency_key": "batch-036-lead-086",
+                "payload": {
+                  "lead_id": "lead_batch_036_086",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith086@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-087",
+                "idempotency_key": "batch-036-lead-087",
+                "payload": {
+                  "lead_id": "lead_batch_036_087",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith087@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-088",
+                "idempotency_key": "batch-036-lead-088",
+                "payload": {
+                  "lead_id": "lead_batch_036_088",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith088@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-089",
+                "idempotency_key": "batch-036-lead-089",
+                "payload": {
+                  "lead_id": "lead_batch_036_089",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith089@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-090",
+                "idempotency_key": "batch-036-lead-090",
+                "payload": {
+                  "lead_id": "lead_batch_036_090",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith090@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-091",
+                "idempotency_key": "batch-036-lead-091",
+                "payload": {
+                  "lead_id": "lead_batch_036_091",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith091@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-092",
+                "idempotency_key": "batch-036-lead-092",
+                "payload": {
+                  "lead_id": "lead_batch_036_092",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith092@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-093",
+                "idempotency_key": "batch-036-lead-093",
+                "payload": {
+                  "lead_id": "lead_batch_036_093",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith093@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-094",
+                "idempotency_key": "batch-036-lead-094",
+                "payload": {
+                  "lead_id": "lead_batch_036_094",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith094@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-095",
+                "idempotency_key": "batch-036-lead-095",
+                "payload": {
+                  "lead_id": "lead_batch_036_095",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith095@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-096",
+                "idempotency_key": "batch-036-lead-096",
+                "payload": {
+                  "lead_id": "lead_batch_036_096",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith096@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-097",
+                "idempotency_key": "batch-036-lead-097",
+                "payload": {
+                  "lead_id": "lead_batch_036_097",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith097@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-098",
+                "idempotency_key": "batch-036-lead-098",
+                "payload": {
+                  "lead_id": "lead_batch_036_098",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith098@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-099",
+                "idempotency_key": "batch-036-lead-099",
+                "payload": {
+                  "lead_id": "lead_batch_036_099",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith099@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-100",
+                "idempotency_key": "batch-036-lead-100",
+                "payload": {
+                  "lead_id": "lead_batch_036_100",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith100@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              },
+              {
+                "item_id": "item-036-101",
+                "idempotency_key": "batch-036-lead-101",
+                "payload": {
+                  "lead_id": "lead_batch_036_101",
+                  "status": "NEW",
+                  "channel": "form",
+                  "consumer": {
+                    "email": "jane.smith101@example.com"
+                  },
+                  "location": {
+                    "country_code": "AU",
+                    "state_region": "NSW",
+                    "postal_code": "2000"
+                  },
+                  "attributes": {
+                    "vertical": "mortgage",
+                    "schema_version": "1.0.0"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "checks": [
+        "batch_shape"
+      ]
+    },
+    {
       "id": "L2-037",
       "name": "valid_event_subscription_registration",
       "expect": "pass",
@@ -2264,6 +4643,152 @@
       },
       "checks": [
         "subscription_allowlist"
+      ]
+    },
+    {
+      "id": "L2-041",
+      "name": "valid_email_form_entry_emission",
+      "expect": "pass",
+      "description": "LEP-0003 W6-07: the entry this platform records for an email/form relay publisher whose lead carries no client capture — the declared open-enum provenance.source_type (email_form), an acquisition_method matching the consent recorded on the lead, and no fabricated client field (SPEC.md §9). The receiver advertises the surface (receiver_features), so the entry may be emitted.",
+      "receiver_features": [
+        "email_form_entry"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000041",
+            "type": "lead",
+            "timestamp": "2026-11-04T09:00:00Z",
+            "sender_id": "pub_email_relay",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-relay-lead-041",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_relay_041",
+            "submitted_at": "2026-11-04T08:59:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-04T08:59:45Z",
+              "consent_source_url": "https://publisher.example.com/relay/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "email_form_relay",
+                  "token_or_url": "evd_relay_041"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-11-04T09:00:00Z",
+              "source_type": "email_form",
+              "acquisition_method": "warm_transfer",
+              "source_id": "pub_email_relay",
+              "form_id": "relay_mortgage_enquiry"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 2
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "consumer_required_fields",
+        "location_required",
+        "attributes_vertical_version",
+        "email_form_entry_shape"
+      ]
+    },
+    {
+      "id": "L2-042",
+      "name": "email_form_entry_refused_when_gate_off",
+      "expect": "fail",
+      "error_contains": "does not advertise features.email_form_entry",
+      "description": "LEP-0003 W6-07 gate off: the same captureless relay entry directed at a receiver that advertises no email_form_entry feature. The receiver MUST refuse the lead (LCP-100) rather than record it under a source_type nobody observed — the refusal, never a silently mislabelled provenance (SPEC.md §9).",
+      "receiver_features": [],
+      "payload": {
+        "lcp": {
+          "version": "1.1.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000042",
+            "type": "lead",
+            "timestamp": "2026-11-04T09:00:00Z",
+            "sender_id": "pub_email_relay",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-relay-lead-042",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_relay_042",
+            "submitted_at": "2026-11-04T08:59:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-04T08:59:45Z",
+              "consent_source_url": "https://publisher.example.com/relay/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "share_with_partners"
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-11-04T09:00:00Z",
+              "source_type": "email_form",
+              "acquisition_method": "warm_transfer",
+              "source_id": "pub_email_relay",
+              "form_id": "relay_mortgage_enquiry"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": [
+        "email_form_entry_shape"
       ]
     }
   ]

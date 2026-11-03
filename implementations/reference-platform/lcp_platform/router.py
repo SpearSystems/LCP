@@ -35,7 +35,12 @@ from .extensions import extension_problems, redact_extension_pii
 from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
 from .config import PlatformConfig
 from .database import create_store
-from .matching import MatchResult, match_offer
+from .matching import (
+    MatchResult,
+    ProfileValidationError,
+    ServiceAreaCatalog,
+    match_offer,
+)
 from .messages import (
     BID_FX_FIELDS,
     bid_fx_evidence,
@@ -72,6 +77,7 @@ from .validation import (
     SubscriptionValidationError,
     ValidationError,
     SchemaValidator,
+    email_form_entry_provenance,
     event_matches_filters,
     negotiation_payload_pii_errors,
     validate_subscription_envelope,
@@ -268,6 +274,9 @@ class Platform:
         self.store = store or create_store(config)
         self.validator = SchemaValidator(config.schema_root)
         self.auth = Authenticator(self.store, config)
+        # W4-03: versioned service-area datasets are loaded lazily and cached
+        # until a file changes; an absent directory is an empty catalog.
+        self.service_areas = ServiceAreaCatalog(config.service_area_directory)
         # LEP-0008: issuer-JWKS resolver + §5 verifier. The resolver's
         # transport is injectable (tests never touch the network).
         self.attestation = AgentAttestationVerifier(config)
@@ -392,6 +401,123 @@ class Platform:
             },
         )
 
+    def delete_offer(self, offer_id: str) -> None:
+        if not self.store.delete_offer(offer_id):
+            raise RequestError("Offer not found", "LCP-003", 404)
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="offer.delete",
+            resource_type="offer",
+            resource_id=offer_id,
+            metadata={},
+        )
+
+    # ─── Requirement profiles (W4-01/W4-02) ────────────────────────────────
+
+    def create_requirement_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Write one immutable profile version, refusing an invalid profile."""
+        profile = dict(profile)
+        profile.setdefault("tenant_id", self.config.routing_tenant_id)
+        try:
+            record = self.store.create_requirement_profile_version(profile)
+        except ProfileValidationError as exc:
+            raise RequestError(str(exc), "LCP-100", details={"path": exc.path}) from exc
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-100", 409) from exc
+        self._audit_profile("requirement_profile.create", record)
+        return record
+
+    def activate_requirement_profile(
+        self, profile_id: str, version: str, *, effective_from: str | None = None
+    ) -> dict[str, Any]:
+        record = self._profile_write(
+            "requirement_profile.activate",
+            profile_id,
+            version,
+            effective_from=effective_from,
+        )
+        return record
+
+    def rollback_requirement_profile(
+        self, profile_id: str, version: str, *, effective_from: str | None = None
+    ) -> dict[str, Any]:
+        record = self._profile_write(
+            "requirement_profile.rollback",
+            profile_id,
+            version,
+            effective_from=effective_from,
+        )
+        return record
+
+    def deactivate_requirement_profile(
+        self, profile_id: str, *, effective_to: str | None = None
+    ) -> list[str]:
+        try:
+            versions = self.store.deactivate_requirement_profile(
+                profile_id,
+                tenant_id=self.config.routing_tenant_id,
+                effective_to=effective_to,
+            )
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        if not versions:
+            raise RequestError(
+                f"no active requirement profile: {profile_id}", "LCP-003", 404
+            )
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="requirement_profile.deactivate",
+            resource_type="requirement_profile",
+            resource_id=profile_id,
+            metadata={"versions": versions},
+        )
+        return versions
+
+    def list_requirement_profiles(
+        self, profile_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        return self.store.list_requirement_profiles(
+            profile_id, tenant_id=self.config.routing_tenant_id
+        )
+
+    def _profile_write(
+        self,
+        action: str,
+        profile_id: str,
+        version: str,
+        *,
+        effective_from: str | None,
+    ) -> dict[str, Any]:
+        try:
+            record = self.store.activate_requirement_profile(
+                profile_id,
+                version,
+                tenant_id=self.config.routing_tenant_id,
+                effective_from=effective_from,
+            )
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-003", 404) from exc
+        self._audit_profile(action, record)
+        return record
+
+    def _audit_profile(self, action: str, record: dict[str, Any]) -> None:
+        self.store.insert_audit(
+            tenant_id=str(record["tenant_id"]),
+            actor_id="operator",
+            action=action,
+            resource_type="requirement_profile",
+            resource_id=str(record["profile_id"]),
+            metadata={
+                "version": record["version"],
+                "status": record["status"],
+                "effective_from": record["effective_from"],
+                "effective_to": record["effective_to"],
+                "service_area_ref": record.get("service_area_ref"),
+            },
+        )
+
     # ─── Inbound messages ──────────────────────────────────────────────────
 
     def ingest(
@@ -459,6 +585,11 @@ class Platform:
         different envelopes; the item's identity is its own idempotency key
         plus its lead payload (LEP-0001: "replays return the original result").
         """
+        # LEP-0003 W6-07: the entry provenance is recorded first — before the
+        # idempotency comparison (a replay must compare the same derived bytes)
+        # and before matching (an exclusion predicate must see the declared
+        # source_type) — and it refuses, never mislabels, when the gate is off.
+        self._record_email_form_entry(envelope, sender_id=sender_id)
         existing = self.store.get_lead_by_idempotency(
             sender_id, message["idempotency_key"]
         )
@@ -475,7 +606,7 @@ class Platform:
                     "LCP-005",
                     409,
                 )
-            self.store.insert_audit(
+            self._enqueue_audit(
                 tenant_id=self.auth.tenant_for(sender_id)
                 or self.config.routing_tenant_id,
                 actor_id=sender_id,
@@ -514,9 +645,21 @@ class Platform:
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         self._validate_attachment_references(payload, sender_id)
         for offer in offers:
-            result = match_offer(offer, payload, sender_id=message["sender_id"])
+            result = match_offer(
+                offer,
+                payload,
+                sender_id=message["sender_id"],
+                profiles=self.store,
+                service_areas=self.service_areas,
+            )
             if result.matched and not self._capacity_available(offer):
-                result = MatchResult(False, result.reasons + ("capacity_exceeded",))
+                result = MatchResult(
+                    False,
+                    result.reasons + ("capacity_exceeded",),
+                    profile=result.profile,
+                    predicates=result.predicates,
+                    service_area=result.service_area,
+                )
             matches.append((offer, result))
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
@@ -549,12 +692,8 @@ class Platform:
             )
 
         for offer, result in matches:
-            self.store.insert_match_decision(
-                lead_id=payload["lead_id"],
-                offer_id=offer["offer_id"],
-                buyer_id=offer["buyer_id"],
-                matched=result.matched,
-                reasons=result.reasons,
+            self._record_match_evaluation(
+                lead_id=payload["lead_id"], offer=offer, result=result
             )
 
         created_pings = 0
@@ -575,7 +714,7 @@ class Platform:
         elif created_pings:
             self.store.update_lead_status(payload["lead_id"], "PINGED")
         self.store.complete_routing_job(payload["lead_id"])
-        self.store.insert_audit(
+        self._enqueue_audit(
             tenant_id=sender_tenant,
             actor_id=sender_id,
             action="lead.routed",
@@ -857,7 +996,7 @@ class Platform:
         fault, so it is contained here.
         """
         try:
-            self.store.insert_audit(
+            self._enqueue_audit(
                 tenant_id=self.auth.tenant_for(sender_id)
                 or self.config.routing_tenant_id,
                 actor_id=sender_id,
@@ -898,6 +1037,46 @@ class Platform:
             details={"field": problems[0].split(" ", 1)[0]},
         )
 
+    def _record_email_form_entry(
+        self, envelope: dict[str, Any], *, sender_id: str
+    ) -> None:
+        """LEP-0003 W6-07 (SPEC §9-gated): record a captureless email/form entry.
+
+        The gate has two halves, both deployment-side: the sender must be a
+        declared email/form relay (``LCP_EMAIL_FORM_PUBLISHER_IDS``) — the
+        entry surface the platform was told about — *and* the flag
+        (``LCP_FEATURE_EMAIL_FORM_ENTRY``) must be on. A lead that satisfies
+        the surface but arrives while the flag is off is REFUSED: recording it
+        under the normalizer's ``publisher`` default would declare a surface
+        nobody observed, and this platform fails closed on provenance (§9).
+        The derivation itself (declared value, consent-consistent acquisition
+        method, never a client-observed field) is
+        ``validation.email_form_entry_provenance``.
+        """
+        if sender_id not in self.config.email_form_publisher_ids:
+            return
+        payload = envelope["lcp"]["payload"]
+        recorded = email_form_entry_provenance(payload)
+        if recorded is None:
+            return
+        if not self.config.feature_email_form_entry:
+            raise RequestError(
+                "Email-form entry emission is not enabled on this receiver",
+                "LCP-100",
+                400,
+                details=[
+                    "provenance.source_type",
+                    "this deployment does not advertise features.email_form_entry, "
+                    "so a captureless email/form relay entry is refused rather "
+                    "than recorded under a source_type it did not observe",
+                ],
+            )
+        provenance = payload["provenance"]
+        provenance["source_type"] = recorded["source_type"]
+        # A declared acquisition method is the publisher's statement; only an
+        # absent one is filled from the consent recorded on the lead.
+        provenance.setdefault("acquisition_method", recorded["acquisition_method"])
+
     def _verify_agent_attestation(
         self,
         envelope: dict[str, Any],
@@ -927,7 +1106,7 @@ class Platform:
         token = str(agent.get("attestation", ""))
 
         def audit(outcome: str, reason: str | None, metadata: dict[str, Any]) -> None:
-            self.store.insert_audit(
+            self._enqueue_audit(
                 tenant_id=self.auth.tenant_for(sender_id)
                 or self.config.routing_tenant_id,
                 actor_id=sender_id,
@@ -2277,17 +2456,23 @@ class Platform:
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         for offer in offers:
-            result = match_offer(offer, payload, sender_id=row["sender_id"])
-            if result.matched and not self._capacity_available(offer):
-                result = MatchResult(False, result.reasons + ("capacity_exceeded",))
-            matches.append((offer, result))
-            self.store.insert_match_decision(
-                lead_id=lead_id,
-                offer_id=offer["offer_id"],
-                buyer_id=offer["buyer_id"],
-                matched=result.matched,
-                reasons=result.reasons,
+            result = match_offer(
+                offer,
+                payload,
+                sender_id=row["sender_id"],
+                profiles=self.store,
+                service_areas=self.service_areas,
             )
+            if result.matched and not self._capacity_available(offer):
+                result = MatchResult(
+                    False,
+                    result.reasons + ("capacity_exceeded",),
+                    profile=result.profile,
+                    predicates=result.predicates,
+                    service_area=result.service_area,
+                )
+            matches.append((offer, result))
+            self._record_match_evaluation(lead_id=lead_id, offer=offer, result=result)
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
             offer
@@ -2321,6 +2506,12 @@ class Platform:
 
     def process_once(self) -> None:
         """Process retention, durable routing jobs, webhooks, and auction expiry."""
+        # W4-05: the deferred history/decision/audit writes drain here, off the
+        # intake path. Flushing first keeps the trail current before the
+        # retention sweep decides what is expired.
+        self.store.flush_history()
+        # W4-06: batched, interval-gated envelope redaction + history deletion.
+        self.store.sweep_retention()
         for lead in self.store.list_expired_leads():
             self.store.expire_lead(lead["lead_id"])
         for lead in self.store.list_consent_expired_leads():
@@ -2335,6 +2526,13 @@ class Platform:
         # retention purge for terminal rows past their window.
         self._expire_negotiations()
         self.store.purge_expired_negotiations()
+        # I8/W4-02: the match audit is retention bounded like decision history.
+        self.store.purge_match_audits(
+            format_iso_datetime(
+                datetime.now(timezone.utc)
+                - timedelta(days=self.config.match_audit_retention_days)
+            )
+        )
         self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
@@ -2491,6 +2689,67 @@ class Platform:
             currency=offer["currency"],
             reason="awaiting_delivery_or_call_outcome",
         )
+
+    def _enqueue_audit(
+        self,
+        *,
+        tenant_id: str,
+        actor_id: str,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Queue an intake audit row instead of writing it on the request path.
+
+        W4-05: the lead is already committed, so the audit trail must never be
+        able to slow or fail intake. The worker flushes; ``list_audit_events``
+        flushes too, so a reader still sees read-your-write. A saturated queue
+        is recorded as ``history.write_drop_risk``/``history_queue.dropped``
+        rather than raised (see ``Store.enqueue_history``).
+        """
+        self.store.enqueue_history(
+            lambda: self.store.insert_audit(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                metadata=metadata,
+            )
+        )
+
+    def _record_match_evaluation(
+        self, *, lead_id: str, offer: dict[str, Any], result: MatchResult
+    ) -> None:
+        """Queue the decision row and its explainable audit row together.
+
+        W4-05: both rows are history, not routing state — nothing downstream
+        of intake reads them back — so they go to the bounded history queue
+        and are flushed by the worker. One closure keeps the pair ordered and
+        stops a half-written decision/audit pair from a torn queue drain.
+        """
+
+        def write() -> None:
+            self.store.insert_match_decision(
+                lead_id=lead_id,
+                offer_id=offer["offer_id"],
+                buyer_id=offer["buyer_id"],
+                matched=result.matched,
+                reasons=result.reasons,
+            )
+            self.store.insert_match_audit(
+                lead_id=lead_id,
+                offer_id=offer["offer_id"],
+                buyer_id=offer["buyer_id"],
+                matched=result.matched,
+                reasons=result.reasons,
+                profile=result.profile,
+                predicates=result.predicates,
+                service_area=result.service_area,
+            )
+
+        self.store.enqueue_history(write)
 
     def _capacity_available(self, offer: dict[str, Any]) -> bool:
         now = datetime.now(timezone.utc)
@@ -4383,6 +4642,16 @@ class Platform:
                 **(
                     {"event_subscriptions": "1.2.0"}
                     if self.config.feature_events
+                    else {}
+                ),
+                # LEP-0003 W6-07: platform-recorded email/form relay entries
+                # are advertised only when this deployment enabled the surface
+                # (flag AND at least one declared relay publisher), so a peer
+                # never mistakes an absent key for a supported entry surface.
+                **(
+                    {"email_form_entry": "1.2.0"}
+                    if self.config.feature_email_form_entry
+                    and self.config.email_form_publisher_ids
                     else {}
                 ),
             },

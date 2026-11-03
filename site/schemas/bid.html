@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="schemas/bid.json">
-<meta name="lcp-build" content="22244befbd24">
+<meta name="lcp-build" content="175610f7cedd">
 <title>LCP Bid Message — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -30,6 +30,11 @@
 <tr><td><code>currency</code></td><td>ref <code>core.json#/$defs/currency</code></td><td><code>—</code></td><td></td><td></td></tr>
 <tr><td><code>decision</code></td><td>enum (<code>"accept"</code>, <code>"reject"</code>, <code>"pass"</code>)</td><td><code>internal</code></td><td>yes</td><td>accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason).</td></tr>
 <tr><td><code>estimated_contact_seconds</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional.</td></tr>
+<tr><td><code>fx_expires_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>v1.2 (LEP-0010 §3): canonical whole-second UTC end of the rate's validity; MUST be strictly later than fx_timestamp. REQUIRED with fx_rate.</td></tr>
+<tr><td><code>fx_rate</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>v1.2 (LEP-0010 §3): native major units per 1 settlement (offer-currency) major unit. Same direction and pattern as post.pricing.fx_rate. REQUIRED when bid.currency differs from the offer's currency; MUST NOT be relied on otherwise — on a same-currency bid the FX fields are inert and ignored for comparison (still schema-validated).</td></tr>
+<tr><td><code>fx_source</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>v1.2 (LEP-0010 §3): named rate provider, or the literal 'bilateral' for a rate the two parties agreed directly. Compared by exact byte equality. REQUIRED with fx_rate.</td></tr>
+<tr><td><code>fx_timestamp</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>v1.2 (LEP-0010 §3): canonical whole-second UTC instant the rate was observed (LEP-0002 canonical form). REQUIRED with fx_rate.</td></tr>
+<tr><td><code>negotiation_binding_token</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>v1.2 (LEP-0009 C7): single-use token returned on a negotiation accept. It replaces bid_price_cents on this bid (the token carries the agreed price); a sender presents it only toward a receiver advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later.</td></tr>
 <tr><td><code>ping_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>ID of the ping being responded to.</td></tr>
 <tr><td><code>reject_reason</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional.</td></tr>
 <tr><td><code>slots_claimed</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>v1.1 (LEP-0003 §2): buyer slots this buyer claims if selected. The claim is a request, not a reservation — the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N &gt; 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) — this schema enforces maximum: 1 now. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1.</td></tr>
@@ -71,6 +76,31 @@
     "currency": {
       "$ref": "core.json#/$defs/currency"
     },
+    "fx_rate": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]*\\.[0-9]{6,12}|0\\.[0-9]*[1-9][0-9]{5,11})$",
+      "description": "v1.2 (LEP-0010 §3): native major units per 1 settlement (offer-currency) major unit. Same direction and pattern as post.pricing.fx_rate. REQUIRED when bid.currency differs from the offer's currency; MUST NOT be relied on otherwise — on a same-currency bid the FX fields are inert and ignored for comparison (still schema-validated)."
+    },
+    "fx_source": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "v1.2 (LEP-0010 §3): named rate provider, or the literal 'bilateral' for a rate the two parties agreed directly. Compared by exact byte equality. REQUIRED with fx_rate."
+    },
+    "fx_timestamp": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "v1.2 (LEP-0010 §3): canonical whole-second UTC instant the rate was observed (LEP-0002 canonical form). REQUIRED with fx_rate."
+    },
+    "fx_expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "v1.2 (LEP-0010 §3): canonical whole-second UTC end of the rate's validity; MUST be strictly later than fx_timestamp. REQUIRED with fx_rate."
+    },
     "estimated_contact_seconds": {
       "x-lcp-pii": "internal",
       "type": "integer",
@@ -99,6 +129,12 @@
       "minimum": 1,
       "maximum": 1,
       "description": "v1.1 (LEP-0003 §2): buyer slots this buyer claims if selected. The claim is a request, not a reservation — the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N &gt; 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) — this schema enforces maximum: 1 now. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1."
+    },
+    "negotiation_binding_token": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^tok_[A-Za-z0-9_-]{32,128}$",
+      "description": "v1.2 (LEP-0009 C7): single-use token returned on a negotiation accept. It replaces bid_price_cents on this bid (the token carries the agreed price); a sender presents it only toward a receiver advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later."
     }
   },
   "allOf": [
@@ -115,9 +151,18 @@
         ]
       },
       "then": {
-        "required": [
-          "bid_price_cents",
-          "currency"
+        "anyOf": [
+          {
+            "required": [
+              "negotiation_binding_token"
+            ]
+          },
+          {
+            "required": [
+              "bid_price_cents",
+              "currency"
+            ]
+          }
         ]
       }
     }
@@ -135,7 +180,7 @@
 </aside>
 </div>
 <footer class="page">
-Source: <code>schemas/bid.json</code> · build <code>22244befbd24</code> ·
+Source: <code>schemas/bid.json</code> · build <code>175610f7cedd</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

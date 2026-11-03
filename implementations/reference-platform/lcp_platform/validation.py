@@ -54,6 +54,52 @@ SUPPORTED_LCP_VERSIONS = ("1.0.0", "1.1.0", "1.2.0")
 # the same value axis the schema pins structurally.
 E164_PATTERN = re.compile(r"\+[1-9]\d{1,14}")
 
+# LEP-0003 W6-07 (§9-gated): an email/form relay hands the consumer over with
+# no client capture, so the platform records the entry provenance itself. These
+# provenance keys are the wire's proof that a client capture exists — with any
+# of them present the platform MUST NOT re-declare the entry surface.
+CLIENT_CAPTURE_PROVENANCE_KEYS = ("ip_address", "ip_hash", "user_agent_hash")
+# The declared `provenance.source_type` this build records for a captureless
+# relay entry. SPEC §3 `source_type` is an open enum, so the value adds no
+# schema surface; "publisher" is the normalizer default (an undeclared value,
+# not a declaration to preserve).
+EMAIL_FORM_SOURCE_TYPE = "email_form"
+
+
+def email_form_entry_provenance(payload: dict[str, Any]) -> dict[str, str] | None:
+    """The provenance a platform-recorded email/form relay entry carries.
+
+    ``None`` means "not a captureless relay entry": a client capture is present,
+    or the publisher declared its own ``source_type`` (a declaration is never
+    rewritten). Otherwise the recorded fields are ``source_type`` — the declared
+    email/form value — and an ``acquisition_method`` agreeing with the consent
+    recorded on the lead: a consented handover (``warm_transfer``), or
+    ``unknown`` when no consent is recorded at all, because a deployment MUST
+    NOT claim an acquisition path it has no evidence for. No client-observed
+    field is ever added (SPEC §9): the relay observed no client, so the entry
+    carries none.
+    """
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        return None
+    if any(key in provenance for key in CLIENT_CAPTURE_PROVENANCE_KEYS):
+        return None
+    declared = provenance.get("source_type")
+    if declared not in (None, "", "publisher"):
+        return None
+    compliance = payload.get("compliance")
+    consent = compliance if isinstance(compliance, dict) else {}
+    consented = bool(
+        consent.get("consent_timestamp")
+        or consent.get("consent_evidence")
+        or consent.get("consent_purposes")
+    )
+    return {
+        "source_type": EMAIL_FORM_SOURCE_TYPE,
+        "acquisition_method": "warm_transfer" if consented else "unknown",
+    }
+
+
 # ISO 3166-1 alpha-2 officially assigned code elements (249; retrieved
 # 2026-11-03 from the ISO 3166-1 alpha-2 code list). User-assigned
 # elements (XK, EU, XX, ...) are deliberately excluded — §3 requires an

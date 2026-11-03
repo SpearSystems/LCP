@@ -511,6 +511,62 @@ def _check_slots_claimed_single_award(
     ]
 
 
+# --- LEP-0003 W6-07 (SPEC.md §9): email/form-relay entry emission ------------
+
+# The provenance keys that prove a client capture exists. An email/form relay
+# observes no client, so a platform-recorded entry carries none of them;
+# mirrors ``lcp_platform.validation.CLIENT_CAPTURE_PROVENANCE_KEYS``.
+_EMAIL_FORM_CLIENT_CAPTURE_KEYS = ("ip_address", "ip_hash", "user_agent_hash")
+
+
+def _check_email_form_entry_shape(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0003 W6-07: a platform-recorded email/form entry is declared,
+    consent-consistent, captureless, and emitted only where advertised.
+
+    The vector states the receiver's advertised features (`receiver_features`)
+    the way the capability vectors state `receiver_lcp_versions`: an entry with
+    ``source_type: "email_form"`` directed at a receiver that does not
+    advertise ``features.email_form_entry`` is the gate-off case, where the
+    receiver MUST refuse the lead instead of emitting the entry (fail closed,
+    never a fabricated ``source_type``).
+    """
+    provenance = _payload_of(envelope).get("provenance")
+    if not isinstance(provenance, dict):
+        return []
+    if provenance.get("source_type") != "email_form":
+        return []
+    problems: List[str] = []
+    captured = sorted(k for k in _EMAIL_FORM_CLIENT_CAPTURE_KEYS if k in provenance)
+    if captured:
+        problems.append(
+            "EMAIL_FORM_ENTRY: captureless relay entry carries client-observed "
+            + ", ".join(f"provenance.{k}" for k in captured)
+            + " — an email/form relay observed no client, so the entry MUST NOT "
+            "fabricate one (SPEC.md §9)"
+        )
+    if not provenance.get("acquisition_method"):
+        problems.append(
+            "EMAIL_FORM_ENTRY: provenance.acquisition_method is required on a "
+            "platform-recorded entry (absent means nothing was recorded)"
+        )
+    advertised = vector.get("receiver_features")
+    if not isinstance(advertised, list):
+        problems.append(
+            "EMAIL_FORM_ENTRY: vector names email_form_entry_shape without "
+            "declaring receiver_features"
+        )
+    elif "email_form_entry" not in advertised:
+        problems.append(
+            "EMAIL_FORM_ENTRY: platform-recorded email_form entry emitted toward a "
+            f"receiver advertising features={advertised!r} — the receiver does not "
+            "advertise features.email_form_entry, so the lead MUST be refused rather "
+            "than recorded under a source_type it did not observe (LEP-0003 W6-07 gate)"
+        )
+    return problems
+
+
 # --- v1.2 surfaces (D2 PROCESSED, D7 multi-currency) -------------------------
 
 _FX_RATE_RE = re.compile(r"^[0-9]+(\.[0-9]{6,})?$")
@@ -1568,6 +1624,8 @@ CHECKS = {
     "slots_claimed_single_award": _check_slots_claimed_single_award,
     "contacted_hashes_shape": _check_contacted_hashes_shape,
     "contacted_report_shape": _check_contacted_report_shape,
+    # LEP-0003 W6-07 (§9-gated): platform-recorded email/form relay entries.
+    "email_form_entry_shape": _check_email_form_entry_shape,
     # v1.2 (D2/D7):
     "ack_processed_post_only": _check_ack_processed_post_only,
     "pricing_fx_comparability": _check_pricing_fx_comparability,

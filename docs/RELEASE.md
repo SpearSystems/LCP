@@ -2,6 +2,13 @@
 
 > **Release page · Page 3 of 6**
 
+> **Prepared release:** `v1.2.0`, awaiting maintainer approval to publish. `SDK_VERSION` and every
+> package manifest are `1.2.0`, and the release record is
+> [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md). No `v1.2.0` tag exists,
+> no package is published at `1.2.0`, and no release workflow has run:
+> version preparation is not a release. The checklist for cutting it is
+> [§ v1.2.0 release block](#v120-release-block-prepared-unpublished) below.
+>
 > **Current release:** `v1.1.1` was published on 2026-11-04 from tag
 > `v1.1.1`. The GitHub release and its signed evidence assets are available at
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>.
@@ -104,6 +111,114 @@ and [SDK publication policy](SDK-ROADMAP.md#package-publication). The signed
 release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
+
+## v1.2.0 release block (prepared, unpublished)
+
+**State: prepared, not released.** The version files carry `1.2.0`; the tag,
+the registry publications, the container, and the GitHub release do not exist
+yet. Nothing in this section has been executed for `v1.2.0`, and an approved
+checklist is not a release — only a pushed tag and read-back registry
+coordinates are.
+
+`v1.2.0` is an additive MINOR over `v1.1.1`: batch submission, event
+subscriptions, negotiation, the `PROCESSED` acknowledgement, multi-currency
+pricing, `location.street_address`, `provenance.ip_address`, the PII taxonomy,
+and ping-side extension admission. The reference container ships the three
+stateful surfaces **off** (`LCP_FEATURE_BATCH`, `LCP_FEATURE_EVENTS`,
+`LCP_FEATURE_NEGOTIATION`); enabling them is an operator decision, not a
+release step.
+
+### Maintainer checklist
+
+1. Confirm the coordinated version and the gates, from the exact candidate
+   commit:
+
+   ```bash
+   python3 tools/check_sdk_versions.py --check
+   python3 tools/check_sdk_schema_sync.py --check
+   python3 tools/check_doc_citations.py --strict
+   python3 tools/check_lep_registry.py
+   python3 tools/check_pii_annotations.py
+   ```
+
+2. Regenerate and check the generated artifacts — they are committed, and a
+   stale tree fails CI:
+
+   ```bash
+   python3 tools/generate_sdk_models.py --write
+   python3 tools/build_spec_site.py --check
+   python3 test-vectors/conformance.py
+   ```
+
+3. Run the local compatibility matrix for every toolchain present on the build
+   host, and record which ones were absent. On the 2026-11-04 host there is no
+   .NET and no Swift toolchain, so the C# and Swift suites are executed by
+   their CI jobs only; a release record MUST say that rather than implying a
+   local pass.
+
+4. Push the **nested Go module tag** as well as the root tag. A module in a
+   subdirectory is versioned by its own tag; a root `v1.2.0` alone only yields
+   a `v0.0.0-…` pseudo-version for `implementations/sdk/go`:
+
+   ```bash
+   git tag -a "implementations/sdk/go/v1.2.0" -m "LCP Go SDK v1.2.0"
+   git push origin "refs/tags/implementations/sdk/go/v1.2.0"
+   ```
+
+5. Push the root tag, whose name is exactly `v<SDK_VERSION>`:
+
+   ```bash
+   git tag -a "v1.2.0" -m "LCP 1.2.0"
+   git push origin "v1.2.0"
+   ```
+
+6. **Container public-pull pre-flight — before approving the release record,
+   not after announcing it.** A new container package is created private even
+   when the repository is public, and an organization that restricts public
+   packages blocks the visibility change outright. `container-release.yml`
+   asserts the pull token before it writes release metadata; verify it
+   independently as well:
+
+   ```bash
+   curl -s "https://ghcr.io/token?scope=repository:spearsystems/lcp-reference-platform:pull" \
+     | grep -q '"token"' && echo "anonymous pull OK"
+   gh api /orgs/SpearSystems/packages/container/lcp-reference-platform --jq .visibility
+   docker pull ghcr.io/spearsystems/lcp-reference-platform@sha256:<digest>
+   ```
+
+   The package already exists, so this release changes its visibility only if
+   someone changed it; a failure here blocks the release rather than being
+   worked around after publication.
+
+7. **Packagist mirror step.** `spearsystems/lcp-sdk` is registered from the
+   `SpearSystems/lcp-sdk-php` mirror, which carries `composer.json` at the
+   repository root. Push the `v1.2.0` tag to that mirror (its workflow mirrors
+   each LCP tag) and confirm Packagist indexed it; the initial crawl after a
+   submission can miss an already-pushed tag, and only a later push event or
+   the package page's **Update** button indexes it:
+
+   ```bash
+   composer show -a spearsystems/lcp-sdk | grep -A2 versions
+   ```
+
+   `1.2.0` missing from that output is a failed release step, not a timing
+   detail to be discovered by an adopter.
+
+8. Approve the protected package-publication jobs and the final release-record
+   job in the `release` environment once every upstream workflow is green.
+
+9. Read back each registry coordinate, resolve the container tag to its
+   digest, and write both into
+   [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md): PyPI (`lcp-sdk`,
+   `lcp-mcp-server`, `lcp-reference-platform`), npm
+   (`@spear-systems/lcp-sdk`), NuGet (`LcpSdk`), crates.io (`lcp-sdk`),
+   RubyGems (`lcp-sdk`), Maven Central (`systems.spear:lcp-sdk`,
+   `systems.spear:lcp-sdk-kotlin`), Packagist, the Go module at both tag
+   coordinates, Swift Package Manager, and the GHCR digest. Deploy only the
+   digest.
+
+A failed step is resolved before the tag is pushed, or the tag is abandoned for
+a new patch version; an occupied package version is never overwritten.
 
 ## v1.0.2 release evidence
 
@@ -219,7 +334,7 @@ that repository before retrying the publication. The Rust bootstrap version is
 not part of the v1 release; the `1.0.0` publication came through the configured crates.io OIDC publisher.
 RubyGems now uses its active OIDC publisher for subsequent versions.
 
-The v1.0.2 release is the current published LCP release; its signed tag and
+The `v1.1.1` release is the current published LCP release; its signed tag and
 release manifest identify the exact source commit and package evidence. The
 release manifest is the authoritative list for a specific tag. Package
 registries can take time to index a new version; verify the package's version

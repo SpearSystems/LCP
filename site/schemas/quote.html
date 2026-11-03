@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/quote.json">
+<meta name="lcp-build" content="175610f7cedd">
+<title>LCP Quote Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Quote Message</h1>
+<p><code>https://lcp.dev/schemas/quote.json</code> · Platform-opened, bounded price negotiation for a named ping (LEP-0009). Ping-class: integer minor units, ISO 4217 currency, opaque ids, timestamps, round counters, and closed/known reason values only. No consumer PII and no free text — the strict allowlist is the enforcement. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>currency</code></td><td>ref <code>core.json#/$defs/currency</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>expires_at</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Absolute end of the negotiation. MUST NOT be later than the ping's expires_at (or its timestamp plus TTL).</td></tr>
+<tr><td><code>floor_price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td>yes</td><td>Restated from the ping so the buyer can verify the floor and the monotone rule without re-reading the ping.</td></tr>
+<tr><td><code>max_rounds</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Rounds this negotiation may run. Absent = 3 (D8 default); above the hard cap of 5 is LCP-100, never a deployment knob.</td></tr>
+<tr><td><code>negotiation_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Opaque platform-assigned negotiation id, unique per negotiation. The only lookup key a later message may use.</td></tr>
+<tr><td><code>offer_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>The buyer offer being priced; MUST equal the ping's offer_id (LCP-100 on mismatch).</td></tr>
+<tr><td><code>ping_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>The ping this negotiation prices. Supplies the floor, currency, and the TTL ceiling.</td></tr>
+<tr><td><code>price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>The ask in minor units of currency. MUST be at or above floor_price_cents; below floor is refused below_floor_price and never clamped.</td></tr>
+<tr><td><code>rejection_reason</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Open enumeration. Present only on a terminal refusal message (no negotiation opened): below_floor_price, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed. When present, price_cents MUST be absent.</td></tr>
+<tr><td><code>rounds_remaining</code></td><td><code>integer</code></td><td><code>internal</code></td><td>yes</td><td>Buyer counters still available at the moment this message is sent. On the opening quote this equals the effective max_rounds (a quote consumes no round).</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/quote.json",
+  "title": "LCP Quote Message",
+  "description": "Platform-opened, bounded price negotiation for a named ping (LEP-0009). Ping-class: integer minor units, ISO 4217 currency, opaque ids, timestamps, round counters, and closed/known reason values only. No consumer PII and no free text — the strict allowlist is the enforcement. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "negotiation_id",
+    "ping_id",
+    "offer_id",
+    "currency",
+    "floor_price_cents",
+    "rounds_remaining",
+    "expires_at"
+  ],
+  "properties": {
+    "negotiation_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+      "description": "Opaque platform-assigned negotiation id, unique per negotiation. The only lookup key a later message may use."
+    },
+    "ping_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "The ping this negotiation prices. Supplies the floor, currency, and the TTL ceiling."
+    },
+    "offer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "The buyer offer being priced; MUST equal the ping's offer_id (LCP-100 on mismatch)."
+    },
+    "price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "The ask in minor units of currency. MUST be at or above floor_price_cents; below floor is refused below_floor_price and never clamped."
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "floor_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Restated from the ping so the buyer can verify the floor and the monotone rule without re-reading the ping."
+    },
+    "max_rounds": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "description": "Rounds this negotiation may run. Absent = 3 (D8 default); above the hard cap of 5 is LCP-100, never a deployment knob."
+    },
+    "rounds_remaining": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "Buyer counters still available at the moment this message is sent. On the opening quote this equals the effective max_rounds (a quote consumes no round)."
+    },
+    "expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "Absolute end of the negotiation. MUST NOT be later than the ping's expires_at (or its timestamp plus TTL)."
+    },
+    "rejection_reason": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "Open enumeration. Present only on a terminal refusal message (no negotiation opened): below_floor_price, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed. When present, price_cents MUST be absent."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "rejection_reason"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "price_cents"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "price_cents"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/quote.json</code> · build <code>175610f7cedd</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

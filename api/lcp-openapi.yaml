@@ -270,7 +270,7 @@ paths:
       - name: X-LCP-Content-SHA256
         in: header
         required: true
-        schema: { type: string, pattern: '^[a-f0-9]{63}$' }
+        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
       - $ref: '#/components/parameters/DataResidency'
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/TestMode'

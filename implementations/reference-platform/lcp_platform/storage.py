@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections import deque
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+import base64
+import binascii
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from threading import RLock
+from threading import Lock, RLock
+from time import monotonic
 from typing import Any, Iterator
 from uuid import uuid4
 
@@ -42,6 +46,43 @@ def parse_iso_datetime(value: Any) -> datetime | None:
 def format_iso_datetime(value: datetime) -> str:
     """Format an aware datetime using the canonical second-precision UTC form."""
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class EventCursorError(ValueError):
+    """A cursor that cannot be decoded or has aged past retention."""
+
+    def __init__(self, message: str, *, reason: str):
+        self.reason = reason
+        super().__init__(message)
+
+
+def encode_event_cursor(sequence: int) -> str:
+    """Encode a stable, opaque cursor from a tenant's monotonic sequence.
+
+    Sequence numbers are allocated per tenant, so a cursor is meaningful only
+    inside the tenant that minted it. Reversible for incident reading; callers
+    treat it as opaque.
+    """
+    raw = str(int(sequence)).encode("ascii")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_event_cursor(value: Any) -> int:
+    if not isinstance(value, str) or not value:
+        raise EventCursorError("cursor is required", reason="cursor_invalid")
+    padded = value + "=" * (-len(value) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(padded.encode("ascii")).decode("ascii")
+        sequence = int(raw)
+    except (binascii.Error, UnicodeDecodeError, UnicodeEncodeError, ValueError):
+        raise EventCursorError(
+            "cursor is not a valid event cursor", reason="cursor_invalid"
+        ) from None
+    if sequence < 1:
+        raise EventCursorError(
+            "cursor is not a valid event cursor", reason="cursor_invalid"
+        )
+    return sequence
 
 
 def envelope_expiry(envelope: dict[str, Any]) -> datetime | None:
@@ -108,6 +149,10 @@ class InvalidStatusTransition(ValueError):
 
 class EventIdempotencyConflict(ValueError):
     """Raised when an event message ID is reused with different content."""
+
+
+class _NegotiationRedeemConflict(ValueError):
+    """Internal: the conditional token/state UPDATE lost its single-use race."""
 
 
 def _candidate_string_values(value: Any) -> set[str] | None:
@@ -331,11 +376,22 @@ def _offer_candidate_dimensions(offer: Mapping[str, Any]) -> list[tuple[str, str
     return dimensions
 
 
+# W4-06: the retention sweep runs inside ``process_once`` but at most this
+# often, so the batched redaction/deletion never runs on every worker tick.
+_RETENTION_SWEEP_INTERVAL_SECONDS = 60.0
+
+
 class Store:
     """Thread-safe SQLite store with explicit transaction boundaries."""
 
     def __init__(
-        self, path: str | Path, *, pii_encryption_key: str | bytes | None = None
+        self,
+        path: str | Path,
+        *,
+        pii_encryption_key: str | bytes | None = None,
+        history_queue_capacity: int = 1_024,
+        envelope_retention_days: int = 90,
+        history_retention_days: int = 365,
     ):
         self.path = Path(path)
         self._cipher = EnvelopeCipher(pii_encryption_key)
@@ -346,15 +402,247 @@ class Store:
             str(self.path), check_same_thread=False, isolation_level=None
         )
         self._connection.row_factory = sqlite3.Row
+        # W4-05: bounded queue of history/decision/audit writes, drained by the
+        # worker's ``process_once`` (or by a reader that needs read-your-write).
+        self._history_queue: deque[tuple[datetime, Callable[[], None]]] = deque()
+        self._history_lock = Lock()
+        self._history_capacity = max(1, int(history_queue_capacity))
+        self._history_stats = {
+            "enqueued": 0,
+            "flushed": 0,
+            "drop_risk": 0,
+            "dropped": 0,
+            "failed": 0,
+        }
+        # W4-06: retention windows owned by the store so the sweep, the read
+        # filters, and the offline exporter cannot disagree.
+        self._envelope_retention_days = int(envelope_retention_days)
+        self._history_retention_days = int(history_retention_days)
+        self._last_retention_sweep = float("-inf")
         self.initialize()
 
     def close(self) -> None:
+        # Never close with history rows still buffered: the queue is process
+        # local, so a restart would silently lose them.
+        self.flush_history()
         with self._lock:
             self._connection.close()
 
     def healthcheck(self) -> None:
         with self._lock:
             self._connection.execute("SELECT 1").fetchone()
+
+    # ─── Deferred history writes (W4-05) ───────────────────────────────────
+
+    def enqueue_history(self, write: Callable[[], None]) -> bool:
+        """Hand one history/decision/audit write to the worker's bounded queue.
+
+        Saturation policy, in order:
+
+        1. The write is appended without blocking. The caller (intake) has
+           already committed the lead, so the queue is bookkeeping only.
+        2. If the queue is at ``history_queue_capacity``, this thread flushes
+           the backlog inline once — bounded work, no unbounded wait — and
+           retries the append.
+        3. If a concurrent producer refilled the queue, one
+           ``history.write_drop_risk`` audit row plus the ``drop_risk`` counter
+           record that history depth is degrading, a second flush is attempted,
+           and the append is retried.
+        4. Only a third saturation drops the write: ``dropped`` is incremented
+           and ``False`` is returned. The lead record is never affected.
+
+        The policy trades history depth for intake latency — never the lead.
+        """
+        with self._history_lock:
+            self._history_stats["enqueued"] += 1
+            if len(self._history_queue) < self._history_capacity:
+                self._history_queue.append((datetime.now(timezone.utc), write))
+                return True
+        for attempt in range(2):
+            self.flush_history()
+            with self._history_lock:
+                if len(self._history_queue) < self._history_capacity:
+                    self._history_queue.append((datetime.now(timezone.utc), write))
+                    return True
+                self._history_stats["drop_risk"] += 1
+            self._record_history_drop_risk(
+                action="history.write_drop_risk",
+                metadata={"attempt": attempt + 1, "capacity": self._history_capacity},
+            )
+        with self._history_lock:
+            self._history_stats["dropped"] += 1
+        return False
+
+    def flush_history(self, limit: int | None = None) -> int:
+        """Run queued history writes in submission order; return the count run."""
+        flushed = 0
+        while limit is None or flushed < limit:
+            with self._history_lock:
+                if not self._history_queue:
+                    break
+                _submitted_at, write = self._history_queue.popleft()
+            try:
+                write()
+            except Exception as exc:  # a broken audit write must not stop the worker
+                with self._history_lock:
+                    self._history_stats["failed"] += 1
+                self._record_history_drop_risk(
+                    action="history.write_failed",
+                    metadata={"error": type(exc).__name__},
+                )
+                continue
+            flushed += 1
+        if flushed:
+            with self._history_lock:
+                self._history_stats["flushed"] += flushed
+        return flushed
+
+    def _record_history_drop_risk(
+        self, *, action: str, metadata: dict[str, Any]
+    ) -> None:
+        """Best-effort audit row for a deferred-write policy event."""
+        try:
+            self.insert_audit(
+                tenant_id="default",
+                actor_id="store",
+                action=action,
+                resource_type="history_queue",
+                resource_id="default",
+                metadata=metadata,
+            )
+        except Exception:  # pragma: no cover - only when the DB itself is down
+            pass
+
+    def history_metrics(self) -> dict[str, Any]:
+        with self._history_lock:
+            queued = list(self._history_queue)
+            stats = dict(self._history_stats)
+        oldest = queued[0][0] if queued else None
+        age = (
+            max(0, int((datetime.now(timezone.utc) - oldest).total_seconds()))
+            if oldest is not None
+            else None
+        )
+        return {
+            "queued": len(queued),
+            "capacity": self._history_capacity,
+            "oldest_queued_age_seconds": age,
+            **stats,
+        }
+
+    # ─── Retention (W4-06) ─────────────────────────────────────────────────
+
+    def envelope_retention_cutoff(self, now: datetime | None = None) -> str:
+        current = now or datetime.now(timezone.utc)
+        return format_iso_datetime(
+            current - timedelta(days=self._envelope_retention_days)
+        )
+
+    def history_retention_cutoff(self, now: datetime | None = None) -> str:
+        current = now or datetime.now(timezone.utc)
+        return format_iso_datetime(
+            current - timedelta(days=self._history_retention_days)
+        )
+
+    def sweep_retention(
+        self,
+        *,
+        now: datetime | None = None,
+        batch: int = 200,
+        force: bool = False,
+    ) -> dict[str, int]:
+        """Enforce both retention windows; return per-table counters.
+
+        Runs from ``process_once`` but is interval-gated: each pass redacts at
+        most ``batch`` envelope rows per table, so the sweep is cheap and
+        idempotent rather than one long stop-the-world deletion. ``force``
+        bypasses the gate for operator and test use.
+        """
+        if (
+            not force
+            and monotonic() - self._last_retention_sweep
+            < _RETENTION_SWEEP_INTERVAL_SECONDS
+        ):
+            return {}
+        self._last_retention_sweep = monotonic()
+        envelope_before = self.envelope_retention_cutoff(now)
+        history_before = self.history_retention_cutoff(now)
+        counts = self.redact_expired_envelopes(envelope_before, batch=batch)
+        counts["history_deleted"] = self.purge_history(history_before)
+        return counts
+
+    def redact_expired_envelopes(
+        self, before: str, *, batch: int = 200
+    ) -> dict[str, int]:
+        """Drop ciphertext past the envelope window while keeping the rows.
+
+        The payload is what retention is about: ids, statuses, timestamps, and
+        payables stay for accounting and dispute, exactly as they do after an
+        erasure. Every row is rewritten through the same redaction used by
+        ``erase_lead``, so a retained row is indistinguishable in shape from an
+        erased one. A row that cannot be decrypted (rotated key) is counted
+        under ``unreadable`` instead of being rewritten into a shape readers
+        cannot parse.
+        """
+        # (table, key column, time column, extra predicate)
+        targets = (
+            ("leads", "lead_id", "created_at", ""),
+            ("pings", "ping_id", "created_at", ""),
+            ("bids", "bid_id", "received_at", ""),
+            ("lifecycle_events", "event_id", "timestamp", ""),
+            (
+                "deliveries",
+                "delivery_id",
+                "created_at",
+                " AND status NOT IN ('PENDING', 'PROCESSING', 'RETRY')",
+            ),
+            ("event_stream", "event_id", "created_at", ""),
+        )
+        counts: dict[str, int] = {"unreadable": 0}
+        for table, key, time_column, extra in targets:
+            with self._lock:
+                rows = self._connection.execute(
+                    f"SELECT {key}, envelope_json FROM {table} "
+                    f"WHERE {time_column} < ?{extra} LIMIT ?",
+                    (before, batch),
+                ).fetchall()
+            if not rows:
+                counts[table] = 0
+                continue
+            rewritten: list[tuple[str, str]] = []
+            unreadable = 0
+            for row in rows:
+                try:
+                    redacted = self._redact_envelope(row["envelope_json"])
+                except Exception:
+                    # A row that does not decrypt under the current key (a
+                    # rotated key) cannot be rewritten into a valid envelope.
+                    # Leave it for the operator and surface the count rather
+                    # than storing a shape that readers cannot parse.
+                    unreadable += 1
+                    continue
+                rewritten.append((redacted, str(row[key])))
+            if rewritten:
+                with self.transaction() as db:
+                    for redacted, identifier in rewritten:
+                        db.execute(
+                            f"UPDATE {table} SET envelope_json = ? WHERE {key} = ?",
+                            (redacted, identifier),
+                        )
+            counts[table] = len(rewritten)
+            counts["unreadable"] += unreadable
+        return counts
+
+    def purge_history(self, before: str) -> int:
+        """Delete decision/audit rows past the history window; return the count."""
+        deleted = 0
+        with self.transaction() as db:
+            for table in ("match_decisions", "match_audits", "audit_events"):
+                cursor = db.execute(
+                    f"DELETE FROM {table} WHERE created_at < ?", (before,)
+                )
+                deleted += int(cursor.rowcount if cursor.rowcount > 0 else 0)
+        return deleted
 
     def metrics(self) -> dict[str, Any]:
         """Return aggregate queue and retention metrics without identifiers or payloads."""
@@ -472,6 +760,9 @@ class Store:
                 "open": len(dead_letter_open),
                 "quarantined": len(dead_letter_quarantined),
             },
+            # W4-05: history depth is part of the operator-visible health
+            # surface, because a saturated queue is silent data loss.
+            "history": self.history_metrics(),
         }
 
     def encode_envelope(self, envelope: dict[str, Any]) -> str:
@@ -674,6 +965,54 @@ class Store:
                     timestamp TEXT NOT NULL,
                     envelope_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS event_stream (
+                    event_id TEXT PRIMARY KEY,
+                    sequence INTEGER NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    message_type TEXT NOT NULL,
+                    vertical TEXT,
+                    status TEXT,
+                    envelope_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(tenant_id, sequence)
+                );
+                CREATE TABLE IF NOT EXISTS event_sequence (
+                    tenant_id TEXT PRIMARY KEY,
+                    last_sequence INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS event_subscriptions (
+                    subscription_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    subscriber_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    event_types_json TEXT NOT NULL,
+                    callback_url TEXT NOT NULL,
+                    filter_json TEXT NOT NULL,
+                    secret_cipher TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    replay_from TEXT,
+                    cursor_sequence INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(subscriber_id, idempotency_key)
+                );
+                CREATE TABLE IF NOT EXISTS event_deliveries (
+                    delivery_id TEXT PRIMARY KEY,
+                    subscription_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at TEXT NOT NULL,
+                    last_error TEXT,
+                    lease_owner TEXT,
+                    lease_until TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(subscription_id, event_id)
+                );
                 CREATE TABLE IF NOT EXISTS contacted_parties (
                     lead_id TEXT NOT NULL,
                     digest TEXT NOT NULL,
@@ -729,6 +1068,71 @@ class Store:
                     replayed_at TEXT,
                     UNIQUE(queue_type, resource_id)
                 );
+                CREATE TABLE IF NOT EXISTS negotiation (
+                    negotiation_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    ping_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
+                    offer_id TEXT NOT NULL,
+                    buyer_id TEXT NOT NULL,
+                    platform_id TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+                    floor_price_cents INTEGER NOT NULL,
+                    max_rounds INTEGER NOT NULL,
+                    rounds_remaining INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    platform_price_cents INTEGER,
+                    buyer_price_cents INTEGER,
+                    accepted_price_cents INTEGER,
+                    rejection_reason TEXT,
+                    expires_at TEXT NOT NULL,
+                    binding_expires_at TEXT,
+                    token_hash TEXT,
+                    test INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    retention_expires_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS negotiation_round (
+                    round_id TEXT PRIMARY KEY,
+                    negotiation_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    message_type TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,
+                    actor_role TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    price_cents INTEGER,
+                    rounds_remaining_after INTEGER NOT NULL,
+                    state_after TEXT NOT NULL,
+                    rejection_reason TEXT,
+                    idempotency_key TEXT NOT NULL,
+                    body_hash TEXT NOT NULL,
+                    ack_json TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(negotiation_id, message_id),
+                    UNIQUE(negotiation_id, idempotency_key)
+                );
+                CREATE TABLE IF NOT EXISTS negotiation_token (
+                    token_hash TEXT PRIMARY KEY,
+                    negotiation_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    buyer_id TEXT NOT NULL,
+                    price_cents INTEGER NOT NULL,
+                    currency TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    redemption_idempotency_key TEXT,
+                    redemption_body_hash TEXT,
+                    redemption_message_id TEXT,
+                    redemption_ack_json TEXT,
+                    redeemed_at TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_negotiation_ping
+                    ON negotiation(ping_id, buyer_id);
+                CREATE INDEX IF NOT EXISTS idx_negotiation_retention
+                    ON negotiation(retention_expires_at);
+                CREATE INDEX IF NOT EXISTS idx_negotiation_round_message
+                    ON negotiation_round(negotiation_id, created_at);
                 CREATE TABLE IF NOT EXISTS audit_events (
                     audit_id TEXT PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
@@ -743,12 +1147,49 @@ class Store:
                     ON audit_events(resource_type, resource_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_match_decisions_lead
                     ON match_decisions(lead_id, created_at);
+                CREATE TABLE IF NOT EXISTS match_audits (
+                    lead_id TEXT NOT NULL,
+                    offer_id TEXT NOT NULL,
+                    buyer_id TEXT NOT NULL,
+                    matched INTEGER NOT NULL,
+                    reasons_json TEXT NOT NULL,
+                    profile_json TEXT,
+                    predicates_json TEXT NOT NULL,
+                    service_area_json TEXT,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (lead_id, offer_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_match_audits_created
+                    ON match_audits(created_at);
+                CREATE TABLE IF NOT EXISTS requirement_profiles (
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    profile_id TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    effective_from TEXT NOT NULL,
+                    effective_to TEXT,
+                    predicates_json TEXT NOT NULL,
+                    service_area_ref TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, profile_id, version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_requirement_profiles_lookup
+                    ON requirement_profiles(tenant_id, profile_id, status, effective_from);
                 CREATE INDEX IF NOT EXISTS idx_deliveries_due
                     ON deliveries(status, next_attempt_at);
                 CREATE INDEX IF NOT EXISTS idx_pings_expiry
                     ON pings(status, expires_at);
                 CREATE INDEX IF NOT EXISTS idx_events_lead
                     ON lifecycle_events(lead_id, timestamp);
+                CREATE INDEX IF NOT EXISTS idx_event_stream_page
+                    ON event_stream(tenant_id, sequence);
+                CREATE INDEX IF NOT EXISTS idx_event_subscriptions_tenant
+                    ON event_subscriptions(tenant_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_event_subscriptions_active
+                    ON event_subscriptions(active, created_at);
+                CREATE INDEX IF NOT EXISTS idx_event_deliveries_due
+                    ON event_deliveries(status, next_attempt_at);
                 CREATE INDEX IF NOT EXISTS idx_mapping_applications_lead
                     ON mapping_applications(lead_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_attachments_lead
@@ -765,6 +1206,14 @@ class Store:
             )
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leads_consent_expiry ON leads(suppressed, consent_expires_at)"
+            )
+            # W4-06: the retention sweep deletes by created_at; without these
+            # the delete is a full scan on every sweep.
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at)"
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_match_decisions_created ON match_decisions(created_at)"
             )
             # LEP-0003 §5 item 2 (T3): durable uniqueness of an awarded slot.
             # Restricted to awarded posts so ping/event bookkeeping rows stay
@@ -1085,14 +1534,19 @@ class Store:
     def list_audit_events(
         self, resource_type: str, resource_id: str
     ) -> list[dict[str, Any]]:
+        # W4-05: reads are the cold side of the deferred-write policy, so they
+        # flush the queue first — a caller never sees a trail that is merely
+        # late. W4-06: rows past the history window are unreadable even before
+        # the sweep deletes them.
+        self.flush_history()
         with self._lock:
             rows = self._connection.execute(
                 """
                 SELECT * FROM audit_events
-                WHERE resource_type = ? AND resource_id = ?
+                WHERE resource_type = ? AND resource_id = ? AND created_at >= ?
                 ORDER BY created_at, audit_id
                 """,
-                (resource_type, resource_id),
+                (resource_type, resource_id, self.history_retention_cutoff()),
             ).fetchall()
         return [
             {
@@ -1763,7 +2217,7 @@ class Store:
         attempts: int,
         last_error: str,
     ) -> None:
-        if queue_type not in {"delivery", "routing"}:
+        if queue_type not in {"delivery", "routing", "event_subscription"}:
             raise ValueError("Unsupported dead-letter queue type")
         with self.transaction() as db:
             self._record_dead_letter_in_transaction(
@@ -1832,6 +2286,16 @@ class Store:
                     """,
                     (timestamp, timestamp, row["resource_id"]),
                 )
+            elif row["queue_type"] == "event_subscription":
+                cursor = db.execute(
+                    """
+                    UPDATE event_deliveries
+                    SET status = 'RETRY', next_attempt_at = ?, last_error = NULL,
+                        lease_owner = NULL, lease_until = NULL, updated_at = ?
+                    WHERE delivery_id = ? AND status = 'FAILED'
+                    """,
+                    (timestamp, timestamp, row["resource_id"]),
+                )
             else:
                 cursor = db.execute(
                     """
@@ -1854,7 +2318,317 @@ class Store:
             )
         return True
 
-    # ─── Offers ────────────────────────────────────────────────────────────
+    # ─── Requirement profiles ─────────────────────────────────────────────
+
+    def create_requirement_profile_version(
+        self, profile: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Persist one immutable profile version, validated before it is stored.
+
+        A version is created ``inactive``; activation is a separate, audited
+        operation. Re-using an existing ``(profile_id, version)`` pair is
+        refused, because a version's predicates must never change underneath
+        an offer that already pinned it.
+        """
+        from .matching import validate_requirement_profile
+
+        validate_requirement_profile(profile)
+        tenant_id = str(profile.get("tenant_id", "default"))
+        profile_id = str(profile["profile_id"])
+        version = str(profile["version"])
+        timestamp = now_iso()
+        effective_from = format_iso_datetime(
+            parse_iso_datetime(profile.get("effective_from"))
+            or datetime.now(timezone.utc)
+        )
+        with self.transaction() as db:
+            existing = db.execute(
+                """
+                SELECT 1 FROM requirement_profiles
+                WHERE tenant_id = ? AND profile_id = ? AND version = ?
+                """,
+                (tenant_id, profile_id, version),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError(
+                    f"requirement profile version already exists: {profile_id}@{version}"
+                )
+            db.execute(
+                """
+                INSERT INTO requirement_profiles
+                    (tenant_id, profile_id, version, status, effective_from,
+                     effective_to, predicates_json, service_area_ref,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, 'inactive', ?, NULL, ?, ?, ?, ?)
+                """,
+                (
+                    tenant_id,
+                    profile_id,
+                    version,
+                    effective_from,
+                    json.dumps(
+                        profile["predicates"], separators=(",", ":"), ensure_ascii=False
+                    ),
+                    profile.get("service_area_ref"),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        record = self.get_requirement_profile(profile_id, version, tenant_id=tenant_id)
+        assert record is not None
+        return record
+
+    def get_requirement_profile(
+        self,
+        profile_id: str,
+        version: str,
+        *,
+        tenant_id: str = "default",
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM requirement_profiles
+                WHERE tenant_id = ? AND profile_id = ? AND version = ?
+                """,
+                (tenant_id, profile_id, version),
+            ).fetchone()
+        return self._requirement_profile_record(row) if row else None
+
+    @staticmethod
+    def _requirement_profile_record(row: Any) -> dict[str, Any]:
+        return {
+            "tenant_id": row["tenant_id"],
+            "profile_id": row["profile_id"],
+            "version": row["version"],
+            "status": row["status"],
+            "effective_from": row["effective_from"],
+            "effective_to": row["effective_to"],
+            "predicates": json.loads(row["predicates_json"]),
+            "service_area_ref": row["service_area_ref"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_requirement_profiles(
+        self,
+        profile_id: str | None = None,
+        *,
+        tenant_id: str | None = None,
+        status: str | None = None,
+        at: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """List versions with their effective window and current effectiveness."""
+
+        query = "SELECT * FROM requirement_profiles"
+        clauses: list[str] = []
+        values: list[Any] = []
+        if profile_id is not None:
+            clauses.append("profile_id = ?")
+            values.append(profile_id)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            values.append(tenant_id)
+        if status is not None:
+            clauses.append("status = ?")
+            values.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY profile_id, effective_from, version"
+        with self._lock:
+            rows = self._connection.execute(query, values).fetchall()
+        current = at or datetime.now(timezone.utc)
+        records = []
+        for row in rows:
+            record = self._requirement_profile_record(row)
+            record["effective"] = self._profile_is_effective(record, current)
+            records.append(record)
+        return records
+
+    @staticmethod
+    def _profile_is_effective(record: Mapping[str, Any], at: datetime) -> bool:
+        if record.get("status") != "active":
+            return False
+        start = parse_iso_datetime(record.get("effective_from"))
+        end = parse_iso_datetime(record.get("effective_to"))
+        return start is not None and start <= at and (end is None or at < end)
+
+    def activate_requirement_profile(
+        self,
+        profile_id: str,
+        version: str,
+        *,
+        tenant_id: str = "default",
+        effective_from: str | None = None,
+    ) -> dict[str, Any]:
+        """Make one version active, superseding any other active version.
+
+        Superseding closes the prior window with the new ``effective_from``, so
+        the effective windows never overlap and a demoted version can never
+        satisfy a match again.
+        """
+        start = format_iso_datetime(
+            parse_iso_datetime(effective_from) or datetime.now(timezone.utc)
+        )
+        timestamp = now_iso()
+        with self.transaction() as db:
+            target = db.execute(
+                """
+                SELECT 1 FROM requirement_profiles
+                WHERE tenant_id = ? AND profile_id = ? AND version = ?
+                """,
+                (tenant_id, profile_id, version),
+            ).fetchone()
+            if target is None:
+                raise ValueError(
+                    f"requirement profile version not found: {profile_id}@{version}"
+                )
+            db.execute(
+                """
+                UPDATE requirement_profiles
+                SET status = 'superseded', effective_to = ?, updated_at = ?
+                WHERE tenant_id = ? AND profile_id = ? AND status = 'active'
+                """,
+                (start, timestamp, tenant_id, profile_id),
+            )
+            db.execute(
+                """
+                UPDATE requirement_profiles
+                SET status = 'active', effective_from = ?, effective_to = NULL,
+                    updated_at = ?
+                WHERE tenant_id = ? AND profile_id = ? AND version = ?
+                """,
+                (start, timestamp, tenant_id, profile_id, version),
+            )
+        record = self.get_requirement_profile(profile_id, version, tenant_id=tenant_id)
+        assert record is not None
+        return record
+
+    def deactivate_requirement_profile(
+        self,
+        profile_id: str,
+        *,
+        tenant_id: str = "default",
+        effective_to: str | None = None,
+    ) -> list[str]:
+        """Deactivate the active version(s); return the versions closed."""
+
+        end = format_iso_datetime(
+            parse_iso_datetime(effective_to) or datetime.now(timezone.utc)
+        )
+        timestamp = now_iso()
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT version FROM requirement_profiles
+                WHERE tenant_id = ? AND profile_id = ? AND status = 'active'
+                """,
+                (tenant_id, profile_id),
+            ).fetchall()
+            db.execute(
+                """
+                UPDATE requirement_profiles
+                SET status = 'inactive', effective_to = ?, updated_at = ?
+                WHERE tenant_id = ? AND profile_id = ? AND status = 'active'
+                """,
+                (end, timestamp, tenant_id, profile_id),
+            )
+        return [str(row["version"]) for row in rows]
+
+    def rollback_requirement_profile(
+        self,
+        profile_id: str,
+        version: str,
+        *,
+        tenant_id: str = "default",
+        effective_from: str | None = None,
+    ) -> dict[str, Any]:
+        """Re-activate a prior version, restoring its behaviour from now."""
+
+        record = self.get_requirement_profile(profile_id, version, tenant_id=tenant_id)
+        if record is None:
+            raise ValueError(
+                f"requirement profile version not found: {profile_id}@{version}"
+            )
+        return self.activate_requirement_profile(
+            profile_id,
+            version,
+            tenant_id=tenant_id,
+            effective_from=effective_from,
+        )
+
+    def resolve_requirement_profile(
+        self,
+        profile_id: str,
+        version: str | None = None,
+        *,
+        tenant_id: str = "default",
+        at: datetime | None = None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Resolve the profile a match should evaluate, or a named reason.
+
+        A pinned version resolves only while it is active and inside its
+        effective window. An unpinned reference resolves the active version at
+        match time, which is what makes a rollback observable to offers that
+        did not pin a version.
+        """
+        current = at or datetime.now(timezone.utc)
+        if version is not None:
+            record = self.get_requirement_profile(
+                profile_id, version, tenant_id=tenant_id
+            )
+            if record is None:
+                return None, "requirement_profile_unknown"
+            if record["status"] == "inactive":
+                # Deactivation is explicit: even a pinned offer stops matching.
+                return None, "requirement_profile_inactive"
+            if record["status"] == "active" and not self._profile_is_effective(
+                record, current
+            ):
+                start = parse_iso_datetime(record.get("effective_from"))
+                if start is not None and start > current:
+                    return None, "requirement_profile_not_effective"
+                return None, "requirement_profile_expired"
+            # A superseded version stays resolvable by pin: activating a newer
+            # version never rewrites the meaning of an existing offer.
+            return record, None
+        else:
+            with self._lock:
+                rows = self._connection.execute(
+                    """
+                    SELECT * FROM requirement_profiles
+                    WHERE tenant_id = ? AND profile_id = ? AND status = 'active'
+                    ORDER BY effective_from DESC, version DESC
+                    """,
+                    (tenant_id, profile_id),
+                ).fetchall()
+            records = [self._requirement_profile_record(row) for row in rows]
+            record = next(
+                (item for item in records if self._profile_is_effective(item, current)),
+                None,
+            )
+            if record is None:
+                if not records:
+                    with self._lock:
+                        any_row = self._connection.execute(
+                            """
+                            SELECT 1 FROM requirement_profiles
+                            WHERE tenant_id = ? AND profile_id = ? LIMIT 1
+                            """,
+                            (tenant_id, profile_id),
+                        ).fetchone()
+                    if any_row is None:
+                        return None, "requirement_profile_unknown"
+                    return None, "requirement_profile_unavailable"
+                return None, "requirement_profile_inactive"
+        if record["status"] != "active":
+            return None, "requirement_profile_inactive"
+        if not self._profile_is_effective(record, current):
+            start = parse_iso_datetime(record.get("effective_from"))
+            if start is not None and start > current:
+                return None, "requirement_profile_not_effective"
+            return None, "requirement_profile_expired"
+        return record, None
 
     def upsert_offer(self, offer: dict[str, Any]) -> None:
         timestamp = now_iso()
@@ -1884,6 +2658,26 @@ class Store:
                 ),
             )
             self._replace_offer_candidate_index(db, offer)
+
+    def delete_offer(self, offer_id: str, *, tenant_id: str | None = None) -> bool:
+        """Delete an offer and its denormalized candidate index rows together."""
+
+        with self.transaction() as db:
+            if tenant_id is None:
+                cursor = db.execute(
+                    "DELETE FROM offers WHERE offer_id = ?", (offer_id,)
+                )
+            else:
+                cursor = db.execute(
+                    "DELETE FROM offers WHERE offer_id = ? AND tenant_id = ?",
+                    (offer_id, tenant_id),
+                )
+            if cursor.rowcount == 0:
+                return False
+            db.execute(
+                "DELETE FROM offer_candidate_index WHERE offer_id = ?", (offer_id,)
+            )
+        return True
 
     def list_offers(
         self,
@@ -2030,10 +2824,12 @@ class Store:
             )
 
     def list_match_decisions(self, lead_id: str) -> list[dict[str, Any]]:
+        self.flush_history()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT * FROM match_decisions WHERE lead_id = ? ORDER BY created_at, offer_id",
-                (lead_id,),
+                "SELECT * FROM match_decisions WHERE lead_id = ? AND created_at >= ? "
+                "ORDER BY created_at, offer_id",
+                (lead_id, self.history_retention_cutoff()),
             ).fetchall()
         return [
             {
@@ -2044,6 +2840,92 @@ class Store:
             }
             for row in rows
         ]
+
+    # ─── Match audit ───────────────────────────────────────────────────────
+
+    def insert_match_audit(
+        self,
+        *,
+        lead_id: str,
+        offer_id: str,
+        buyer_id: str,
+        matched: bool,
+        reasons: list[str] | tuple[str, ...],
+        profile: Mapping[str, Any] | None = None,
+        predicates: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] = (),
+        service_area: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Write one explainable record per offer/lead evaluation."""
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO match_audits
+                    (lead_id, offer_id, buyer_id, matched, reasons_json,
+                     profile_json, predicates_json, service_area_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(lead_id, offer_id) DO UPDATE SET
+                    buyer_id=excluded.buyer_id,
+                    matched=excluded.matched,
+                    reasons_json=excluded.reasons_json,
+                    profile_json=excluded.profile_json,
+                    predicates_json=excluded.predicates_json,
+                    service_area_json=excluded.service_area_json,
+                    created_at=excluded.created_at
+                """,
+                (
+                    lead_id,
+                    offer_id,
+                    buyer_id,
+                    int(matched),
+                    json.dumps(list(reasons), separators=(",", ":")),
+                    json.dumps(dict(profile), separators=(",", ":"))
+                    if profile
+                    else None,
+                    json.dumps(
+                        [dict(predicate) for predicate in predicates],
+                        separators=(",", ":"),
+                    ),
+                    json.dumps(dict(service_area), separators=(",", ":"))
+                    if service_area
+                    else None,
+                    now_iso(),
+                ),
+            )
+
+    def list_match_audits(self, lead_id: str) -> list[dict[str, Any]]:
+        self.flush_history()
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM match_audits WHERE lead_id = ? AND created_at >= ? "
+                "ORDER BY created_at, offer_id",
+                (lead_id, self.history_retention_cutoff()),
+            ).fetchall()
+        return [
+            {
+                "lead_id": row["lead_id"],
+                "offer_id": row["offer_id"],
+                "buyer_id": row["buyer_id"],
+                "matched": bool(row["matched"]),
+                "reasons": json.loads(row["reasons_json"]),
+                "profile": json.loads(row["profile_json"])
+                if row["profile_json"]
+                else None,
+                "predicates": json.loads(row["predicates_json"]),
+                "service_area": json.loads(row["service_area_json"])
+                if row["service_area_json"]
+                else None,
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def purge_match_audits(self, before: str) -> int:
+        """Delete audit rows past the retention window; return the row count."""
+        with self.transaction() as db:
+            cursor = db.execute(
+                "DELETE FROM match_audits WHERE created_at < ?", (before,)
+            )
+            return int(cursor.rowcount)
 
     # ─── Pings and bids ────────────────────────────────────────────────────
 
@@ -2213,6 +3095,414 @@ class Store:
                 "SELECT * FROM bids WHERE lead_id = ? ORDER BY received_at, buyer_id",
                 (lead_id,),
             ).fetchall()
+
+    # ─── LEP-0009 negotiation ──────────────────────────────────────────────
+    #
+    # Non-PII routing/audit records (W4-06 class): ids, integer minor units,
+    # timestamps, and reason enumerations. No consumer field is written here,
+    # so erasure has nothing to redact and MUST NOT delete this trail. Tokens
+    # are stored as SHA-256 hashes only; the plaintext never reaches storage,
+    # an audit row, a log, or a metrics label.
+
+    # Retention window for terminal negotiation rows, measured from the
+    # negotiation's absolute expiry. Past it the row is unreachable and the
+    # purge removes ids/prices while audit_events (the dispute trail) stays.
+    NEGOTIATION_RETENTION_SECONDS = 90 * 24 * 60 * 60
+
+    @classmethod
+    def negotiation_retention_deadline(cls, expires_at: str) -> str:
+        parsed = parse_iso_datetime(expires_at)
+        base = parsed or datetime.now(timezone.utc)
+        return format_iso_datetime(
+            base + timedelta(seconds=cls.NEGOTIATION_RETENTION_SECONDS)
+        )
+
+    def get_negotiation(self, negotiation_id: str) -> sqlite3.Row | None:
+        """Return the live negotiation row, or None once retention elapsed.
+
+        An unreachable row is indistinguishable from an unknown id: the LEP
+        keeps the read surface deferred (Q6), and discovery must not be a
+        side channel into retired commercial history.
+        """
+        current = now_iso()
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM negotiation
+                WHERE negotiation_id = ? AND retention_expires_at > ?
+                """,
+                (negotiation_id, current),
+            ).fetchone()
+
+    def get_negotiation_for_ping(
+        self, ping_id: str, buyer_id: str
+    ) -> sqlite3.Row | None:
+        current = now_iso()
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM negotiation
+                WHERE ping_id = ? AND buyer_id = ? AND retention_expires_at > ?
+                ORDER BY created_at DESC, negotiation_id DESC
+                LIMIT 1
+                """,
+                (ping_id, buyer_id, current),
+            ).fetchone()
+
+    def claim_expired_negotiations(self, at: str | None = None) -> list[sqlite3.Row]:
+        """Expiry-and-claim sweep input (C8).
+
+        Each returned row was moved to EXPIRED by THIS caller's conditional
+        UPDATE, so concurrent workers audit an expiry once. Idempotent: a
+        second sweep returns nothing for the same row.
+        """
+        current = at or now_iso()
+        claimed: list[sqlite3.Row] = []
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM negotiation
+                WHERE status IN ('OPEN', 'COUNTERED', 'ACCEPTED')
+                  AND expires_at <= ?
+                ORDER BY expires_at, negotiation_id
+                """,
+                (current,),
+            ).fetchall()
+            for row in rows:
+                cursor = db.execute(
+                    """
+                    UPDATE negotiation SET status = 'EXPIRED', updated_at = ?
+                    WHERE negotiation_id = ?
+                      AND status IN ('OPEN', 'COUNTERED', 'ACCEPTED')
+                    """,
+                    (current, row["negotiation_id"]),
+                )
+                if cursor.rowcount == 1:
+                    claimed.append(row)
+        return claimed
+
+    def insert_negotiation(
+        self,
+        *,
+        negotiation_id: str,
+        tenant_id: str,
+        ping_id: str,
+        lead_id: str,
+        offer_id: str,
+        buyer_id: str,
+        platform_id: str,
+        currency: str,
+        floor_price_cents: int,
+        max_rounds: int,
+        rounds_remaining: int,
+        platform_price_cents: int,
+        expires_at: str,
+        test: bool,
+    ) -> bool:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO negotiation
+                        (negotiation_id, tenant_id, ping_id, lead_id, offer_id,
+                         buyer_id, platform_id, currency, floor_price_cents,
+                         max_rounds, rounds_remaining, status,
+                         platform_price_cents, buyer_price_cents,
+                         accepted_price_cents, rejection_reason, expires_at,
+                         binding_expires_at, token_hash, test, created_at,
+                         updated_at, retention_expires_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, NULL,
+                            NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?)
+                    """,
+                    (
+                        negotiation_id,
+                        tenant_id,
+                        ping_id,
+                        lead_id,
+                        offer_id,
+                        buyer_id,
+                        platform_id,
+                        currency,
+                        floor_price_cents,
+                        max_rounds,
+                        rounds_remaining,
+                        platform_price_cents,
+                        expires_at,
+                        int(test),
+                        timestamp,
+                        timestamp,
+                        self.negotiation_retention_deadline(expires_at),
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def update_negotiation(self, negotiation_id: str, **fields: Any) -> None:
+        allowed = {
+            "status",
+            "rounds_remaining",
+            "platform_price_cents",
+            "buyer_price_cents",
+            "accepted_price_cents",
+            "rejection_reason",
+            "binding_expires_at",
+            "token_hash",
+        }
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"Unsupported negotiation fields: {sorted(unknown)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        values = list(fields.values())
+        with self.transaction() as db:
+            db.execute(
+                f"UPDATE negotiation SET {assignments}, updated_at = ? WHERE negotiation_id = ?",
+                (*values, now_iso(), negotiation_id),
+            )
+
+    def insert_negotiation_round(
+        self,
+        *,
+        negotiation_id: str,
+        message_id: str,
+        message_type: str,
+        actor_id: str,
+        actor_role: str,
+        decision: str,
+        price_cents: int | None,
+        rounds_remaining_after: int,
+        state_after: str,
+        rejection_reason: str | None,
+        idempotency_key: str,
+        body_hash: str,
+        ack: dict[str, Any],
+    ) -> bool:
+        with self.transaction() as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO negotiation_round
+                        (round_id, negotiation_id, message_id, message_type,
+                         actor_id, actor_role, decision, price_cents,
+                         rounds_remaining_after, state_after, rejection_reason,
+                         idempotency_key, body_hash, ack_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"negmsg_{uuid4().hex}",
+                        negotiation_id,
+                        message_id,
+                        message_type,
+                        actor_id,
+                        actor_role,
+                        decision,
+                        price_cents,
+                        rounds_remaining_after,
+                        state_after,
+                        rejection_reason,
+                        idempotency_key,
+                        body_hash,
+                        json.dumps(ack, separators=(",", ":"), ensure_ascii=False),
+                        now_iso(),
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def negotiation_round_for_message(
+        self, negotiation_id: str, message_id: str
+    ) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM negotiation_round
+                WHERE negotiation_id = ? AND message_id = ?
+                """,
+                (negotiation_id, message_id),
+            ).fetchone()
+
+    def negotiation_round_for_key(
+        self, negotiation_id: str, idempotency_key: str
+    ) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM negotiation_round
+                WHERE negotiation_id = ? AND idempotency_key = ?
+                """,
+                (negotiation_id, idempotency_key),
+            ).fetchone()
+
+    def list_negotiation_rounds(self, negotiation_id: str) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM negotiation_round
+                WHERE negotiation_id = ? ORDER BY created_at, round_id
+                """,
+                (negotiation_id,),
+            ).fetchall()
+
+    def insert_negotiation_token(
+        self,
+        *,
+        token_hash: str,
+        negotiation_id: str,
+        tenant_id: str,
+        buyer_id: str,
+        price_cents: int,
+        currency: str,
+        expires_at: str,
+    ) -> None:
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO negotiation_token
+                    (token_hash, negotiation_id, tenant_id, buyer_id,
+                     price_cents, currency, expires_at, redeemed_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                """,
+                (
+                    token_hash,
+                    negotiation_id,
+                    tenant_id,
+                    buyer_id,
+                    price_cents,
+                    currency,
+                    expires_at,
+                    now_iso(),
+                ),
+            )
+
+    def get_negotiation_token(self, token_hash: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM negotiation_token WHERE token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+
+    def redeem_negotiation_token(
+        self,
+        *,
+        token_hash: str,
+        negotiation_id: str,
+        buyer_id: str,
+        envelope: dict[str, Any],
+        ping: sqlite3.Row,
+        idempotency_key: str,
+        body_hash: str,
+        redemption_ack: dict[str, Any],
+    ) -> bool:
+        """Atomically redeem a token: one bid row, one REDEEMED state.
+
+        The conditional UPDATEs are the single-use guarantee — two concurrent
+        first redemptions cannot both insert a bid, and the loser is told to
+        replay rather than mint a second payable path. Returns True when THIS
+        call performed the redemption.
+        """
+        message = envelope["lcp"]["message"]
+        payload = envelope["lcp"]["payload"]
+        timestamp = now_iso()
+        try:
+            with self.transaction() as db:
+                cursor = db.execute(
+                    """
+                    UPDATE negotiation_token
+                    SET redeemed_at = ?, redemption_idempotency_key = ?,
+                        redemption_body_hash = ?, redemption_message_id = ?,
+                        redemption_ack_json = ?
+                    WHERE token_hash = ? AND redeemed_at IS NULL
+                    """,
+                    (
+                        timestamp,
+                        idempotency_key,
+                        body_hash,
+                        message["id"],
+                        json.dumps(
+                            redemption_ack,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                        ),
+                        token_hash,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise _NegotiationRedeemConflict("already_redeemed")
+                cursor = db.execute(
+                    """
+                    UPDATE negotiation
+                    SET status = 'REDEEMED', updated_at = ?
+                    WHERE negotiation_id = ? AND status = 'ACCEPTED'
+                    """,
+                    (timestamp, negotiation_id),
+                )
+                if cursor.rowcount != 1:
+                    raise _NegotiationRedeemConflict("negotiation_closed")
+                db.execute(
+                    """
+                    INSERT INTO bids
+                        (bid_id, ping_id, lead_id, offer_id, buyer_id, message_id,
+                         decision, bid_price_cents, currency, estimated_contact_seconds,
+                         received_at, envelope_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        message["id"],
+                        payload["ping_id"],
+                        ping["lead_id"],
+                        ping["offer_id"],
+                        buyer_id,
+                        message["id"],
+                        payload["decision"],
+                        payload["bid_price_cents"],
+                        payload.get("currency", ""),
+                        payload.get("estimated_contact_seconds"),
+                        timestamp,
+                        self.encode_envelope(envelope),
+                    ),
+                )
+        except _NegotiationRedeemConflict:
+            return False
+        return True
+
+    def purge_expired_negotiations(self, at: str | None = None) -> int:
+        """Delete terminal negotiation rows past their retention deadline.
+
+        Audit rows are deliberately untouched: they are the dispute trail the
+        LEP requires to survive, while the commercial detail (ids/prices)
+        stops being reachable once its non-PII retention window closes.
+        """
+        current = at or now_iso()
+        with self.transaction() as db:
+            ids = [
+                row["negotiation_id"]
+                for row in db.execute(
+                    """
+                    SELECT negotiation_id FROM negotiation
+                    WHERE retention_expires_at <= ?
+                      AND status IN ('REDEEMED', 'REFUSED', 'EXPIRED')
+                    """,
+                    (current,),
+                ).fetchall()
+            ]
+            for negotiation_id in ids:
+                db.execute(
+                    "DELETE FROM negotiation_round WHERE negotiation_id = ?",
+                    (negotiation_id,),
+                )
+                db.execute(
+                    "DELETE FROM negotiation_token WHERE negotiation_id = ?",
+                    (negotiation_id,),
+                )
+                db.execute(
+                    "DELETE FROM negotiation WHERE negotiation_id = ?",
+                    (negotiation_id,),
+                )
+        return len(ids)
 
     # ─── Payable outcomes and quota ───────────────────────────────────────
 
@@ -2636,7 +3926,12 @@ class Store:
             ).fetchone()
 
     def insert_event(
-        self, lead_id: str, event_name: str, envelope: dict[str, Any]
+        self,
+        lead_id: str,
+        event_name: str,
+        envelope: dict[str, Any],
+        *,
+        record_stream: bool = False,
     ) -> bool:
         payload = envelope["lcp"]["payload"]
         event_id = envelope["lcp"]["message"]["id"]
@@ -2665,6 +3960,53 @@ class Store:
                 """,
                 (event_id, lead_id, event_name, payload["timestamp"], encoded),
             )
+            # LEP-0001 W3: the durable, tenant-scoped event stream is written
+            # in the same transaction as the lifecycle row, so a subscription
+            # can never observe an event that was not accepted. The projection
+            # is metadata only (ids + core enums) beside the delivery envelope;
+            # no consumer field is copied out. The sequence is allocated from
+            # a per-tenant counter with one atomic upsert — strictly monotonic
+            # on both backends, so a cursor can never skip an event.
+            lead_row = (
+                db.execute(
+                    "SELECT tenant_id, lead_id, vertical, status FROM leads WHERE lead_id = ?",
+                    (lead_id,),
+                ).fetchone()
+                if record_stream
+                else None
+            )
+            if lead_row is not None:
+                allocated = db.execute(
+                    """
+                    INSERT INTO event_sequence (tenant_id, last_sequence)
+                    VALUES (?, 1)
+                    ON CONFLICT(tenant_id) DO UPDATE
+                        SET last_sequence = last_sequence + 1
+                    RETURNING last_sequence
+                    """,
+                    (lead_row["tenant_id"],),
+                ).fetchone()
+                append_time = now_iso()
+                db.execute(
+                    """
+                    INSERT INTO event_stream
+                        (event_id, sequence, tenant_id, lead_id, event_type,
+                         message_type, vertical, status, envelope_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'event', ?, ?, ?, ?)
+                    ON CONFLICT(event_id) DO NOTHING
+                    """,
+                    (
+                        event_id,
+                        allocated["last_sequence"],
+                        lead_row["tenant_id"],
+                        lead_row["lead_id"],
+                        event_name,
+                        lead_row["vertical"],
+                        lead_row["status"],
+                        encoded,
+                        append_time,
+                    ),
+                )
         return True
 
     def list_events(self, lead_id: str) -> list[dict[str, Any]]:
@@ -2674,6 +4016,318 @@ class Store:
                 (lead_id,),
             ).fetchall()
         return [self.decode_envelope(row["envelope_json"]) for row in rows]
+
+    # ─── Event stream and subscriptions (LEP-0001 W3) ──────────────────────
+
+    def insert_event_subscription(
+        self,
+        *,
+        subscription_id: str,
+        tenant_id: str,
+        subscriber_id: str,
+        idempotency_key: str,
+        event_types: list[str],
+        callback_url: str,
+        filter_values: dict[str, list[str]],
+        secret: str,
+        replay_from: str | None,
+        cursor_sequence: int,
+    ) -> dict[str, Any]:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO event_subscriptions
+                    (subscription_id, tenant_id, subscriber_id, idempotency_key,
+                     event_types_json, callback_url, filter_json, secret_cipher,
+                     active, replay_from, cursor_sequence,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                """,
+                (
+                    subscription_id,
+                    tenant_id,
+                    subscriber_id,
+                    idempotency_key,
+                    json.dumps(event_types, separators=(",", ":")),
+                    callback_url,
+                    json.dumps(filter_values, separators=(",", ":"), sort_keys=True),
+                    self._cipher.encode({"secret": secret}),
+                    replay_from,
+                    cursor_sequence,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        row = self.get_event_subscription(subscription_id)
+        assert row is not None
+        return dict(row)
+
+    def find_event_subscription_by_idempotency(
+        self, subscriber_id: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM event_subscriptions
+                WHERE subscriber_id = ? AND idempotency_key = ?
+                """,
+                (subscriber_id, idempotency_key),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_event_subscription(self, subscription_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM event_subscriptions WHERE subscription_id = ?",
+                (subscription_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def event_subscription_secret(self, subscription_id: str) -> str | None:
+        """Decrypt the per-subscription signing secret for the worker only."""
+        row = self.get_event_subscription(subscription_id)
+        if not row:
+            return None
+        secret = self._cipher.decode(str(row["secret_cipher"])).get("secret")
+        return str(secret) if secret else None
+
+    def list_event_subscriptions(
+        self, tenant_id: str | None = None, *, active_only: bool = False
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM event_subscriptions"
+        clauses: list[str] = []
+        values: list[Any] = []
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            values.append(tenant_id)
+        if active_only:
+            clauses.append("active = 1")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at, subscription_id"
+        with self._lock:
+            rows = self._connection.execute(query, values).fetchall()
+        return [dict(row) for row in rows]
+
+    def deactivate_event_subscription(
+        self, subscription_id: str, *, tenant_id: str
+    ) -> bool:
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                UPDATE event_subscriptions
+                SET active = 0, updated_at = ?
+                WHERE subscription_id = ? AND tenant_id = ?
+                """,
+                (now_iso(), subscription_id, tenant_id),
+            )
+        return cursor.rowcount == 1
+
+    def update_event_subscription_cursor(
+        self, subscription_id: str, *, cursor_sequence: int
+    ) -> None:
+        with self.transaction() as db:
+            db.execute(
+                """
+                UPDATE event_subscriptions
+                SET cursor_sequence = ?, updated_at = ?
+                WHERE subscription_id = ?
+                """,
+                (cursor_sequence, now_iso(), subscription_id),
+            )
+
+    def list_event_stream(
+        self,
+        *,
+        tenant_id: str,
+        after_sequence: int = 0,
+        limit: int = 100,
+    ) -> list[sqlite3.Row]:
+        """Page a tenant's stream after its monotonic ``sequence``.
+
+        Sequence order is the cursor. It is stable and replayable, so two
+        replays from the same cursor reproduce the same event set and no
+        same-second insertion can sort behind an advanced cursor.
+        """
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT * FROM event_stream
+                WHERE tenant_id = ? AND sequence > ?
+                ORDER BY sequence
+                LIMIT ?
+                """,
+                (tenant_id, after_sequence, limit),
+            ).fetchall()
+
+    def get_event_stream_event(self, event_id: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM event_stream WHERE event_id = ?", (event_id,)
+            ).fetchone()
+
+    def oldest_event_stream_sequence(self, tenant_id: str) -> int | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT MIN(sequence) AS oldest FROM event_stream WHERE tenant_id = ?",
+                (tenant_id,),
+            ).fetchone()
+        return int(row["oldest"]) if row and row["oldest"] is not None else None
+
+    def latest_event_stream_sequence(self, tenant_id: str) -> int:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT MAX(sequence) AS newest FROM event_stream WHERE tenant_id = ?",
+                (tenant_id,),
+            ).fetchone()
+        return int(row["newest"]) if row and row["newest"] is not None else 0
+
+    def get_event_stream_event_by_sequence(
+        self, tenant_id: str, sequence: int
+    ) -> sqlite3.Row | None:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT * FROM event_stream WHERE tenant_id = ? AND sequence = ?",
+                (tenant_id, sequence),
+            ).fetchone()
+
+    def insert_event_delivery(
+        self, *, subscription_id: str, event_id: str, event_type: str
+    ) -> bool:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                INSERT INTO event_deliveries
+                    (delivery_id, subscription_id, event_id, event_type, status,
+                     attempts, next_attempt_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)
+                ON CONFLICT(subscription_id, event_id) DO NOTHING
+                """,
+                (
+                    f"evd_{uuid4().hex}",
+                    subscription_id,
+                    event_id,
+                    event_type,
+                    timestamp,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            return cursor.rowcount == 1
+
+    def claim_due_event_deliveries(
+        self, worker_id: str, *, lease_seconds: int = 60, limit: int = 50
+    ) -> list[sqlite3.Row]:
+        current = datetime.now(timezone.utc)
+        now_value = format_iso_datetime(current)
+        lease_until = format_iso_datetime(current + timedelta(seconds=lease_seconds))
+        with self.transaction() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM event_deliveries
+                WHERE (status IN ('PENDING', 'RETRY') AND next_attempt_at <= ?)
+                   OR (status = 'PROCESSING' AND lease_until <= ?)
+                ORDER BY next_attempt_at, created_at
+                LIMIT ?
+                """,
+                (now_value, now_value, limit),
+            ).fetchall()
+            for row in rows:
+                db.execute(
+                    """
+                    UPDATE event_deliveries
+                    SET status = 'PROCESSING', lease_owner = ?, lease_until = ?,
+                        updated_at = ?
+                    WHERE delivery_id = ?
+                    """,
+                    (worker_id, lease_until, now_value, row["delivery_id"]),
+                )
+        return rows
+
+    def mark_event_delivery(
+        self,
+        delivery_id: str,
+        *,
+        status: str,
+        attempts: int,
+        next_attempt_at: str,
+        last_error: str | None = None,
+        worker_id: str | None = None,
+    ) -> None:
+        with self.transaction() as db:
+            if worker_id:
+                db.execute(
+                    """
+                    UPDATE event_deliveries
+                    SET status = ?, attempts = ?, next_attempt_at = ?,
+                        last_error = ?, lease_owner = NULL, lease_until = NULL,
+                        updated_at = ?
+                    WHERE delivery_id = ? AND lease_owner = ?
+                    """,
+                    (
+                        status,
+                        attempts,
+                        next_attempt_at,
+                        last_error,
+                        now_iso(),
+                        delivery_id,
+                        worker_id,
+                    ),
+                )
+            else:
+                db.execute(
+                    """
+                    UPDATE event_deliveries
+                    SET status = ?, attempts = ?, next_attempt_at = ?,
+                        last_error = ?, lease_owner = NULL, lease_until = NULL,
+                        updated_at = ?
+                    WHERE delivery_id = ?
+                    """,
+                    (
+                        status,
+                        attempts,
+                        next_attempt_at,
+                        last_error,
+                        now_iso(),
+                        delivery_id,
+                    ),
+                )
+
+    def list_event_deliveries(self, subscription_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM event_deliveries
+                WHERE subscription_id = ?
+                ORDER BY created_at, delivery_id
+                """,
+                (subscription_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def purge_event_stream(self, before: str) -> int:
+        """Retention bound (LEP-0001 W3-03 / I8): drop stream rows older than ``before``.
+
+        Deliveries that reference a purged event are removed with it; the
+        cursor TTL is at least as long as the retry budget, so no live
+        delivery is cut short.
+        """
+        with self.transaction() as db:
+            db.execute(
+                """
+                DELETE FROM event_deliveries
+                WHERE event_id IN (
+                    SELECT event_id FROM event_stream WHERE created_at < ?
+                )
+                """,
+                (before,),
+            )
+            cursor = db.execute(
+                "DELETE FROM event_stream WHERE created_at < ?", (before,)
+            )
+        return cursor.rowcount
 
     # ─── Contacted parties (LEP-0003 §3/§4) ────────────────────────────────
 
@@ -2808,6 +4462,50 @@ class Store:
                 "DELETE FROM contacted_parties WHERE lead_id = ?",
                 (lead_id,),
             )
+            # LEP-0009 retention/erasure: a negotiation holds only ids, prices,
+            # and timestamps, so erasure has nothing to redact and MUST NOT
+            # delete the trail. It does close any live negotiation for this
+            # lead, so a hashed token grants nothing afterwards.
+            negotiation_rows = db.execute(
+                """
+                SELECT negotiation_id, tenant_id FROM negotiation
+                WHERE lead_id = ? AND status IN ('OPEN', 'COUNTERED', 'ACCEPTED')
+                """,
+                (lead_id,),
+            ).fetchall()
+            for negotiation in negotiation_rows:
+                db.execute(
+                    """
+                    UPDATE negotiation
+                    SET status = 'REFUSED', rejection_reason = 'negotiation_closed',
+                        updated_at = ?
+                    WHERE negotiation_id = ?
+                    """,
+                    (timestamp, negotiation["negotiation_id"]),
+                )
+                db.execute(
+                    """
+                    INSERT INTO audit_events
+                        (audit_id, tenant_id, actor_id, action, resource_type,
+                         resource_id, metadata_json, created_at)
+                    VALUES (?, ?, ?, 'negotiation.refused', 'negotiation', ?, ?, ?)
+                    """,
+                    (
+                        f"audit_{uuid4().hex}",
+                        negotiation["tenant_id"],
+                        actor_id,
+                        negotiation["negotiation_id"],
+                        json.dumps(
+                            {
+                                "erased_lead_id": lead_id,
+                                "after_state": "REFUSED",
+                                "rejection_reason": "negotiation_closed",
+                            },
+                            separators=(",", ":"),
+                        ),
+                        timestamp,
+                    ),
+                )
             db.execute(
                 """
                 INSERT INTO audit_events
