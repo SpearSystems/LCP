@@ -3,7 +3,7 @@
 - **Title:** Marketplace migration extensions: final-pricing feedback (`FINAL_PRICING` event) and `{org}.form.questions` (lead/post `extensions`)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Accepted** — accepted 2026-11-03; Track A implementation authorized, Track B gated on the #198 PII-validator class fix (see Decision)
+- **Status:** **Implemented** — accepted 2026-11-03; both tracks implemented (#216 Track A, #217 Track B)
 - **Target version:** v1.1.0 (additive MINOR; Track A carries zero schema change, Track B adds one optional closed-object field to `lead`/`post`)
 - **Discussion:** [#185](https://github.com/SpearSystems/LCP/issues/185)
   (`[LEP] Marketplace migration extensions: final-pricing feedback and {org}.form.questions`)
@@ -11,6 +11,8 @@
   feedback (final_pricing equivalent)" (medium) and "Freeform questions
   extension shape" (medium)
 ## Decision (maintainer, 2026-11-03)
+
+Implementation: Track A PR #216 (FINAL_PRICING event, publisher authorization, settlement neutrality, bounds enforcement) and Track B PR #217 (lead/post `extensions`, `{org}.form.questions`, shared PII detector, capability-gated delivery).
 
 **Accepted, with a track-scoped condition.** This record declares its two
 tracks independently decidable (LEP.md decision rules), so they are decided
