@@ -241,6 +241,21 @@ class EventDetailsPiiTests(unittest.TestCase):
         ack = self._submit(envelope)
         self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
 
+    def test_hyphenated_ids_and_versions_are_still_accepted(self) -> None:
+        # Identifier material — hyphenated, dotted, slashed — must not read
+        # as a phone run, or a CRM deal id could never ride `details`.
+        envelope = self._event(
+            "FINAL_PRICING",
+            {
+                "ping_id": "ping_550e8400-1",
+                "buyer_reference": "OPP-2026-0001234",
+                "note": "invoice INV-2026-11-02 / lot 2026-11-02",
+                "schema_version": "1.1.0",
+            },
+        )
+        ack = self._submit(envelope)
+        self.assertEqual(ack["lcp"]["payload"]["status"], "RECEIVED")
+
     # ─── CONTACTED keeps its published semantics ──────────────────────────
 
     def test_contacted_report_semantics_are_preserved(self) -> None:

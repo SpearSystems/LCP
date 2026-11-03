@@ -151,10 +151,13 @@ _CONTACTED_REPORT_LIMIT = 32
 # explicitly (a date is not a phone number).
 _EMAIL_SHAPED_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
 # A phone-number RUN inside a longer string. Boundaries are the point: a run
-# may not start or end inside a word (so hex digests, namespaced ids like
-# `ping_550e8400-1`, and an ISO date-time's `2026-11-02` tail cannot match),
-# and the match length is bounded, so a long opaque id cannot match either.
-_PHONE_RUN_RE = re.compile(r"(?<![\w+])\+?\(?\d[\d\s().\-]{4,19}\d(?![\w])")
+# may not start or end inside an identifier — letters, digits, `_`, `-`, `.`
+# and `/` are all identifier material, so `ping_550e8400-1`,
+# `OPP-2026-0001234`, `v1.1.0` and the `2026-11-02` tail of an ISO timestamp
+# cannot match, while a run surrounded by whitespace or punctuation is
+# examined. The match length is bounded, so a long opaque id cannot match
+# either.
+_PHONE_RUN_RE = re.compile(r"(?<![\w./-])\+?\(?\d[\d\s().\-]{4,19}\d(?![\w./-])")
 _DATE_ONLY_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
 _PHONE_MIN_DIGITS = 7
 _PHONE_MAX_DIGITS = 15
@@ -175,11 +178,11 @@ def _has_plaintext_contact(value: str) -> bool:
 
     Two shapes only — an email address, or a phone-number run of 7-15 digits
     (E.164's ceiling) with separators. A bare `YYYY-MM-DD` is a date, not a
-    phone number, and is skipped before the digit count. Digests cannot
-    match: 64-hex is longer than the bounded run and its letters break every
-    candidate, which is what keeps the §9 hash values legal in `details`.
-    The check is deliberately shape-based, not inferential — no DLP scoring,
-    no normalization of the value it refuses.
+    phone number, and is skipped before the digit count. Identifier material
+    cannot match: 64-hex is longer than the bounded run, its letters break
+    every candidate, and a run may not begin or end inside a hyphenated,
+    dotted or slashed id. The check is deliberately shape-based, not
+    inferential — no DLP scoring, no normalization of the value it refuses.
     """
     if _EMAIL_SHAPED_RE.search(value):
         return True
