@@ -3,13 +3,40 @@
 - **Title:** Marketplace migration extensions: final-pricing feedback (`FINAL_PRICING` event) and `{org}.form.questions` (lead/post `extensions`)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — no implementation authorized; registry rows land as *proposed-on-acceptance* (ARB dossier findings #185 F1/F3 dispositioned in the "Revision 2026-11-03 (post-dossier)" section; F2 named, open for the implementation PR)
+- **Status:** **Accepted** — accepted 2026-11-03; Track A implementation authorized, Track B gated on the #198 PII-validator class fix (see Decision)
 - **Target version:** v1.1.0 (additive MINOR; Track A carries zero schema change, Track B adds one optional closed-object field to `lead`/`post`)
 - **Discussion:** [#185](https://github.com/SpearSystems/LCP/issues/185)
   (`[LEP] Marketplace migration extensions: final-pricing feedback and {org}.form.questions`)
 - **Roadmap triggers:** `docs/V1.1-ROADMAP.md`, Phase 6 — "External sale
   feedback (final_pricing equivalent)" (medium) and "Freeform questions
   extension shape" (medium)
+## Decision (maintainer, 2026-11-03)
+
+**Accepted, with a track-scoped condition.** This record declares its two
+tracks independently decidable (LEP.md decision rules), so they are decided
+separately:
+
+- **Track A — `FINAL_PRICING` event (zero schema change): implementation
+  authorized.** Rationale: no schema surface changes, settlement neutrality
+  was measured (event→payable gates enumerated; `FINAL_PRICING` inert
+  today), and the publisher-event direction is the record's own named
+  implementation obligation (`_PUBLISHER_EVENT_TYPES`).
+- **Track B — lead/post `extensions` + `{org}.form.questions`: accepted but
+  implementation is gated** on the generalized event/PII details validator
+  identified during this record's dossier (issue #198: non-CONTACTED event
+  details accept and persist plaintext phone numbers today). Freeform
+  `answer_text` MUST NOT reach delivery paths before that sanitizer class
+  fix lands and is tested (`plat: test_event_details_pii_reject`, named in
+  Track A's obligation list). This is a precondition, not a formality: the
+  record's own PII-smuggling analysis is only defensible once the platform
+  actually enforces it.
+
+Basis: ARB dossier #185 (FINDINGS, three minors) and the revision merged as
+PR #208 (two closed in-record, F2 named for the implementation phase).
+Registry rows in `EXTENSION-REGISTRY.md` move to their live state per the
+Registration section when each track's implementation merges. The 14-day
+window is waived by the maintainer's recorded decision; the discussion issue
+stays open.
 
 ## Separation of the two tracks
 
