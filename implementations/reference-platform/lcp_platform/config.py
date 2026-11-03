@@ -49,6 +49,10 @@ class PlatformConfig:
     # ceiling stays the transport body cap above, so a larger value here is
     # redundant rather than unsafe.
     max_extension_bytes: int = 32_768
+    # D7/v1.2: an FX rate older than this (seconds) makes a cross-currency
+    # offer NON-COMPARABLE in the auction. The default matches the decision
+    # record; never compare with a guessed rate.
+    fx_max_age_seconds: int = 300
     max_header_bytes: int = 16_384
     max_webhook_response_bytes: int = 262_144
     rate_limit_per_minute: int = 600
@@ -106,6 +110,8 @@ class PlatformConfig:
             # The bound is a policy target, not a transport rule: a value above
             # max_body_bytes is unreachable, never unsafe, so it is not refused.
             raise ValueError("The extensions policy bound must be positive")
+        if self.fx_max_age_seconds <= 0:
+            raise ValueError("LCP_FX_MAX_AGE_SECONDS must be positive")
         if self.max_webhook_response_bytes <= 0:
             raise ValueError("Webhook response limit must be positive")
         if self.max_attachment_bytes <= 0:
@@ -205,9 +211,8 @@ class PlatformConfig:
                 os.environ.get("LCP_WORKER_INTERVAL_SECONDS", "1")
             ),
             max_body_bytes=int(os.environ.get("LCP_MAX_BODY_BYTES", "2000000")),
-            max_extension_bytes=int(
-                os.environ.get("LCP_MAX_EXTENSION_BYTES", "32768")
-            ),
+            max_extension_bytes=int(os.environ.get("LCP_MAX_EXTENSION_BYTES", "32768")),
+            fx_max_age_seconds=int(os.environ.get("LCP_FX_MAX_AGE_SECONDS", "300")),
             max_header_bytes=int(os.environ.get("LCP_MAX_HEADER_BYTES", "16384")),
             max_webhook_response_bytes=int(
                 os.environ.get("LCP_MAX_WEBHOOK_RESPONSE_BYTES", "262144")

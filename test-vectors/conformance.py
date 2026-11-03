@@ -44,6 +44,7 @@ SCHEMAS_DIR = REPO_ROOT / "schemas"
 VERTICALS_DIR = REPO_ROOT / "verticals"
 EXAMPLES_DIR = REPO_ROOT / "examples"
 VECTORS_DIR = REPO_ROOT / "test-vectors"
+OPENAPI_PATH = REPO_ROOT / "api" / "lcp-openapi.yaml"
 
 # --- Schema loading ----------------------------------------------------------
 
@@ -494,16 +495,136 @@ def _check_slots_claimed_single_award(
     ]
 
 
+# --- v1.2 surfaces (D2 PROCESSED, D7 multi-currency) -------------------------
+
+_FX_RATE_RE = re.compile(r"^[0-9]+(\.[0-9]{6,})?$")
+# docs/DECISIONS-v1.2.md D7: LCP_FX_MAX_AGE_SECONDS defaults to 300.
+_FX_MAX_AGE_SECONDS = 300
+
+
+def _parse_utc_timestamp(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not _CANON_TS_RE.match(value):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _fx_significant_digits(value: str) -> int:
+    return len(value.replace(".", "").lstrip("0"))
+
+
+def _check_ack_processed_post_only(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """D2: PROCESSED is valid only on an ack for a post delivery, by the
+    buyer that received that post. The delivery being acknowledged is not
+    carried on the wire, so the vector states it
+    (`acknowledged_message_type`), the same way capability vectors state
+    `receiver_lcp_versions`."""
+    payload = _payload_of(envelope)
+    if payload.get("status") != "PROCESSED":
+        return []
+    acknowledged = vector.get("acknowledged_message_type")
+    if acknowledged == "post":
+        return []
+    return [
+        f"PROCESSED ack must acknowledge a post delivery, not {acknowledged!r} "
+        "(D2: PROCESSED is valid only on an ack for a post)"
+    ]
+
+
+def _check_pricing_fx_comparability(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """D7: a cross-currency offer is comparable only when its rate is
+    present, well-formed, non-stale, and consistently sourced. Missing,
+    stale, malformed, or mixed-source rates make the offer non-comparable;
+    they are never silently coerced."""
+    payload = _payload_of(envelope)
+    pricing = payload.get("pricing")
+    if not isinstance(pricing, dict):
+        return []
+    native_currency = payload.get("currency")
+    settlement_currency = pricing.get("currency")
+    if not (isinstance(native_currency, str) and isinstance(settlement_currency, str)):
+        return []
+    if settlement_currency == native_currency:
+        return []
+
+    problems: List[str] = []
+    rate = pricing.get("fx_rate")
+    if rate is None:
+        problems.append(
+            "missing fx_rate: cross-currency offer is non-comparable without a rate (D7)"
+        )
+    elif (
+        not isinstance(rate, str)
+        or not _FX_RATE_RE.match(rate)
+        or _fx_significant_digits(rate) < 6
+    ):
+        problems.append(
+            f"malformed fx_rate {rate!r}: decimal string with at least 6 "
+            "significant digits and no exponent (D7)"
+        )
+
+    source = pricing.get("fx_source")
+    comparison_source = vector.get("comparison_fx_source")
+    if source is None:
+        problems.append("missing fx_source: a comparable rate names its source (D7)")
+    elif comparison_source is not None and source != comparison_source:
+        problems.append(
+            f"mixed fx_source: rate sourced from {source!r} cannot be compared "
+            f"against {comparison_source!r} rates (D7)"
+        )
+
+    reference = _parse_utc_timestamp(
+        payload.get("delivered_at")
+    ) or _parse_utc_timestamp(
+        envelope.get("lcp", {}).get("message", {}).get("timestamp")
+    )
+    stamp = _parse_utc_timestamp(pricing.get("fx_timestamp"))
+    if stamp is None:
+        problems.append(
+            "missing or malformed fx_timestamp: a comparable rate carries an "
+            "RFC 3339 UTC timestamp (D7)"
+        )
+    elif reference is not None:
+        age = (reference - stamp).total_seconds()
+        if age > _FX_MAX_AGE_SECONDS or age < 0:
+            problems.append(
+                f"stale fx_timestamp: rate age {int(age)}s is outside "
+                f"LCP_FX_MAX_AGE_SECONDS={_FX_MAX_AGE_SECONDS} (D7)"
+            )
+    expires = _parse_utc_timestamp(pricing.get("fx_expires_at"))
+    if expires is not None and reference is not None and expires <= reference:
+        problems.append("stale fx_expires_at: rate expired before delivery (D7)")
+    return problems
+
+
 def _check_ping_allowlist_no_pii(
     vector: dict, envelope: dict, errors: List[str]
 ) -> List[str]:
     payload = _payload_of(envelope)
     allowed = set(load_schema("ping").get("properties", {}))
     extra = sorted(k for k in payload if k not in allowed)
-    return [
+    problems = [
         f"LCP-008 PII_IN_PING: ping payload field {k!r} outside the strict allowlist"
         for k in extra
     ]
+    # v1.2 D6/D9: ping admits an extension namespace only when its registration
+    # declares ping safety. Kept in lockstep with
+    # lcp_platform.validation.EXTENSION_REGISTRY (governance/EXTENSION-REGISTRY.md).
+    extensions = payload.get("extensions")
+    if isinstance(extensions, dict):
+        problems.extend(
+            "LCP-008 PII_IN_PING: ping payload extension namespace "
+            f"{'extensions.' + ns!r} is not ping-safe"
+            for ns in sorted(extensions)
+            if ns not in PING_SAFE_EXTENSIONS
+        )
+    return problems
 
 
 def _check_event_open_enum(
@@ -809,6 +930,148 @@ def _check_status_transition_graph(
     return []
 
 
+# --- OpenAPI <-> JSON Schema contract checks ---------------------------------
+#
+# LEP-0005 (request history) is described twice: the OpenAPI operation
+# GET /history/requests declares the closed filter allowlist, and
+# schemas/history-request-row.json declares the row the surface emits. A
+# filter's accepted shapes MUST be the row field's accepted shapes, or one
+# contract admits what the other rejects. The JSON Schema is normative.
+
+HISTORY_FILTER_TO_ROW_FIELD = {
+    "request_id": "request_id",
+    "lead_id": "lead_id",
+    "message_type": "message_type",
+    "status": "status",
+    "vertical": "vertical",
+    "caller_phone_hash": "caller_phone_hash",
+    # `from`/`to` bound the canonical stored created_at column, so they carry
+    # its timestamp pattern rather than a field with their own name.
+    "from": "created_at",
+    "to": "created_at",
+}
+# Paging controls, not field filters: no row counterpart is expected.
+HISTORY_PAGING_PARAMS = {"limit", "cursor"}
+
+
+def _yaml_scalar(raw: str) -> str:
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+        return raw[1:-1].replace("''", "'")
+    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+        try:
+            return json.loads(raw)
+        except ValueError:
+            return raw[1:-1]
+    return raw
+
+
+def parse_history_query_params(path: Path) -> Dict[str, Optional[str]]:
+    """Map GET /history/requests query params to their declared pattern.
+
+    A targeted indentation walk rather than a YAML dependency: PyYAML is not
+    pinned in requirements-ci.txt. Returns {name: pattern-or-None}; a name is
+    present only when the endpoint declares it.
+    """
+    params: Dict[str, Optional[str]] = {}
+    in_operation = False
+    in_params = False
+    current: Optional[str] = None
+    section: Optional[str] = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == 2:
+            if stripped == "/history/requests:":
+                in_operation = True
+                continue
+            if in_operation:
+                break
+            continue
+        if not in_operation:
+            continue
+        if indent == 4:
+            if stripped == "get:":
+                continue
+            break  # only the GET carries the filter allowlist
+        if indent == 6 and in_params and stripped.startswith("- name:"):
+            current = _yaml_scalar(stripped[len("- name:") :])
+            params[current] = None
+            section = None
+            continue
+        if indent == 6:
+            if stripped == "parameters:":
+                in_params = True
+                continue
+            if in_params:
+                break  # next operation key (responses:, ...)
+        if not in_params:
+            continue
+        if current is None:
+            continue
+        if indent == 8:
+            section = stripped.split(":", 1)[0].strip()
+            continue
+        if indent == 10 and section == "schema" and stripped.startswith("pattern:"):
+            params[current] = _yaml_scalar(stripped[len("pattern:") :])
+    return params
+
+
+def _check_history_filter_pattern_equivalence(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """Shared history filters carry the same pattern in both contracts."""
+    try:
+        openapi_params = parse_history_query_params(OPENAPI_PATH)
+    except OSError as exc:
+        return [f"cannot read {OPENAPI_PATH.relative_to(REPO_ROOT)}: {exc}"]
+    row_props = load_schema("history-request-row").get("properties", {})
+    violations: List[str] = []
+
+    if not openapi_params:
+        violations.append(
+            "GET /history/requests declares no query parameters in "
+            f"{OPENAPI_PATH.relative_to(REPO_ROOT)}"
+        )
+    for name in openapi_params:
+        if name in HISTORY_PAGING_PARAMS:
+            continue
+        if name not in HISTORY_FILTER_TO_ROW_FIELD:
+            violations.append(
+                f"parameter {name!r} exists in the OpenAPI history filters but "
+                "has no JSON Schema history-row counterpart"
+            )
+    for name, field in HISTORY_FILTER_TO_ROW_FIELD.items():
+        if name not in openapi_params:
+            violations.append(
+                f"parameter {name!r} exists in the JSON Schema history contract "
+                "but not in the OpenAPI history filters"
+            )
+            continue
+        if field not in row_props:
+            violations.append(
+                f"parameter {name!r} maps to row field {field!r}, which the JSON "
+                "Schema history contract does not declare"
+            )
+            continue
+        api_pattern = openapi_params[name]
+        schema_pattern = row_props[field].get("pattern")
+        if api_pattern != schema_pattern:
+            violations.append(
+                f"parameter {name!r} pattern mismatch: OpenAPI {api_pattern!r} "
+                f"!= JSON Schema {schema_pattern!r} "
+                f"(history-request-row.{field})"
+            )
+    return violations
+
+
+# v1.2 D6/D9: namespaces whose registration declares ping safety. Keep in
+# lockstep with lcp_platform.validation.EXTENSION_REGISTRY and
+# governance/EXTENSION-REGISTRY.md; `lcp.platform.assessment` is the only one.
+PING_SAFE_EXTENSIONS = frozenset({"lcp.platform.assessment"})
+
 CHECKS = {
     "envelope_schema": _schema_check("envelope"),
     "lead_schema": _schema_check("lead"),
@@ -851,6 +1114,11 @@ CHECKS = {
     "slots_claimed_single_award": _check_slots_claimed_single_award,
     "contacted_hashes_shape": _check_contacted_hashes_shape,
     "contacted_report_shape": _check_contacted_report_shape,
+    # v1.2 (D2/D7):
+    "ack_processed_post_only": _check_ack_processed_post_only,
+    "pricing_fx_comparability": _check_pricing_fx_comparability,
+    # LEP-0005 (R1): cross-artifact pattern equivalence, run once per run too.
+    "history_filter_pattern_equivalence": _check_history_filter_pattern_equivalence,
 }
 
 
@@ -980,6 +1248,17 @@ def run_tier(tier_file: str) -> List[TestResult]:
     return results
 
 
+def run_contract_checks() -> TestResult:
+    """Cross-artifact contracts: evaluated once per run, not per vector."""
+    errors = _check_history_filter_pattern_equivalence({}, {}, [])
+    return TestResult(
+        "CONTRACT-HISTORY",
+        "OpenAPI history filter patterns match the JSON Schema row contract",
+        not errors,
+        errors,
+    )
+
+
 # --- Main --------------------------------------------------------------------
 
 
@@ -1001,12 +1280,17 @@ def main() -> None:
     total_pass = 0
     total_fail = 0
 
-    for tier_name, tier_file in sorted(tiers.items()):
+    suites = [
+        (f"{tier_name} - {tier_file}", run_tier(tier_file))
+        for tier_name, tier_file in sorted(tiers.items())
+    ]
+    suites.append(("CONTRACT - OpenAPI <-> JSON Schema", [run_contract_checks()]))
+
+    for label, results in suites:
         print(f"\n{'=' * 60}")
-        print(f"  {tier_name} - {tier_file}")
+        print(f"  {label}")
         print(f"{'=' * 60}")
 
-        results = run_tier(tier_file)
         tier_pass = sum(1 for r in results if r.passed)
         tier_fail = sum(1 for r in results if not r.passed)
 
@@ -1019,7 +1303,7 @@ def main() -> None:
                 for err in r.errors:
                     print(f"        -> {err}")
 
-        print(f"\n  {tier_name}: {tier_pass} passed, {tier_fail} failed")
+        print(f"\n  {label.split(' - ')[0]}: {tier_pass} passed, {tier_fail} failed")
         total_pass += tier_pass
         total_fail += tier_fail
 

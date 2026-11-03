@@ -181,6 +181,21 @@
     "expires_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "extensions": {
+      "type": "object",
+      "description": "v1.2: optional namespaced extension container. The receiver admits a namespace on a ping ONLY when its registration declares ping safety (governance/EXTENSION-REGISTRY.md); every other namespace is refused by name. Values are bounded objects and never carry consumer PII.",
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$",
+        "not": {
+          "pattern": "^lcp\\.core\\."
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "maxProperties": 32
+      }
     }
   },
   "allOf": [

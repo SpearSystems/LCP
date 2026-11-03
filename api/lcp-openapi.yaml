@@ -235,7 +235,7 @@ paths:
       - name: X-LCP-Content-SHA256
         in: header
         required: true
-        schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+        schema: { type: string, pattern: '^[a-f0-9]{63}$' }
       - $ref: '#/components/parameters/DataResidency'
       - $ref: '#/components/parameters/IdempotencyKey'
       - $ref: '#/components/parameters/TestMode'
@@ -455,6 +455,7 @@ paths:
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
         description: Publisher record handle.
       - name: message_type
         in: query
@@ -468,12 +469,14 @@ paths:
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
         description: Stored status (open vocabulary per the protocol's open-enum rule).
       - name: vertical
         in: query
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
       - name: caller_phone_hash
         in: query
         required: false
@@ -773,6 +776,7 @@ components:
           - RECEIVED
           - VALIDATED
           - ACCEPTED
+          - PROCESSED
           - REJECTED
           - DUPLICATE
           - ERROR
@@ -1065,6 +1069,174 @@ components:
               type: string
               format: date-time
               description: When daily/hourly counters reset.
+    Location:
+      type: object
+      description: Consumer location block carried by lead and call payloads (schemas/core.json). street_address is never ping-safe.
+      required:
+      - country_code
+      anyOf:
+      - required:
+        - state_region
+      - required:
+        - postal_code
+      properties:
+        country_code:
+          type: string
+          pattern: ^[A-Z]{2}$
+          description: ISO 3166-1 alpha-2. Required.
+        state_region:
+          type: string
+          description: Per-country validation registry (state, province, region).
+        postal_code:
+          type: string
+          description: Per-country format.
+        city:
+          type: string
+        street_address:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Residential street address. Not ping-safe; omitted from ping payloads.
+        timezone:
+          type: string
+          description: IANA timezone (e.g. Australia/Sydney).
+      additionalProperties: false
+    Provenance:
+      type: object
+      description: Non-PII origin metadata (schemas/core.json). ip_address is post-only and never ping-safe.
+      properties:
+        received_at:
+          type: string
+          format: date-time
+        source_type:
+          type: string
+          description: Open enumeration of source types.
+        acquisition_method:
+          type: string
+          description: Open enumeration of acquisition methods.
+        is_incentivized:
+          type: boolean
+        incentive_type:
+          type: string
+        source_id:
+          type: string
+        source_url:
+          type: string
+          format: uri
+        ip_hash:
+          type: string
+        ip_address:
+          type: string
+          minLength: 7
+          maxLength: 45
+          description: Consumer IP address (IPv4 or IPv6) captured server-side. Post-only; not ping-safe. ip_hash remains the ping-safe projection.
+        user_agent_hash:
+          type: string
+        funnel_key:
+          type: string
+        flow_key:
+          type: string
+        campaign_id:
+          type: string
+        creative_id:
+          type: string
+        landing_page_url:
+          type: string
+          format: uri
+        platform_source:
+          type: string
+        brand_id:
+          type: string
+          description: Publisher-owned brand identifier.
+        form_id:
+          type: string
+          description: Stable form or flow identifier.
+        agent:
+          type: object
+          required:
+          - agent_id
+          - acting_for
+          - attestation
+          properties:
+            agent_id:
+              type: string
+            acting_for:
+              type: string
+            attestation:
+              type: string
+              pattern: ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$
+              maxLength: 8192
+          additionalProperties: false
+      additionalProperties: false
+    Pricing:
+      type: object
+      description: Post-payload pricing block (schemas/post.json). v1.2 adds settlement currency alongside the native price and the FX rate, so two prices are comparable only when the rate is present, unexpired, and sourced consistently.
+      properties:
+        floor_price_cents:
+          type: integer
+          minimum: 0
+        premium_cents:
+          type: integer
+          minimum: 0
+        final_price_cents:
+          type: integer
+          minimum: 0
+        uncapped_price_cents:
+          type: integer
+          minimum: 0
+        max_allowed_price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: Settlement currency (ISO 4217 alpha-3). Absent means USD.
+        original_price_cents:
+          type: integer
+          minimum: 0
+          description: Buyer's native minor-unit price before conversion.
+        fx_rate:
+          type: string
+          pattern: ^[0-9]+(\.[0-9]{6,})?$
+          description: Native units per settlement unit, at least six decimal digits, no exponent.
+        fx_source:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Named rate provider or bilateral.
+        fx_timestamp:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: RFC 3339 UTC time the rate was observed.
+        fx_expires_at:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: RFC 3339 UTC end of the rate's validity.
+        price_guardrails:
+          type: boolean
+        is_duplicate_resub:
+          type: boolean
+          description: True if this is an accidental resubmission of a previously delivered lead.
+        payable_definition:
+          type: string
+          description: What makes this lead payable. Open enumeration, agreed bilaterally between publisher and buyer.
+        payable_status:
+          type: string
+          enum:
+          - pending
+          - payable
+          - not_payable
+          - disputed
+          description: Current payable status.
+        dispute_window_hours:
+          type: integer
+          minimum: 1
+          description: Contractually agreed return window in hours.
+        dispute_window_expires_at:
+          type: string
+          format: date-time
+          description: When the dispute window closes.
+      additionalProperties: false
     LeadEnvelope:
       type: object
       required:
@@ -1115,7 +1287,12 @@ components:
                   default: false
             payload:
               type: object
-              description: Lead payload - see schemas/lead.json for full definition.
+              description: Lead payload - see schemas/lead.json for full definition. v1.2 additions surface under location and provenance.
+              properties:
+                location:
+                  $ref: '#/components/schemas/Location'
+                provenance:
+                  $ref: '#/components/schemas/Provenance'
     CallEnvelope:
       type: object
       required:
@@ -1166,7 +1343,12 @@ components:
                   default: false
             payload:
               type: object
-              description: Call payload - see schemas/call.json for full definition.
+              description: Call payload - see schemas/call.json for full definition. v1.2 additions surface under location and provenance.
+              properties:
+                location:
+                  $ref: '#/components/schemas/Location'
+                provenance:
+                  $ref: '#/components/schemas/Provenance'
     BidPayload:
       type: object
       required:

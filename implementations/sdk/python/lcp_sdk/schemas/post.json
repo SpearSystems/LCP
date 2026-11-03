@@ -68,6 +68,31 @@
           "type": "integer",
           "minimum": 0
         },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "original_price_cents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fx_rate": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{6,})?$"
+        },
+        "fx_source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "fx_timestamp": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "fx_expires_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
         "price_guardrails": {
           "type": "boolean"
         },

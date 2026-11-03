@@ -1056,6 +1056,277 @@
       "checks": [
         "contacted_report_shape"
       ]
+    },
+    {
+      "id": "L3-023",
+      "name": "post_pricing_same_currency_fx_metadata",
+      "expect": "pass",
+      "description": "v1.2 D7: same-currency settlement carrying complete FX metadata. fx_rate is a plain decimal with at least six significant digits and no exponent; the rate never feeds the auction when native and settlement currency agree.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b20e8400-e29b-41d4-a716-446655440023",
+            "type": "post",
+            "timestamp": "2026-11-04T10:00:10Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-post-fx-same-023",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_fx_001",
+            "delivered_at": "2026-11-04T10:00:10Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "consumer": {
+              "email": "jane.smith@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "pricing": {
+              "currency": "AUD",
+              "original_price_cents": 2200,
+              "final_price_cents": 2200,
+              "fx_rate": "1.000000",
+              "fx_source": "bilateral",
+              "fx_timestamp": "2026-11-04T10:00:00Z",
+              "fx_expires_at": "2026-11-04T10:05:00Z"
+            }
+          }
+        }
+      },
+      "checks": [
+        "post_schema",
+        "pricing_fx_comparability"
+      ]
+    },
+    {
+      "id": "L3-024",
+      "name": "post_pricing_cross_currency_missing_fx_rate",
+      "expect": "fail",
+      "error_code": "LCP-100",
+      "error_contains": [
+        "missing fx_rate"
+      ],
+      "description": "v1.2 D7: a USD-settled offer whose price_cents are in AUD carries no fx_rate. The offer is non-comparable and excluded with this reason; it is never compared as raw minor units.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b30e8400-e29b-41d4-a716-446655440024",
+            "type": "post",
+            "timestamp": "2026-11-04T10:00:10Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-post-fx-missing-024",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_fx_002",
+            "delivered_at": "2026-11-04T10:00:10Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "consumer": {
+              "email": "jane.smith@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "pricing": {
+              "currency": "USD",
+              "original_price_cents": 146700,
+              "fx_source": "bilateral",
+              "fx_timestamp": "2026-11-04T10:00:00Z",
+              "fx_expires_at": "2026-11-04T10:05:00Z"
+            }
+          }
+        }
+      },
+      "checks": [
+        "pricing_fx_comparability"
+      ]
+    },
+    {
+      "id": "L3-025",
+      "name": "post_pricing_stale_fx_metadata",
+      "expect": "fail",
+      "error_code": "LCP-100",
+      "error_contains": [
+        "stale fx_timestamp",
+        "stale fx_expires_at"
+      ],
+      "description": "v1.2 D7: the rate is older than LCP_FX_MAX_AGE_SECONDS (300) at delivery and its absolute validity end has already passed. Both make the offer non-comparable.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b40e8400-e29b-41d4-a716-446655440025",
+            "type": "post",
+            "timestamp": "2026-11-04T10:00:10Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-post-fx-stale-025",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_fx_003",
+            "delivered_at": "2026-11-04T10:00:10Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "consumer": {
+              "email": "jane.smith@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "pricing": {
+              "currency": "USD",
+              "original_price_cents": 146700,
+              "fx_rate": "0.680000",
+              "fx_source": "bilateral",
+              "fx_timestamp": "2026-11-04T09:00:00Z",
+              "fx_expires_at": "2026-11-04T09:30:00Z"
+            }
+          }
+        }
+      },
+      "checks": [
+        "pricing_fx_comparability"
+      ]
+    },
+    {
+      "id": "L3-026",
+      "name": "post_pricing_fx_rate_exponent_rejected",
+      "expect": "fail",
+      "error_code": "LCP-100",
+      "error_contains": [
+        "does not match",
+        "malformed fx_rate"
+      ],
+      "description": "v1.2 D7: fx_rate is a decimal string, never exponent notation. The post schema pattern rejects '6.8e-1' and the comparability rule reports it as malformed rather than coercing it.",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b50e8400-e29b-41d4-a716-446655440026",
+            "type": "post",
+            "timestamp": "2026-11-04T10:00:10Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-post-fx-exponent-026",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_fx_004",
+            "delivered_at": "2026-11-04T10:00:10Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "consumer": {
+              "email": "jane.smith@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "pricing": {
+              "currency": "USD",
+              "original_price_cents": 146700,
+              "fx_rate": "6.8e-1",
+              "fx_source": "bilateral",
+              "fx_timestamp": "2026-11-04T10:00:00Z",
+              "fx_expires_at": "2026-11-04T10:05:00Z"
+            }
+          }
+        }
+      },
+      "checks": [
+        "post_schema",
+        "pricing_fx_comparability"
+      ]
+    },
+    {
+      "id": "L3-027",
+      "name": "post_pricing_mixed_fx_source_rejected",
+      "expect": "fail",
+      "error_code": "LCP-100",
+      "error_contains": [
+        "mixed fx_source"
+      ],
+      "description": "v1.2 D7: the auction compares against rates sourced from 'ecb', but this offer declares 'openexchange'. Mixed-source rates are non-comparable, so the offer is excluded with an explainable reason.",
+      "comparison_fx_source": "ecb",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b60e8400-e29b-41d4-a716-446655440027",
+            "type": "post",
+            "timestamp": "2026-11-04T10:00:10Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "idempotency_key": "platform-001-post-fx-mixed-027",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_fx_005",
+            "delivered_at": "2026-11-04T10:00:10Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "consumer": {
+              "email": "jane.smith@example.com"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            },
+            "pricing": {
+              "currency": "USD",
+              "original_price_cents": 146700,
+              "fx_rate": "0.680000",
+              "fx_source": "openexchange",
+              "fx_timestamp": "2026-11-04T10:00:00Z",
+              "fx_expires_at": "2026-11-04T10:05:00Z"
+            }
+          }
+        }
+      },
+      "checks": [
+        "pricing_fx_comparability"
+      ]
     }
   ]
 }

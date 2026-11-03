@@ -110,6 +110,12 @@
         "city": {
           "type": "string"
         },
+        "street_address": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Residential street address. Not ping-safe; omitted from ping payloads."
+        },
         "timezone": {
           "type": "string",
           "description": "IANA timezone (e.g. Australia/Sydney)."
@@ -299,6 +305,12 @@
         },
         "ip_hash": {
           "type": "string"
+        },
+        "ip_address": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 45,
+          "description": "Consumer IP address (IPv4 or IPv6) captured server-side. Post-only; not ping-safe. ip_hash remains the ping-safe projection."
         },
         "user_agent_hash": {
           "type": "string"

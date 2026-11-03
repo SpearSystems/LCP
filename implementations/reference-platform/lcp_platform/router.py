@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 import hashlib
 import re
 import httpx
@@ -157,6 +158,24 @@ _CONTACTED_REPORT_LIMIT = 32
 _FINAL_PRICING_MAX_PRICE_CENTS = 100_000_000
 _FINAL_PRICING_MAX_DURATION_SECONDS = 86_400
 _CURRENCY_RE = re.compile(r"\A[A-Z]{3}\Z")
+
+# D3/v1.2: capabilities() states the core schema version it validates against
+# by reading the repository's SDK_VERSION (the package version the schemas and
+# SDKs are built from). Never a wire field — the advertisement is the signal.
+_SDK_VERSION_PATH = Path(__file__).resolve().parents[3] / "SDK_VERSION"
+
+# D7/v1.2: an FX rate is a decimal string with at least six fractional digits
+# and no exponent (post.pricing.fx_rate pins the same shape). Comparison uses
+# exact decimal arithmetic; only final presentation rounds half-up.
+_FX_RATE_RE = re.compile(r"\A[0-9]+(?:\.[0-9]{6,})?\Z")
+_FX_METADATA_FIELDS = ("fx_rate", "fx_source", "fx_timestamp", "fx_expires_at")
+
+
+def _read_sdk_version() -> str:
+    try:
+        return _SDK_VERSION_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def _is_int(value: Any) -> bool:
@@ -634,6 +653,142 @@ class Platform:
             )
         return build_ack(envelope, sender_id=self.config.platform_id, status="RECEIVED")
 
+    # D2/v1.2 — PROCESSED acknowledgement. A post is the only delivery a buyer
+    # can acknowledge this way, and PROCESSED is terminal-success
+    # (ACCEPTED -> PROCESSED): it never re-opens a payable, never rewrites
+    # pricing, and never becomes a precondition for SOLD.
+    _ACK_TERMINAL_STATUSES = frozenset({"REJECTED", "EXPIRED", "SOLD"})
+
+    def submit_ack(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        headers = headers or {}
+        self._validate_envelope(envelope)
+        message = envelope["lcp"]["message"]
+        if message["type"] != "ack":
+            raise RequestError("Ack endpoint requires an ack message", "LCP-006", 400)
+        self._validate_transport(message, headers)
+        if message["receiver_id"] != self.config.platform_id:
+            raise RequestError("Message receiver is not this platform", "LCP-002", 401)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+        )
+        payload = envelope["lcp"]["payload"]
+        if payload.get("status") != "PROCESSED":
+            raise RequestError(
+                "Only PROCESSED acknowledgements are accepted by this endpoint",
+                "LCP-006",
+                400,
+            )
+        lead_id = payload.get("lead_id")
+        if not isinstance(lead_id, str) or not lead_id:
+            raise RequestError("An ack for a post must carry lead_id", "LCP-003", 400)
+        delivery = next(
+            (
+                row
+                for row in self.store.deliveries_for_lead(lead_id)
+                if row["message_id"] == payload.get("original_message_id")
+            ),
+            None,
+        )
+        # PROCESSED answers a delivered post; a lead/ping/event (or a post
+        # this platform never delivered) is not a legal target.
+        if (
+            delivery is None
+            or delivery["kind"] != "post"
+            or delivery["buyer_id"] != sender_id
+        ):
+            if delivery is not None and delivery["buyer_id"] != sender_id:
+                raise RequestError(
+                    "Buyer is not authorized for this delivery", "LCP-002", 401
+                )
+            transition = InvalidStatusTransition(
+                "PROCESSED is only valid for a post delivery this buyer received"
+            )
+            raise RequestError(str(transition), "LCP-004", 422) from transition
+
+        lead_row = self.store.get_lead(lead_id)
+        current = str(delivery["status"])
+        terminal = self._ACK_TERMINAL_STATUSES
+        if current in terminal or (
+            lead_row is not None and str(lead_row["status"]) in terminal
+        ):
+            transition = InvalidStatusTransition(
+                f"Invalid ack transition {current} -> PROCESSED"
+            )
+            raise RequestError(str(transition), "LCP-004", 422) from transition
+        # Idempotent: a repeat returns the deterministic original ack and
+        # writes nothing (no second audit, no second status change).
+        if current != "PROCESSED":
+            if current != "DELIVERED":
+                transition = InvalidStatusTransition(
+                    f"A post must be delivered before PROCESSED (current: {current})"
+                )
+                raise RequestError(str(transition), "LCP-004", 422) from transition
+            self.store.mark_delivery(
+                delivery["delivery_id"],
+                status="PROCESSED",
+                attempts=int(delivery["attempts"]),
+                next_attempt_at=now_iso(),
+            )
+            self.store.insert_audit(
+                tenant_id=self.auth.tenant_for(sender_id)
+                or self.config.routing_tenant_id,
+                actor_id=sender_id,
+                action="post.processed",
+                resource_type="delivery",
+                resource_id=delivery["delivery_id"],
+                metadata={
+                    "lead_id": lead_id,
+                    "offer_id": delivery["offer_id"],
+                    "message_id": delivery["message_id"],
+                },
+            )
+        return self._processed_ack(
+            delivery, lead_id=lead_id, test=bool(message.get("test"))
+        )
+
+    def _processed_ack(
+        self, delivery: Any, *, lead_id: str, test: bool
+    ) -> dict[str, Any]:
+        """The ack this platform returns for a PROCESSED post delivery."""
+        post_message = self.store.decode_envelope(delivery["envelope_json"])["lcp"][
+            "message"
+        ]
+        # Deterministic id: a repeated PROCESSED returns the original
+        # acknowledgement, not a new one.
+        message_id = str(uuid5(NAMESPACE_URL, f"lcp:processed:{post_message['id']}"))
+        return {
+            "lcp": {
+                "version": SUPPORTED_LCP_VERSIONS[-1],
+                "message": {
+                    "id": message_id,
+                    "type": "ack",
+                    "timestamp": now_iso(),
+                    "sender_id": self.config.platform_id,
+                    "receiver_id": delivery["buyer_id"],
+                    "correlation_id": post_message["id"],
+                    "idempotency_key": (
+                        f"{self.config.platform_id}-ack-{post_message['id']}-PROCESSED"
+                    ),
+                    "test": test,
+                },
+                "payload": {
+                    "original_message_id": post_message["id"],
+                    "status": "PROCESSED",
+                    "lead_id": lead_id,
+                },
+            }
+        }
+
     # ─── Routing and delivery worker ───────────────────────────────────────
 
     def _process_routing_jobs(self) -> None:
@@ -792,9 +947,7 @@ class Platform:
             contacted_hashes=self._contacted_hashes_for(
                 lead_payload, offer["buyer_id"]
             ),
-            extensions=self._extensions_for_delivery(
-                lead_payload, offer["buyer_id"]
-            ),
+            extensions=self._extensions_for_delivery(lead_payload, offer["buyer_id"]),
             duplicate_resubmission=self.store.has_prior_post_delivery(
                 lead_payload["lead_id"], offer["buyer_id"]
             ),
@@ -1028,6 +1181,85 @@ class Platform:
             )
         return True
 
+    def _settlement_price(
+        self,
+        amount_cents: Any,
+        currency: Any,
+        pricing: Any,
+        settlement_currency: Any,
+        *,
+        counterpart: Any = None,
+        now: datetime | None = None,
+    ) -> tuple[Decimal | None, str | None]:
+        """D7: one price expressed in settlement minor units, or a reason.
+
+        Same currency compares directly. A cross-currency price needs a
+        present, well-formed, non-stale rate from a single source; missing,
+        stale, malformed, expired, or mixed-source metadata returns
+        ``(None, reason)`` and the caller excludes the offer from ranking.
+        Exact decimal arithmetic is used for the auction — never a rounded or
+        clamped value.
+        """
+        if not _is_int(amount_cents) or amount_cents < 0:
+            return None, "fx_amount_malformed"
+        native = str(currency or "USD").upper()
+        settlement = str(settlement_currency or "USD").upper()
+        if not _CURRENCY_RE.fullmatch(native):
+            return None, "fx_currency_malformed"
+        if not _CURRENCY_RE.fullmatch(settlement):
+            return None, "fx_settlement_currency_malformed"
+        if native == settlement:
+            return Decimal(amount_cents), None
+        metadata = pricing if isinstance(pricing, dict) else {}
+        if any(not metadata.get(field) for field in _FX_METADATA_FIELDS):
+            return None, "fx_rate_missing"
+        rate_text = metadata.get("fx_rate")
+        if not isinstance(rate_text, str) or not _FX_RATE_RE.fullmatch(rate_text):
+            return None, "fx_rate_malformed"
+        try:
+            rate = Decimal(rate_text)
+        except InvalidOperation:
+            return None, "fx_rate_malformed"
+        if rate <= 0:
+            return None, "fx_rate_malformed"
+        source = metadata.get("fx_source")
+        if not isinstance(source, str) or not source.strip():
+            return None, "fx_source_missing"
+        if isinstance(counterpart, dict):
+            other_source = counterpart.get("fx_source")
+            if other_source is not None and other_source != source:
+                return None, "fx_source_mixed"
+        reference = now or datetime.now(timezone.utc)
+        timestamp = parse_iso_datetime(metadata.get("fx_timestamp"))
+        if timestamp is None:
+            return None, "fx_timestamp_malformed"
+        if (reference - timestamp).total_seconds() > self.config.fx_max_age_seconds:
+            return None, "fx_rate_stale"
+        expires_at = parse_iso_datetime(metadata.get("fx_expires_at"))
+        if expires_at is None:
+            return None, "fx_expires_at_malformed"
+        if expires_at <= reference:
+            return None, "fx_rate_expired"
+        # fx_rate is "native per settlement unit": native / rate.
+        return Decimal(amount_cents) / rate, None
+
+    def _record_non_comparable_bid(self, bid: Any, reason: str) -> None:
+        """Attach the exclusion reason to the auction decision record."""
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id=self.config.platform_id,
+            action="bid.non_comparable",
+            resource_type="bid",
+            resource_id=str(bid["bid_id"]),
+            metadata={
+                "lead_id": bid["lead_id"],
+                "offer_id": bid["offer_id"],
+                "buyer_id": bid["buyer_id"],
+                "currency": bid["currency"],
+                "reason": reason,
+            },
+        )
+
     def _route_lead(self, lead_id: str) -> None:
         row = self.store.get_lead(lead_id)
         if not row or row["status"] in {
@@ -1052,7 +1284,11 @@ class Platform:
             return
         bids = self.store.list_bids_for_lead(lead_id)
         pings = {ping["ping_id"]: ping for ping in self.store.list_pings(lead_id)}
-        candidates: list[tuple[sqlite3_row, sqlite3_row, dict[str, Any]]] = []
+        candidates: list[
+            tuple[sqlite3_row, sqlite3_row, dict[str, Any], Decimal, dict[str, Any]]
+        ] = []
+        converted_sources: set[str] = set()
+        now = datetime.now(timezone.utc)
         for bid in bids:
             ping = pings.get(bid["ping_id"])
             offer = self.store.get_offer(bid["offer_id"])
@@ -1065,9 +1301,27 @@ class Platform:
                 continue
             if not self._capacity_available(offer):
                 continue
-            if bid["bid_price_cents"] < offer["floor_price_cents"]:
+            bid_payload = self.store.decode_envelope(bid["envelope_json"])["lcp"][
+                "payload"
+            ]
+            settlement_price, reason = self._settlement_price(
+                bid["bid_price_cents"],
+                bid["currency"],
+                bid_payload,
+                offer.get("currency", "USD"),
+                counterpart=offer,
+                now=now,
+            )
+            if reason is not None:
+                self._record_non_comparable_bid(bid, reason)
                 continue
-            if bid["currency"] != offer["currency"]:
+            assert settlement_price is not None
+            if (
+                str(bid["currency"]).upper()
+                != str(offer.get("currency", "USD")).upper()
+            ):
+                converted_sources.add(str(bid_payload.get("fx_source")))
+            if settlement_price < Decimal(int(offer["floor_price_cents"])):
                 continue
             # LEP-0003 §5 item 4: award-eligible ping state. The OPEN-ping
             # requirement previously lived only in submit_bid, so a
@@ -1084,10 +1338,27 @@ class Platform:
                 continue
             if (bid["received_at"] or "") >= (ping["expires_at"] or ""):
                 continue
-            candidates.append((bid, ping, offer))
+            candidates.append((bid, ping, offer, settlement_price, bid_payload))
+        # D7: rates from different providers are not a common basis. Mixed
+        # sources make every converted offer non-comparable (never pick one
+        # source arbitrarily); same-currency offers keep comparing directly.
+        if len(converted_sources) > 1:
+            comparable: list[
+                tuple[sqlite3_row, sqlite3_row, dict[str, Any], Decimal, dict[str, Any]]
+            ] = []
+            for candidate in candidates:
+                candidate_bid, _, candidate_offer, _, _ = candidate
+                if (
+                    str(candidate_bid["currency"]).upper()
+                    != str(candidate_offer.get("currency", "USD")).upper()
+                ):
+                    self._record_non_comparable_bid(candidate_bid, "fx_source_mixed")
+                else:
+                    comparable.append(candidate)
+            candidates = comparable
         candidates.sort(
             key=lambda item: (
-                -item[0]["bid_price_cents"],
+                -item[3],
                 item[0]["estimated_contact_seconds"]
                 if item[0]["estimated_contact_seconds"] is not None
                 else 2**31,
@@ -1108,17 +1379,21 @@ class Platform:
 
         lead_envelope = self.store.decode_envelope(row["envelope_json"])
         delivered = 0
-        for bid, ping, offer in candidates:
+        for bid, ping, offer, settlement_price, bid_payload in candidates:
             if not offer.get("webhook_url"):
                 continue
+            # Presentation rounds half-up only here, after the auction has
+            # ranked on the exact settlement price. The rounded cents never
+            # feed back into ranking.
+            settlement_cents = int(
+                settlement_price.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
             post = build_post(
                 lead_envelope,
                 offer,
                 platform_id=self.config.platform_id,
-                price_cents=bid["bid_price_cents"],
-                buyer_reference=self.store.decode_envelope(bid["envelope_json"])["lcp"][
-                    "payload"
-                ].get("buyer_reference"),
+                price_cents=settlement_cents,
+                buyer_reference=bid_payload.get("buyer_reference"),
                 correlation_id=ping["message_id"],
                 contacted_hashes=self._contacted_hashes_for(
                     lead_payload, offer["buyer_id"]
@@ -1130,6 +1405,20 @@ class Platform:
                     lead_payload["lead_id"], offer["buyer_id"]
                 ),
             )
+            if str(bid["currency"]).upper() != str(offer["currency"]).upper():
+                # D7: the post records the buyer's native price and the rate
+                # that produced the settlement price; `price_cents` stays in
+                # settlement minor units.
+                pricing = post["lcp"]["payload"]["pricing"]
+                pricing["currency"] = offer["currency"]
+                pricing["original_price_cents"] = int(bid["bid_price_cents"])
+                pricing["fx_rate"] = str(bid_payload["fx_rate"])
+                pricing["fx_source"] = str(bid_payload["fx_source"])
+                fx_timestamp = parse_iso_datetime(bid_payload["fx_timestamp"])
+                fx_expires_at = parse_iso_datetime(bid_payload["fx_expires_at"])
+                assert fx_timestamp is not None and fx_expires_at is not None
+                pricing["fx_timestamp"] = format_iso_datetime(fx_timestamp)
+                pricing["fx_expires_at"] = format_iso_datetime(fx_expires_at)
             self.validator.require_valid_envelope(post)
             # LEP-0003 §5 item 1: the remaining-budget check and the post
             # write occur in ONE transaction at this single decision point,
@@ -1149,9 +1438,7 @@ class Platform:
                 max_buyers=budget,
             )
             if outcome == "awarded":
-                self._record_pending_payable(
-                    lead_envelope, offer, bid["bid_price_cents"]
-                )
+                self._record_pending_payable(lead_envelope, offer, settlement_cents)
                 self.store.mark_ping_won(ping["ping_id"])
                 delivered += 1
                 if exclusive:
@@ -2090,6 +2377,20 @@ class Platform:
             # This advertisement and the intake LCP-007 negotiation read the
             # same constant (validation.SUPPORTED_LCP_VERSIONS) — issue #181.
             "lcp_versions": list(SUPPORTED_LCP_VERSIONS),
+            # D3/v1.2: the core schema version this receiver validates
+            # against, resolved from the package SDK_VERSION. SPEC §2 states
+            # lcp.version IS the core schema version for this major line, so
+            # this is an advertisement, not a new envelope field.
+            "core_schema_version": _read_sdk_version(),
+            # D2/v1.2: absent an offer-level exclusivity hint, a lead is
+            # shared (the v1.0 default made explicit).
+            "exclusivity_default": "shared",
+            # v1.2 additive surfaces actually implemented by this build.
+            # Add a key only when the behaviour is enabled here.
+            "features": {
+                "processed_ack": "1.2.0",
+                "multi_currency": "1.2.0",
+            },
             "message_types": ["lead", "call", "ping", "bid", "post", "ack", "event"],
             "verticals": [
                 {"id": path.stem, "schema_version": "1.0.0"}

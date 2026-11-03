@@ -47,6 +47,23 @@ UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
 """
 ISO_3166_1_ALPHA2 = frozenset(_ISO_3166_1_ALPHA2_TEXT.split())
 
+# D7/v1.2 wire surface + v1.0/v1.1 registrations from
+# governance/EXTENSION-REGISTRY.md. The value states whether the registration
+# declares the namespace ping-safe. A ping carries `extensions` only for a
+# registered, ping-safe namespace; every other key is refused by name.
+# Unregistered namespaces stay legal on `lead`/`post` (forward compatibility),
+# but never on a ping: the strict allowlist is the PII guard.
+EXTENSION_REGISTRY: dict[str, bool] = {
+    "lcp.platform.requirements": False,
+    "lcp.platform.service_area": False,
+    "lcp.marketplace.final_pricing": False,
+    "lcp.form.questions": False,
+    "lcp.outbound.call_request": False,
+    "lcp.platform.assessment": True,
+    "lcp.buyer.criteria": False,
+    "lcp.intake.raw_form": False,
+}
+
 
 def default_schema_root() -> Path:
     configured = os.environ.get("LCP_SCHEMA_DIR")
@@ -119,6 +136,8 @@ class SchemaValidator:
                     message_type=message["type"],
                 )
             )
+        if message["type"] == "ping":
+            errors.extend(self._ping_extension_errors(envelope["lcp"]["payload"]))
         return errors
 
     def require_valid_envelope(self, envelope: dict[str, Any]) -> None:
@@ -164,6 +183,32 @@ class SchemaValidator:
         ]
         if message_type == "ping":
             errors.extend(self._ping_safe_errors(payload, validator.schema))
+        return errors
+
+    def _ping_extension_errors(self, payload: dict[str, Any]) -> list[str]:
+        """v1.2/D7: a ping admits only registered, ping-safe namespaces.
+
+        The schema bounds the container shape; what a namespace *is* remains a
+        receiver rule (LEP-0006 §B.1). Refuse by name so the sender can see
+        which namespace failed admission — never silently drop the block.
+        """
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict) or not extensions:
+            return []
+        errors: list[str] = []
+        for namespace in sorted(extensions):
+            ping_safe = EXTENSION_REGISTRY.get(namespace)
+            if ping_safe is None:
+                errors.append(
+                    f"extensions.{namespace} is not a registered extension "
+                    "namespace; a ping admits only registered, ping-safe "
+                    "namespaces (governance/EXTENSION-REGISTRY.md)"
+                )
+            elif not ping_safe:
+                errors.append(
+                    f"extensions.{namespace} is registered but not ping-safe; "
+                    "a ping admits only registrations that declare ping safety"
+                )
         return errors
 
     def _ping_safe_errors(
