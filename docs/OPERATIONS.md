@@ -168,6 +168,64 @@ Do not put raw consumer payloads into incident tickets or chat systems.
 - Audit rows never contain consumer payloads or secrets. Trace from a request
   ID without PII; the original envelopes live only in the encrypted store.
 
+## Agent attestation rollout (observe → enforce)
+
+LEP-0008 verification runs at the intake slot for every agent-origin lead
+(`provenance.source_type = "agent"`). Mode is `LCP_ATTESTATION_MODE`:
+`observe` (verify + audit + accept) or `enforce` (reject on failure). The
+default at ship is `enforce`; a deployment migrating live traffic starts in
+`observe`.
+
+- **Phase 2 — observe.** Zero new rejections on the wire; every §5 outcome
+  is recorded as an `attestation.accept` / `attestation.observe` audit row
+  with the frozen metadata `{outcome, reason, iss_host, kid,
+  tok_sha256_16}`. Read the reason mix per sender: exit when the failures
+  are dominated by `format`/`algorithm` (junk, not honest senders
+  mid-migration) and `expired`/`signature` sit at noise levels for an agreed
+  interval (suggested review point: 2 weeks). Senders get their exact failure
+  axis from their own leads; issue each a remediation ticket from the audit
+  rows.
+- **Phase 3 — enforce.** Flip the flag; rejections follow the §8 mapping:
+  token shape (free text, non-compact JWS, oversized, padded) → `400
+  LCP-100`; verification failures → `401 LCP-002` with
+  `details.reason ∈ {format, algorithm, issuer_policy, key_unknown,
+  signature, expired, audience, claims_mismatch}`; issuer *availability*
+  failure only (DNS/connect/timeout, issuer 5xx) → `500 LCP-500`
+  `key_unavailable`, which is retryable under the normal idempotency rules.
+  Enforce mode never fails open; observe mode is the only sanctioned soft
+  path, and a deployment running observe must not advertise L3 (§9).
+- **Alerting.** Dashboard and alert on the `key_unavailable` rate — an
+  issuer outage is now a *visible* failure (that is the point of `LCP-500`
+  vs the silent accept it replaces). Fetched-but-invalid JWKS documents
+  (size/key-count bounds, non-JSON, duplicate `kid`, issuer 4xx) are `401
+  key_unknown` — an issuer-configuration signal, not an outage signal; do
+  not page on them.
+- **Egress.** Every JWKS fetch runs the paired delivery-path controls
+  (`validate_webhook_url` + resolve-aware `validate_egress_host`): HTTPS
+  only, no embedded credentials, no private/loopback/link-local
+  destinations post-resolution, no redirect following, no proxy/env
+  interception — in **every** mode. `LCP_ALLOW_INSECURE_WEBHOOKS` (sandbox)
+  does not relax any of this for attestation resolution. The `iss` URL must
+  resolve to a routable host the platform may reach; a hostname allowlist
+  can be enforced through `LCP_WEBHOOK_HOST_ALLOWLIST`, which the same guard
+  consults. Fetch timeout is capped at 2 s; the success cache honours
+  `cache-control`/`max-age` under `LCP_ATTESTATION_JWKS_CACHE_TTL_SECONDS`
+  (hard cap 24 h), key rotation propagates on that TTL.
+- **Skew.** `LCP_ATTESTATION_CLOCK_SKEW_SECONDS` accepts 0–30 only (a
+  config-time refusal outside that range is required behavior). Clocks
+  drifting past that are an NTP incident, not a knob.
+- **Privacy.** Audit rows, metrics, and logs never carry token bytes —
+  correlate incidents with `tok_sha256_16` (SHA-256 over the full compact
+  token, first 16 hex chars). Do not paste attestations into tickets.
+- **Rollback.** Phase 3 → 2 is the flag: accept behavior returns to
+  today's wire while verification keeps recording. The §2 schema-pattern
+  tightening (schemas + regenerated bundles) lands separately from this
+  module; until it does, shape rejection happens at the verifier gate and
+  rolls back with the same mode flag.
+- **Advertisement.** Until this PR's verification is proven green on `main`,
+  the platform keeps advertising `conformance_level: "L2"` (Phase 0); the
+  L3 flip is a separate, deliberate change (V12 pin test).
+
 ## Backup and restore
 
 - Encrypt backups with a separate key hierarchy.
