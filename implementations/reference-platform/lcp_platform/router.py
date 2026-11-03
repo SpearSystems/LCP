@@ -116,6 +116,11 @@ _PUBLISHER_EVENT_TYPES = {
     "DISPUTED",
     "CONSENT_WITHDRAWN",
     "ERASURE_REQUEST",
+    # LEP-0006 Track A (F5/T6 pattern): v1.1 price feedback. A publisher
+    # reports what a ping actually sold for, including external sales; the
+    # report is an attestation keyed to one lead and asserts NO lifecycle
+    # transition, so it MUST NOT join _EVENT_STATUS_TARGETS.
+    "FINAL_PRICING",
 }
 _BUYER_EVENT_TYPES = {
     "DELIVERED",
@@ -137,6 +142,58 @@ _BUYER_EVENT_TYPES = {
 # plaintext (trust model stated in the record).
 _CONTACTED_HASH_RE = re.compile(r"\A[a-f0-9]{64}\Z")
 _CONTACTED_REPORT_LIMIT = 32
+# SPEC §4 class rule: the `event` message class carries no consumer PII
+# (`event` row, PII — None). `details` is an open object, so — exactly like
+# LEP-0003 §4's report rules — the rule is enforced at ingest, not in schema:
+# a plaintext contact value anywhere in `details` is a validation rejection,
+# for every event name and both reporting directions (issue #198). Digests
+# and ids are 64-hex/opaque strings and are unaffected; dates are excluded
+# explicitly (a date is not a phone number).
+_EMAIL_SHAPED_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+# A phone-number RUN inside a longer string. Boundaries are the point: a run
+# may not start or end inside an identifier — letters, digits, `_`, `-`, `.`
+# and `/` are all identifier material, so `ping_550e8400-1`,
+# `OPP-2026-0001234`, `v1.1.0` and the `2026-11-02` tail of an ISO timestamp
+# cannot match, while a run surrounded by whitespace or punctuation is
+# examined. The match length is bounded, so a long opaque id cannot match
+# either.
+_PHONE_RUN_RE = re.compile(r"(?<![\w./-])\+?\(?\d[\d\s().\-]{4,19}\d(?![\w./-])")
+_DATE_ONLY_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
+_PHONE_MIN_DIGITS = 7
+_PHONE_MAX_DIGITS = 15
+# LEP-0006 Track A ingest bounds for the recommended FINAL_PRICING shape
+# (SPEC §4). Minor units only; the ceiling is a typo guard (1,000,000 major
+# units), and a call's contact duration cannot exceed a day.
+_FINAL_PRICING_MAX_PRICE_CENTS = 100_000_000
+_FINAL_PRICING_MAX_DURATION_SECONDS = 86_400
+_CURRENCY_RE = re.compile(r"\A[A-Z]{3}\Z")
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _has_plaintext_contact(value: str) -> bool:
+    """Whether a `details` string carries contact data in the clear.
+
+    Two shapes only — an email address, or a phone-number run of 7-15 digits
+    (E.164's ceiling) with separators. A bare `YYYY-MM-DD` is a date, not a
+    phone number, and is skipped before the digit count. Identifier material
+    cannot match: 64-hex is longer than the bounded run, its letters break
+    every candidate, and a run may not begin or end inside a hyphenated,
+    dotted or slashed id. The check is deliberately shape-based, not
+    inferential — no DLP scoring, no normalization of the value it refuses.
+    """
+    if _EMAIL_SHAPED_RE.search(value):
+        return True
+    for match in _PHONE_RUN_RE.finditer(value):
+        candidate = match.group(0)
+        if _DATE_ONLY_RE.match(candidate):
+            continue
+        digits = sum(1 for char in candidate if "0" <= char <= "9")
+        if _PHONE_MIN_DIGITS <= digits <= _PHONE_MAX_DIGITS:
+            return True
+    return False
 
 
 class Platform:
@@ -1264,6 +1321,97 @@ class Platform:
         return "payable", "call_outcome_met_rules", seconds
 
     @staticmethod
+    def _validate_event_details_pii(payload: dict[str, Any]) -> None:
+        """SPEC §4 class rule: ``event.details`` carries no consumer PII.
+
+        "Event ``details`` MUST NOT carry consumer PII — contact values
+        travel only as per-pair keyed digests where a message defines them."
+        ``details`` is ``additionalProperties: true`` by design, so the rule
+        is a receiver ingest MUST (same boundary as LEP-0003 §4's report
+        rules): every event name and both reporting directions are covered,
+        because #198 measured the plaintext surviving on
+        ``CONSENT_WITHDRAWN`` while only ``CONTACTED`` was validated.
+
+        The walk is iterative, not recursive: ``details`` nesting is
+        attacker-controlled and a deep object must not raise ``RuntimeError``
+        through (a 500 instead of a validation rejection). Shape checks only —
+        no DLP inference, no normalization of the value it refuses.
+        """
+        stack: list[tuple[Any, str]] = [(payload.get("details"), "details")]
+        while stack:
+            node, path = stack.pop()
+            if isinstance(node, dict):
+                stack.extend((value, f"{path}.{key}") for key, value in node.items())
+                continue
+            if isinstance(node, list):
+                stack.extend(
+                    (value, f"{path}[{index}]") for index, value in enumerate(node)
+                )
+                continue
+            if not isinstance(node, str):
+                continue
+            value = node.strip()
+            if _has_plaintext_contact(value):
+                raise RequestError(
+                    "Event details must not carry plaintext contact values "
+                    f"({path}); contact values travel only as per-pair "
+                    "keyed digests",
+                    "LCP-100",
+                    details={"field": path},
+                )
+
+    @staticmethod
+    def _validate_final_pricing_details(payload: dict[str, Any]) -> None:
+        """LEP-0006 Track A ingest bounds for the recommended `details` shape.
+
+        "Malformed or out-of-bound reports are validation rejections, not
+        stores." Absent fields pass — the shape is SHOULD-level guidance and
+        a publisher that lost the auction may report a price without a
+        ``ping_id``. Present fields must still be well-formed: integer minor
+        units (A-2: a float-dollar price is the migration trap this refuses),
+        an explicit uppercase currency, and the typo/duration ceilings.
+        """
+        details = payload.get("details")
+        if not isinstance(details, dict):
+            return
+        rejections: list[str] = []
+        price = details.get("winning_price_cents")
+        if price is not None and not (
+            _is_int(price) and 0 < price <= _FINAL_PRICING_MAX_PRICE_CENTS
+        ):
+            rejections.append(
+                "winning_price_cents must be an integer in 1.."
+                f"{_FINAL_PRICING_MAX_PRICE_CENTS}"
+            )
+        currency = details.get("currency")
+        if currency is not None and not (
+            isinstance(currency, str) and _CURRENCY_RE.match(currency)
+        ):
+            rejections.append("currency must be an uppercase ISO 4217 alpha-3")
+        duration = details.get("duration_seconds")
+        if duration is not None and not (
+            _is_int(duration) and 0 <= duration <= _FINAL_PRICING_MAX_DURATION_SECONDS
+        ):
+            rejections.append(
+                "duration_seconds must be an integer in 0.."
+                f"{_FINAL_PRICING_MAX_DURATION_SECONDS}"
+            )
+        ping_id = details.get("ping_id")
+        if ping_id is not None and not isinstance(ping_id, str):
+            rejections.append("ping_id must be a string")
+        sale_scope = details.get("sale_scope")
+        if sale_scope is not None and not isinstance(sale_scope, str):
+            rejections.append("sale_scope must be a string")
+        sold_at = details.get("sold_at")
+        if sold_at is not None and parse_iso_datetime(sold_at) is None:
+            rejections.append("sold_at must be an RFC 3339 date-time")
+        if rejections:
+            raise RequestError(
+                "FINAL_PRICING details are malformed: " + "; ".join(rejections),
+                "LCP-100",
+            )
+
+    @staticmethod
     def _validate_contact_report(payload: dict[str, Any]) -> None:
         """LEP-0003 §4 ingest MUSTs (the report rule cannot be drafted in the
         open ``event.details`` object, so it is enforced at ingest).
@@ -1390,6 +1538,12 @@ class Platform:
 
         if event_name == "CONTACTED":
             self._validate_contact_report(payload)
+        # SPEC §4 class rule, every event name and both directions (#198).
+        # Runs after the CONTACTED report rule so that report keeps its own
+        # published rejection semantics.
+        self._validate_event_details_pii(payload)
+        if event_name == "FINAL_PRICING":
+            self._validate_final_pricing_details(payload)
 
         target_status = _EVENT_STATUS_TARGETS.get(event_name)
         if target_status:
@@ -1867,6 +2021,10 @@ class Platform:
                 "CALL_ENDED",
                 "CALL_OUTCOME",
                 "CONTACTED",
+                # LEP-0006 Track A: publisher-reported final pricing
+                # (external or in-auction sale outcome). Analytics and bid
+                # refinement only — never a payable or lifecycle signal.
+                "FINAL_PRICING",
             ],
             "attachments": {
                 "upload": True,

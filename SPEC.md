@@ -508,7 +508,19 @@ message can fail multiple field validations.
 ### event
 
 `lead_id`, `event` (DELIVERED|ACCEPTED|REJECTED|DISPUTED|REFUNDED|
-EXPIRED|CONVERTED|ARCHIVED), `timestamp`, `details`, `external_reference`.
+EXPIRED|CONVERTED|ARCHIVED; v1.1 adds `FINAL_PRICING` and `CONTACTED`,
+both documented below), `timestamp`, `details`, `external_reference`.
+
+**Class rule — no consumer PII.** Event `details` MUST NOT carry consumer
+PII — contact values travel only as per-pair keyed digests where a message
+defines them. This holds for every event name and both reporting
+directions (publisher and buyer). `details` is
+`additionalProperties: true` by design, so this is a receiver ingest
+rule, not a schema rule: a receiver MUST reject a plaintext contact value
+anywhere in `details` (a phone-number-shaped run of 7-15 digits, or an
+email address) as a validation rejection (`LCP-100`), not a store.
+`LCP-008 PII_IN_PING` stays the ping-allowlist code; the event class has
+no allowlist to violate.
 
 For `CONVERTED` events, `details` SHOULD include:
 
@@ -535,6 +547,48 @@ For `DISPUTED` events, `details` SHOULD include:
 
 These are recommended shapes — `details` is `additionalProperties: true`,
 so platforms can add custom fields without schema changes.
+
+For `FINAL_PRICING` events (v1.1, LEP-0006 Track A — a publisher reports
+what a ping actually sold for, including sales closed outside this
+platform's auction), `details` SHOULD include:
+
+| Field | Type | Notes |
+|---|---|---|
+| `ping_id` | string | The ping this report describes, as the platform issued it. Optional: a publisher that lost the auction may still know the winning external price. |
+| `sale_scope` | string | Open enum, known values `external` (sold outside this platform's auction) and `internal_auction` (sold through it). Unknown values stored and passed through (§6). |
+| `winning_price_cents` | integer | Winning price in integer minor units of `currency`. MUST be `> 0` and MUST NOT exceed `100000000` (typo guard: 1,000,000 major units); larger values are malformed reports. Float major units are never valid. |
+| `currency` | string | ISO 4217 alpha-3, uppercase. |
+| `duration_seconds` | integer | Contact duration of the winning sale when call-based; `0` for form sales. MUST be `>= 0` and `<= 86400`. |
+| `sold_at` | string (date-time) | When the winning sale occurred. |
+
+Deployment-specific additions ride **namespaced keys inside `details`**
+under the registered `{org}.marketplace.final_pricing` namespace (§6,
+[governance/EXTENSION-REGISTRY.md](governance/EXTENSION-REGISTRY.md)); the
+event's `external_reference` MAY carry the external network's sale record
+id. Malformed or out-of-bound reports are validation rejections
+(`LCP-100`), not stores.
+
+**Settlement neutrality (normative).** `post.pricing` (§4) remains the
+sole billing and dispute record between platform and buyer. A
+`FINAL_PRICING` report MUST NOT change any payable, refund a charged
+price, adjust `post.pricing` fields, re-price an in-flight auction, or
+assert a lifecycle transition — it MUST NOT move `status`. Receivers
+consume it for **analytics and bid refinement only**. Values are
+authenticated-sender attestations (format and bounds sanity only: the
+platform cannot verify what a lead sold for on another network), scoped
+to one `lead_id`; a report contradicting the platform's own auction
+outcome is not an error, it is the point. Disputes about a report ride
+the existing ack/rejection and dispute paths, not a new one. Replay
+collapses on the event `message.id` (same bytes → `DUPLICATE`; reused id
+with different bytes → `LCP-005`), and a receiver SHOULD treat a later
+report for the same `(lead_id, ping_id)` with a newer payload `timestamp`
+as superseding the earlier one for analytics.
+
+**Capability gate (§8).** A publisher MUST send `FINAL_PRICING` only to a
+platform whose `capabilities().events` advertisement lists it and whose
+`lcp_versions` contains an element with `major == 1` and `minor >= 1`
+(parsed full semver, never a string prefix). A platform that accepts
+`FINAL_PRICING` MUST list it in that advertisement.
 
 For `CONSENT_WITHDRAWN` events (consumer opted out after delivery),
 `details` SHOULD include:
