@@ -253,7 +253,7 @@ Additive optional field on `post` (`schemas/post.json`):
   #153 **T9** publishes executed vectors
   (`lcp-sdk-dedup-hash-001..N`, run by all ten SDKs and the reference
   platform, closing ledger row `SEC-08`).
-  Reality pointer (2026-11-03): wire PR #166 (open) publishes
+  Reality pointer (2026-11-03): wire PR #166 (merged) publishes
   the pinned preimage→digest pairs as `test-vectors/sdk/contact-hash.json`
   — the identical entry form under a different file name, with
   `lcp-contact-hash-phone-001` / `lcp-contact-hash-email-001` recomputing
@@ -346,7 +346,7 @@ re-keying) — per recipient pair for subsequent posts. `submitEvent`
   HMACs are unmatchable by anyone outside the pair **and
   unverifiable-by-design for the receiver**; disputes ride the
   existing ack/rejection paths (abuse list below).
-  Reality pointer: #166 (open) lands the 64-hex and
+  Reality pointer: #166 (merged) lands the 64-hex and
   32-entries-per-report MUSTs in SPEC §4 verbatim; its `post.json`
   carries an implementation-side `maxItems: 100` on the post direction
   (see the array-bound Deferred question) while this report-direction
@@ -721,7 +721,7 @@ one-sentence §8.
   `plat: test_capabilities_lcp_versions_gate_match_rule` asserts the
   element format and both gate directions. Invalid example D below
   illustrates the *absence* of this rule's protection; with (a)–(c)
-  landed it is the mechanism. Reality pointer: #166 (open)
+  landed it is the mechanism. Reality pointer: #166 (merged)
   lands (a) verbatim in SPEC §8 and (b) in `api/lcp-openapi.yaml`
   (pattern `^\d+\.\d+\.\d+$`, required) — parsed `major == 1` /
   `minor >= m` membership, never string literals or prefixes; coverage
@@ -858,7 +858,7 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   `^[a-f0-9]{64}$`, min 0; no `uniqueItems` — duplicates merge
   receiver-side per §4). No `$defs/exclusivity` change; no
   `event.json` change (`details` stays open by design; the report
-  rule is ingest behavior, §4). Reality pointer: #166 (open)
+  rule is ingest behavior, §4). Reality pointer: #166 (merged)
   ships these three schema changes as drafted, adding `maxItems: 100` on
   the post array (implementation bound; rationale in the schema
   `$comment` — the protocol question stays Deferred below).
@@ -891,7 +891,7 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   `event_open_enum_pass_through` on `L3-006`
   (`test-vectors/l3-advanced.json:287`) are currently decorative
   (routed O3) — the implementation PR wires `checks` or ships real
-  platform tests; reality pointer: #166 (open) wires the
+  platform tests; reality pointer: #166 (merged) wires the
   `checks` arrays in `test-vectors/conformance.py`, so the labels are
   honored and O3 is closed at the wire surface); absent-vs-empty `contacted_hashes` distinction in
   both directions (§4); and a tooling test that validates every
@@ -1187,7 +1187,7 @@ wire surface (#166) is in review.
   draft (a lead's contact attempts are naturally bounded); if a real
   deployment reports bulk suppression syncs through this field, cap it
   and route bulk to a dedicated mechanism. Trigger: observed array sizes
-  in production posts. Reality pointer: #166 (open) ships an
+  in production posts. Reality pointer: #166 (merged) ships an
   implementation-side `maxItems: 100` on the post direction with the
   bulk-misuse rationale in the schema `$comment`; the protocol-level
   cap/ordering question stays deferred with the trigger unchanged (the
