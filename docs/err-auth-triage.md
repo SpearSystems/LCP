@@ -171,3 +171,19 @@ filed as clarification rather than silently re-labeled "green". The tempting che
 win — editing only the test's asserted code — was executed as Proof A specifically
 to show it fails: the test cannot be fixed without the platform. No files other
 than this report were touched by this lane.
+
+## 4. Resolution (2026-11-03)
+
+The §5 text gap the V3 row named is closed. SPEC §5 now assigns the
+replay-protection axis explicitly (missing timestamp/signature headers,
+malformed or timezone-naive timestamps, missing or mismatched idempotency
+headers, inclusive and symmetric replay boundary) and states that the
+identity/authorization axis — unknown sender, sender/header disagreement, a
+failed API-key check, and a missing route scope — is `LCP-002`, with no
+re-coding between families.
+
+Behaviour is unchanged; only the normative assignment was added. Each
+condition is pinned by a named test in
+`implementations/reference-platform/tests/test_auth_code_assignment.py` and
+mapped in `docs/SPEC-COVERAGE.md` rows `ERR-014`…`ERR-019`, so the clauses
+cannot drift back to being implementation-only.

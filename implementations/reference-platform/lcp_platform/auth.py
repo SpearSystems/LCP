@@ -56,7 +56,9 @@ def signature_for(
     ).hexdigest()
 
 
-def _timestamp_is_fresh(timestamp: str, max_skew_seconds: int) -> bool:
+def _timestamp_is_fresh(
+    timestamp: str, max_skew_seconds: int, *, now: "datetime | None" = None
+) -> bool:
     from datetime import datetime, timezone
 
     try:
@@ -65,7 +67,7 @@ def _timestamp_is_fresh(timestamp: str, max_skew_seconds: int) -> bool:
         return False
     if signed_at.tzinfo is None:
         return False
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     return (
         abs((now - signed_at.astimezone(timezone.utc)).total_seconds())
         <= max_skew_seconds

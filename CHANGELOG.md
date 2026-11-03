@@ -323,6 +323,13 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   retry/dead-letter semantics are documented in the operations guide with
   the delivered-post acknowledgement deadline recorded as a v1.2 design item
   (#193).
+- **SPEC §5 assigns the whole auth family.** The replay-protection axis
+  (missing timestamp/signature headers, malformed or naive timestamps,
+  missing or mismatched idempotency headers, inclusive+symmetric replay
+  boundary) and the identity/authorization axis (unknown sender, header
+  disagreement, failed API key, missing scope → LCP-002) are now normative
+  text rather than implementation reality, each pinned by a named test and
+  matrix rows `ERR-014`…`ERR-019`. Behaviour is unchanged.
 - **Repository protection is enforced.** `main` requires a pull request,
   33 status checks, an up-to-date branch, and resolved threads, and rejects
   force-push/deletion; `v*` tags are immutable. Required approvals stay at

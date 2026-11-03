@@ -689,11 +689,27 @@ not the target pair's digest; §9).
 }
 ```
 
-`LCP-002 UNKNOWN_SENDER` covers an unrecognized `sender_id`.
-`LCP-012 SIGNATURE_INVALID` covers a recognized sender whose HMAC
-signature is invalid or timestamp is expired — these are different
-failure modes (identity vs. replay protection) and now have distinct
-codes.
+`LCP-002 UNKNOWN_SENDER` covers the identity and authorization axis: an
+unrecognized `sender_id`, a `sender_id` that disagrees with
+`X-LCP-Sender-Id`, an API key that does not authenticate its sender, and a
+recognized sender that lacks the scope a route requires.
+
+`LCP-012 SIGNATURE_INVALID` covers the replay-protection axis for a
+recognized sender (401): a missing `X-LCP-Timestamp` or
+`X-LCP-Signature`; a timestamp that is malformed, not timezone-aware, or
+outside the replay window; a missing `X-LCP-Idempotency-Key` on a mutating
+route; and a header idempotency key that disagrees with
+`lcp.message.idempotency_key`. These rejections happen before any PII is
+stored or evaluated.
+
+The replay window is inclusive and symmetric: a request is accepted when
+`|now - timestamp| <= window` (integer-second granularity, default 300 s
+per §9) and rejected when the offset exceeds it. Senders MUST NOT rely on
+sub-second tolerance.
+
+These are different failure modes (identity/authorization vs. replay
+protection) and have distinct codes; an implementation MUST NOT re-code one
+family as the other.
 
 `LCP-011 RATE_LIMITED` (429) pairs with the per-sender rate limits
 defined in §9. `LCP-013 TEST_TRAFFIC_POLICY` is used by the HTTP
