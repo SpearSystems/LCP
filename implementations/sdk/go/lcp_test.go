@@ -3,6 +3,7 @@ package lcp
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,5 +129,77 @@ func TestVerifyHTTPHeadersRequiresRawAuthentication(t *testing.T) {
 	}
 	if err := VerifyHTTPHeaders("secret", headers, []byte(`{"hello":"tampered"}`), 5*time.Minute, time.Date(2026, 8, 15, 10, 20, 1, 0, time.UTC)); err == nil {
 		t.Fatal("tampered body was accepted")
+	}
+}
+
+func TestSubmitLeadsBatchOrdersReceiptsAndTreats207AsSuccess(t *testing.T) {
+	received := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/lcp/leads/batch" {
+			t.Errorf("path = %s", request.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		received <- body
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusMultiStatus)
+		_, _ = writer.Write([]byte(`{"request_id":"req-batch-1","summary":{"total":2,"accepted":1,"duplicate":0,"rejected":1,"error":0},"results":[{"item_id":"item_b","status":"accepted","lead_id":"lead_b"},{"item_id":"item_a","status":"rejected","error":{"code":"LCP-100","message":"invalid lead"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.MaxRetries = 0
+	items := []BatchItem{
+		{ItemID: "item_a", IdempotencyKey: "batch-a", Payload: map[string]any{"lead_id": "lead_a"}},
+		{ItemID: "item_b", IdempotencyKey: "batch-b", Payload: map[string]any{"lead_id": "lead_b"}},
+	}
+	results, err := client.SubmitLeadsBatch(items, "req-batch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0]["item_id"] != "item_a" || results[1]["item_id"] != "item_b" {
+		t.Fatalf("results = %#v", results)
+	}
+	if results[0]["status"] != "rejected" {
+		t.Fatalf("status = %v", results[0]["status"])
+	}
+	errorObject, ok := results[0]["error"].(map[string]any)
+	if !ok || errorObject["code"] != "LCP-100" {
+		t.Fatalf("error = %#v", results[0]["error"])
+	}
+	body := <-received
+	if body["request_id"] != "req-batch-1" {
+		t.Fatalf("request_id = %v", body["request_id"])
+	}
+	sentItems, ok := body["items"].([]any)
+	if !ok || len(sentItems) != 2 {
+		t.Fatalf("items = %#v", body["items"])
+	}
+	first := sentItems[0].(map[string]any)
+	if first["item_id"] != "item_a" || first["payload"].(map[string]any)["lead_id"] != "lead_a" {
+		t.Fatalf("first item = %#v", first)
+	}
+}
+
+func TestSubmitLeadsBatchRejectsOverCapBeforeSending(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		writer.WriteHeader(http.StatusMultiStatus)
+		_, _ = writer.Write([]byte(`{"results":[]}`))
+	}))
+	defer server.Close()
+
+	items := make([]BatchItem, 101)
+	for index := range items {
+		items[index] = BatchItem{ItemID: "item", IdempotencyKey: "key", Payload: map[string]any{}}
+	}
+	if _, err := NewClient(server.URL).SubmitLeadsBatch(items, "req"); err == nil {
+		t.Fatal("expected a cap error")
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0", requests)
 	}
 }

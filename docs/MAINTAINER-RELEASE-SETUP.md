@@ -32,10 +32,12 @@ In **Settings → Rules → Rulesets** (or the equivalent branch-protection
 settings), create a ruleset targeting `main` with these minimum controls:
 
 - Require a pull request before merging.
-- Require at least two approvals for regulated deployments; use a separate
-  CODEOWNERS/security approval for changes under `.github/workflows/`,
-  `schemas/`, `verticals/`, `implementations/reference-platform/`, and
-  `governance/`.
+- Require at least two approvals for regulated deployments *when two
+  independent reviewers exist*; a single-maintainer repository cannot satisfy
+  it and must record the gap instead of enabling an unmeetable rule (see
+  "Applied state" below). Use a separate CODEOWNERS/security approval for
+  changes under `.github/workflows/`, `schemas/`, `verticals/`,
+  `implementations/reference-platform/`, and `governance/`.
 - Dismiss stale approvals when new commits are pushed.
 - Require all conversations to be resolved.
 - Require the branch to be up to date before merging, or use a merge queue that
@@ -116,6 +118,62 @@ Documented deviations, deliberate and time-bound:
 - **Signed commits are not required**, because the maintainer's signing-key
   lifecycle has not been established. Do not enable it midway through a
   release; make it the first commit of a planned migration.
+
+### Applied state (2026-11-04)
+
+Read back with `gh api repos/SpearSystems/LCP/rulesets` and
+`gh api repos/SpearSystems/LCP/environments` before relying on this paragraph.
+The last recorded read-back is the 2026-11-03 one above; no administrator
+action has been taken since, and this 2026-11-04 revision is documentation
+only, so the enforced settings are as recorded there — `main protection`
+(id 26446977) requires **0** approving reviews, and the `release`,
+`release-python-mcp`, and `release-python-reference` environments allow the
+deploying maintainer to approve their own deployment.
+
+Independent release approval is therefore **not applied and not claimed**. The
+blocker is a human, not a setting: LCP has one maintainer
+([`MAINTAINERS.md`](../MAINTAINERS.md)), so a one-approval rule with
+`prevent_self_review: true` would deadlock every merge and every publication —
+the sole maintainer is the only person who can review or approve. `.github/CODEOWNERS`
+routes review to that same account; it does not create a reviewer.
+
+The exact ruleset change to apply on the day a second human with release duties
+exists — one approval, and self-review refused:
+
+| Control | Current | Required |
+|---|---|---|
+| `main protection` (ruleset 26446977), `pull_request` rule | `required_approving_review_count: 0` | `required_approving_review_count: 1` |
+| `release`, `release-python-mcp`, `release-python-reference` environments | `prevent_self_review: false` | `prevent_self_review: true` |
+
+Apply it without hand-editing the rule set, so the 33 required checks stay
+intact:
+
+```bash
+# 1. Export the live ruleset, change only the approval count, PUT it back.
+gh api repos/SpearSystems/LCP/rulesets/26446977 > main-protection.json
+#    set .rules[type == "pull_request"].parameters.required_approving_review_count = 1
+gh api --method PUT repos/SpearSystems/LCP/rulesets/26446977 \
+  --input main-protection.json
+
+# 2. Flip self-review refusal on each protected publication environment,
+#    keeping its existing deployment_branch_policy (tags v*).
+for env in release release-python-mcp release-python-reference; do
+  gh api repos/SpearSystems/LCP/environments/"$env" > "env-$env.json"
+  #    set .prevent_self_review = true
+  gh api --method PUT repos/SpearSystems/LCP/environments/"$env" \
+    --input "env-$env.json"
+done
+
+# 3. Read back: 33 checks still required, approval count 1, self-review refused.
+gh api repos/SpearSystems/LCP/rulesets/26446977 \
+  --jq '.rules[] | select(.type == "pull_request") | .parameters.required_approving_review_count'
+gh api repos/SpearSystems/LCP/environments/release --jq '.prevent_self_review'
+```
+
+Then record the date, the acting administrator, and both read-back values here
+and in the release ticket. Do not enable the approval count before the second
+reviewer's account exists: an unapprovable `main` blocks the security fixes the
+same rule is meant to gate.
 
 ### Container package visibility
 

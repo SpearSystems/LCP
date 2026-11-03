@@ -144,6 +144,8 @@
 - [Adoption readiness](ADOPTION-READINESS.md) — post-release signals,
   feedback funnel, and scale triggers.
 - [v1.1 roadmap](V1.1-ROADMAP.md) — implemented foundations and deferred work.
+- [v1.2 execution plan](V1.2-EXECUTION-PLAN.md) — the backlog-clearing plan:
+  waves, decisions, gates, and tracking for every remaining item.
 - [Trademark and conformance claims](../governance/TRADEMARK.md) — how to
   describe implementations accurately.
 

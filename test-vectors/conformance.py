@@ -14,6 +14,7 @@ Usage:
   python3 conformance.py --tier L1    # run only L1
   python3 conformance.py --tier L2
   python3 conformance.py --tier L3
+  python3 conformance.py --tier NEG
   python3 conformance.py --verbose    # show per-vector details
 """
 
@@ -90,7 +91,19 @@ def make_validator(schema: dict) -> Draft202012Validator:
 # --- Message schema registry -------------------------------------------------
 
 _validators: Dict[str, Draft202012Validator] = {}
-for _msg_type in ["lead", "call", "ping", "post", "ack", "event", "bid"]:
+for _msg_type in [
+    "lead",
+    "call",
+    "ping",
+    "post",
+    "ack",
+    "event",
+    "bid",
+    "batch",
+    "quote",
+    "counter",
+    "subscription",
+]:
     _validators[_msg_type] = make_validator(load_schema(_msg_type))
 
 _envelope_validator = make_validator(load_schema("envelope"))
@@ -228,7 +241,10 @@ def validate_message(envelope: dict) -> List[str]:
     errors: List[str] = []
 
     # 1. Validate envelope structure and the formats whose semantics must be
-    # identical across language runtimes.
+    # identical across language runtimes. `batch` is part of the closed
+    # `message.type` enum and schemas/batch.json validates its payload, so the
+    # wrapper is checked like any other message; `batch_shape` adds the
+    # per-item axis the schema deliberately leaves to the intake engine.
     for err in _envelope_validator.iter_errors(envelope):
         errors.append(f"envelope: {err.message} at {_format_path(err.path)}")
     message = envelope.get("lcp", {}).get("message", {})
@@ -1072,6 +1088,444 @@ def _check_history_filter_pattern_equivalence(
 # governance/EXTENSION-REGISTRY.md; `lcp.platform.assessment` is the only one.
 PING_SAFE_EXTENSIONS = frozenset({"lcp.platform.assessment"})
 
+# --- LEP-0001 (W2) batch submission ------------------------------------------
+
+# W2-01 fixes both caps at acceptance: 100 items and a 1 MiB request body.
+# Either excess is a whole-request refusal, never a per-item rejection.
+BATCH_MAX_ITEMS = 100
+BATCH_MAX_BODY_BYTES = 1024 * 1024
+# LEP-0001 F5: the closed per-item receipt vocabulary. This is NOT ack.status.
+BATCH_RECEIPT_STATUSES = ("accepted", "duplicate", "rejected", "error")
+
+
+def _check_batch_shape(vector: dict, envelope: dict, errors: List[str]) -> List[str]:
+    """LEP-0001 W2-01: a batch is ``request_id`` + 1..100 items.
+
+    Each item is ``{item_id, idempotency_key, payload}`` where ``payload`` is a
+    **lead payload** (the ``lead.json`` root object), never an envelope. The
+    vector declares the receipts it expects (``expected_receipts``, one per
+    item, in input order): every item carries its own ``item_id``, and an item
+    expected ``rejected``/``error`` MUST fail the lead schema while an item
+    expected ``accepted``/``duplicate`` MUST pass it, so "one bad item must not
+    fail the batch" is never a licence to carry garbage.
+    """
+    message = envelope.get("lcp", {}).get("message", {})
+    if message.get("type") != "batch":
+        return []
+    payload = _payload_of(envelope)
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return ["lcp.payload.items must be an array of batch items"]
+
+    problems: List[str] = []
+    request_id = payload.get("request_id")
+    if not isinstance(request_id, str) or not 1 <= len(request_id) <= 64:
+        problems.append(
+            "lcp.payload.request_id must be a non-empty string of at most 64 characters"
+        )
+    if not 1 <= len(items) <= BATCH_MAX_ITEMS:
+        problems.append(
+            f"batch carries {len(items)} items; the request cap is "
+            f"1..{BATCH_MAX_ITEMS} (LEP-0001 W2-01)"
+        )
+    body_bytes = len(json.dumps(envelope, separators=(",", ":")).encode("utf-8"))
+    if body_bytes > BATCH_MAX_BODY_BYTES:
+        problems.append(
+            f"batch body is {body_bytes} bytes, above the "
+            f"{BATCH_MAX_BODY_BYTES}-byte request cap (LEP-0001 W2-01)"
+        )
+
+    receipts = vector.get("expected_receipts")
+    receipts = receipts if isinstance(receipts, list) else None
+    if receipts is not None and len(receipts) != len(items):
+        problems.append(
+            f"expected_receipts declares {len(receipts)} receipts for "
+            f"{len(items)} items; a batch answers one receipt per item"
+        )
+
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            problems.append(f"item {index}: every batch item is an object")
+            continue
+        item_id = item.get("item_id")
+        if not isinstance(item_id, str) or not 1 <= len(item_id) <= 64:
+            problems.append(
+                f"item {index}: item_id must be a non-empty string of at most "
+                "64 characters (echoed in the item's receipt)"
+            )
+            item_id = None
+        key = item.get("idempotency_key")
+        if not isinstance(key, str) or not 1 <= len(key) <= 128:
+            problems.append(
+                f"item {index}: idempotency_key must be a non-empty string of "
+                "at most 128 characters (per-item idempotency)"
+            )
+        item_payload = item.get("payload")
+        if not isinstance(item_payload, dict):
+            problems.append(
+                f"item {index}: payload is a lead payload object (the "
+                "lead.json root object), never an envelope"
+            )
+            continue
+        lead_id = item_payload.get("lead_id")
+        if not isinstance(lead_id, str) or not lead_id:
+            problems.append(f"item {index}: lead payload carries lead_id")
+            continue
+        if receipts is None or index >= len(receipts):
+            continue
+        receipt = receipts[index]
+        if not isinstance(receipt, dict):
+            problems.append(f"item {index}: expected_receipts entry must be an object")
+            continue
+        if receipt.get("item_id") != item_id:
+            problems.append(
+                f"item {index}: receipt item_id {receipt.get('item_id')!r} does "
+                f"not match the item's {item_id!r}"
+            )
+        status = receipt.get("status")
+        if status not in BATCH_RECEIPT_STATUSES:
+            problems.append(
+                f"item {index}: receipt status {status!r} is outside the closed "
+                f"vocabulary {list(BATCH_RECEIPT_STATUSES)} (LEP-0001 F5)"
+            )
+            continue
+        if status in {"rejected", "error"} and not receipt.get("error"):
+            problems.append(f"item {index}: a {status} receipt carries an error object")
+        if status in {"accepted", "duplicate"} and "error" in receipt:
+            problems.append(f"item {index}: a {status} receipt carries no error")
+        if status == "accepted" and receipt.get("lead_id") != lead_id:
+            problems.append(
+                f"item {index}: receipt lead_id {receipt.get('lead_id')!r} does "
+                f"not match the item's {lead_id!r}"
+            )
+        item_errors = list(_validators["lead"].iter_errors(item_payload))
+        if status in {"accepted", "duplicate"} and item_errors:
+            problems.append(
+                f"item {index}: expected {status} but the lead payload fails the "
+                f"schema: {item_errors[0].message}"
+            )
+        elif status in {"rejected", "error"} and not item_errors:
+            problems.append(
+                f"item {index}: expected {status} but the lead payload validates"
+            )
+    return problems
+
+
+# --- LEP-0009 negotiation (v1.2, D8) ----------------------------------------
+#
+# The negotiation wire surface is emitted only toward a peer that advertises
+# both a parsed 1.x semver element with minor >= 2 AND the `negotiation`
+# feature key. Vectors state that advertisement (`receiver_lcp_versions`,
+# `receiver_features`) the same way the v1.1 capability vectors do, plus the
+# state facts a static payload cannot carry (`prior_sender_price`,
+# `answered_price_cents`, `negotiation_state`, `negotiation_buyer_id`,
+# `ping_expires_at`). Each named check computes the rule the record states.
+
+_NEGOTIATION_TYPES = {"quote", "counter"}
+
+
+def _check_negotiation_capability(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    message = envelope.get("lcp", {}).get("message", {})
+    if message.get("type") not in _NEGOTIATION_TYPES:
+        return []
+    versions = vector.get("receiver_lcp_versions")
+    features = vector.get("receiver_features")
+    if not isinstance(versions, list):
+        return [
+            "CAPABILITY_GATE: vector names the negotiation capability check "
+            "without declaring receiver_lcp_versions"
+        ]
+    supports, problems = _advertised_supports_minor(versions, 2)
+    if not supports:
+        problems.append(
+            f"CAPABILITY_GATE: receiver advertises {versions!r} — no parsed 1.x "
+            "element with minor >= 2; quote/counter MUST NOT be emitted (LEP-0009 C2)"
+        )
+    if not isinstance(features, dict) or "negotiation" not in features:
+        problems.append(
+            "CAPABILITY_GATE: receiver features do not carry `negotiation`; the "
+            "feature key is the second, independent switch (LEP-0009 C2/C3)"
+        )
+    return problems
+
+
+def _negotiation_payload(envelope: dict) -> dict:
+    payload = _payload_of(envelope)
+    return payload if isinstance(payload, dict) else {}
+
+
+def _check_negotiation_floor(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    price = payload.get("price_cents")
+    floor = payload.get("floor_price_cents")
+    if not isinstance(price, int) or not isinstance(floor, int):
+        return []
+    if price < floor:
+        return [
+            f"below_floor_price: payload.price_cents {price} < floor_price_cents "
+            f"{floor}; refused, never clamped (LEP-0009 C6)"
+        ]
+    return []
+
+
+def _check_negotiation_rounds(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    problems: List[str] = []
+    max_rounds = payload.get("max_rounds")
+    if isinstance(max_rounds, int) and max_rounds > 5:
+        problems.append(
+            f"round_limit_exceeded: payload.max_rounds {max_rounds} is above the "
+            "hard cap of 5 (LEP-0009 C5; LCP-100 at quote intake)"
+        )
+    if payload.get("decision") == "counter" and payload.get("rounds_remaining") == 0:
+        problems.append(
+            "round_limit_exceeded: a buyer counter at rounds_remaining 0 is "
+            "refused and the id closes permanently (LEP-0009 C5)"
+        )
+    return problems
+
+
+def _check_negotiation_expiry(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    message = envelope.get("lcp", {}).get("message", {})
+    problems: List[str] = []
+    expires = _parse_utc_timestamp(payload.get("expires_at"))
+    stamp = _parse_utc_timestamp(message.get("timestamp"))
+    if expires is not None and stamp is not None and stamp >= expires:
+        problems.append(
+            "negotiation_expired: message.timestamp is at/after the negotiation's "
+            "absolute expires_at (LEP-0009 C8)"
+        )
+    ping_expires = _parse_utc_timestamp(vector.get("ping_expires_at"))
+    if expires is not None and ping_expires is not None and expires > ping_expires:
+        problems.append(
+            "LCP-100: payload.expires_at exceeds the ping's expiry/TTL ceiling; "
+            "no negotiation is created (LEP-0009 C8)"
+        )
+    return problems
+
+
+def _check_negotiation_monotone(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    prior = vector.get("prior_sender_price")
+    role = vector.get("sender_role", "buyer")
+    problems: List[str] = []
+    price = payload.get("price_cents")
+    if isinstance(price, int) and isinstance(prior, int):
+        if payload.get("decision") == "counter":
+            if role == "buyer" and price <= prior:
+                problems.append(
+                    f"non_monotone_counter: buyer price {price} is not strictly "
+                    f"above its previous {prior} (LEP-0009 C6)"
+                )
+            if role == "platform" and price < prior:
+                problems.append(
+                    f"non_monotone_counter: platform counter {price} is below its "
+                    f"standing ask {prior}; a concession is an accept, never a "
+                    "lower counter (LEP-0009 C6)"
+                )
+    answered = vector.get("answered_price_cents")
+    if (
+        payload.get("decision") == "accept"
+        and isinstance(answered, int)
+        and isinstance(price, int)
+        and price != answered
+    ):
+        problems.append(
+            f"LCP-100: accept price {price} does not equal the answered message's "
+            f"{answered} (LEP-0009 §3)"
+        )
+    return problems
+
+
+_PII_NAME_TOKENS = frozenset(
+    {
+        "consumer",
+        "contact",
+        "phone",
+        "email",
+        "name",
+        "address",
+        "postal",
+        "zip",
+        "dob",
+        "birth",
+        "ssn",
+        "social",
+        "note",
+        "message",
+        "comment",
+        "description",
+        "reference",
+    }
+)
+_CONTACT_DIGEST = re.compile(r"^[a-f0-9]{48,64}$")
+
+
+def _check_negotiation_no_pii(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    message_type = envelope.get("lcp", {}).get("message", {}).get("type")
+    if message_type not in _NEGOTIATION_TYPES:
+        return []
+    allowed = set(load_schema(message_type).get("properties", {}))
+    problems: List[str] = []
+    for key, value in payload.items():
+        if key not in allowed:
+            problems.append(
+                f"LCP-008 PII_IN_PING: payload.{key} is outside the strict "
+                "negotiation allowlist and free text/PII is forbidden (LEP-0009 C4)"
+            )
+            if set(re.split(r"[^a-z]+", key.lower())) & _PII_NAME_TOKENS:
+                problems.append(
+                    f"LCP-008 PII_IN_PING: payload.{key} is consumer-shaped; "
+                    "negotiation carries no consumer identifier (LEP-0009 C4)"
+                )
+        if isinstance(value, str) and _CONTACT_DIGEST.match(value):
+            problems.append(
+                f"LCP-008 PII_IN_PING: payload.{key} carries a contact digest; "
+                "no consumer identifier is hashed into a negotiation (LEP-0009 C4)"
+            )
+    return problems
+
+
+def _check_negotiation_token(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    payload = _negotiation_payload(envelope)
+    token = payload.get("negotiation_binding_token")
+    if not isinstance(token, str):
+        return []
+    problems: List[str] = []
+    if not re.fullmatch(r"tok_[A-Za-z0-9_-]{32,128}", token):
+        problems.append(
+            "LCP-100: negotiation_binding_token fails ^tok_[A-Za-z0-9_-]{32,128}$ "
+            "(LEP-0009 §5)"
+        )
+    state = vector.get("negotiation_state")
+    if state is not None and state != "ACCEPTED":
+        problems.append(
+            f"negotiation_closed: token presented in state {state}; a token is "
+            "redeemable once, only while ACCEPTED (LEP-0009 C7)"
+        )
+    return problems
+
+
+def _check_negotiation_tenant(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    owner = vector.get("negotiation_buyer_id")
+    if owner is None:
+        return []
+    sender = envelope.get("lcp", {}).get("message", {}).get("sender_id")
+    if sender != owner:
+        return [
+            f"LCP-002: principal {sender!r} presented a negotiation owned by "
+            f"{owner!r}; the id is not a bearer credential (LEP-0009 §4)"
+        ]
+    return []
+
+
+# --- LEP-0001 (W3) event subscriptions --------------------------------------
+
+# The receiver's advertised event vocabulary. Registration may name only these
+# values; there is no wildcard and no second vocabulary.
+SUBSCRIPTION_EVENT_NAMES = frozenset(
+    {
+        "DELIVERED",
+        "ACCEPTED",
+        "REJECTED",
+        "DISPUTED",
+        "REFUNDED",
+        "EXPIRED",
+        "CONVERTED",
+        "ARCHIVED",
+        "CALL_OFFERED",
+        "CALL_CONNECTED",
+        "CALL_ENDED",
+        "CALL_OUTCOME",
+        "CONTACTED",
+        "FINAL_PRICING",
+    }
+)
+
+# A filter is a closed key set drawn from core enums and identifiers. Consumer,
+# provenance, attributes, details, contact, and security paths are never
+# filters (LEP-0001 W3-04).
+SUBSCRIPTION_FILTER_KEYS = frozenset(
+    {"event_type", "message_type", "vertical", "status", "lead_id"}
+)
+_SUBSCRIPTION_PII_PREFIXES = (
+    "consumer",
+    "provenance",
+    "attributes",
+    "details",
+    "contact",
+    "security",
+)
+
+
+def _check_subscription_allowlist(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """Every ``event_types`` value must be advertised; ``*`` is not a value."""
+    message = envelope.get("lcp", {}).get("message", {})
+    if message.get("type") != "subscription":
+        return []
+    event_types = _payload_of(envelope).get("event_types")
+    if not isinstance(event_types, list):
+        return ["subscription event_types must be an explicit array"]
+    problems: List[str] = []
+    for name in event_types:
+        if name == "*":
+            problems.append(
+                "LCP-100: event_types must be explicit; a wildcard subscription "
+                "is not allowed (LEP-0001 W3-01)"
+            )
+        elif name not in SUBSCRIPTION_EVENT_NAMES:
+            problems.append(
+                f"LCP-100: event type {name!r} is not advertised in "
+                "capabilities().events (LEP-0001 W3-01)"
+            )
+    return problems
+
+
+def _check_subscription_filter_closed(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """Refuse filter keys outside the closed core enum/id set, by name."""
+    message = envelope.get("lcp", {}).get("message", {})
+    if message.get("type") != "subscription":
+        return []
+    filter_values = _payload_of(envelope).get("filter")
+    if filter_values is None:
+        return []
+    if not isinstance(filter_values, dict):
+        return ["LCP-100: subscription filter must be an object"]
+    problems: List[str] = []
+    for key in filter_values:
+        if key in SUBSCRIPTION_FILTER_KEYS:
+            continue
+        head = str(key).split(".", 1)[0]
+        axis = "PII" if head in _SUBSCRIPTION_PII_PREFIXES else "unknown"
+        problems.append(
+            f"LCP-100: filter field {key!r} is refused ({axis}); the closed key "
+            f"set is {sorted(SUBSCRIPTION_FILTER_KEYS)} (LEP-0001 W3-04)"
+        )
+    return problems
+
+
 CHECKS = {
     "envelope_schema": _schema_check("envelope"),
     "lead_schema": _schema_check("lead"),
@@ -1119,6 +1573,25 @@ CHECKS = {
     "pricing_fx_comparability": _check_pricing_fx_comparability,
     # LEP-0005 (R1): cross-artifact pattern equivalence, run once per run too.
     "history_filter_pattern_equivalence": _check_history_filter_pattern_equivalence,
+    # LEP-0001 (W2-01): bounded batch submission shape, caps, and receipts.
+    "batch_shape": _check_batch_shape,
+    # LEP-0001 (W3): subscription registration allowlist and privacy-safe
+    # filter keys.
+    "subscription_schema": _schema_check("subscription"),
+    "subscription_allowlist": _check_subscription_allowlist,
+    "subscription_filter_closed": _check_subscription_filter_closed,
+    # LEP-0009 (v1.2 D8): negotiation capability, floor, rounds, expiry,
+    # monotonicity, PII, token, and tenant rules.
+    "quote_schema": _schema_check("quote"),
+    "counter_schema": _schema_check("counter"),
+    "negotiation_capability": _check_negotiation_capability,
+    "negotiation_floor_refused": _check_negotiation_floor,
+    "negotiation_round_cap": _check_negotiation_rounds,
+    "negotiation_expiry": _check_negotiation_expiry,
+    "negotiation_monotone": _check_negotiation_monotone,
+    "negotiation_no_pii": _check_negotiation_no_pii,
+    "negotiation_binding_token": _check_negotiation_token,
+    "negotiation_tenant": _check_negotiation_tenant,
 }
 
 
@@ -1264,7 +1737,9 @@ def run_contract_checks() -> TestResult:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LCP Conformance Runner")
-    parser.add_argument("--tier", choices=["L1", "L2", "L3", "all"], default="all")
+    parser.add_argument(
+        "--tier", choices=["L1", "L2", "L3", "NEG", "all"], default="all"
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -1272,6 +1747,9 @@ def main() -> None:
         "L1": "l1-envelope.json",
         "L2": "l2-lifecycle.json",
         "L3": "l3-advanced.json",
+        # LEP-0009: its own registered tier (id prefix NEG), loaded exactly
+        # like the others so a missing/renamed file is a visible warning.
+        "NEG": "negotiation.json",
     }
 
     if args.tier != "all":

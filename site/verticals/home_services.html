@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="verticals/home_services.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Home Services Vertical Schema — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Home Services Vertical Schema</h1>
+<p><code>https://lcp.dev/verticals/home_services.json</code> · Home services lead attributes. Every field is tagged ping_safe: true|false. Publishers normalize brand-specific form questions into this controlled taxonomy; unsupported source questions remain in an approved post-only extension or source archive.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Ping-safe</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>budget_band</code></td><td>enum (<code>"under_500"</code>, <code>"500_1000"</code>, <code>"1000_5000"</code>, <code>"5000_10000"</code>, <code>"10000_25000"</code>, <code>"over_25000"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>damage_type</code></td><td>enum (<code>"water"</code>, <code>"fire"</code>, <code>"storm"</code>, <code>"mold"</code>, <code>"structural"</code>, <code>"pest"</code>, <code>"wear_tear"</code>, <code>"other"</code>, <code>"none"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>exact_budget</code></td><td><code>number</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Exact budget is post-only; use budget_band in a ping.</td></tr>
+<tr><td><code>free_text</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Free text is post-only because it may contain names, addresses, or sensitive details.</td></tr>
+<tr><td><code>has_existing_damage</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>has_insurance_claim</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>material</code></td><td>enum (<code>"aluminum"</code>, <code>"copper"</code>, <code>"steel"</code>, <code>"vinyl"</code>, <code>"tile"</code>, <code>"metal"</code>, <code>"asphalt_shingle"</code>, <code>"wood"</code>, <code>"concrete"</code>, <code>"other"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>number_of_rooms_band</code></td><td>enum (<code>"under_3"</code>, <code>"3_5"</code>, <code>"5_7"</code>, <code>"7_10"</code>, <code>"over_10"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>occupancy</code></td><td>enum (<code>"owner_occupied"</code>, <code>"tenant_occupied"</code>, <code>"vacant"</code>, <code>"commercial"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>preferred_schedule</code></td><td>enum (<code>"asap"</code>, <code>"within_week"</code>, <code>"within_month"</code>, <code>"flexible"</code>, <code>"specific_date"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>project_type</code></td><td>enum (<code>"repair"</code>, <code>"install"</code>, <code>"maintenance"</code>, <code>"replacement"</code>, <code>"inspection"</code>, <code>"cleaning"</code>, <code>"removal"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Legacy-compatible project classification.</td></tr>
+<tr><td><code>property_age_band</code></td><td>enum (<code>"under_5"</code>, <code>"5_15"</code>, <code>"15_30"</code>, <code>"30_50"</code>, <code>"over_50"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>property_type</code></td><td>enum (<code>"single_family"</code>, <code>"condo"</code>, <code>"townhouse"</code>, <code>"multi_family"</code>, <code>"commercial"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>roof_type</code></td><td>enum (<code>"asphalt_shingle"</code>, <code>"metal"</code>, <code>"tile"</code>, <code>"flat"</code>, <code>"slate"</code>, <code>"wood"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>schema_version</code></td><td>const <code>"1.0.0"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
+<tr><td><code>service_subtype</code></td><td>enum (<code>"inspection"</code>, <code>"repair"</code>, <code>"replacement"</code>, <code>"new_installation"</code>, <code>"cleaning"</code>, <code>"maintenance"</code>, <code>"installation_and_repair"</code>, <code>"emergency_response"</code>, <code>"quote_only"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Controlled service operation. A more specific taxonomy can be introduced by a future vertical schema version without changing the core.</td></tr>
+<tr><td><code>service_type</code></td><td>enum (<code>"roofing"</code>, <code>"gutters"</code>, <code>"downspouts"</code>, <code>"plumbing"</code>, <code>"hvac"</code>, <code>"electrical"</code>, <code>"landscaping"</code>, <code>"painting"</code>, <code>"windows"</code>, <code>"doors"</code>, <code>"flooring"</code>, <code>"fencing"</code>, <code>"concrete"</code>, <code>"tree_service"</code>, <code>"pest_control"</code>, <code>"water_damage"</code>, <code>"solar"</code>, <code>"pool"</code>, <code>"general_repair"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Controlled top-level service category.</td></tr>
+<tr><td><code>square_footage_band</code></td><td>enum (<code>"under_1000"</code>, <code>"1000_1500"</code>, <code>"1500_2000"</code>, <code>"2000_3000"</code>, <code>"3000_5000"</code>, <code>"over_5000"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>stories_band</code></td><td>enum (<code>"one"</code>, <code>"two"</code>, <code>"three_or_more"</code>, <code>"unknown"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>urgency</code></td><td>enum (<code>"emergency"</code>, <code>"within_week"</code>, <code>"within_month"</code>, <code>"flexible"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>vertical</code></td><td>const <code>"home_services"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/home_services.json",
+  "title": "LCP Home Services Vertical Schema",
+  "description": "Home services lead attributes. Every field is tagged ping_safe: true|false. Publishers normalize brand-specific form questions into this controlled taxonomy; unsupported source questions remain in an approved post-only extension or source archive.",
+  "type": "object",
+  "required": [
+    "vertical",
+    "schema_version"
+  ],
+  "properties": {
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "home_services"
+    },
+    "schema_version": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "service_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "roofing",
+        "gutters",
+        "downspouts",
+        "plumbing",
+        "hvac",
+        "electrical",
+        "landscaping",
+        "painting",
+        "windows",
+        "doors",
+        "flooring",
+        "fencing",
+        "concrete",
+        "tree_service",
+        "pest_control",
+        "water_damage",
+        "solar",
+        "pool",
+        "general_repair",
+        "other"
+      ],
+      "description": "Controlled top-level service category.",
+      "ping_safe": true
+    },
+    "service_subtype": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "inspection",
+        "repair",
+        "replacement",
+        "new_installation",
+        "cleaning",
+        "maintenance",
+        "installation_and_repair",
+        "emergency_response",
+        "quote_only",
+        "other"
+      ],
+      "description": "Controlled service operation. A more specific taxonomy can be introduced by a future vertical schema version without changing the core.",
+      "ping_safe": true
+    },
+    "project_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "repair",
+        "install",
+        "maintenance",
+        "replacement",
+        "inspection",
+        "cleaning",
+        "removal",
+        "other"
+      ],
+      "description": "Legacy-compatible project classification.",
+      "ping_safe": true
+    },
+    "urgency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "emergency",
+        "within_week",
+        "within_month",
+        "flexible"
+      ],
+      "ping_safe": true
+    },
+    "property_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "single_family",
+        "condo",
+        "townhouse",
+        "multi_family",
+        "commercial",
+        "other"
+      ],
+      "ping_safe": true
+    },
+    "property_age_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_5",
+        "5_15",
+        "15_30",
+        "30_50",
+        "over_50",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "budget_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_500",
+        "500_1000",
+        "1000_5000",
+        "5000_10000",
+        "10000_25000",
+        "over_25000",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "preferred_schedule": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "asap",
+        "within_week",
+        "within_month",
+        "flexible",
+        "specific_date"
+      ],
+      "ping_safe": true
+    },
+    "has_existing_damage": {
+      "x-lcp-pii": "public",
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "damage_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "water",
+        "fire",
+        "storm",
+        "mold",
+        "structural",
+        "pest",
+        "wear_tear",
+        "other",
+        "none"
+      ],
+      "ping_safe": true
+    },
+    "square_footage_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_1000",
+        "1000_1500",
+        "1500_2000",
+        "2000_3000",
+        "3000_5000",
+        "over_5000",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "number_of_rooms_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_3",
+        "3_5",
+        "5_7",
+        "7_10",
+        "over_10",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "material": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "aluminum",
+        "copper",
+        "steel",
+        "vinyl",
+        "tile",
+        "metal",
+        "asphalt_shingle",
+        "wood",
+        "concrete",
+        "other",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "roof_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "asphalt_shingle",
+        "metal",
+        "tile",
+        "flat",
+        "slate",
+        "wood",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "stories_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "one",
+        "two",
+        "three_or_more",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "has_insurance_claim": {
+      "x-lcp-pii": "public",
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "occupancy": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "owner_occupied",
+        "tenant_occupied",
+        "vacant",
+        "commercial",
+        "unknown"
+      ],
+      "ping_safe": true
+    },
+    "exact_budget": {
+      "x-lcp-pii": "restricted",
+      "type": "number",
+      "minimum": 0,
+      "description": "Exact budget is post-only; use budget_band in a ping.",
+      "ping_safe": false
+    },
+    "free_text": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "description": "Free text is post-only because it may contain names, addresses, or sensitive details.",
+      "ping_safe": false
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>verticals/home_services.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

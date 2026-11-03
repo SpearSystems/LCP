@@ -173,10 +173,13 @@ source of truth.
 
 - [LEP registry](LEP-REGISTRY.md)
 - [LEP process adoption plan](LEP-PROCESS-PLAN.md)
-- [LEP-0001 batch/subscription draft](LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
+- [LEP-0001 batch and event subscriptions](LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
 
-LEP-0001 remains `Draft`: it is not accepted, and no batch or subscription
-runtime implementation is authorized.
+LEP-0001 is `Accepted` (2026-11-04, maintainer; the trigger was waived under
+`docs/DECISIONS-v1.2.md` D1 rather than met). Implementation is authorized
+under that decision's compensating constraints: additive-only, advertised
+through `capabilities().features`, and off by default.
 
 The current roadmap and deferred triggers are in
-[`docs/V1.1-ROADMAP.md`](../docs/V1.1-ROADMAP.md).
+[`docs/V1.1-ROADMAP.md`](../docs/V1.1-ROADMAP.md); the active execution plan is
+[`docs/V1.2-EXECUTION-PLAN.md`](../docs/V1.2-EXECUTION-PLAN.md).

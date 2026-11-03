@@ -54,3 +54,67 @@ final class SharedVectorTests: XCTestCase {
         XCTAssertTrue(mismatches.isEmpty, "Shared validation corpus mismatches: \(mismatches.joined(separator: "; "))")
     }
 }
+
+/// LEP-0001 W2-01: batch submission treats 207 as success, preserves per-item
+/// errors, returns receipts in input order, and refuses an over-cap batch
+/// before any request.
+final class BatchSubmissionTests: XCTestCase {
+    func testBatchSubmissionTreats207AsSuccessAndOrdersReceipts() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BatchURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        BatchURLProtocol.requests = []
+        BatchURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/v1/lcp/leads/batch")
+            let body = #"{"request_id":"req-batch-1","summary":{"total":2,"accepted":1,"duplicate":0,"rejected":1,"error":0},"results":[{"item_id":"item_b","status":"accepted","lead_id":"lead_b"},{"item_id":"item_a","status":"rejected","error":{"code":"LCP-100","message":"invalid lead"}}]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 207, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, Data(body.utf8))
+        }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let items = [
+            LCPBatchItem(itemId: "item_a", idempotencyKey: "batch-a", payload: ["lead_id": .string("lead_a")]),
+            LCPBatchItem(itemId: "item_b", idempotencyKey: "batch-b", payload: ["lead_id": .string("lead_b")]),
+        ]
+        let results = try await client.submitLeadsBatch(items, requestId: "req-batch-1")
+        XCTAssertEqual(results.map(\.itemId), ["item_a", "item_b"])
+        XCTAssertEqual(results[0].status, "rejected")
+        if case .object(let error)? = results[0].error {
+            XCTAssertEqual(error["code"], .string("LCP-100"))
+        } else {
+            XCTFail("per-item error object was lost")
+        }
+        XCTAssertEqual(results[1].status, "accepted")
+        let overCap = (0..<101).map { LCPBatchItem(itemId: "item_\($0)", idempotencyKey: "key_\($0)", payload: [:]) }
+        do {
+            _ = try await client.submitLeadsBatch(overCap)
+            XCTFail("batch over the cap was accepted")
+        } catch { }
+        XCTAssertEqual(BatchURLProtocol.requests.count, 1, "cap check must run before sending")
+    }
+}
+
+final class BatchURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var requests: [URLRequest] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(self, didFailWithError: NSError(domain: "LCP", code: 500))
+            return
+        }
+        do {
+            Self.requests.append(request)
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}

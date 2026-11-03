@@ -6,35 +6,43 @@
   "type": "object",
   "$defs": {
     "consumer": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "title": "Consumer",
       "description": "The person the lead is about.",
       "properties": {
         "first_name": {
+          "x-lcp-pii": "contact",
           "type": "string"
         },
         "last_name": {
+          "x-lcp-pii": "contact",
           "type": "string"
         },
         "full_name": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "description": "Unstructured name \u2014 use when Western given/family splitting does not apply."
         },
         "email": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "format": "email"
         },
         "phone": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "pattern": "^\\+[1-9]\\d{1,14}$",
           "description": "E.164 format."
         },
         "secondary_phone": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "pattern": "^\\+[1-9]\\d{1,14}$",
           "description": "Secondary phone (work, spouse, alternate). E.164. Optional."
         },
         "preferred_contact_method": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "enum": [
             "phone",
@@ -45,21 +53,25 @@
           "description": "Consumer's preferred contact method. Affects contact strategy and compliance."
         },
         "phone_hash": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "pattern": "^[a-f0-9]{64}$",
           "description": "HMAC-SHA256(shared_secret, e164). 64 hex chars."
         },
         "dob": {
+          "x-lcp-pii": "restricted",
           "type": "string",
           "format": "date",
           "description": "Sensitive."
         },
         "email_hash": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "pattern": "^[a-f0-9]{64}$",
           "description": "HMAC-SHA256(shared_secret, normalized_email). For dedup in ping. Same per-pair model as phone_hash."
         },
         "locale": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$",
           "description": "BCP-47 language tag (e.g. en-AU, es-US)."
@@ -91,32 +103,39 @@
       "additionalProperties": false
     },
     "location": {
+      "x-lcp-pii": "contact",
       "type": "object",
       "title": "Location",
       "properties": {
         "country_code": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^[A-Z]{2}$",
           "description": "ISO 3166-1 alpha-2. Required."
         },
         "state_region": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Per-country validation registry (state, province, region)."
         },
         "postal_code": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Per-country format."
         },
         "city": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "street_address": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "minLength": 1,
           "maxLength": 200,
           "description": "Residential street address. Not ping-safe; omitted from ping payloads."
         },
         "timezone": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "IANA timezone (e.g. Australia/Sydney)."
         }
@@ -139,19 +158,23 @@
       "additionalProperties": false
     },
     "consent_evidence_entry": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "title": "Consent Evidence Entry",
       "description": "A single piece of consent or compliance evidence.",
       "properties": {
         "type": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Consent framework or evidence type (e.g. tcpa_consent, gdpr_opt_in)."
         },
         "provider": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Vendor or system (e.g. jornaya, trustedform, internal)."
         },
         "token_or_url": {
+          "x-lcp-pii": "restricted",
           "type": "string",
           "description": "Verification token, certificate URL, or reference."
         }
@@ -164,22 +187,27 @@
       "additionalProperties": false
     },
     "compliance": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "title": "Compliance",
       "description": "Consent and regulatory compliance evidence.",
       "properties": {
         "consent_timestamp": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "consent_source_url": {
+          "x-lcp-pii": "restricted",
           "type": "string",
           "format": "uri"
         },
         "consent_text_version": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "consent_purposes": {
+          "x-lcp-pii": "internal",
           "type": "array",
           "items": {
             "type": "string"
@@ -187,20 +215,24 @@
           "description": "What was consented to (e.g. calls, sms, email, share_with_partners)."
         },
         "consent_evidence": {
+          "x-lcp-pii": "restricted",
           "type": "array",
           "items": {
             "$ref": "core.json#/$defs/consent_evidence_entry"
           }
         },
         "otp_verified": {
+          "x-lcp-pii": "internal",
           "type": "boolean",
           "description": "One-time-passcode verified."
         },
         "otp": {
+          "x-lcp-pii": "restricted",
           "type": "object",
           "description": "OTP verification details. The actual OTP code MUST NOT be included.",
           "properties": {
             "channel": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "enum": [
                 "sms",
@@ -209,13 +241,16 @@
               ]
             },
             "verified_at": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "format": "date-time"
             },
             "verified_value_hash": {
+              "x-lcp-pii": "contact",
               "type": "string"
             },
             "attempts": {
+              "x-lcp-pii": "internal",
               "type": "integer",
               "minimum": 1
             }
@@ -223,30 +258,38 @@
           "additionalProperties": false
         },
         "session_capture_id": {
+          "x-lcp-pii": "restricted",
           "type": "string"
         },
         "call_recording_id": {
+          "x-lcp-pii": "restricted",
           "type": "string"
         },
         "dnc_checked": {
+          "x-lcp-pii": "internal",
           "type": "boolean"
         },
         "consent_expires_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "scrubs": {
+          "x-lcp-pii": "restricted",
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
               "type": {
+                "x-lcp-pii": "internal",
                 "type": "string"
               },
               "provider": {
+                "x-lcp-pii": "internal",
                 "type": "string"
               },
               "result": {
+                "x-lcp-pii": "internal",
                 "type": "string",
                 "enum": [
                   "clean",
@@ -256,10 +299,12 @@
                 ]
               },
               "checked_at": {
+                "x-lcp-pii": "internal",
                 "type": "string",
                 "format": "date-time"
               },
               "details": {
+                "x-lcp-pii": "restricted",
                 "type": "string"
               }
             },
@@ -274,84 +319,107 @@
       "additionalProperties": false
     },
     "provenance": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "title": "Provenance",
       "description": "Non-PII origin metadata.",
       "properties": {
         "received_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "source_type": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Open enumeration of source types."
         },
         "acquisition_method": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Open enumeration of acquisition methods."
         },
         "is_incentivized": {
+          "x-lcp-pii": "internal",
           "type": "boolean"
         },
         "incentive_type": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "source_id": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "source_url": {
+          "x-lcp-pii": "restricted",
           "type": "string",
           "format": "uri"
         },
         "ip_hash": {
+          "x-lcp-pii": "contact",
           "type": "string"
         },
         "ip_address": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "minLength": 7,
           "maxLength": 45,
           "description": "Consumer IP address (IPv4 or IPv6) captured server-side. Post-only; not ping-safe. ip_hash remains the ping-safe projection."
         },
         "user_agent_hash": {
+          "x-lcp-pii": "contact",
           "type": "string"
         },
         "funnel_key": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "flow_key": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "campaign_id": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "creative_id": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "landing_page_url": {
+          "x-lcp-pii": "restricted",
           "type": "string",
           "format": "uri"
         },
         "platform_source": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "brand_id": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Publisher-owned brand identifier."
         },
         "form_id": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Stable form or flow identifier."
         },
         "agent": {
+          "x-lcp-pii": "restricted",
           "type": "object",
           "properties": {
             "agent_id": {
+              "x-lcp-pii": "internal",
               "type": "string"
             },
             "acting_for": {
+              "x-lcp-pii": "internal",
               "type": "string"
             },
             "attestation": {
+              "x-lcp-pii": "restricted",
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
               "maxLength": 8192
@@ -368,14 +436,17 @@
       "additionalProperties": false
     },
     "attributes": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "title": "Attributes",
       "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/.",
       "properties": {
         "vertical": {
+          "x-lcp-pii": "public",
           "type": "string"
         },
         "schema_version": {
+          "x-lcp-pii": "public",
           "type": "string"
         }
       },
@@ -385,6 +456,7 @@
       ]
     },
     "attachments": {
+      "x-lcp-pii": "restricted",
       "type": "array",
       "description": "Metadata for encrypted, out-of-band files. Binary content is never embedded in an LCP JSON envelope.",
       "maxItems": 50,
@@ -402,47 +474,57 @@
         ],
         "properties": {
           "attachment_id": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
           },
           "purpose": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "minLength": 1,
             "maxLength": 100
           },
           "filename": {
+            "x-lcp-pii": "restricted",
             "type": "string",
             "minLength": 1,
             "maxLength": 255,
             "pattern": "^[^/\\\\]+$"
           },
           "content_type": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "pattern": "^[^;\\s]+/[^;\\s]+$"
           },
           "size_bytes": {
+            "x-lcp-pii": "internal",
             "type": "integer",
             "minimum": 1,
             "maximum": 104857600
           },
           "sha256": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
           },
           "storage_ref": {
+            "x-lcp-pii": "restricted",
             "type": "string",
             "minLength": 1,
             "maxLength": 512
           },
           "created_at": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "format": "date-time"
           },
           "expires_at": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "format": "date-time"
           },
           "encryption": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "enum": [
               "application_encrypted",
@@ -450,15 +532,18 @@
             ]
           },
           "residency": {
+            "x-lcp-pii": "internal",
             "type": "string",
             "pattern": "^[A-Z0-9][A-Z0-9._-]{1,31}$",
             "description": "Country or deployment region where the attachment bytes are stored and scanned."
           },
           "malware_scan": {
+            "x-lcp-pii": "internal",
             "type": "object",
             "description": "Non-sensitive malware scan evidence. A production attachment must have status clean before release.",
             "properties": {
               "status": {
+                "x-lcp-pii": "internal",
                 "type": "string",
                 "enum": [
                   "clean",
@@ -466,11 +551,13 @@
                 ]
               },
               "engine": {
+                "x-lcp-pii": "internal",
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 100
               },
               "scanned_at": {
+                "x-lcp-pii": "internal",
                 "type": "string",
                 "format": "date-time"
               }
@@ -487,36 +574,45 @@
       }
     },
     "status": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "title": "Lead Status",
       "description": "Open enumeration of lifecycle statuses."
     },
     "channel": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "title": "Lead Channel",
       "description": "Open enumeration of lead channels."
     },
     "currency": {
+      "x-lcp-pii": "public",
       "type": "string",
       "pattern": "^[A-Z]{3}$"
     },
     "error": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "properties": {
         "code": {
+          "x-lcp-pii": "public",
           "type": "string",
           "pattern": "^LCP-\\d{3}$"
         },
         "name": {
+          "x-lcp-pii": "public",
           "type": "string"
         },
         "message": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "field": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "details": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "additionalProperties": true
         }
@@ -528,9 +624,11 @@
       "additionalProperties": false
     },
     "errors_array": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "properties": {
         "errors": {
+          "x-lcp-pii": "internal",
           "type": "array",
           "items": {
             "$ref": "core.json#/$defs/error"
@@ -544,9 +642,11 @@
       "additionalProperties": false
     },
     "exclusivity": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "properties": {
         "exclusivity": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "enum": [
             "exclusive",
@@ -555,6 +655,7 @@
           "default": "shared"
         },
         "max_buyers": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 1
         }
@@ -562,13 +663,16 @@
       "additionalProperties": false
     },
     "expiry": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "properties": {
         "expires_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "ttl_seconds": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 1
         }
@@ -588,16 +692,20 @@
       "additionalProperties": false
     },
     "security": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "properties": {
         "signature": {
+          "x-lcp-pii": "restricted",
           "type": "string"
         },
         "timestamp": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "algorithm": {
+          "x-lcp-pii": "public",
           "type": "string",
           "const": "HMAC-SHA256"
         }

@@ -1,0 +1,426 @@
+{
+  "suite": "NEG",
+  "description": "LEP-0009 agent-to-agent negotiation: bounded quote/counter rounds, monotone prices, floor refusal without clamping, absolute expiry, capability gating, single-use binding tokens, and tenancy (ids NEG-001..NEG-010).",
+  "vectors": [
+    {
+      "id": "NEG-001",
+      "name": "valid_opening_quote",
+      "expect": "pass",
+      "description": "LEP-0009 \u00a72: the platform opens a negotiation for a pinged buyer. Ask above the restated floor, expires_at equal to the ping's expiry, max_rounds inside the cap, no field outside the strict allowlist.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0"
+      ],
+      "receiver_features": {
+        "batch": "1.2.0",
+        "negotiation": "1.2.0"
+      },
+      "ping_expires_at": "2026-11-04T12:10:00Z",
+      "checks": [
+        "envelope_schema",
+        "quote_schema",
+        "required_fields",
+        "idempotency_key",
+        "iso_timestamp",
+        "negotiation_capability",
+        "negotiation_no_pii",
+        "negotiation_floor_refused",
+        "negotiation_round_cap",
+        "negotiation_expiry"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a10e8400-0000-4000-8000-000000000901",
+            "type": "quote",
+            "timestamp": "2026-11-04T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "correlation_id": "d70e8400-0000-4000-8000-000000000021",
+            "idempotency_key": "platform-001-quote-neg_7c1f0a9b2e4d-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "price_cents": 10000,
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "max_rounds": 3,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z"
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-002",
+      "name": "valid_counter_in_bounds",
+      "expect": "pass",
+      "description": "LEP-0009 \u00a73: buyer counters inside the bounds \u2014 above the floor, below the standing ask, pre-message rounds_remaining echoed, expires_at unchanged.",
+      "receiver_lcp_versions": [
+        "1.2.0"
+      ],
+      "receiver_features": {
+        "negotiation": "1.2.0"
+      },
+      "ping_expires_at": "2026-11-04T12:10:00Z",
+      "checks": [
+        "envelope_schema",
+        "counter_schema",
+        "required_fields",
+        "idempotency_key",
+        "iso_timestamp",
+        "negotiation_capability",
+        "negotiation_no_pii",
+        "negotiation_floor_refused",
+        "negotiation_round_cap",
+        "negotiation_expiry",
+        "negotiation_monotone"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a20e8400-0000-4000-8000-000000000902",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:00:40Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "a10e8400-0000-4000-8000-000000000901",
+            "idempotency_key": "buyer-001-counter-neg_7c1f0a9b2e4d-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 8000
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-003",
+      "name": "below_floor_refused_never_clamped",
+      "expect": "fail",
+      "description": "LEP-0009 invalid example A / C6: 4500 < 6000 is refused below_floor_price, never rewritten to the floor; no bid, post, or token exists.",
+      "error_contains": [
+        "below_floor_price"
+      ],
+      "checks": [
+        "negotiation_floor_refused"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b10e8400-0000-4000-8000-000000000911",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:01:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "a10e8400-0000-4000-8000-000000000901",
+            "idempotency_key": "buyer-001-counter-below-floor-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 4500
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-004",
+      "name": "round_exhaustion_refused",
+      "expect": "fail",
+      "description": "LEP-0009 invalid example B / C5: a counter at rounds_remaining 0 is refused round_limit_exceeded; the cap binds independently of the price.",
+      "error_contains": [
+        "round_limit_exceeded"
+      ],
+      "checks": [
+        "negotiation_round_cap"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b20e8400-0000-4000-8000-000000000912",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:04:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "a28e8400-0000-4000-8000-000000000905",
+            "idempotency_key": "buyer-001-counter-round-4-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 0,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 9200
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-005",
+      "name": "expired_negotiation_refused",
+      "expect": "fail",
+      "description": "LEP-0009 invalid example C / C8: message.timestamp at/after expires_at is refused negotiation_expired; expiry is absolute and never extended.",
+      "error_contains": [
+        "negotiation_expired"
+      ],
+      "checks": [
+        "negotiation_expiry"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b30e8400-0000-4000-8000-000000000913",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:10:01Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "a29e8400-0000-4000-8000-000000000906",
+            "idempotency_key": "buyer-001-counter-late-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 1,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 9600
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-006",
+      "name": "non_monotone_counter_refused",
+      "expect": "fail",
+      "description": "LEP-0009 invalid example D / C6: the buyer's previous price in this negotiation was 8000, so 7000 walks backwards and is refused non_monotone_counter.",
+      "error_contains": [
+        "non_monotone_counter"
+      ],
+      "prior_sender_price": 8000,
+      "sender_role": "buyer",
+      "checks": [
+        "negotiation_monotone"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b40e8400-0000-4000-8000-000000000914",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:03:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "a25e8400-0000-4000-8000-000000000905",
+            "idempotency_key": "buyer-001-counter-backwards-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 1,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 7000
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-007",
+      "name": "pii_attempt_refused",
+      "expect": "fail",
+      "description": "LEP-0009 invalid example E / C4: consumer_phone and note are outside the strict allowlist (LCP-100) and consumer-shaped (LCP-008 PII_IN_PING); a free string is the PII-smuggling shape this surface forbids.",
+      "error_contains": [
+        "LCP-008 PII_IN_PING",
+        "payload.consumer_phone"
+      ],
+      "checks": [
+        "quote_schema",
+        "negotiation_no_pii"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b50e8400-0000-4000-8000-000000000915",
+            "type": "quote",
+            "timestamp": "2026-11-04T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "correlation_id": "d70e8400-0000-4000-8000-000000000021",
+            "idempotency_key": "platform-001-quote-pii-1",
+            "test": true
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "price_cents": 10000,
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "max_rounds": 3,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "consumer_phone": "+15125550147",
+            "note": "call Jordan after 6pm, prefers SMS"
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-008",
+      "name": "binding_token_reuse_refused",
+      "expect": "fail",
+      "description": "LEP-0009 C7: a token presented after REDEEMED is refused negotiation_closed (only the same-key same-bytes replay returns the original outcome).",
+      "error_contains": [
+        "negotiation_closed"
+      ],
+      "negotiation_state": "REDEEMED",
+      "checks": [
+        "negotiation_binding_token"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b70e8400-0000-4000-8000-000000000917",
+            "type": "bid",
+            "timestamp": "2026-11-04T12:06:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "d70e8400-0000-4000-8000-000000000021",
+            "idempotency_key": "buyer-001-redeem-replay-2",
+            "test": false
+          },
+          "payload": {
+            "ping_id": "ping_9f31c2",
+            "decision": "accept",
+            "currency": "AUD",
+            "negotiation_binding_token": "tok_9fQ2x8Lm4Vb7Kd1Rt6Yp3Wc5Nz0Hs2Ja"
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-009",
+      "name": "capability_absent_refused",
+      "expect": "fail",
+      "description": "LEP-0009 C2: the receiver advertises only 1.0.0/1.1.0 and no negotiation feature key, so the sender must not emit; the platform answers LCP-006 rather than passing the type through.",
+      "error_contains": [
+        "CAPABILITY_GATE"
+      ],
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0"
+      ],
+      "receiver_features": {
+        "batch": "1.2.0"
+      },
+      "checks": [
+        "negotiation_capability"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b80e8400-0000-4000-8000-000000000918",
+            "type": "quote",
+            "timestamp": "2026-11-04T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "correlation_id": "d70e8400-0000-4000-8000-000000000022",
+            "idempotency_key": "platform-001-quote-unadvertised-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "price_cents": 10000,
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "max_rounds": 3,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z"
+          }
+        }
+      }
+    },
+    {
+      "id": "NEG-010",
+      "name": "tenant_mismatch_refused",
+      "expect": "fail",
+      "description": "LEP-0009 \u00a74 authorization: buyer_002 presents buyer_001's negotiation_id \u2014 LCP-002, indistinguishable from no such negotiation, and no price/round/state is returned.",
+      "error_contains": [
+        "LCP-002"
+      ],
+      "negotiation_buyer_id": "buyer_001",
+      "checks": [
+        "negotiation_tenant"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "b90e8400-0000-4000-8000-000000000919",
+            "type": "counter",
+            "timestamp": "2026-11-04T12:00:50Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": "a10e8400-0000-4000-8000-000000000901",
+            "idempotency_key": "buyer-002-counter-cross-tenant-1",
+            "test": false
+          },
+          "payload": {
+            "negotiation_id": "neg_7c1f0a9b2e4d",
+            "ping_id": "ping_9f31c2",
+            "offer_id": "offer_mortgage_nsw",
+            "decision": "counter",
+            "currency": "AUD",
+            "floor_price_cents": 6000,
+            "rounds_remaining": 3,
+            "expires_at": "2026-11-04T12:10:00Z",
+            "price_cents": 8000
+          }
+        }
+      }
+    }
+  ]
+}

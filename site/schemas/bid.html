@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/bid.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Bid Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Bid Message</h1>
+<p><code>https://lcp.dev/schemas/bid.json</code> · Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bid_price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass.</td></tr>
+<tr><td><code>buyer_reference</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Buyer's internal reference for this bid (for tracking).</td></tr>
+<tr><td><code>capacity_remaining</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional.</td></tr>
+<tr><td><code>currency</code></td><td>ref <code>core.json#/$defs/currency</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>decision</code></td><td>enum (<code>"accept"</code>, <code>"reject"</code>, <code>"pass"</code>)</td><td><code>internal</code></td><td>yes</td><td>accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason).</td></tr>
+<tr><td><code>estimated_contact_seconds</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional.</td></tr>
+<tr><td><code>ping_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>ID of the ping being responded to.</td></tr>
+<tr><td><code>reject_reason</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional.</td></tr>
+<tr><td><code>slots_claimed</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>v1.1 (LEP-0003 §2): buyer slots this buyer claims if selected. The claim is a request, not a reservation — the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N &gt; 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) — this schema enforces maximum: 1 now. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1.</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/bid.json",
+  "title": "LCP Bid Message",
+  "description": "Buyer's response to a ping. Contains the bid price, accept/reject decision, and estimated contact speed. The platform collects bids from all pinged buyers and selects the winner. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "ping_id",
+    "decision"
+  ],
+  "properties": {
+    "ping_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "ID of the ping being responded to."
+    },
+    "decision": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "accept",
+        "reject",
+        "pass"
+      ],
+      "description": "accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason)."
+    },
+    "bid_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass."
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "estimated_contact_seconds": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional."
+    },
+    "buyer_reference": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Buyer's internal reference for this bid (for tracking)."
+    },
+    "reject_reason": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional."
+    },
+    "capacity_remaining": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional."
+    },
+    "slots_claimed": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "description": "v1.1 (LEP-0003 §2): buyer slots this buyer claims if selected. The claim is a request, not a reservation — the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N &gt; 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) — this schema enforces maximum: 1 now. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "x-lcp-pii": "internal",
+            "const": "accept"
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "then": {
+        "required": [
+          "bid_price_cents",
+          "currency"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/bid.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

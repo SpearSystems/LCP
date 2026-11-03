@@ -13,11 +13,13 @@
   ],
   "properties": {
     "request_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "uuid",
       "description": "The stored envelope's message.id \u2014 the reference pattern's 'token'."
     },
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
@@ -28,6 +30,7 @@
       "description": "Publisher-supplied record handle, pinned at the projection (rule 6): anchored charset plus refusal of the \u00a73 contact shapes \u2014 a leading 10-15 digit phone run, an all-digits/punctuation value, or an email address cannot ride a history row; hyphen-delimited digit segments (uuid-style ids) intentionally pass."
     },
     "message_type": {
+      "x-lcp-pii": "public",
       "enum": [
         "lead",
         "call",
@@ -39,6 +42,7 @@
       "description": "Stored-record classes only. 'ack' is excluded: acks are response artifacts, no table backs them (row universe, below; Deferred questions)."
     },
     "direction": {
+      "x-lcp-pii": "public",
       "enum": [
         "received",
         "sent"
@@ -46,6 +50,7 @@
       "description": "From the platform's side: an inbound envelope it received, or an outbound record it sent/delivered."
     },
     "status": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
@@ -53,18 +58,21 @@
       "description": "Stored record status (open pass-through per \u00a76 \u2014 the vocabulary stays open; the shape is pinned, rule 6)."
     },
     "sender_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
     },
     "receiver_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
     },
     "vertical": {
+      "x-lcp-pii": "public",
       "type": [
         "string",
         "null"
@@ -73,31 +81,38 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
     },
     "test": {
+      "x-lcp-pii": "public",
       "type": "boolean"
     },
     "price_cents": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "description": "Minor units only (LEP-0003 units discipline); currency travels separately."
     },
     "currency": {
+      "x-lcp-pii": "public",
       "type": "string",
       "pattern": "^[A-Z]{3}$"
     },
     "caller_phone_hash": {
+      "x-lcp-pii": "contact",
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
       "description": "Per-pair HMAC keyed to the REQUESTING credential. Absent \u2014 never blank \u2014 when the rule in the next section omits it."
     },
     "expires_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
     },
     "created_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
     },
     "updated_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
     }

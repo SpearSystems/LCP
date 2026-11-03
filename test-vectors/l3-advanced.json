@@ -1327,6 +1327,63 @@
       "checks": [
         "pricing_fx_comparability"
       ]
+    },
+    {
+      "id": "L3-028",
+      "name": "invalid_prohibited_otp_value_at_intake",
+      "expect": "fail",
+      "description": "A prohibited value reaches intake: the plaintext one-time passcode is carried in compliance.otp.verified_value. Authentication secrets are a prohibited family (docs/PII-CLASSES.md 'Prohibited values'), so the receiver refuses the value and names the field \u2014 it is never scrubbed and the message is not stored.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "ee0e8400-e29b-41d4-a716-446655440028",
+            "type": "lead",
+            "timestamp": "2026-11-04T10:10:00Z",
+            "sender_id": "pub_us_001",
+            "receiver_id": "platform_001",
+            "idempotency_key": "prohibited-otp-028",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_prohibited_otp_001",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Jane Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+12125551234"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "CA",
+              "postal_code": "90210"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-04T10:09:00Z",
+              "consent_purposes": [
+                "calls"
+              ],
+              "otp_verified": true,
+              "otp": {
+                "channel": "sms",
+                "verified_at": "2026-11-04T10:09:30Z",
+                "verified_value": "482913"
+              }
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "purchase"
+            }
+          }
+        }
+      },
+      "checks": [
+        "lead_schema",
+        "otp_closed_object"
+      ],
+      "error_contains": "verified_value"
     }
   ]
 }

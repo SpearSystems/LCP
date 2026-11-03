@@ -6,110 +6,130 @@
   "type": "object",
   "required": ["vertical", "schema_version"],
   "properties": {
-    "vertical": { "type": "string", "const": "mva" },
-    "schema_version": { "type": "string", "const": "1.0.0" },
+    "vertical": { "x-lcp-pii": "public", "type": "string", "const": "mva" },
+    "schema_version": { "x-lcp-pii": "public", "type": "string", "const": "1.0.0" },
     "accident_type": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": ["car_collision", "motorcycle_collision", "truck_collision", "rideshare_collision", "pedestrian", "bicycle", "public_transport", "work_vehicle", "other"],
       "ping_safe": true
     },
     "accident_date_band": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": ["last_7_days", "8_30_days", "1_3_months", "3_12_months", "over_12_months"],
       "description": "Age band of the accident; never expose an exact date in a ping.",
       "ping_safe": true
     },
     "accident_date": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "format": "date",
       "description": "Exact accident date. Post-only; never include in a ping.",
       "ping_safe": false
     },
     "jurisdiction": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "State, province, or territory where the accident occurred. Prefer core location for the consumer's current location.",
       "ping_safe": true
     },
     "injury_present": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Injury indicator is sensitive health/legal data; post-only.",
       "ping_safe": false
     },
     "injury_severity_band": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "enum": ["none", "minor", "moderate", "serious", "fatality", "unknown"],
       "description": "Injury severity is sensitive health/legal data; post-only.",
       "ping_safe": false
     },
     "medical_treatment": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "enum": ["none", "self_treated", "emergency_room", "hospitalized", "ongoing", "unknown"],
       "description": "Medical treatment is sensitive health data; post-only.",
       "ping_safe": false
     },
     "emergency_services_called": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Emergency-response information is sensitive incident data; post-only.",
       "ping_safe": false
     },
     "police_report_available": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Police-report availability is sensitive incident data; post-only.",
       "ping_safe": false
     },
     "fault_position": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "enum": ["not_at_fault", "partially_at_fault", "at_fault", "unclear", "unknown"],
       "description": "Fault position is sensitive legal/liability data; post-only.",
       "ping_safe": false
     },
     "other_driver_identified": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Other-party identification status is sensitive incident data; post-only.",
       "ping_safe": false
     },
     "other_driver_insured": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": ["yes", "no", "unknown"],
       "description": "Other-party insurance status is sensitive insurance data; post-only.",
       "ping_safe": false
     },
     "consumer_insured": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": ["yes", "no", "unknown"],
       "description": "Consumer insurance status is sensitive insurance data; post-only.",
       "ping_safe": false
     },
     "represented_by_attorney": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Attorney-representation status is sensitive legal data; post-only.",
       "ping_safe": false
     },
     "prior_attorney_consultation": {
+      "x-lcp-pii": "restricted",
       "type": "boolean",
       "description": "Prior legal consultation is sensitive legal data; post-only.",
       "ping_safe": false
     },
     "claim_filed": {
+      "x-lcp-pii": "internal",
       "type": "boolean",
       "description": "Claim status is sensitive legal/insurance data; post-only.",
       "ping_safe": false
     },
     "vehicle_count_band": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": ["one", "two", "three_or_more", "unknown"],
       "ping_safe": true
     },
     "commercial_vehicle_involved": {
+      "x-lcp-pii": "public",
       "type": "boolean",
       "ping_safe": true
     },
     "passenger_count_band": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": ["none", "one", "two", "three_or_more", "unknown"],
       "ping_safe": true
     },
     "evidence_available": {
+      "x-lcp-pii": "public",
       "type": "array",
       "items": {
         "type": "string",
@@ -120,11 +140,13 @@
       "ping_safe": true
     },
     "claim_stage": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": ["initial_intake", "insurer_contacted", "claim_open", "claim_denied", "settlement_discussion", "unknown"],
       "ping_safe": true
     },
     "additional_context": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "description": "Free text may contain sensitive information and is post-only.",
       "ping_safe": false

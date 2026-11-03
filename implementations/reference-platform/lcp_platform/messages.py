@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 from pathlib import Path
+import secrets
 from typing import Any
 from uuid import uuid4
 
@@ -45,6 +46,35 @@ def _envelope(
     }
 
 
+# LEP-0010 §3: a bid's FX bundle is flat on the bid payload — currency (the
+# bid's native currency), bid_price_cents (native minor units), and these four.
+# ONE definition backs both the bid surface and the post echo, so a converted
+# award can never echo a different field set than the bid declared.
+BID_FX_FIELDS = ("fx_rate", "fx_source", "fx_timestamp", "fx_expires_at")
+
+
+def bid_fx_evidence(
+    bid_payload: dict[str, Any], *, price_cents: int
+) -> dict[str, Any] | None:
+    """The winning bid's conversion evidence for ``post.pricing``.
+
+    Returns ``original_price_cents`` (the bid's native minor units) plus the
+    bid's four ``fx_*`` values **verbatim** — the post echoes the record of the
+    conversion rather than re-deriving it (LEP-0010 §2, T-ECHO) — or ``None``
+    when the bid carries no complete bundle (a same-currency award, where there
+    is no "original" and no rate).
+    """
+    if not all(
+        isinstance(bid_payload.get(field), str) and bid_payload.get(field)
+        for field in BID_FX_FIELDS
+    ):
+        return None
+    return {
+        "original_price_cents": price_cents,
+        **{field: bid_payload[field] for field in BID_FX_FIELDS},
+    }
+
+
 def pair_phone_hash(secret: str, phone: str) -> str:
     """Per-pair HMAC-SHA256 over the verbatim wire phone bytes (SPEC §9, LEP-0003 §3).
 
@@ -70,6 +100,7 @@ def build_ack(
     lead_id: str | None = None,
     rejection_reason: str | None = None,
     errors: list[dict[str, Any]] | None = None,
+    negotiation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     original_message = original["lcp"]["message"]
     payload: dict[str, Any] = {
@@ -82,6 +113,10 @@ def build_ack(
         payload["rejection_reason"] = rejection_reason
     if errors:
         payload["errors"] = errors
+    if negotiation is not None:
+        # LEP-0009 §5: present on every ack for a quote/counter (and on a
+        # successful bid redemption), so a buyer never infers state from prose.
+        payload["negotiation"] = negotiation
     return _envelope(
         "ack",
         sender_id,
@@ -90,6 +125,20 @@ def build_ack(
         correlation_id=original_message["id"],
         test=original_message.get("test", False),
     )
+
+
+# LEP-0009 C7: the token is returned exactly once and only its hash is stored
+# (mirroring api_key_hash). 32 random bytes render as 43 urlsafe characters,
+# inside the tok_[A-Za-z0-9_-]{32,128} wire pattern.
+NEGOTIATION_TOKEN_PREFIX = "tok_"
+
+
+def new_negotiation_token() -> str:
+    return f"{NEGOTIATION_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+
+
+def hash_negotiation_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def build_ping(
@@ -210,6 +259,7 @@ def build_post(
     contacted_hashes: list[str] | None = None,
     extensions: dict[str, Any] | None = None,
     duplicate_resubmission: bool = False,
+    fx: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     lead = lead_envelope["lcp"]["payload"]
     payload: dict[str, Any] = {
@@ -242,6 +292,13 @@ def build_post(
         # axis — a second buyer on a shared lead is NOT a duplicate resub.
         "is_duplicate_resub": duplicate_resubmission,
     }
+    if fx is not None:
+        # LEP-0010 §2: the settlement currency, the buyer's native amount, and
+        # the bidding side's four fx_* values verbatim. `price_cents` above
+        # stays in settlement minor units; these fields are the conversion's
+        # evidence, not a second payable.
+        payload["pricing"]["currency"] = offer["currency"]
+        payload["pricing"].update(fx)
     payload["matched_preferences"] = {
         "offer_id": offer["offer_id"],
         "vertical": offer["vertical"],

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/batch.json",
+  "title": "LCP Batch Message",
+  "description": "v1.2 (LEP-0001 W2-01): bounded batch submission. The batch is a loop over the single-item intake path \u2014 each item's payload is a lead payload validated by schemas/lead.json, authenticated, deduped, and persisted exactly as a single lead would be. The batch schema therefore fixes the per-item metadata (item_id, idempotency_key) and the item payload's container, never the lead's own field rules: an item whose lead payload is invalid is a per-item `rejected` receipt, not a whole-request schema failure. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "items"
+  ],
+  "properties": {
+    "request_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Caller-supplied request identifier, echoed in the per-item response so a client can correlate the receipt list with its own submission record."
+    },
+    "items": {
+      "x-lcp-pii": "restricted",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "LEP-0001 W2-01 caps a batch at 100 items; exceeding the cap is a whole-request 413 LCP-001, never a per-item rejection.",
+      "items": {
+        "x-lcp-pii": "restricted",
+        "type": "object",
+        "required": [
+          "item_id",
+          "idempotency_key",
+          "payload"
+        ],
+        "properties": {
+          "item_id": {
+            "x-lcp-pii": "internal",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Stable per-item identifier, echoed in that item's receipt. It also seeds the synthesized lead envelope's deterministic message id, so a replay of the same item reuses the same message."
+          },
+          "idempotency_key": {
+            "x-lcp-pii": "internal",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Per-item idempotency key (LEP-0001: per-item idempotency). A replay returns the item's original result as a `duplicate` receipt (existing DUPLICATE/LCP-005 semantics at item granularity)."
+          },
+          "payload": {
+            "x-lcp-pii": "restricted",
+            "type": "object",
+            "description": "A full-PII lead payload \u2014 the root object of schemas/lead.json, never an envelope and never a ping payload. It is validated per item against schemas/lead.json and the lifecycle intake rules; an invalid payload rejects that item only."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

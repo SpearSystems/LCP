@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0007-outbound-call-center-outreach.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0007 — Outbound call-center outreach: the registered {org}.outbound.call_request extension — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0007--outbound-call-center-outreach-the-registered-orgoutboundcall_request-extension">LEP-0007 — Outbound call-center outreach: the registered <code>{org}.outbound.call_request</code> extension</h1>
+<ul>
+<li><strong>Title:</strong> Outbound call-center outreach: registered <code>{org}.outbound.call_request</code> event-value extension</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-03</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> (maintainer, 2026-11-04) — accepted under waiver D1 after the 2026-11-03 deferral; number and record permanent</li>
+<li><strong>Target version:</strong> v1.2.0 (additive MINOR; <strong>zero schema change</strong> — the entire surface rides open enumerations and open objects already governed by SPEC.md §6)</li>
+<li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/186" rel="noopener">#186</a> (<code>[LEP] Outbound call-center outreach: registered {org}.outbound.call_request extension</code>)</li>
+<li><strong>Roadmap trigger:</strong> <code>docs/V1.1-ROADMAP.md</code>, Phase 6 — "Outbound call-center outreach" (low priority; finish-read of the section, including its reference pattern, design constraints, and the "distinct declined/ignored outcome" clause)</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</h2>
+<p><strong>Accepted.</strong> Recorded by the maintainer (randybeno) under waiver <strong>D1</strong> in <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md"><code>docs/DECISIONS-v1.2.md</code></span>, signed 2026-11-04. The 2026-11-03 deferral is <strong>superseded by maintainer decision, not by new adopter evidence</strong>: the trigger gates were not met — the record's own trigger (buyers or platforms needing outbound-call requests as a first-class operation) still has no adopter evidence in the repository or tracker — and D1 records that the maintainer is choosing to fund the work now rather than leaving it Deferred. Recording the choice as a waiver is what keeps the ledger honest: a reader can see that no adopter signal was produced, and can challenge the decision at the re-evaluation date below.</p>
+<p><strong>Accepted surface — the zero-schema-change extension route.</strong> Exactly the deliverable this record proposed: the registered namespaced <code>event</code> value <code>{org}.outbound.call_request</code> riding the open <code>event</code> enum (SPEC.md §4/§6; recommended <code>details</code> shape per §1 above, <code>lead_id</code>-only keying, no contact value on the wire) plus the documented known value <code>rejection_reason: "ignored"</code> on the <strong>open</strong> <code>rejection_reason</code> enumeration (<code>schemas/ack.json:43</code>) as the no-fault, terminal decline. No schema file constraint changes, no new message type, no new envelope shape.</p>
+<p><strong>The new-message-type alternative remains rejected.</strong> LEP.md's decision rule — "evidence from at least two independent adopters or a documented interoperability necessity, <strong>plus an extension feasibility analysis</strong>" — is unchanged and still unmet (one external reference network's endpoint, zero LCP adopters asking; the roadmap lists the item as low priority). The extension feasibility analysis above succeeds, and the measured rollout asymmetry is unchanged: a closed <code>message.type</code> value is rejected with <code>LCP-006</code> by every v1.0 receiver (invalid example 7-2), while an unknown namespaced event value is stored and passed through by construction (§6). <strong>LEP-0009 adding <code>quote</code>/<code>counter</code> negotiation message types (D8) is a separate capability and does not revive this alternative</strong> — it supplies no adopter evidence for an outbound-call request type, and it does not lower the closed-enum cost of one.</p>
+<p><strong>Compensating constraints carried by D1.</strong> As built, this capability MUST be:</p>
+<ol>
+<li>additive-only on the wire, advertised through <code>capabilities()</code>, and unreachable for a peer that does not read the advertisement (§2 above; the 7-3 refusal);</li>
+<li>disabled by default in the reference platform (<code>LCP_FEATURE_*</code> off per D1) while remaining exercised by CI, vectors, and the conformance suite;</li>
+<li>accompanied by the deterministic evidence that stands in for the missing adopter signal — the executable vectors D1–D6 of <code>## Implementation authorization</code> — and the dated re-evaluation entry <code>2027-05-04</code> in the registry row.</li>
+</ol>
+<p><strong>Review record.</strong> The independent ARB dossier on <a href="https://github.com/SpearSystems/LCP/issues/186" rel="noopener">#186</a> remains the review record for this surface; this decision changes the status of the reviewed design, it does not re-review it. Any post-decision adopter comment carrying new evidence reopens this record per its trigger clauses.</p>
+<p><strong>Re-evaluation: 2027-05-04.</strong> The registry row carries that date; the re-evaluation re-reads the waiver against adopter evidence, the vector results, and production telemetry, and the D1 record in <code>docs/DECISIONS-v1.2.md</code> — not this record — is the authority for the waiver itself.</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><strong>Trigger (roadmap, lines 314-328):</strong> buyers or platforms need to request an outbound call to a consumer — call-center follow-up, warm transfer — as a first-class operation rather than a manual dial.</p>
+<p><strong>Reference pattern (as read in full):</strong> a <code>POST</code> endpoint requesting an outgoing call to a number, keyed by zip/need/phone, with a distinct <code>ignored</code> response status for requests the network declines. The roadmap's LCP-side constraints: the <code>call</code> message already models the call itself and <code>provenance.source_type</code> includes <code>outbound</code>; add an explicit outbound-call request surface (message type or extension) with a declined/ignored outcome distinct from <code>rejected</code>; "Additive; no core change."</p>
+<p><strong>What LCP already ships (the record engages this head-on before proposing anything):</strong></p>
+<ul>
+<li>The <code>call</code> message is a first-class type (SPEC.md §4; <code>schemas/call.json</code>) with <code>direction: inbound|outbound</code> (<code>schemas/call.json:80-84</code>), durations, recording, IVR, disposition, and <code>transferred_from{original_call_id, transfer_reason}</code> — the <em>result</em> of an outbound call is already fully modelable, including transfers.</li>
+<li><code>provenance.source_type</code> includes <code>outbound</code> and <code>acquisition_method</code> includes <code>warm_transfer</code> (SPEC.md §3, lines 184-186; open enums) — provenance for outbound-originated contacts exists.</li>
+<li>Call lifecycle events <code>CALL_OFFERED</code> / <code>CALL_CONNECTED</code> / <code>CALL_ENDED</code> / <code>CALL_OUTCOME</code> are documented known values of the open <code>event</code> enum (SPEC.md §4) and are already in the reference platform's <strong>buyer-reportable</strong> set (<code>router.py:82-96</code>), with buyer-offer <code>payable_rules</code> classifying outcomes and <code>concurrent_call_cap</code> advertised under §8 capacity.</li>
+<li><code>POST /events</code> (<code>api/lcp-openapi.yaml:175-180</code>, <code>submitEvent</code>) is the authenticated, non-PII inbound event channel; the event <code>lead_id</code> required key (SPEC.md §4) points the platform at the stored lead and its plaintext contact — no phone number needs to cross the wire.</li>
+</ul>
+<p><strong>What is missing is only the request and its distinct decline outcome.</strong> Today a buyer wanting the platform to dial holds the lead (from <code>post</code>), dials out-of-band, and reports the call after the fact via <code>call</code>/<code>CALL_*</code>. There is no protocol object for "please place this call", and the ack model's fault-bearing statuses cannot express the network's <code>ignored</code> (no-fault, terminal, no billing effect) cleanly.</p>
+<p><strong>Gate honesty — why this is NOT a new message type.</strong> LEP.md decision rule: "Before adding a new universal message type, require evidence from at least two independent adopters or a documented interoperability necessity, <strong>plus an extension feasibility analysis</strong>." Evidence today is one reference network's endpoint (external pattern) and zero LCP adopters asking — the roadmap lists this item as <strong>low</strong> priority, the weakest of the Phase 6 findings. This record performs the extension feasibility analysis the rule demands (the wire shape below), and the analysis shows the registered-extension route covers every element of the reference pattern — which itself defeats the necessity claim. A new message type would additionally be <strong>strictly worse rollout math</strong>: <code>message.type</code> is closed (SPEC.md §6:675) so every v1.0 receiver rejects it with <code>LCP-006</code> (measured below), while an unknown <strong>namespaced event value</strong> is stored and passed through by construction (<code>schemas/event.json:16-19</code> — no enum; §6 open-enum table). The deliverable of this LEP is therefore the <strong>registered extension</strong>, with the message type kept as a documented future path under the concrete triggers recorded at D1 in <code>## Deferred questions</code> — rejected again at acceptance on 2026-11-04 (see <code>## Decision</code>).</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Core protocol:</strong> no schema change, no new message type, no new envelope shape. One registered <strong>namespaced event value</strong> <code>{org}.outbound.call_request</code> riding the open <code>event</code> enum, a recommended <code>details</code> shape inside the open <code>event.details</code> object, one new documented known value on the open <code>rejection_reason</code> enumeration (<code>ignored</code>), and normative guidance text (SPEC.md §4 event + ack; §8 advertisement note).</li>
+<li><strong>Registered extension:</strong> the event-value namespace per <code>governance/EXTENSION-REGISTRY.md</code> format rules; <code>lcp.outbound.call_request</code> as the reference registration, live on the 2026-11-04 acceptance (the <code>proposed (LEP-0007)</code> registry row flips on that acceptance; adopters register their own <code>{org}</code> rows under the open registration process).</li>
+<li><strong>Reference implementation (authorized 2026-11-04 by D1):</strong> extension-value policy in the event gate, advertisement, per-sender rate limiting, compliance pre-action checks, request store and the <code>ignored</code> ack — enumerated as the contract in <code>## Implementation authorization</code> and per-surface in the impact section.</li>
+<li><strong>Not in scope:</strong> dialer/queue implementation, telephony integration, per-market TCPA/DNC rule text (compliance is expressed only as the generic stored-lead gates that already exist in core §3/§9), request <strong>pricing</strong> semantics (bid/offer pricing untouched), the LEP-0006 surfaces (independent decision — this route needs neither <code>FINAL_PRICING</code> nor <code>lead</code>/<code>post</code> <code>extensions</code>), and a normative MCP tool (noted gap).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-the-request--namespaced-event-value-orgoutboundcall_request">1. The request — namespaced event value <code>{org}.outbound.call_request</code></h3>
+<p>A delivered buyer sends an <code>event</code> message to the platform whose <code>event</code> value is its registered namespace. Nothing about the message class changes; the value is data inside the already-open enum.</p>
+<p>Recommended <code>details</code> shape:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>requested_action</code></td>
+<td>string</td>
+<td>Open enum, known values <code>dial</code> (place the call), <code>warm_transfer</code> (bridge buyer agent), <code>scheduled_callback</code>. Unknown values stored and passed through (§6).</td>
+</tr>
+<tr>
+<td><code>offer_id</code></td>
+<td>string</td>
+<td>Optional — the buyer's offer/entry the request relates to.</td>
+</tr>
+<tr>
+<td><code>buyer_agent_id</code></td>
+<td>string</td>
+<td>Optional — agent requesting or to be bridged (mirrors <code>call.agent</code>).</td>
+</tr>
+<tr>
+<td><code>window_from</code>, <code>window_to</code></td>
+<td>string (date-time)</td>
+<td>Optional requested contact window; the platform MUST treat it as bounded by the stored lead's <code>contact_window</code> (SPEC.md §4 lead) — a request can narrow, never widen, publisher-advertised contactability.</td>
+</tr>
+<tr>
+<td><code>reason_code</code></td>
+<td>string</td>
+<td>Optional open enum (<code>follow_up</code>, <code>no_answer_retry</code>, <code>crm_workflow</code>…) — machine-usable context. Free-text <code>note</code> fields are deliberately <strong>not</strong> offered: they are the PII-smuggling shape this surface must not carry.</td>
+</tr>
+</tbody>
+</table>
+<p>Keying discipline (the reference pattern's "keyed zip/need/phone" converted to LCP): the schema-required <code>lead_id</code> is the <strong>only</strong> consumer locator. The platform resolves the contact from the lead it already holds; the request MUST NOT contain a phone number, email, or address — not plaintext, not hash (a hash adds nothing when the platform holds the lead and would tempt pair-secret misuse on a non-pair channel). <code>event</code> is a non-PII message class (SPEC.md §4 table); the same ingest honesty as LEP-0003 §4 / LEP-0006 A-1 applies: <strong>the open <code>details</code> cannot enforce this in schema — it is a receiver ingest MUST</strong> (invalid example 7-1; named platform test in the impact section).</p>
+<p>Authorization and trust: the sender MUST be a buyer with a delivered post for that <code>lead_id</code> (the reference platform's existing <code>is_delivered_buyer</code> condition, <code>router.py:1216-1218</code>), <code>event:submit</code> scope, HMAC-signed (§9). A request is an authenticated attestation of buyer intent, scoped to one lead; the platform keeps no obligation to comply beyond the compliance gates below — the ack protocol expresses the verdict.</p>
+<p><strong>Zero schema cost, nonzero platform cost (measured path).</strong> <code>_BUYER_EVENT_TYPES</code> (<code>router.py:82-96</code>) is a closed constant set and the authorization at <code>router.py:1219-1226</code> rejects any name outside it for a delivered buyer: a properly scoped buyer sending today's proposed value gets <code>LCP-002</code> ("Sender is not authorized for this lead event"), while <code>CALL_OUTCOME</code> on the same transport is accepted. The wildcard <code>platform:admin</code> route (<code>router.py:1220</code>; <code>auth.py</code> treats <code>*</code> as satisfying every scope check — the LEP-0003 O2 class) is not a conformance path. The 2026-11-04 acceptance therefore obligates the implementation PR to land an <strong>extension-value policy</strong> — accept namespaced event values only when the value is registered for the sender's organization and the platform advertises it (below) — plus the named tests in the impact section (LEP-0003 F5/T6 pattern, verbatim).</p>
+<h3 id="2-capability-advertisement-8">2. Capability advertisement (§8)</h3>
+<p>A platform that accepts requests MUST list the registered value in <code>capabilities().events</code> (today thirteen values, <code>router.py:1716-1730</code>; adding a namespaced string is a list-content change, no schema change — the OpenAPI <code>events</code> arrays (api/lcp-openapi.yaml:327, :835) already carry arbitrary strings), and senders gate on the §8 parsed-semver membership rule (LEP-0003 F6 verbatim) + this value listing. Rollout safety is the open enum's: a v1.0-conformant receiver <strong>stores and passes through</strong> an unknown event value (§6) instead of hard-failing, so a mis-gated request is inert rather than destructive — the property the closed <code>message.type</code> alternative lacks (7-invalid-2 measurement).</p>
+<h3 id="3-outcomes--the-ack-including-the-distinct-ignored">3. Outcomes — the ack, including the distinct <code>ignored</code></h3>
+<p>The reference pattern's distinct <code>ignored</code> outcome, translated without touching a closed enumeration:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Expression</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Queued/accepted</td>
+<td><code>ack.status: ACCEPTED</code></td>
+<td>Request valid; platform will act subject to its compliance gates.</td>
+</tr>
+<tr>
+<td>Duplicate</td>
+<td><code>ack.status: DUPLICATE</code> (or <code>LCP-005</code> on id reuse)</td>
+<td>Same message-id replay, existing mechanism (<code>router.py:1229-1252</code>).</td>
+</tr>
+<tr>
+<td>Malformed/unauthorized</td>
+<td><code>ack.status: REJECTED</code> + <code>rejection_reason</code> ∈ existing known set (<code>compliance_fail</code>, <code>out_of_scope</code>, <code>duplicate</code>, <code>capacity_exceeded</code>, …)</td>
+<td>Fault-bearing or retryable — publisher/buyer automation routes on it.</td>
+</tr>
+<tr>
+<td><strong>Declined (no-fault)</strong></td>
+<td><code>ack.status: REJECTED</code> + <strong><code>rejection_reason: "ignored"</code></strong> (new documented known value on the OPEN <code>rejection_reason</code> enum, <code>schemas/ack.json:43</code> — no schema constraint change)</td>
+<td>"Seen, will not act": consumer unreachable per stored state, market rule, platform choice. Terminal for this request id, <strong>no fault, no billing effect</strong> — the roadmap's "distinct from <code>rejected</code>" clause.</td>
+</tr>
+</tbody>
+</table>
+<p>Why <code>rejection_reason</code> and not a new <code>ack.status: IGNORED</code>: <code>ack.status</code> is a <strong>closed</strong> schema enum (<code>schemas/ack.json:17-24</code>) — adding a value there is a closed-object/enum change with exactly the compatibility burden this record exists to avoid, and LEP.md prefers open-surface growth. The distinction the reference network expressed at HTTP status level survives intact at the reason layer (open enum by design, SPEC.md §6, and this record's proposal mirrors the §4 precedent of <code>already_customer</code>/<code>out_of_geography</code> — no-fault outcomes already live there). Where a deployment wants a wire-visible async decline after an initial <code>ACCEPTED</code> (dialer exhaustion, late compliance hit), the platform sends a second ack for the same <code>original_message_id</code> with <code>REJECTED</code> + <code>ignored</code> — <code>ack</code> is "response to any message" with no sync-only rule in §4.</p>
+<h3 id="4-lifecycle--unchanged-and-deliberately-so">4. Lifecycle — unchanged, and deliberately so</h3>
+<p>If the platform dials, the call is modeled by the <strong>existing</strong> <code>call</code> message (<code>direction: "outbound"</code>, <code>schemas/call.json:80-84</code>; <code>provenance.source_type: "outbound"</code> recorded on the resulting lead contact — SPEC.md §3:184-186) and the existing <code>CALL_*</code> event lifecycle with <code>payable_rules</code> classification (SPEC.md §4/§8) — all of which ship today. An <code>ignored</code> request produces no call and therefore no payable event; no refund/dispute semantics are touched.</p>
+<h3 id="compliance-pre-action-gates-normative-existing-fields-only">Compliance pre-action gates (normative, existing fields only)</h3>
+<p>A conformant platform MUST NOT place a call unless the <strong>stored lead's own compliance state</strong> permits voice contact at dial time:</p>
+<ul>
+<li><code>compliance.scrubs[]</code> / <code>dnc_status</code> equivalent: DNC-flagged or blocked records MUST NOT be dialed (the offer-restriction vocabulary already distinguishes <code>reject_dnc_flagged</code> outcomes, SPEC.md §8).</li>
+<li><code>consent_purposes</code> include voice/calls semantics per §3 (a lead consented for email only MUST NOT be dialed because a buyer asked).</li>
+<li><code>contact_window</code> (SPEC.md §4 lead) bounds when dialing may occur; request windows intersect, never widen (details table above).</li>
+<li><code>CONSENT_WITHDRAWN</code> suppression (SPEC.md §4) MUST suppress queued requests for that lead — the platform that accepted a request and then withdrew-consent event arrives MUST cancel rather than dial, and SHOULD ack the queued request <code>REJECTED</code> + <code>ignored</code> (or <code>compliance_fail</code> where the deployment's reason taxonomy says so).</li>
+<li>§9 rate limits apply to the request surface per sender.</li>
+</ul>
+<p>No law-specific fields are introduced (§12 universal audit item 2): these are the generic core compliance blocks doing their existing job; market rules (TCPA quiet hours, DNC registry lookups) are deployment policy layered on the same gates.</p>
+<h3 id="valid-example--namespaced-call_request-event">Valid example — namespaced call_request event</h3>
+<p><em>(Validated by execution 2026-11-03 against the <strong>published</strong> tree (<code>SchemaValidator</code>, <code>jsonschema 4.26.0</code>, base SHAs <code>5d6000d</code> and <code>ace8861</code> — results identical, no schema/vertical drift between them): <code>PASS</code>. No overlay exists for this proposal at all — the PASS on the unmodified published tree is the zero-schema claim. Fixture lineage: <code>buyer_001</code> holds the delivered <code>post</code> for <code>lead_abc123</code> in the repository's own <code>examples/post.json</code>.)</em></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "c40e8400-0000-4000-8000-000000000701",
+      "type": "event",
+      "timestamp": "2026-11-03T10:00:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "buyer-001-event-lead_abc123-calldial-1",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "event": "acme.outbound.call_request",
+      "timestamp": "2026-11-03T09:59:41Z",
+      "details": {
+        "requested_action": "warm_transfer",
+        "offer_id": "offer_mortgage_nsw",
+        "window_from": "2026-11-03T17:00:00Z",
+        "window_to": "2026-11-03T19:00:00Z",
+        "buyer_agent_id": "agt_77"
+      },
+      "external_reference": "crm-ticket-456"
+    }
+  }
+}</code></pre>
+<h3 id="valid-example--ack-carrying-the-distinct-ignored-outcome">Valid example — ack carrying the distinct ignored outcome</h3>
+<p><em>(Validated by execution 2026-11-03 against the published tree: <code>PASS</code> — <code>rejection_reason</code> is an open string enumeration with no schema constraint to change (<code>schemas/ack.json:43</code>). The no-fault decline for the request above.)</em></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "c50e8400-0000-4000-8000-000000000703",
+      "type": "ack",
+      "timestamp": "2026-11-03T10:00:02Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_001",
+      "correlation_id": "c40e8400-0000-4000-8000-000000000701",
+      "idempotency_key": "platform-001-ack-701",
+      "test": true
+    },
+    "payload": {
+      "original_message_id": "c40e8400-0000-4000-8000-000000000701",
+      "status": "REJECTED",
+      "errors": [],
+      "lead_id": "lead_abc123",
+      "rejection_reason": "ignored"
+    }
+  }
+}</code></pre>
+<h3 id="invalid-example-7-1--phone-number-in-the-request">Invalid example 7-1 — phone number in the request</h3>
+<pre class="code-block"><code class="language-json">"details": {
+  "requested_action": "dial",
+  "phone": "+61412345678"
+}</code></pre>
+<p>Violates the keying discipline and the non-PII event class (SPEC.md §4 table). <strong>Honest status of "rejects":</strong> measured <code>PASS</code> against the published tree — <code>details</code> is <code>additionalProperties: true</code> (<code>schemas/event.json:25-28</code>) and no schema change reaches it. The rule is therefore a receiver <strong>ingest MUST</strong> (reject the request, <code>REJECTED</code> + <code>compliance_fail</code> or <code>LCP-100</code>-style validation error per §5) with a named implementation test; the same stated-boundary discipline LEP-0003 §4 and LEP-0006 A-1 record. The plaintext also would not be needed: the platform holds <code>lead_abc123</code>'s contact — the phone field is either redundant or stale, and stale contacts are how dialers reach the wrong person.</p>
+<h3 id="invalid-example-7-2--the-new-message-type-alternative">Invalid example 7-2 — the new-message-type alternative</h3>
+<pre class="code-block"><code class="language-json">"message": { "type": "outbound_call_request", ... }</code></pre>
+<p>Measured <code>REJ</code> against the published tree: <code>'outbound_call_request' is not one of ['lead', 'call', 'ping', 'post', 'ack', 'event', 'bid']</code> — the concrete expression of SPEC.md §6:675 (closed <code>message.type</code>; unknown → <code>LCP-006</code>). Every v1.0 receiver hard-fails this construction; a namespaced event value degrades to store-and-pass-through instead. This asymmetry, plus the evidence state above, is why the message type is not the deliverable.</p>
+<h3 id="invalid-example-7-3--unregistered-or-unadvertised-namespace">Invalid example 7-3 — unregistered or unadvertised namespace</h3>
+<p>A sender whose org namespace is not registered (or a platform that does not list the value in <code>capabilities().events</code>) submitting example 1's request: a conformant implementing platform MUST refuse (<code>REJECTED</code> + <code>out_of_scope</code>), and the sender MUST NOT have sent it per the §8 gate. This row has no measurement because there is nothing to schema-test — it is the advertisement gate itself; the implementation obligation and test are named below.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>No new PII on the wire.</strong> The request rides the non-PII event class; keying is <code>lead_id</code>-only (7-1's ban); nothing in <code>details</code> identifies the consumer beyond what the platform already stores.</li>
+<li><strong>The action is the risk, and it is pre-gated.</strong> Outbound dialing is the regulated act; the record's stance is that the protocol must not create a dial path around the stored compliance state — hence the Compliance pre-action gates (DNC/consent/window/withdrawal) using only existing core fields, and the platform holding the dialing decision (a request is intent, never authorization to contact). Decision on this record required the named human security/privacy reviewer or the ARB-Security co-sign per LEP.md (it changes a contactability boundary in practice even though it moves no PII); the independent ARB dossier on <a href="https://github.com/SpearSystems/LCP/issues/186" rel="noopener">#186</a> is that review record, and the 2026-11-04 decision supersedes the earlier status without re-reviewing the design.</li>
+<li><strong>Abuse surfaces and their bounds:</strong> request flooding (§9 rate limits + per-lead active-request cap left to deployment); requests for leads the sender does not hold (delivered-buyer gate, <code>router.py:1216-1218</code>); namespace squatting (registry collision/format rules already police — and an unregistered namespace is inert by the advertisement gate); reason-code enum gaming (open enum pass-through, no executable semantics anywhere — values are data, never predicates, unlike the <code>lcp.platform.requirements</code> matching surface which needed its own allowlist machinery).</li>
+<li><strong>Retention:</strong> request/ack rows are lifecycle audit state — inherit §9 PII-retention and erasure behavior; they store no contact data (the request never had any), so post-<code>ERASURE_REQUEST</code> rows remain contact-free by construction (the LEP-0005 history-surface property).</li>
+<li><strong>Universal audit (SPEC.md §12) on the delta:</strong> zero core fields, zero vertical changes, zero envelope changes — the checklist is engaged only by the new documented known values on two open enums (<code>event</code> value space via registration, <code>rejection_reason: ignored</code>), which §6's open/closed policy explicitly prices as MINOR prose, not core growth; the simplicity budget (AGENTS.md rule 2) sees no new field, block, or message — the entire proposal is <strong>guidance + one registered namespace</strong>, which is LEP.md's preferred shape ("Prefer a namespaced extension or reference-platform behavior over a new core field").</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Additive MINOR to v1.2.0</strong> (SPEC.md §6): documented known values on open enumerations + recommended <code>details</code> guidance. <strong>No schema file constraint changes</strong>; the implementation PR MAY mirror <code>ignored</code> into the <code>schemas/ack.json:43</code> description list (a prose list edit, no validation change) — recorded as an implementation-phase choice, not a wire difference.</li>
+<li><strong>v1.0 receivers:</strong> a namespaced event value is stored and passed through (§6 open-enum row; <code>schemas/event.json:16-19</code> <code>$comment</code>) — unknown-value handling was already a v1.0 MUST, so an unimplemented peer degrades inertly rather than failing <code>LCP-006</code> (contrast 7-2). <code>rejection_reason</code> unknown values are equally pass-through by §6. The sender-side §8 gate (advertisement + parsed semver) is still required so requests are not wasted on a peer that cannot act; violation wastes bandwidth, not trust (nothing is re-priced, refunded, or dialed by an inert pass-through).</li>
+<li><strong>Deprecation:</strong> none introduced.</li>
+<li><strong>Rollback:</strong> stop sending (sender-side opt-in); platform feature-flags the extension-value policy and removes the value from <code>capabilities().events</code>; queued requests MAY be acked <code>REJECTED</code> + <code>ignored</code> during wind-down. No data migration either direction.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<p>Authorized by the 2026-11-04 decision (D1); per-surface impact:</p>
+<ul>
+<li><strong>Schemas:</strong> no constraint change (measured zero-diff surface). SDK generated models are unchanged — <code>event.details</code> and the ack string fields are free/open in every generated SDK today.</li>
+<li><strong>OpenAPI:</strong> <code>/events</code> + <code>submitEvent</code> (api/lcp-openapi.yaml:175-180) unchanged (details already an open object; the capabilities <code>events</code> arrays (:327, :835) carry arbitrary strings — advertisement is list-content). The ack <code>rejection_reason</code> description MAY mirror the new known value.</li>
+<li><strong>MCP:</strong> no event-submission tool exists (<code>implementations/mcp-server/lcp_mcp_server/server.py:80-160</code> — seven tools, none for events), so v1's request surface is REST-only; a future <code>submit_event</code> MCP tool would carry this and every other event value. Gap recorded, not a blocker for this proposal (LEP-0006 Track A records the identical REST-only status).</li>
+<li><strong>Reference platform obligations (named):</strong> (1) extension-value policy in <code>submit_event</code> — accept <code>{org}.outbound.call_request</code> only when registered for an authenticated counterpart and advertised, replacing today's flat closed-set refusal at <code>router.py:1219-1226</code>; (2) add the advertised value to <code>capabilities().events</code> (<code>router.py:1716-1730</code>); (3) <code>ignored</code> handling in the ack path; (4) compliance pre-action gates + queued-request cancellation on <code>CONSENT_WITHDRAWN</code> (the lifecycle hooks at <code>router.py:1256+</code> show where stored state already drives transitions); (5) rate limiting per §9. Tests: <code>plat: test_delivered_buyer_namespaced_call_request_accepted_and_advertised</code>, <code>plat: test_call_request_with_phone_in_details_refused</code>, <code>plat: test_call_request_ignored_is_rejection_reason_not_status</code>, <code>plat: test_consent_withdrawn_cancels_queued_call_request</code>, <code>plat: test_unadvertised_namespace_refused</code> (7-3).</li>
+<li><strong>Conformance vectors:</strong> no <em>schema</em> vectors are expressible by design (that is the zero-schema claim restated); the measured battery above is the acceptance evidence and the vectors D1–D6 of <code>## Implementation authorization</code>, together with the platform tests named above, are its implementation-phase conversion (LEP-0003 O3 discipline: real tests, not fake vectors).</li>
+<li><strong>Docs:</strong> SPEC.md §4 (request pattern under <code>event</code>; <code>ignored</code> added to the ack rejection-reason known list), §6 (no change), §8 (advertisement note); <code>docs/V1.1-ROADMAP.md</code> status line at the 2026-11-04 acceptance; the <code>proposed (LEP-0007)</code> registry row flipped to live and the <code>governance/LEP-REGISTRY.md</code> row updated to Accepted with the <code>2027-05-04</code> re-evaluation entry — both registry edits owned by the orchestration pass, not by this record.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>New universal message type</strong> (<code>outbound_call_request</code>, or a REST endpoint with its own envelope): the tempting shape, and it fails the LEP.md decision rule as analyzed above (adopter evidence absent; extension feasibility analysis succeeds; §6 rollout asymmetry measured in 7-2). <strong>Rejected at the 2026-11-04 acceptance</strong> and kept only as a documented future trigger (deferred question D1) — if the request surface grows synchronous negotiation semantics (capacity, queue position, priced callbacks) that an async event/ack pair serves badly, a message type earns its closed-enum cost <strong>then</strong>, with adopter evidence attached. LEP-0009's negotiation message types do not count as that evidence (separate capability).</li>
+<li><strong>Offer-side <code>extensions</code> registration</strong> (<code>{org}.outbound.call_request</code> as an <code>offer.extensions</code> predicate — the alternative the roadmap's "message type or extension" clause permits on the offer side): rejected on ownership semantics. Offers are <strong>pre-award, buyer-declared matching criteria</strong> evaluated by the platform against leads (<code>schemas/offer.json:248-252</code> values; <code>offer_extensions.py:8-9</code> constants; <code>matching.py:116-120</code> consumption) — a static predicate about what a buyer accepts, not a directed request against one delivered lead. A lead-keyed imperative operation sent by a <strong>buyer</strong> post-delivery belongs to the event channel, which is exactly per-instance, authenticated-sender, lead-scoped, and ack-responseable.</li>
+<li><strong><code>bid</code>-style synchronous request</strong> (a new short-lived request/ response message): rejected — bids price auctions; a dial request prices nothing, and ack-on-event already gives the synchronous verdict the reference pattern's HTTP status provided.</li>
+<li><strong>Status quo: manual dial out-of-band + after-the-fact <code>call</code> reporting:</strong> explicitly kept as legal (no adoption requirement is created), but rejected as the destination: the roadmap names the gap ("first-class operation rather than a manual dial") and the two missing capabilities (request visibility for the platform's routing/ compliance layer; the distinct no-fault decline) are what buyers actually asked for in the reference network comparison.</li>
+<li><strong>Deployment-specific vendor vocabulary with no registration:</strong> available today and insufficient: without the registry row + §8 advertisement there is no discovery, and without this record's guidance there is no outcome or compliance discipline — the registered extension is what makes a private practice interoperable, which is the extension mechanism's stated purpose in SPEC.md §6.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>Record + registry row first</strong> (accepted 2026-11-04; registry edits land in the orchestration pass): the guidance is the wire shape; nothing may be emitted until a platform implements and advertises.</li>
+<li><strong>Platform implementation PR (authorized 2026-11-04 by D1):</strong> the five named obligations + five named tests; advertisement list update; rate limits — the contract in <code>## Implementation authorization</code>.</li>
+<li><strong>Adopter onboarding:</strong> orgs register <code>{org}.outbound.call_request</code> rows (open registration, format-checked) and their platforms advertise; publishers migrating from the legacy network's <code>request-outbound-call</code> endpoint map: zip/need → <code>lead_id</code> (the LCP post already resolved them), phone → <strong>removed</strong> (never crosses), declined → <code>REJECTED</code> + <code>ignored</code>.</li>
+<li><strong>Observability:</strong> counters <code>lcp_call_requests_total</code> (labels: action, disposition ∈ {queued, accepted, ignored, rejected_fault}); queued-request age histogram (dialer SLI); suppression-cancel counter (gate 4's <code>CONSENT_WITHDRAWN</code> hits); ack-lag for async declines. All bounded-metadata; no contact values in any of them (the request never held them).</li>
+<li><strong>Rollback:</strong> flag the extension-value policy off; un-advertise; queued requests ack <code>REJECTED</code> + <code>ignored</code>. Every byte already sent is an open-enum value a v1.0 peer was required to pass through — rollback cannot produce a validation failure at any peer.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<p><strong>All six are resolved or waived as of the 2026-11-04 acceptance</strong> — none is a precondition of the accepted surface, none blocks implementation, and none re-opens this record. The one question that gated the record — D1, the new universal message type — is <strong>answered: the alternative is rejected</strong> (see <code>## Decision</code>). What remains below is the recorded trigger set for the <strong>2027-05-04</strong> re-evaluation, kept so that a later decision to grow the surface has to cite evidence rather than preference.</p>
+<ul>
+<li><strong>D1 — New universal message type. Resolved at acceptance: rejected; preserved as a trigger, not a task.</strong> Conditions that would earn the closed-enum cost: (a) <strong>two or more independent adopters</strong> implement the registered extension and each report at least one of the following that the event/ack route measurably fails: synchronous capacity/queue negotiation at request time (position, ETA, priced callback windows), request multiplexing across leads, or a request-scoped consent attestation envelope the event class cannot carry; or (b) a normative REST/MCP request surface becomes a product requirement of the reference platform (an <code>request_outbound_call</code> MCP tool is the likely first signal — today there is no event tool at all, see impact). <strong>Trigger:</strong> adopter evidence per LEP.md, not preference. LEP-0009's <code>quote</code>/<code>counter</code> negotiation types (D8) are a separate capability and are <strong>not</strong> evidence for (a) or (b).</li>
+<li><strong>D2 — Capacity semantics for dialing. Resolved at acceptance: waived, out of scope here.</strong> §8 <code>capacity</code> advertises <code>concurrent_call_cap</code> for call <strong>buyers</strong>; a platform operating an outbound dialer on behalf of buyers has queue/capacity state a request would want (queue position, next-slot) that this LEP's async ack does not negotiate. <strong>Trigger:</strong> first production dialer implementation reporting queue thrash, or D1(a) evidence.</li>
+<li><strong>D3 — <code>ignored</code> taxonomy refinement. Resolved at acceptance: waived; the single value ships.</strong> One known no-fault value may be too coarse (unreachable vs. market-rule vs. buyer-reputation decline have different retry economics for sender automation). The open enum allows sibling values later at MINOR cost; this record deliberately ships one to keep the extension falsifiable. <strong>Trigger:</strong> adopter automation that cannot route on a single <code>ignored</code>.</li>
+<li><strong>D4 — Reverse direction: publisher-side callback requests. Resolved at acceptance: out of scope; no change to this surface.</strong> Agent leads where the <em>publisher</em> asks a buyer to call back: the request shape would mirror, the delivered-buyer authorization would not (the requester is not a lead recipient). <strong>Trigger:</strong> an agent-vertical adopter.</li>
+<li><strong>D5 — MCP parity. Resolved at acceptance: waived; REST-only is accepted.</strong> <code>submitEvent</code> is REST-only (impact section); whether the request surface should lead an MCP event tool or follow one is left to that binding work, and nothing in this acceptance requires an MCP tool. <strong>Trigger:</strong> MCP binding work (roadmap already lists MCP/REST contract items; LEP-0006 Track A shares this gap).</li>
+<li><strong>D6 — Consent-snapshot evidence per dial. Resolved at acceptance: waived; the existing stored-state gates are the operative rule.</strong> Regulators in some markets may want a per-outbound-dial attestation of the consent state read at dial time. The gates here log stored-state checks but define no evidence object. <strong>Trigger:</strong> a named market's rule change; would ride <code>call</code> metadata or a registered extension, not a core field.</li>
+</ul>
+<p>None of D2–D6 is a defect in the accepted surface; each names an adjacent capability that is deliberately not built, and each is re-read at <code>2027-05-04</code> alongside the D1 waiver.</p>
+<h2 id="implementation-authorization">Implementation authorization</h2>
+<p>The 2026-11-04 decision (D1) authorizes the surfaces below. This record makes no code, schema, or registry edit itself: the contract here is what implementation may now build, and the registry rows are flipped by the orchestration pass.</p>
+<ol>
+<li><strong>Extension registry row.</strong> <code>lcp.outbound.call_request</code> leaves <code>proposed (LEP-0007)</code> and becomes a live row in <code>governance/EXTENSION-REGISTRY.md</code> (format-checked registration; open process, no editorial veto), carrying the <code>2027-05-04</code> re-evaluation entry D1 requires. Adopter rows (<code>{org}.outbound.call_request</code>) are accepted under the same format rules; an unregistered namespace stays inert because nothing advertises it (7-3).</li>
+<li><strong>Capability advertisement.</strong> The reference platform adds the accepted value to <code>capabilities().events</code> (today thirteen values, <code>router.py:1716-1730</code>) — a list-content change, no schema change, no OpenAPI shape change (<code>events</code> arrays already carry arbitrary strings, <code>api/lcp-openapi.yaml:327</code>, <code>:835</code>). Senders gate on the §8 parsed-semver membership rule plus this value listing (LEP-0003 F6 verbatim); an unadvertised request MUST NOT be sent.</li>
+<li><strong>Ack with the distinct <code>ignored</code> outcome.</strong> <code>REJECTED</code> + <code>rejection_reason: "ignored"</code> is the no-fault, terminal decline, on the <strong>open</strong> <code>rejection_reason</code> enumeration (<code>schemas/ack.json:43</code> — no constraint change). <code>ack.status</code> stays closed: <code>IGNORED</code> is not added as a status (<code>plat: test_call_request_ignored_is_rejection_reason_not_status</code>). A deployment wanting a wire-visible async decline after an initial <code>ACCEPTED</code> sends a second ack for the same <code>original_message_id</code> carrying <code>REJECTED</code> + <code>ignored</code>. <code>ignored</code> never re-opens a payable and never becomes a precondition for <code>SOLD</code>.</li>
+<li><strong>Conformance vectors D1–D6</strong> (executable; W1-08's evidence requirement, the deterministic stand-in for the waived adopter signal — these vector ids are the plan's, distinct from the deferred-question letters above):</p>
+<table>
+<thead>
+<tr>
+<th>Vector</th>
+<th>Case</th>
+<th>Expected result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D1</td>
+<td>Delivered buyer submits <code>acme.outbound.call_request</code> for its <code>lead_id</code> on an advertising platform (valid example 1)</td>
+<td>validates; <code>ack.status: ACCEPTED</code>; value advertised in <code>capabilities().events</code></td>
+</tr>
+<tr>
+<td>D2</td>
+<td>Ack shaped as valid example 2 (<code>REJECTED</code> + <code>rejection_reason: "ignored"</code>)</td>
+<td>validates; the reason is a reason, never a status value</td>
+</tr>
+<tr>
+<td>D3</td>
+<td><code>details</code> carrying a phone/email/address (7-1)</td>
+<td>refused at ingest with a named validation error; never stored, never dialed</td>
+</tr>
+<tr>
+<td>D4</td>
+<td>Request under an unregistered or unadvertised namespace (7-3)</td>
+<td>refused <code>REJECTED</code> + <code>out_of_scope</code>; sender-side gate violated</td>
+</tr>
+<tr>
+<td>D5</td>
+<td><code>message.type: outbound_call_request</code> (7-2)</td>
+<td>still <code>LCP-006</code> on every receiver — the rejected alternative stays rejected</td>
+</tr>
+<tr>
+<td>D6</td>
+<td>Unknown namespaced event value at a v1.0 receiver (§6)</td>
+<td>stored and passed through; a mis-gated request is inert, never destructive</td>
+</tr>
+</tbody>
+</table>
+<p>No <em>schema</em> vectors are expressible (the zero-schema claim restated); D1–D6 are ingest/behavior vectors exercised in the reference platform and the conformance suite.</li>
+<li><strong>Platform decline path.</strong> The ordered outcomes of §3 are implementation law: <code>ACCEPTED</code> (queued/valid), <code>DUPLICATE</code> / <code>LCP-005</code> (replay), <code>REJECTED</code> + an existing fault reason (<code>compliance_fail</code>, <code>out_of_scope</code>, <code>capacity_exceeded</code>, …), and the no-fault <code>REJECTED</code> + <code>ignored</code>. Queued requests are cancelled — acked <code>REJECTED</code> + <code>ignored</code> (or <code>compliance_fail</code> where the deployment's taxonomy says so) — when the stored lead's gates stop permitting voice contact at dial time: DNC/blocked status, missing voice consent, <code>contact_window</code> outside the request window, or a <code>CONSENT_WITHDRAWN</code> event. A request is intent, never authorization to contact.</li>
+<li><strong>Docs.</strong> SPEC.md §4 (request pattern under <code>event</code>; <code>ignored</code> in the ack rejection-reason known list), §8 (advertisement note), §6 (unchanged); SDK/OpenAPI text only where a generated description mirrors the known value; <code>docs/V1.1-ROADMAP.md</code> status line; <code>governance/LEP-REGISTRY.md</code> row moved to Accepted with the <code>2027-05-04</code> re-evaluation entry.</li>
+</ol>
+<p><strong>Build constraint (D1 §2).</strong> The capability ships disabled by default in the reference platform (<code>LCP_FEATURE_*</code> off) while CI, vectors D1–D6, and the conformance suite continue to exercise it — off by default is a deployment posture, not a gap in the evidence.</p>
+<p><strong>Reference platform tests</strong> (implementation obligation, unchanged from the impact section): <code>plat: test_delivered_buyer_namespaced_call_request_accepted_and_advertised</code>, <code>plat: test_call_request_with_phone_in_details_refused</code>, <code>plat: test_call_request_ignored_is_rejection_reason_not_status</code>, <code>plat: test_consent_withdrawn_cancels_queued_call_request</code>, <code>plat: test_unadvertised_namespace_refused</code>.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-the-request--namespaced-event-value-orgoutboundcall_request">1. The request — namespaced event value {org}.outbound.call_request</a></li><li class="depth-3"><a href="#2-capability-advertisement-8">2. Capability advertisement (§8)</a></li><li class="depth-3"><a href="#3-outcomes--the-ack-including-the-distinct-ignored">3. Outcomes — the ack, including the distinct ignored</a></li><li class="depth-3"><a href="#4-lifecycle--unchanged-and-deliberately-so">4. Lifecycle — unchanged, and deliberately so</a></li><li class="depth-3"><a href="#compliance-pre-action-gates-normative-existing-fields-only">Compliance pre-action gates (normative, existing fields only)</a></li><li class="depth-3"><a href="#valid-example--namespaced-call_request-event">Valid example — namespaced call_request event</a></li><li class="depth-3"><a href="#valid-example--ack-carrying-the-distinct-ignored-outcome">Valid example — ack carrying the distinct ignored outcome</a></li><li class="depth-3"><a href="#invalid-example-7-1--phone-number-in-the-request">Invalid example 7-1 — phone number in the request</a></li><li class="depth-3"><a href="#invalid-example-7-2--the-new-message-type-alternative">Invalid example 7-2 — the new-message-type alternative</a></li><li class="depth-3"><a href="#invalid-example-7-3--unregistered-or-unadvertised-namespace">Invalid example 7-3 — unregistered or unadvertised namespace</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li><li class="depth-2"><a href="#implementation-authorization">Implementation authorization</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0007-outbound-call-center-outreach.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

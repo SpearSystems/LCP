@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0002 — Canonical timestamp generation and cross-SDK signature interop — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0002--canonical-timestamp-generation-and-cross-sdk-signature-interop">LEP-0002 — Canonical timestamp generation and cross-SDK signature interop</h1>
+<ul>
+<li><strong>Title:</strong> Canonical timestamp generation and cross-SDK signature interop</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-02</li>
+<li><strong>Status:</strong> <strong>Implemented</strong> — accepted 2026-11-03; implemented and verified same day (PR #158, blocking interop 10/10)</li>
+<li><strong>Target version:</strong> v1.1.0 (documentation clarification; no wire-contract change)</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</h2>
+<p><strong>Accepted.</strong> Recorded by the maintainer (randybeno) under the per-decision sign-off model. Decision basis: the independent ARB L-Spec review dossier (&lt;https://github.com/SpearSystems/LCP/issues/121#issuecomment-6578306330&gt;) — verdict FINDINGS with no acceptance blockers; every normative claim survived execution-backed refutation (five SDKs probed live at the subject SHA, signature identity 10/10, canonical form parseable by every executable verifier, normalize-then-recompute class closed by the MUST-verbatim wording). The earlier retro-audit corrections (C1–C10, PR #149) are landed; the process finding F-4 (advisory→blocking drift) is neutralized by the merged baseline-sync test (#152, <code>test_known_fractional_baseline_matches_lep_evidence_table</code>).</p>
+<p>Conditions carried to implementation: fix the "holds no outbound signer" sentence (dossier F-1 — the platform signs outbound webhooks via <code>router.py → messages.webhook_headers → auth.signature_for</code>, emitting the canonical form; the format conclusion stands), the Swift "only the canonical form" overstatement (F-2: Swift accepts <code>+00:00</code> offsets; it rejects only fractional seconds), and the deferred-Q3 "JWT/JWS" misnomer (F-3: the security block is the <code>HMAC-SHA256</code> mirror). The public 14-day window is waived by the maintainer's recorded decision; the discussion issue remains open and any post-decision adopter comment with new evidence reopens this record per the trigger clauses.</p>
+<p>Evidence corrections (evidence-table and derived-count fixes per ARB retro-audit at <code>dee5584</code>) landed in PR #149 before acceptance.</p>
+<p>Implementation: PR #158 (this branch <code>impl/lep-0002-canonical-timestamp</code>): Java/Kotlin/Rust SDK whole-second emission + frozen-clock unit tests, SPEC §9 canonical-generation paragraph, interop baseline flip and blocking CI. Verification: <code>SDK signature interop</code> workflow on PR #158 (all ten SDK generation-shape cells PASS; matrix job now red on any shape FAIL) plus the <code>interop probe (java|kotlin|rust)</code> jobs and per-SDK <code>mvn|gradle|cargo test</code> suites carrying the new <code>CanonicalTimestamp*</code> frozen-clock tests.</p>
+<p>Public discussion: &lt;https://github.com/SpearSystems/LCP/issues/121&gt; (tracked from <code>docs/V1.1-ROADMAP.md</code> Phase 5, "Canonical timestamp generation and cross-SDK signature interop").</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p>LCP's HMAC canonical signing input (SPEC.md §9, "Authentication") is the exact UTF-8 byte sequence:</p>
+<pre class="code-block"><code class="language-text">&lt;timestamp&gt;\n&lt;idempotency-key&gt;\n&lt;raw-request-body&gt;</code></pre>
+<p>The <code>&lt;timestamp&gt;</code> term is the literal <code>X-LCP-Timestamp</code> header string — verifiers recompute the digest over the received string, never over a normalized clock value (e.g. <code>canonical_signing_bytes</code> in <code>implementations/sdk/python/lcp_sdk/signing.py</code>, <code>CanonicalSigningBytes</code> in <code>implementations/sdk/go/lcp.go</code>). SPEC.md §9 constrains the replay window but does not state what format a signer MUST emit, so each SDK chose its own. The v1.0.2 external review flagged this; every line below is re-verified against <code>origin/main</code> at draft time.</p>
+<p><strong>Signer-side divergence (generation):</strong> _state at draft time, superseded by implementation PR #158._ Java, Kotlin and Rust now emit the canonical whole-second form pinned in SPEC.md §9; this table is the LEP-0002 dossier evidence, not the current emission. The interop matrix baseline tracks the post-implementation state (see <code>tools/sdk_interop_matrix.py</code> <code>KNOWN_FRACTIONAL_SDKS</code> and the caption check in <code>tools/tests/test_sdk_interop_matrix.py</code>).</p>
+<table>
+<thead>
+<tr>
+<th>SDK</th>
+<th>File:line</th>
+<th>Expression</th>
+<th>Emitted form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td><code>implementations/sdk/python/lcp_sdk/envelope.py:10-12</code> (used at <code>client.py:64</code>)</td>
+<td><code>strftime("%Y-%m-%dT%H:%M:%SZ")</code></td>
+<td>whole seconds</td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td><code>implementations/sdk/typescript/src/index.ts:22-23</code> (used at <code>:131-132</code>)</td>
+<td><code>new Date().toISOString().replace(/\.\d{3}Z$/, "Z")</code></td>
+<td>whole seconds (ms stripped)</td>
+</tr>
+<tr>
+<td>Ruby</td>
+<td><code>implementations/sdk/ruby/lib/lcp_sdk.rb:76</code></td>
+<td><code>Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")</code></td>
+<td>whole seconds</td>
+</tr>
+<tr>
+<td>PHP</td>
+<td><code>implementations/sdk/php/src/LcpSdk.php:75</code></td>
+<td><code>gmdate('Y-m-d\TH:i:s\Z')</code></td>
+<td>whole seconds</td>
+</tr>
+<tr>
+<td>C#</td>
+<td><code>implementations/sdk/csharp/src/LcpSdk.cs:96</code></td>
+<td><code>DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")</code></td>
+<td>whole seconds</td>
+</tr>
+<tr>
+<td>Swift</td>
+<td><code>implementations/sdk/swift/Sources/LCP/Lcp.swift:39</code></td>
+<td><code>ISO8601DateFormatter().string(from: Date())</code> (default <code>.withInternetDateTime</code> options)</td>
+<td>whole seconds</td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>implementations/sdk/go/lcp.go:164</code></td>
+<td><code>time.Now().UTC().Format(time.RFC3339)</code></td>
+<td><strong>whole seconds</strong> — the <code>time.RFC3339</code> layout carries no fractional-seconds token, so <code>Format</code> always drops the nanosecond field (verified at dee5584: the SDK probe formats the frozen instant <code>…10:20:00.123456789Z</code> as <code>2026-08-15T10:20:00Z</code>; CI matrix measures 7 whole-second / 3 fractional)</td>
+</tr>
+<tr>
+<td>Java</td>
+<td><code>implementations/sdk/java/src/main/java/com/spearsystems/lcp/LcpSdk.java:54</code></td>
+<td><code>Instant.now().toString()</code></td>
+<td><strong>fractional</strong> (0/3/6/9 digits as returned by the clock; whole seconds only when the nano field is exactly zero)</td>
+</tr>
+<tr>
+<td>Kotlin</td>
+<td><code>implementations/sdk/kotlin/src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt:32</code></td>
+<td><code>Instant.now().toString()</code></td>
+<td><strong>fractional</strong> (as Java)</td>
+</tr>
+<tr>
+<td>Rust</td>
+<td><code>implementations/sdk/rust/src/lib.rs:51</code></td>
+<td><code>OffsetDateTime::now_utc().format(&amp;Rfc3339)</code></td>
+<td><strong>fractional</strong> (nanosecond subsecond is formatted when nonzero)</td>
+</tr>
+</tbody>
+</table>
+<p>The envelope <code>lcp.message.timestamp</code> defaults reuse each SDK's generator (Ruby <code>lcp_sdk.rb:54</code>, Java <code>LcpSdk.java:23</code>, Kotlin <code>LcpSdk.kt:21</code>, Rust <code>lib.rs:30</code>, Swift <code>Lcp.swift:16</code>, Go <code>lcp.go:45</code>); only the Java, Kotlin, and Rust defaults inherit the fractional divergence — the Ruby, Swift, and Go defaults already emit the canonical whole-second form. The reference platform generates whole seconds both for inbound replay-window checks (<code>implementations/reference-platform/lcp_platform/storage.py:21-22</code> <code>now_iso</code>) and for outbound webhook signing: the router's delivery path (<code>router.py → messages.webhook_headers → auth.signature_for</code>) emits the canonical form on the transmitted <code>X-LCP-Timestamp</code> header, so the platform is an outbound signer already producing the shape this LEP pins. The MCP adapter inherits the Python SDK's whole-second form (<code>implementations/mcp-server/lcp_mcp_server/client.py</code> wraps <code>lcp_sdk.LCPClient</code>).</p>
+<p><strong>Concrete interoperability consequences:</strong></p>
+<ol>
+<li><em>Verifier asymmetry is a live failure, not a hypothetical.</em> Verifiers re-parse the header for the replay window. Nine of the ten parse leniently and accept both forms — Python <code>fromisoformat</code> with an RFC-2822 fallback (<code>signing.py:_parse_timestamp</code>; note <code>fromisoformat</code> only parses a 9-digit fraction on Python ≥ 3.11, and the supported floor is 3.10), Go <code>time.Parse(time.RFC3339)</code> (<code>lcp.go:73-74</code>, which tolerates a fractional second absent from the layout), Java <code>Instant.parse</code> (<code>LcpSdk.java:42</code>), Kotlin <code>Instant.parse</code> (<code>LcpSdk.kt:28</code>), Ruby <code>Time.iso8601</code> (<code>lcp_sdk.rb:27</code>), PHP <code>DateTimeImmutable</code> (<code>LcpSdk.php:28</code>), C# <code>DateTimeOffset.TryParse</code> (<code>LcpSdk.cs:59</code>), TypeScript <code>new Date(timestamp)</code> (<code>index.ts:78</code>), Rust <code>OffsetDateTime::parse(&amp;Rfc3339)</code> (<code>lib.rs:41</code>). The Swift verifier (<code>Lcp.swift:33</code>) uses the default <code>ISO8601DateFormatter</code>, which rejects fractional seconds: a <strong>Java, Kotlin, or Rust</strong> signer can produce a request that a Swift verifier refuses outright, with an error ("timestamp outside replay window") that misattributes a format problem as a clock problem.</li>
+<li><em>Canonical bytes are underdetermined.</em> Because the signature covers the timestamp string, any verifier or intermediate that normalizes the received value (parses and reformats it) before recomputing the HMAC will disagree with the signer on the signed bytes whenever the two formats differ. The spec's silence invites exactly that class of implementation, and cross-language reviewers cannot tell "recomputed over the wire string" from "reformatted" today.</li>
+<li><em>Conformance cannot see the divergence.</em> The shared SDK vector (<code>test-vectors/sdk/hmac.json</code>) pins the fixed string <code>2026-08-15T10:20:00Z</code>, so every SDK signs a constant and passes without ever exercising its own clock. A generation bug in one SDK is invisible to CI.</li>
+</ol>
+<p>Adopter signal: this is a cross-language change affecting all SDKs and the signature surface, which LEP.md reserves for the process. The evidence requirement is met by the in-tree citations above plus the roadmap's external-review finding; live adopter reports are solicited in the discussion issue.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li>Core: <strong>clarification only</strong> in SPEC.md §9 (and the SDK READMEs) — one canonical generation format plus the explicit note that the timestamp <em>string</em> is the signed input, not the clock. No new fields, no message types, no version bump of the wire contract; envelopes and headers are unchanged in shape.</li>
+<li>All ten SDK bundles: signer-side formatting alignment (three SDKs emit fractional today) and the envelope default-timestamp generators.</li>
+<li>Reference platform and MCP adapter: already canonical; cited as the conformance reference, no change.</li>
+<li>CI/conformance: new cross-SDK signature-interop job (evidence gate, runs before any SDK is touched); existing <code>test-vectors/sdk/hmac.json</code> stays authoritative.</li>
+<li>Vertical schemas, registered extensions, OpenAPI paths, and MCP tool contracts: <strong>no change</strong> (the header is transport metadata, already documented; no schema files are touched).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<p>Canonical generation format for <code>X-LCP-Timestamp</code> (and the mirrored <code>payload.message.security.timestamp</code>, and SDK envelope <code>lcp.message.timestamp</code> defaults):</p>
+<pre class="code-block"><code class="language-text">YYYY-MM-DDTHH:MM:SSZ</code></pre>
+<p>— UTC, whole seconds, exactly one <code>Z</code>, no fractional part, no numeric offset. This is already the form used by SPEC.md §9's own example (<code>"timestamp": "2026-08-15T10:20:00Z"</code>), the shared HMAC vector, the reference platform, and seven of ten SDKs.</p>
+<p>Valid:</p>
+<pre class="code-block"><code class="language-text">X-LCP-Timestamp: 2026-08-15T10:20:00Z</code></pre>
+<p>Invalid (MUST NOT be generated by signers):</p>
+<pre class="code-block"><code class="language-text">2026-08-15T10:20:00.123Z      (fractional seconds)
+2026-08-15T10:20:00.123456789Z
+2026-08-15T10:20:00+00:00     (numeric offset instead of Z)
+2026-08-15T10:20:00           (no zone marker — ambiguous local time)
+Mon, 17 Aug 2026 10:20:00 GMT (RFC-2822; a receiver may parse it, no
+                               conforming signer may emit it)</code></pre>
+<p>Signing canonicalization rule (normative note added to SPEC.md §9): the HMAC covers the <strong>exact timestamp string transmitted in the header</strong>, byte-for-byte. Signers MUST build the canonical input from the same string they put on the wire; verifiers MUST recompute over the received header value verbatim — never over a parsed-and-reformatted timestamp. Receivers keep applying their existing (lenient) clock parsing to decide the replay window; this proposal changes no verifier behavior.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>Universal-core audit:</strong> no new field, type, endpoint, or error code; the core message set is untouched. This is a binding clarification of an already-implicit convention (the spec's own examples and vectors use the canonical form).</li>
+<li><strong>Privacy:</strong> whole-second granularity discards at most sub-second timing noise. Against a default 300-second replay window (SPEC.md §9; minimum operationally meaningful window discussed in ops docs), sub-second precision carries no additional privacy or security value, and no consumer PII field is involved — <code>X-LCP-Timestamp</code> is request metadata.</li>
+<li><strong>Security/replay:</strong> the defense is the window check plus signature over exact bytes. Tightening the <em>emitted</em> format neither lengthens the window nor shortens it, and does not change what a verifier accepts. The proposal reduces attacker-visible ambiguity by pinning the signed-string invariant, closing the normalize-then-recompute failure mode in principle.</li>
+<li><strong>Abuse:</strong> none new; identical signed-message volume and semantics.</li>
+<li>Verifier leniency today (documented above: parsers already accept whole-second and fractional forms everywhere except the strictest, Swift, whose default <code>ISO8601DateFormatter</code> accepts the canonical whole-second <code>Z</code> form and <code>+00:00</code> numeric-offset UTC variants but rejects fractional seconds) means the proposed signer format is the intersection every verifier already parses.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li>The change is <strong>signer-side format tightening; verifiers unchanged</strong>. Every receiver in the tree — and any reasonable third-party receiver built from the spec examples — already parses <code>YYYY-MM-DDTHH:MM:SSZ</code>: it is the exact string in SPEC.md §9, the envelope example at SPEC.md line 61, and <code>test-vectors/sdk/hmac.json</code>. No accepted input format stops parsing, so the N+2 compatibility window is not engaged; no deprecation notice is required.</li>
+<li>Wire contract, schemas, and error taxonomy are unchanged, so no protocol version bump: a v1.0 receiver interoperates with a v1.1 tightened signer, and with an old fractional signer, exactly as today (except against a strict Swift verifier, which only ever accepted the canonical form — after this change every SDK signer produces it, so the known broken direction becomes safe).</li>
+<li>Old SDK versions continue to work in the field; they emit fractional timestamps that nine verifiers already parse. This is a compatibility <em>asymmetry removal</em>, not a breaking change.</li>
+<li>The signature itself is unaffected for any request: the signed string equals the transmitted header string both before and after the change.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>SDKs (after acceptance):</strong> Java (<code>LcpSdk.java:54</code>, <code>:23</code>), Kotlin (<code>LcpSdk.kt:32</code>, <code>:21</code>), Rust (<code>lib.rs:51</code>, <code>:30</code>) switch to explicit whole-second UTC formatting (<code>DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")</code> with <code>withZone(ZoneOffset.UTC)</code> over <code>Instant.now()</code>; in <code>time</code>-crate terms <code>now_utc().replace_nanosecond(0)?.format(&amp;Rfc3339)</code>). <strong>Go needs no code change</strong> — <code>time.Now().UTC().Format(time.RFC3339)</code> (<code>lcp.go:164</code>, <code>lcp.go:45</code>) already emits the canonical form because the layout has no fractional token. The <strong>seven</strong> already-canonical SDKs get no code change; per-SDK unit tests pin the emitted shape with a frozen clock so regressions are visible in each language's own CI.</li>
+<li><strong>OpenAPI/MCP:</strong> no schema-surface change (the header is documented auth metadata, not a schema'd body field). The MCP adapter's client wrapper inherits Python's canonical form; its README example stays valid.</li>
+<li><strong>Conformance:</strong> add <code>test-vectors/sdk/hmac.json</code> consumers unchanged; the new interop job (below) becomes the gate that was missing. No new vectors are proposed at Draft; if review wants a machine-checkable artifact, a whole-second format-check vector could be added under <code>test-vectors/sdk/</code> as part of implementation.</li>
+<li><strong>Documentation:</strong> SPEC.md §9 gets the canonical generation format and the signed-string invariant; SDK READMEs and the reference-platform auth README repeat the one-line format statement.</li>
+<li><strong>Operations:</strong> none — receivers need no configuration change, no redeploy, no window retune. Clock/NTP guidance remains the existing ops-doc concern (tracked separately in Phase 5 "Operator clock-skew guidance").</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ol>
+<li><strong>Keep per-SDK leniency ("any RFC 3339 is fine").</strong> Zero cost today, but it leaves the documented live failure (fractional signer vs strict Swift verifier) in place, keeps the signed-bytes invariant implicit, and guarantees the CI interop job would have to assert <em>inequality</em> instead of one canonical byte string. Rejected as the status quo that generated the review finding.</li>
+<li><strong>Tighten verifiers to reject non-canonical formats.</strong> Breaks deployed senders (old SDK versions are in the wild), turns a documentation clarification into a compatibility break engaging N+2, and violates the decision rule that a v1 receiver must not be made to fail on currently-tolerated data. Rejected.</li>
+<li><strong>Sign a normalized clock value (e.g. always truncate to seconds before signing but transmit the full format).</strong> Splits the signed string from the transmitted header, making verification implementation-dependent and reproducing the exact ambiguity this LEP removes. Rejected.</li>
+<li><strong>Deployment-specific formatting negotiated per partner.</strong> Reintroduces per-pair configuration for a protocol-level byte invariant; fails the universal-core simplicity test. Rejected.</li>
+</ol>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<p>Order is evidence-first; nothing in this plan is authorized until the registry records <code>Accepted</code>:</p>
+<ol>
+<li><strong>Interop CI job first.</strong> New CI job signs one fixed message (frozen timestamp from <code>test-vectors/sdk/hmac.json</code>) in all ten SDKs and asserts the canonical signing bytes and the resulting signature are identical across languages, plus a generation-shape check per SDK with a frozen clock. On today's tree the generation-shape half <em>fails for <strong>Java/Kotlin/Rust</strong> by design (Go passes — <code>Format(time.RFC3339)</code> renders whole seconds; the shipped matrix flags it <code>ALIGNED</code> against the stale evidence row)</em> — the failure is the evidence that the job works; the job initially runs as an advisory/reporting job until acceptance, then becomes blocking in the implementation PR.</li>
+<li><strong>SDK generation changes</strong> (single batch, one release train): the three fractional emitters switch to canonical formatting; every SDK gains the frozen-clock format unit test. SDK version bumps are PATCH-level behavior alignment per bundle changelogs (no API change).</li>
+<li><strong>Docs:</strong> SPEC.md §9 normative paragraph + canonical example set, README/SDK README one-liners, CHANGELOG entry pointing at this LEP.</li>
+<li><strong>Observability:</strong> none required (verifiers unchanged); the interop job is the observable. Adopters who hit <code>timestamp outside replay window</code> against Swift receivers keep the same error, which now unambiguously means clock skew.</li>
+<li><strong>Rollback:</strong> revert is SDK formatting constants + docs; no wire or state to unwind. Since no verifier ever stops accepting the fractional forms, rolling back signer changes cannot strand any peer.</li>
+</ol>
+<p>Migration for adopters with hand-written signers: none required for interoperability (receivers stay lenient); emitting the canonical form when convenient removes exposure to strict third-party verifiers. The canonical format is what the spec examples already showed, so most hand-written signers already comply.</p>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li>Should SPEC.md eventually <em>recommend</em> verifiers reject non-<code>Z</code>/offset forms, or additionally document an RFC-3339-with-offset tolerance, rather than leaving parse behavior implementation-defined?</li>
+<li>Should envelope <code>lcp.message.timestamp</code> defaults adopt the same explicit canonical statement in the schema documentation (it is already string-typed; no schema change proposed now)?</li>
+<li>Should the interop job also cover the transport-agnostic <code>payload.message.security</code> block (SPEC.md §9) — the HMAC-SHA256 mirror of the HTTP header set, not a JWT/JWS path — where the timestamp travels in the body rather than a header, including how the numeric attestation claims there interact with the canonical generation rule?</li>
+<li>Is a machine-readable format vector warranted under <code>test-vectors/sdk/</code>, or are per-SDK frozen-clock tests sufficient?</li>
+</ul>
+<p><strong>Trigger to revisit:</strong> any proposal to shorten the replay window below roughly 10 seconds, any adoption of non-UTC canonical zones or leap-second-sensitive pricing, or an adopter report of a strict verifier in the wild rejecting something the lenient parsers accept — each would turn today's clarification into a normative conformance requirement and reopen this record with a Review cycle.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

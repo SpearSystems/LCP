@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="spec/02-envelope.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP — Lead Context Protocol Specification — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lcp--lead-context-protocol-specification">LCP — Lead Context Protocol Specification</h1>
+<blockquote>
+<p>Part of the normative LCP v1.0 specification: <strong>Envelope and message types</strong>. The transport-agnostic envelope and the seven message types (lead, call, ping, bid, post, ack, event). Index: <a href="../index.html">SPEC.md</a> · File map: <a href="index.html">spec/README.md</a>.</p>
+</blockquote>
+<h2 id="2-envelope">2. Envelope</h2>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "lead",
+      "timestamp": "2026-08-15T10:20:00Z",
+      "sender_id": "pub_123",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "pub-lead-20260815-001",
+      "test": false
+    },
+    "payload": {}
+  }
+}</code></pre>
+<p>The envelope is transport-agnostic. <code>sender_id</code> and <code>receiver_id</code> live in the envelope (not transport headers) so the message is self-describing on any transport (HTTP, message queue, WebSocket).</p>
+<p>The <code>test</code> field is canonical in the envelope. For the HTTP binding, <code>X-LCP-Test: true</code> MUST also be sent as a header so infrastructure can filter test traffic without parsing the JSON body.</p>
+<p>Schema: <a href="../schemas/envelope.html">schemas/envelope.json</a></p>
+<h2 id="4-message-types">4. Message types</h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Purpose</th>
+<th>PII</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lead</code></td>
+<td>Intake (form/chat/click/api/agent/referral)</td>
+<td>Full</td>
+</tr>
+<tr>
+<td><code>call</code></td>
+<td>Telephony lead</td>
+<td>Full</td>
+</tr>
+<tr>
+<td><code>ping</code></td>
+<td>Non-PII offer to buyers</td>
+<td>None (hashes only)</td>
+</tr>
+<tr>
+<td><code>bid</code></td>
+<td>Buyer's response to a ping (price, decision)</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>post</code></td>
+<td>Full delivery to winning buyer</td>
+<td>Full</td>
+</tr>
+<tr>
+<td><code>ack</code></td>
+<td>Response to any message</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td>Lifecycle notification</td>
+<td>None</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Design note — <code>call</code> vs. <code>lead</code> with <code>channel: call</code>:</strong> The review suggested consolidating <code>call</code> into <code>lead</code> with <code>channel: call</code>. We keep <code>call</code> as a separate message type because the <code>call</code> block (IVR path, durations, recording, disposition, agent) is structurally distinct from form-based intake. Two message types sharing <code>consumer</code>/<code>location</code>/<code>compliance</code> is cleaner than conditional blocks inside <code>lead</code>. Contributors who want to revisit this can open a governance discussion with a concrete proposal.</p>
+</blockquote>
+<h3 id="lead">lead</h3>
+<p><code>consumer</code> + <code>location</code> + <code>compliance</code> + <code>provenance</code> + <code>attributes</code> + <code>external_id</code> + <code>submitted_at</code> + <code>channel</code> (form|chat|click|api|agent| referral) + optional <code>expires_at</code> / <code>ttl_seconds</code> + optional <code>exclusivity</code></p>
+<ul>
+<li>optional <code>contact_window</code> (timezone, available_from/to, days — publisher</li>
+</ul>
+<p>hint for when the consumer can be contacted) + optional <code>lead_quality</code> (publisher-declared quality signals: <code>verified_phone</code>, <code>verified_email</code>, <code>verification{phone_method, phone_verified_by, phone_verified_at, email_method, email_verified_by, email_verified_at}</code>, <code>duplicate_risk</code>, <code>spam_risk_score</code>, <code>data_completeness</code>).</p>
+<h3 id="call">call</h3>
+<p><code>call</code> block: <code>call_id</code>, <code>status</code> (answered|no_answer|busy|failed| voicemail), <code>hangup_cause</code>, <code>direction</code>, <code>did</code>, <code>caller_phone_hash</code>, <code>started_at</code>, <code>durations{total_seconds, ivr_seconds, hold_seconds, agent_seconds}</code>, <code>recording{url, transcript_url, storage_ref}</code>, <code>ivr{digits, path}</code>, <code>disposition</code>, <code>transferred_from{original_call_id, transfer_reason}</code>, <code>queue{id, name}</code>, <code>agent{id, name}</code> + <code>consumer</code> + <code>location</code> + <code>compliance</code> + <code>attributes</code>.</p>
+<h3 id="ping">ping</h3>
+<p>Non-PII offer to buyers. The ping schema is a <strong>strict allowlist</strong> (<code>additionalProperties: false</code>), not a blocklist. Only the fields listed below are permitted — any other field is a validation error (<code>LCP-008 PII_IN_PING</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>Unique ping identifier.</td>
+</tr>
+<tr>
+<td><code>lead_reference</code></td>
+<td>string</td>
+<td>Opaque reference to the lead (not the lead_id).</td>
+</tr>
+<tr>
+<td><code>publisher_id</code></td>
+<td>string</td>
+<td>ID of the publisher that generated the lead.</td>
+</tr>
+<tr>
+<td><code>offer_id</code></td>
+<td>string</td>
+<td>ID of the buyer offer this ping targets.</td>
+</tr>
+<tr>
+<td><code>phone_hash</code></td>
+<td>string</td>
+<td><code>HMAC-SHA256(shared_secret, e164)</code> — per-pair, see §9.</td>
+</tr>
+<tr>
+<td><code>email_hash</code></td>
+<td>string</td>
+<td><code>HMAC-SHA256(shared_secret, normalized_email)</code> — per-pair, optional.</td>
+</tr>
+<tr>
+<td><code>country_code</code></td>
+<td>string</td>
+<td>ISO 3166-1 alpha-2.</td>
+</tr>
+<tr>
+<td><code>state_region</code></td>
+<td>string</td>
+<td></td>
+</tr>
+<tr>
+<td><code>postal_code</code></td>
+<td>string</td>
+<td></td>
+</tr>
+<tr>
+<td><code>vertical</code></td>
+<td>string</td>
+<td></td>
+</tr>
+<tr>
+<td><code>lead_age_minutes</code></td>
+<td>integer</td>
+<td>Minutes since consumer submitted. Freshness signal for pricing.</td>
+</tr>
+<tr>
+<td><code>attributes</code></td>
+<td>object</td>
+<td>Only fields tagged <code>ping_safe: true</code> in the vertical schema. Banded/aggregated only — never exact values.</td>
+</tr>
+<tr>
+<td><code>compliance_flags</code></td>
+<td>object</td>
+<td>Presence indicators only (e.g. <code>{"consent": true, "otp_verified": true}</code>), never tokens or evidence.</td>
+</tr>
+<tr>
+<td><code>floor_price_cents</code></td>
+<td>integer</td>
+<td></td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>string</td>
+<td>ISO 4217.</td>
+</tr>
+<tr>
+<td><code>exclusivity</code></td>
+<td>string</td>
+<td><code>exclusive</code> or <code>shared</code> — hint to buyer.</td>
+</tr>
+<tr>
+<td><code>slots_available</code></td>
+<td>integer</td>
+<td>v1.1 (LEP-0003): remaining buyer-award slots INCLUDING this recipient's possible win, <code>minimum: 1</code>; <code>1</code> when <code>exclusivity</code> is <code>exclusive</code> (schema-enforced conditional). Absent = no slot state advertised (v1.0). Non-PII count; MUST NOT be <code>0</code>.</td>
+</tr>
+<tr>
+<td><code>dedup_window_hours</code></td>
+<td>integer</td>
+<td>Sender hint: how many hours to dedup against.</td>
+</tr>
+<tr>
+<td><code>expires_at</code></td>
+<td>string (datetime)</td>
+<td>Optional ping expiry.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Capability gate (v1.1 slot fields).</strong> A sender MUST include <code>slots_available</code> (and likewise <code>slots_claimed</code>, <code>contacted_hashes</code>, and <code>CONTACTED</code> reports, §4/§9) only when the receiving endpoint's §8 capability advertisement supports v1.1 — <code>lcp_versions</code> parsed as full <code>major.minor.patch</code> semver containing an element with <code>major == 1</code> and <code>minor &gt;= 1</code> — never as a string literal or prefix match (§8). Slot fields toward a receiver advertising only v1.0 are a conformance failure: the receiver's strict v1.0 allowlist validation rejects them (<code>LCP-008</code>/<code>LCP-100</code>), which is the boundary the gate exists to prevent.</p>
+<p>The conformance runner mechanically validates:</p>
+<ol>
+<li>Ping payload has no fields outside the allowlist (<code>additionalProperties: false</code>).</li>
+<li>Every field in <code>attributes</code> is tagged <code>ping_safe: true</code> in the vertical schema.</li>
+<li>No <code>consumer</code>, <code>compliance</code> (full), <code>provenance</code> (full), or other PII-bearing block is present.</li>
+</ol>
+<h3 id="bid">bid</h3>
+<p>Buyer's response to a ping. No PII — the buyer has not received the lead yet, only the ping attributes.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>ID of the ping being responded to.</td>
+</tr>
+<tr>
+<td><code>decision</code></td>
+<td>string</td>
+<td><code>accept</code> (wants the lead at bid price), <code>reject</code> (does not want), <code>pass</code> (declines to bid).</td>
+</tr>
+<tr>
+<td><code>bid_price_cents</code></td>
+<td>integer</td>
+<td>Bid price in cents. Required when <code>decision = accept</code>.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>string</td>
+<td>ISO 4217.</td>
+</tr>
+<tr>
+<td><code>estimated_contact_seconds</code></td>
+<td>integer</td>
+<td>Estimated time-to-contact. For speed-to-contact routing.</td>
+</tr>
+<tr>
+<td><code>buyer_reference</code></td>
+<td>string</td>
+<td>Buyer's internal tracking reference.</td>
+</tr>
+<tr>
+<td><code>reject_reason</code></td>
+<td>string</td>
+<td>Why rejected (e.g. <code>out_of_hours</code>, <code>capacity_full</code>, <code>vertical_mismatch</code>). Open enum.</td>
+</tr>
+<tr>
+<td><code>capacity_remaining</code></td>
+<td>integer</td>
+<td>Remaining capacity after this bid. Helps the platform route future pings.</td>
+</tr>
+<tr>
+<td><code>slots_claimed</code></td>
+<td>integer</td>
+<td>v1.1 (LEP-0003): buyer slots this buyer claims if selected. <code>minimum: 1, maximum: 1</code> at v1.1 — single-slot awards only (multi-slot agency claims are deferred; the schema enforces the cap). Only meaningful with <code>decision: accept</code>; absent = 1.</td>
+</tr>
+</tbody>
+</table>
+<p>A slot claim is a <strong>request, not a reservation</strong>: the platform awards slots at <strong>post</strong> time (delivery is the claim event; bids are non-binding — losers receive no further messages). The platform MUST NOT award more buyer slots than remain (§3 slot semantics). <code>slots_claimed</code> is capability-gated exactly like the ping-side slot field (§4 capability gate; §8).</p>
+<p>The ping/bid/post flow:</p>
+<pre class="code-block"><code>Platform ──ping──► Buyer A ──bid(accept, $22)──► Platform
+         ──ping──► Buyer B ──bid(accept, $18)──► Platform
+         ──ping──► Buyer C ──bid(pass)─────────► Platform
+
+Platform selects Buyer A (highest bid)
+Platform ──post──► Buyer A (full PII delivered)</code></pre>
+<p>The platform collects bids within the ping expiry window. The winner is selected by the platform's routing logic (highest bid, fastest estimated contact, exclusivity rules, etc.). The platform then sends a <code>post</code> to the winner. Losers receive no further messages (no PII was shared).</p>
+<h3 id="post">post</h3>
+<p><code>lead_id</code>, <code>delivered_at</code>, <code>submitted_at</code>, <code>offer_id</code>, <code>price_cents</code>, <code>currency</code>, <code>buyer_id</code>, <code>buyer_reference</code>, optional <code>call</code> detail block, optional <code>attachments[]</code>, <code>pricing{floor_price_cents, premium_cents, final_price_cents, uncapped_price_cents, max_allowed_price_cents, price_guardrails, is_duplicate_resub, payable_definition, payable_status, dispute_window_hours, dispute_window_expires_at}</code>, <code>matched_preferences</code>, <code>consumer</code> (full), <code>location</code>, <code>compliance</code> (full evidence), <code>attributes</code>, <code>provenance</code>, optional <code>exclusivity</code>, optional <code>contacted_hashes</code>.</p>
+<p><strong><code>contacted_hashes</code> (v1.1, LEP-0003).</strong> Array of strings, each matching <code>^[a-f0-9]{64}$</code>, bounded by <code>maxItems: 100</code> (post direction; the report direction has its own 32-entry ingest bound below). The field carries the parties already contacted for this lead by the publisher or prior slot holders — a <strong>hash exchange</strong>, not a data handover: every entry is <code>HMAC-SHA256(pair_secret, contact-preimage)</code> keyed with the <strong>receiving buyer's per-pair secret</strong> (§9), re-keyed by the platform per recipient pair. A buyer matches entries against the hashes it already holds (earlier <code>phone_hash</code>/<code>email_hash</code> values and its suppression lists); no match data leaks because digests computed under one pair's secret are unmatchable by any other pair. <strong>Trust model: format + count sanity only.</strong> The platform cannot verify that a reported digest matches a real contact — verification would require every pair's secret and normalization — so entries are authenticated-sender attestations scoped to one <code>lead_id</code>, and disputes ride the existing ack/rejection paths. <strong>The reference platform hashes phone only today; email-form entries are gated</strong> — none ship until §9's normalization pin plus the executed dedup-hash vectors land (#153 T9). Absent = no contact reports; <code>[]</code> = the platform attests no prior contacts (the two are distinct). Capability- gated like the slot fields (§8).</p>
+<h3 id="ack">ack</h3>
+<p>Response to any message. <code>ack</code> uses an <strong>array of errors</strong> — a single message can fail multiple field validations.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>original_message_id</code></td>
+<td>string</td>
+<td>ID of the message being acknowledged.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>RECEIVED</code> \</td>
+<td><code>VALIDATED</code> \</td>
+<td><code>ACCEPTED</code> \</td>
+<td><code>REJECTED</code> \</td>
+<td><code>DUPLICATE</code> \</td>
+<td><code>ERROR</code></td>
+</tr>
+<tr>
+<td><code>errors</code></td>
+<td>array\&lt;error\&gt;</td>
+<td>Zero or more error objects (see §5).</td>
+</tr>
+<tr>
+<td><code>lead_id</code></td>
+<td>string</td>
+<td>Assigned lead ID, if applicable.</td>
+</tr>
+<tr>
+<td><code>request_id</code></td>
+<td>string</td>
+<td>Server-side request ID for tracing.</td>
+</tr>
+<tr>
+<td><code>rejection_reason</code></td>
+<td>string</td>
+<td>Structured rejection reason (open enum: <code>invalid_phone</code>, <code>duplicate</code>, <code>out_of_geography</code>, <code>credit_too_low</code>, <code>already_customer</code>, <code>compliance_fail</code>, <code>capacity_exceeded</code>, etc.). Enables publisher automation.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="event">event</h3>
+<p><code>lead_id</code>, <code>event</code> (DELIVERED|ACCEPTED|REJECTED|DISPUTED|REFUNDED| EXPIRED|CONVERTED|ARCHIVED; v1.1 adds <code>FINAL_PRICING</code> and <code>CONTACTED</code>, both documented below), <code>timestamp</code>, <code>details</code>, <code>external_reference</code>.</p>
+<p><strong>Class rule — no consumer PII.</strong> Event <code>details</code> MUST NOT carry consumer PII — contact values travel only as per-pair keyed digests where a message defines them. This holds for every event name and both reporting directions (publisher and buyer). <code>details</code> is <code>additionalProperties: true</code> by design, so this is a receiver ingest rule, not a schema rule: a receiver MUST reject a plaintext contact value anywhere in <code>details</code> (a phone-number-shaped run of 7-15 digits, or an email address) as a validation rejection (<code>LCP-100</code>), not a store. <code>LCP-008 PII_IN_PING</code> stays the ping-allowlist code; the event class has no allowlist to violate.</p>
+<p>For <code>CONVERTED</code> events, <code>details</code> SHOULD include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conversion_type</code></td>
+<td>string</td>
+<td>e.g. <code>loan_settled</code>, <code>policy_issued</code>, <code>appointment_booked</code>.</td>
+</tr>
+<tr>
+<td><code>conversion_value_cents</code></td>
+<td>integer</td>
+<td>Deal/loan/policy value in cents.</td>
+</tr>
+<tr>
+<td><code>conversion_currency</code></td>
+<td>string</td>
+<td>ISO 4217.</td>
+</tr>
+<tr>
+<td><code>converted_at</code></td>
+<td>string (datetime)</td>
+<td>When the conversion occurred.</td>
+</tr>
+<tr>
+<td><code>buyer_reference</code></td>
+<td>string</td>
+<td>Buyer's CRM deal/opp ID.</td>
+</tr>
+</tbody>
+</table>
+<p>For call lifecycle events such as <code>CALL_OFFERED</code>, <code>CALL_CONNECTED</code>, <code>CALL_ENDED</code>, and <code>CALL_OUTCOME</code>, <code>details</code> SHOULD include <code>offer_id</code>, <code>call_status</code>, <code>total_seconds</code>, <code>disposition</code>, and <code>transfer_status</code> where available. A platform uses the buyer offer's <code>payable_rules</code> to classify the outcome and update the monthly payable quota.</p>
+<p>For <code>DISPUTED</code> events, <code>details</code> SHOULD include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dispute_reason</code></td>
+<td>string</td>
+<td>e.g. <code>invalid_phone</code>, <code>duplicate</code>, <code>out_of_scope</code>, <code>already_customer</code>.</td>
+</tr>
+<tr>
+<td><code>dispute_evidence_url</code></td>
+<td>string (uri)</td>
+<td>Optional evidence (recording, screenshot).</td>
+</tr>
+</tbody>
+</table>
+<p>These are recommended shapes — <code>details</code> is <code>additionalProperties: true</code>, so platforms can add custom fields without schema changes.</p>
+<p>For <code>FINAL_PRICING</code> events (v1.1, LEP-0006 Track A — a publisher reports what a ping actually sold for, including sales closed outside this platform's auction), <code>details</code> SHOULD include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>The ping this report describes, as the platform issued it. Optional: a publisher that lost the auction may still know the winning external price.</td>
+</tr>
+<tr>
+<td><code>sale_scope</code></td>
+<td>string</td>
+<td>Open enum, known values <code>external</code> (sold outside this platform's auction) and <code>internal_auction</code> (sold through it). Unknown values stored and passed through (§6).</td>
+</tr>
+<tr>
+<td><code>winning_price_cents</code></td>
+<td>integer</td>
+<td>Winning price in integer minor units of <code>currency</code>. MUST be <code>&gt; 0</code> and MUST NOT exceed <code>100000000</code> (typo guard: 1,000,000 major units); larger values are malformed reports. Float major units are never valid.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>string</td>
+<td>ISO 4217 alpha-3, uppercase.</td>
+</tr>
+<tr>
+<td><code>duration_seconds</code></td>
+<td>integer</td>
+<td>Contact duration of the winning sale when call-based; <code>0</code> for form sales. MUST be <code>&gt;= 0</code> and <code>&lt;= 86400</code>.</td>
+</tr>
+<tr>
+<td><code>sold_at</code></td>
+<td>string (date-time)</td>
+<td>When the winning sale occurred.</td>
+</tr>
+</tbody>
+</table>
+<p>Deployment-specific additions ride <strong>namespaced keys inside <code>details</code></strong> under the registered <code>{org}.marketplace.final_pricing</code> namespace (§6, <span class="unpublished" title="Not published in the specification site: governance/EXTENSION-REGISTRY.md">governance/EXTENSION-REGISTRY.md</span>); the event's <code>external_reference</code> MAY carry the external network's sale record id. Malformed or out-of-bound reports are validation rejections (<code>LCP-100</code>), not stores.</p>
+<p><strong>Settlement neutrality (normative).</strong> <code>post.pricing</code> (§4) remains the sole billing and dispute record between platform and buyer. A <code>FINAL_PRICING</code> report MUST NOT change any payable, refund a charged price, adjust <code>post.pricing</code> fields, re-price an in-flight auction, or assert a lifecycle transition — it MUST NOT move <code>status</code>. Receivers consume it for <strong>analytics and bid refinement only</strong>. Values are authenticated-sender attestations (format and bounds sanity only: the platform cannot verify what a lead sold for on another network), scoped to one <code>lead_id</code>; a report contradicting the platform's own auction outcome is not an error, it is the point. Disputes about a report ride the existing ack/rejection and dispute paths, not a new one. Replay collapses on the event <code>message.id</code> (same bytes → <code>DUPLICATE</code>; reused id with different bytes → <code>LCP-005</code>), and a receiver SHOULD treat a later report for the same <code>(lead_id, ping_id)</code> with a newer payload <code>timestamp</code> as superseding the earlier one for analytics.</p>
+<p><strong>Capability gate (§8).</strong> A publisher MUST send <code>FINAL_PRICING</code> only to a platform whose <code>capabilities().events</code> advertisement lists it and whose <code>lcp_versions</code> contains an element with <code>major == 1</code> and <code>minor &gt;= 1</code> (parsed full semver, never a string prefix). A platform that accepts <code>FINAL_PRICING</code> MUST list it in that advertisement.</p>
+<p>For <code>CONSENT_WITHDRAWN</code> events (consumer opted out after delivery), <code>details</code> SHOULD include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phone_hash</code></td>
+<td>string</td>
+<td>Hash of the consumer's phone for suppression.</td>
+</tr>
+<tr>
+<td><code>email_hash</code></td>
+<td>string</td>
+<td>Hash of the consumer's email for suppression.</td>
+</tr>
+<tr>
+<td><code>withdrawn_at</code></td>
+<td>string (datetime)</td>
+<td>When consent was withdrawn.</td>
+</tr>
+<tr>
+<td><code>withdrawn_purposes</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Which purposes were withdrawn (calls, sms, email, etc.).</td>
+</tr>
+</tbody>
+</table>
+<p>Buyers receiving this event MUST update their contact suppression list.</p>
+<p>For <code>ERASURE_REQUEST</code> events (consumer requested data deletion under CCPA / AU Privacy Act / GDPR), <code>details</code> SHOULD include:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phone_hash</code></td>
+<td>string</td>
+<td>Hash for identifying the lead to delete.</td>
+</tr>
+<tr>
+<td><code>email_hash</code></td>
+<td>string</td>
+<td>Hash for identifying the lead to delete.</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>string</td>
+<td>e.g. <code>ccpa_request</code>, <code>gdpr_erasure</code>, <code>privacy_act_request</code>.</td>
+</tr>
+<tr>
+<td><code>requested_at</code></td>
+<td>string (datetime)</td>
+<td>When the erasure was requested.</td>
+</tr>
+<tr>
+<td><code>deadline_at</code></td>
+<td>string (datetime)</td>
+<td>Legal deadline for deletion.</td>
+</tr>
+</tbody>
+</table>
+<p>Buyers receiving this event MUST delete the lead data and respond with an <code>ack</code>. The event open enumeration supports both <code>CONSENT_WITHDRAWN</code> and <code>ERASURE_REQUEST</code> without schema changes.</p>
+<p>For <code>CONTACTED</code> events (a slot holder attempted contact with a party on the lead; v1.1, LEP-0003 §4), <code>details</code> SHOULD include <code>contacted_hashes</code> (same per-pair keyed rule as post §4), <code>contacted_at</code> (datetime), and <code>via</code> (<code>phone</code> | <code>email</code> | <code>sms</code> | <code>chat</code>; open enum). Buyers SHOULD report every first contact attempt on purchased leads. The reporting direction is capability-gated like the slot fields (§8). Normative ingest behavior (<code>event.details</code> stays open by design, so this is a receiver rule, not a schema rule):</p>
+<ul>
+<li>Receivers MUST reject <code>CONTACTED</code> reports whose <code>details.contacted_hashes</code> contains an entry failing <code>^[a-f0-9]{64}$</code> or exceeds <strong>32 entries per report</strong>, and MUST treat oversized or malformed reports as a validation rejection, not a store.</li>
+<li>Beyond shape and count the trust model is explicit: keyed HMACs are unverifiable-by-design for the receiver (verification would require the pair's plaintext and normalization), so entries are authenticated-sender attestations scoped to one <code>lead_id</code>.</li>
+<li>Contact reports are <strong>at-least-once</strong>: exact re-sends of the same event <code>message.id</code> collapse receiver-side; retried reports with new ids are merged by digest set (the contacted set per lead accumulates as a set union; the wire array carries no <code>uniqueItems</code>, duplicates are tolerated but meaningless).</li>
+<li>The absent-vs-<code>[]</code> rule carries to the report direction: absent = nothing to report (don't send); <code>[]</code> MUST NOT be sent as an event detail (it asserts nothing).</li>
+<li>A platform that accepts <code>CONTACTED</code> reports MUST list <code>CONTACTED</code> in its §8 capability <code>events</code> advertisement — buyers gate the reporting direction on that surface.</li>
+</ul>
+<p>The platform stores reported digests and re-keys them onto subsequent posts <strong>only from plaintext it holds</strong> (the lead values it delivered); a received digest cannot be re-keyed (re-HMAC of a report digest is not the target pair's digest; §9).</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#2-envelope">2. Envelope</a></li><li class="depth-2"><a href="#4-message-types">4. Message types</a></li><li class="depth-3"><a href="#lead">lead</a></li><li class="depth-3"><a href="#call">call</a></li><li class="depth-3"><a href="#ping">ping</a></li><li class="depth-3"><a href="#bid">bid</a></li><li class="depth-3"><a href="#post">post</a></li><li class="depth-3"><a href="#ack">ack</a></li><li class="depth-3"><a href="#event">event</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>spec/02-envelope.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

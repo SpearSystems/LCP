@@ -73,8 +73,54 @@ public enum LCPSigning {
     public static func verify(secret: String, signature: String, timestamp: String, idempotencyKey: String?, body: Data, maxSkew: TimeInterval = 300, now: Date = Date()) throws { guard let date = ISO8601DateFormatter().date(from: timestamp), abs(now.timeIntervalSince(date)) <= maxSkew else { throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "timestamp outside replay window"]) }; guard sign(secret: secret, timestamp: timestamp, idempotencyKey: idempotencyKey, body: body) == signature.lowercased() else { throw NSError(domain: "LCP", code: 401, userInfo: [NSLocalizedDescriptionKey: "invalid signature"]) } }
 }
 
+/// One lead in a batch: per-item identifiers plus the lead payload (schemas/batch.json).
+public struct LCPBatchItem: Encodable {
+    public let itemId: String
+    public let idempotencyKey: String
+    public let payload: [String: JSONValue]
+    public init(itemId: String, idempotencyKey: String, payload: [String: JSONValue]) { self.itemId = itemId; self.idempotencyKey = idempotencyKey; self.payload = payload }
+    enum CodingKeys: String, CodingKey { case itemId = "item_id", idempotencyKey = "idempotency_key", payload }
+}
+
+/// One per-item receipt from a batch submission.
+public struct LCPBatchResult: Decodable {
+    public let itemId: String
+    public let status: String
+    public let leadId: String?
+    public let error: JSONValue?
+    enum CodingKeys: String, CodingKey { case itemId = "item_id", status, leadId = "lead_id", error }
+}
+
+private struct LCPBatchRequest: Encodable {
+    let requestId: String
+    let items: [LCPBatchItem]
+    enum CodingKeys: String, CodingKey { case requestId = "request_id", items }
+}
+
+private struct LCPBatchResponse: Decodable { let results: [LCPBatchResult] }
+
 public final class LCPClient {
     private let endpoint: URL; private let senderId: String?; private let apiKey: String?; private let hmacSecret: String?; private let session: URLSession
     public init(endpoint: URL, senderId: String? = nil, apiKey: String? = nil, hmacSecret: String? = nil, session: URLSession = .shared) { self.endpoint = endpoint; self.senderId = senderId; self.apiKey = apiKey; self.hmacSecret = hmacSecret; self.session = session }
     public func request(path: String, method: String, body: Data? = nil, idempotencyKey: String? = nil, test: Bool = false) async throws -> Data { var request = URLRequest(url: endpoint.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))); request.httpMethod = method; request.httpBody = body; request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("application/json", forHTTPHeaderField: "Accept"); if let senderId { request.setValue(senderId, forHTTPHeaderField: "X-LCP-Sender-Id") }; if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }; if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "X-LCP-Idempotency-Key") }; if test { request.setValue("true", forHTTPHeaderField: "X-LCP-Test") }; if let hmacSecret { let timestamp = ISO8601DateFormatter().string(from: Date()); request.setValue(timestamp, forHTTPHeaderField: "X-LCP-Timestamp"); request.setValue(LCPSigning.sign(secret: hmacSecret, timestamp: timestamp, idempotencyKey: idempotencyKey, body: body ?? Data()), forHTTPHeaderField: "X-LCP-Signature") }; let (data, response) = try await session.data(for: request); guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NSError(domain: "LCP", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: String(data: data, encoding: .utf8) ?? "LCP HTTP error"]) }; return data }
+
+    /// Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
+    /// the per-item receipts in input order. HTTP 207 partial success is a
+    /// successful response; per-item error objects are preserved. The batch is
+    /// never retried as a whole — retrying only rejected/error receipts is the
+    /// caller's job.
+    public func submitLeadsBatch(_ items: [LCPBatchItem], requestId: String? = nil) async throws -> [LCPBatchResult] {
+        guard (1...100).contains(items.count) else {
+            throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "batch supports 1..100 items, got \(items.count)"])
+        }
+        let payload = LCPBatchRequest(requestId: requestId ?? UUID().uuidString, items: items)
+        let data = try await request(path: "/v1/lcp/leads/batch", method: "POST", body: try JSONEncoder().encode(payload))
+        let response = try JSONDecoder().decode(LCPBatchResponse.self, from: data)
+        let order = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($1.itemId, $0) })
+        return response.results.enumerated().sorted { left, right in
+            let leftRank = order[left.element.itemId] ?? items.count
+            let rightRank = order[right.element.itemId] ?? items.count
+            return leftRank == rightRank ? left.offset < right.offset : leftRank < rightRank
+        }.map(\.element)
+    }
 }

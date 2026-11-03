@@ -15,6 +15,7 @@ host an LCP platform, persist leads, receive webhooks, or run auctions.
 | Tool | LCP Endpoint | Description |
 |---|---|---|
 | `submit_lead` | `POST /v1/lcp/leads` | Submit a lead message |
+| `submit_leads_batch` | `POST /v1/lcp/leads/batch` | Submit up to 100 leads in one batch; returns per-item receipts in input order |
 | `submit_call` | `POST /v1/lcp/calls` | Submit a call lead message |
 | `query_lead_status` | `GET /v1/lcp/leads/{lead_id}` | Query lead status and lifecycle |
 | `get_schema` | `GET /v1/lcp/schemas/{name}` | Retrieve a JSON Schema (envelope, core, message type, offer, vertical) |

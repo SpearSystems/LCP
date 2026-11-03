@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0006-marketplace-migration-extensions.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0006 — Marketplace migration extensions: final-pricing feedback and the form.questions surface — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0006--marketplace-migration-extensions-final-pricing-feedback-and-the-formquestions-surface">LEP-0006 — Marketplace migration extensions: final-pricing feedback and the form.questions surface</h1>
+<ul>
+<li><strong>Title:</strong> Marketplace migration extensions: final-pricing feedback (<code>FINAL_PRICING</code> event) and <code>{org}.form.questions</code> (lead/post <code>extensions</code>)</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-03</li>
+<li><strong>Status:</strong> <strong>Implemented</strong> — accepted 2026-11-03; both tracks implemented (#216 Track A, #217 Track B)</li>
+<li><strong>Target version:</strong> v1.1.0 (additive MINOR; Track A carries zero schema change, Track B adds one optional closed-object field to <code>lead</code>/<code>post</code>)</li>
+<li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/185" rel="noopener">#185</a> (<code>[LEP] Marketplace migration extensions: final-pricing feedback and {org}.form.questions</code>)</li>
+<li><strong>Roadmap triggers:</strong> <code>docs/V1.1-ROADMAP.md</code>, Phase 6 — "External sale feedback (final_pricing equivalent)" (medium) and "Freeform questions extension shape" (medium)</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</h2>
+<p>Implementation: Track A PR #216 (FINAL_PRICING event, publisher authorization, settlement neutrality, bounds enforcement) and Track B PR #217 (lead/post <code>extensions</code>, <code>{org}.form.questions</code>, shared PII detector, capability-gated delivery).</p>
+<p><strong>Accepted, with a track-scoped condition.</strong> This record declares its two tracks independently decidable (LEP.md decision rules), so they are decided separately:</p>
+<ul>
+<li><strong>Track A — <code>FINAL_PRICING</code> event (zero schema change): implementation authorized.</strong> Rationale: no schema surface changes, settlement neutrality was measured (event→payable gates enumerated; <code>FINAL_PRICING</code> inert today), and the publisher-event direction is the record's own named implementation obligation (<code>_PUBLISHER_EVENT_TYPES</code>).</li>
+<li><strong>Track B — lead/post <code>extensions</code> + <code>{org}.form.questions</code>: accepted but implementation is gated</strong> on the generalized event/PII details validator identified during this record's dossier (issue #198: non-CONTACTED event details accept and persist plaintext phone numbers today). Freeform <code>answer_text</code> MUST NOT reach delivery paths before that sanitizer class fix lands and is tested (<code>plat: test_event_details_pii_reject</code>, named in Track A's obligation list). This is a precondition, not a formality: the record's own PII-smuggling analysis is only defensible once the platform actually enforces it.</li>
+</ul>
+<p>Basis: ARB dossier #185 (FINDINGS, three minors) and the revision merged as PR #208 (two closed in-record, F2 named for the implementation phase). Registry rows in <code>EXTENSION-REGISTRY.md</code> move to their live state per the Registration section when each track's implementation merges. The 14-day window is waived by the maintainer's recorded decision; the discussion issue stays open.</p>
+<h2 id="separation-of-the-two-tracks">Separation of the two tracks</h2>
+<p>LEP.md (Decision rules): "Separate capabilities with materially different semantics may share an umbrella discussion, but each must have independently reviewable and independently decidable acceptance criteria." Track A (price feedback on the existing open <code>event</code> surface) and Track B (a new <code>extensions</code> surface on <code>lead</code>/<code>post</code> plus one registered payload shape) share only the migration story; they touch different messages, different risk classes, and different reviewer roles. <strong>Each track is accepted, rejected, or deferred independently</strong> (the LEP-0001 batch/subscription precedent); the registry row and the decision record name per-track outcomes. This record recommends Track A over the zero-schema-cost <code>event</code> path and Track B over an LEP-carried payload change — the two routes differ precisely because their data lands on different message classes, and the asymmetry is defended below.</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<h3 id="track-a--final-pricing-feedback">Track A — final-pricing feedback</h3>
+<p><code>docs/V1.1-ROADMAP.md</code> Phase 6, "External sale feedback (final_pricing equivalent)": publishers selling the same lead across multiple networks need to report what a ping actually sold for — <strong>including external sales</strong> — so buyers can refine bids. Design constraint from the same section: publisher→platform feedback of winning price and duration for a ping, keyed by ping ID; "extension or event-detail candidate (<code>{org}.marketplace.final_pricing</code>), not core; must not conflict with the platform's own auction price in <code>post.pricing</code>."</p>
+<p><strong>Internal evidence.</strong> The protocol already structures one post-sale value fact: the <code>CONVERTED</code> event's <code>details.conversion_value_cents</code> (SPEC.md §4), explicitly called out in §3 as the structured exception because "close value on conversion is a lifecycle fact, not a calculated metric." Nothing analogous exists for the <em>other</em> sale outcomes that matter to a pinged buyer: the lead sold elsewhere, or sold for more than the auction cleared. Buyers bid blind to those outcomes today; the reference network's <code>final_pricing</code> reports exist precisely to close that feedback loop, and the roadmap classifies the mechanism (not the implementation) as a genuine gap.</p>
+<p><strong>Wire-surface reality (measured 2026-11-03).</strong> The extension candidate name from the roadmap implies a payload <code>extensions</code> surface, but <code>payload.extensions</code> is defined <strong>only</strong> on <code>schemas/offer.json:248-252</code> (buyer-side matching criteria, <code>additionalProperties: true</code>). Every delivery message is a strict closed object: <code>schemas/ping.json:206</code>, <code>schemas/lead.json:166</code>, <code>schemas/post.json:176</code>, <code>schemas/bid.json</code> (allowlist), <code>schemas/ack.json</code> — verified by reading each root's <code>additionalProperties: false</code>. A publisher has exactly one message class it sends to the platform post-auction whose content is open by design: <code>event</code>, whose <code>details</code> is <code>additionalProperties: true</code> (<code>schemas/event.json:25-28</code>) and whose <code>event</code> value is an open enumeration with no schema enum (<code>schemas/event.json:16-19</code>; SPEC.md §6 "Open vs. closed enumerations": unknown event values MUST be stored and passed through; adding values is a MINOR). Track A therefore rides the event surface — the zero-schema-cost route, exactly the mechanism LEP-0003 §4 used for <code>CONTACTED</code> reporting — and this record documents why the alternative (a payload change) was rejected there.</p>
+<h3 id="track-b--the-orgformquestions-home">Track B — the <code>{org}.form.questions</code> home</h3>
+<p>Roadmap Phase 6, "Freeform questions extension shape": partners migrating from legacy ping/post networks carry <code>questions[]</code> (question_text/answer_text) data with no standard home in LCP; the design constraint is the registered extension pattern <code>{org}.form.questions</code> — post-only, never <code>ping_safe</code> — so the controlled-taxonomy decision in <code>home_services</code> stays intact.</p>
+<p><strong>Internal evidence — the destination is already promised but does not exist.</strong> <code>verticals/home_services.json:5</code>: "Publishers normalize brand-specific form questions into this controlled taxonomy; unsupported source questions remain in an <strong>approved post-only extension</strong> or source archive." That approved extension surface is not in the protocol today: there is no <code>extensions</code> field on <code>lead</code> or <code>post</code> (closes above). The one "post-only" free-text escape the vertical registry ships — <code>free_text</code> (<code>verticals/home_services.json:103</code>, <code>ping_safe: false</code>) — is a single string with no question/answer structure, which is exactly why the roadmap asks for a <em>registered shape</em> rather than leaning on it.</p>
+<p><strong>Internal evidence — the reference platform already consumes a lead-side <code>extensions</code> object that its own schema forbids.</strong> The claim-language restriction evaluates namespaced evidence from the lead payload: <code>matching.py:193-196</code> reads <code>payload.get("extensions", {}).get("lcp.platform.claim_language")</code> and fail-closes (<code>claim_language_evidence_missing</code>) when absent; <code>matching.py:116-120</code> similarly reads <code>extensions.get("lcp.platform.required_consent_purposes")</code> / <code>"lcp.platform.contact_purpose"</code> from the offer side (which is legal — <code>schemas/offer.json:248</code>). A lead carrying the evidence block the matcher demands <strong>fails the published <code>lead</code> schema</strong> — measured: <code>Additional properties are not allowed ('extensions' was unexpected) at (root)</code> (run recorded below). SPEC.md §6 line 655 and §3 lines 224-235 both describe the <code>extensions</code> object as the mechanism for deployment-specific data; §6:661-662 even lists "vertical <code>attributes</code> extensions" among open objects. The protocol prose and the reference matcher anticipate an extensions surface on the intake/delivery messages that the schemas do not ship. Track B closes that gap with the smallest expressible change, and the registered <code>form.questions</code> shape gives migrating partners the structured home the vertical description already promises.</p>
+<p><strong>External evidence.</strong> The roadmap comparison (2026-08-18) observed both mechanisms live in a major US home-services network's ping/post API: <code>final_pricing</code> sale reports and per-campaign <code>questions[]</code> arrays carried alongside delivery. Both are adoption-visible capabilities, not theoretical.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Track A — core protocol (additive MINOR, zero schema change):</strong> the open-enum <code>event</code> value <code>FINAL_PRICING</code> (documented known value; <code>schemas/event.json</code> is unchanged), a recommended <code>details</code> shape with normative ingest bounds, capability gating (SPEC.md §8), and the settlement-neutrality MUSTs. SPEC text: §4 event guidance, §6 known-value list, §8 advertisement note.</li>
+<li><strong>Track B — core protocol (additive MINOR, schema change):</strong> one optional <code>extensions</code> object on the <code>lead</code> and <code>post</code> payloads (<code>schemas/lead.json</code>, <code>schemas/post.json</code>), keys constrained to the registry namespace format; plus the <em>registered payload shape</em> <code>{org}.form.questions</code> (array of <code>{question_id?, question_text, answer_text}</code> with bounds and scrub rules) — a registered extension per SPEC.md §6/§3 and <code>governance/EXTENSION-REGISTRY.md</code>, not a schema field. <code>ping</code>, <code>bid</code>, <code>ack</code>, <code>call</code>, <code>event</code>, and every vertical are <strong>unchanged</strong>.</li>
+<li><strong>Reference implementation:</strong> publisher-side <code>FINAL_PRICING</code> acceptance + advertisement (Track A); lead/post <code>extensions</code> passthrough and delivery, form.questions validation at support-advertisement boundaries, erasure coverage (Track B). Implementation-phase obligations, gated on per-track acceptance.</li>
+<li><strong>Registry rows:</strong> <code>lcp.marketplace.final_pricing</code> and <code>lcp.form.questions</code> proposed in <code>governance/EXTENSION-REGISTRY.md</code> with this record (status: <em>proposed-on-acceptance</em>).</li>
+<li><strong>SDK / OpenAPI / MCP / vectors:</strong> change-gated at implementation (roadmap §Change gates); listed in the impact section. This Draft authorizes none of it.</li>
+<li><strong>Not in scope:</strong> any change to <code>post.pricing</code> or payable/dispute semantics; multi-currency price semantics (deferred roadmap item — see Deferred questions); <code>questions</code> in vertical <code>attributes</code> or in pings (explicitly forbidden by design); an <code>extensions</code> surface on <code>call</code> payloads (deferred with trigger); a schema mechanism for validating namespaced payload shapes (convention + receiver rules today, like LEP-0003's report rules); DLP vendor integration (the platform MAY scrub with whatever deterministic tooling a deployment runs; no normative algorithm is invented here).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="track-a--final_pricing-event-publisher--platform">Track A — <code>FINAL_PRICING</code> event (publisher → platform)</h3>
+<p>A new <strong>documented known value</strong> of the open <code>event</code> enumeration. No schema file changes; <code>event.json</code> already stores and passes through any string (<code>schemas/event.json:16-19</code> <code>$comment</code>: "No enum constraint — this is an open enumeration per SPEC.md §6").</p>
+<p>Recommended <code>details</code> shape (the same SHOULD-style guidance pattern as <code>CONVERTED</code>/<code>DISPUTED</code>/<code>CONTACTED</code>, SPEC.md §4):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>The ping this report describes, as the platform issued it. Optional: a publisher that lost the auction may still know the winning external price.</td>
+</tr>
+<tr>
+<td><code>sale_scope</code></td>
+<td>string</td>
+<td>Open enum, known values <code>external</code> (sold outside this platform's auction) and <code>internal_auction</code> (sold through it). Unknown values stored and passed through (§6).</td>
+</tr>
+<tr>
+<td><code>winning_price_cents</code></td>
+<td>integer</td>
+<td>Winning price in <strong>integer minor units</strong> of <code>currency</code>. MUST be <code>&gt; 0</code> and MUST NOT exceed <code>100000000</code> (typo guard: 1,000,000 major units); receivers MUST treat larger values as malformed reports.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>string</td>
+<td>ISO 4217 alpha-3, uppercase (core <code>currency</code> discipline, <code>schemas/core.json</code> <code>$defs/currency</code>).</td>
+</tr>
+<tr>
+<td><code>duration_seconds</code></td>
+<td>integer</td>
+<td>Contact duration of the winning sale when the sale is call-based; <code>0</code> for form sales. MUST be <code>&gt;= 0</code> and <code>&lt;= 86400</code>.</td>
+</tr>
+<tr>
+<td><code>sold_at</code></td>
+<td>string (date-time)</td>
+<td>When the winning sale occurred.</td>
+</tr>
+</tbody>
+</table>
+<p>Deployment-specific additions ride <strong>namespaced keys inside <code>details</code></strong> under the registered <code>{org}.marketplace.final_pricing</code> namespace (the roadmap's own candidate name, kept meaningful on this route — see Registry notes). The event payload's existing <code>external_reference</code> (<code>schemas/event.json:29-31</code>) MAY carry the external network's sale record id.</p>
+<p>Normative semantics:</p>
+<ul>
+<li><strong>Settlement neutrality (the roadmap's conflict clause, made operational).</strong> <code>post.pricing</code> (SPEC.md §4) remains the sole billing and dispute record between platform and buyer. A <code>FINAL_PRICING</code> report MUST NOT change any payable, refund a charged price, adjust <code>post.pricing</code> fields, or re-price an in-flight auction. Receivers consume it for <strong>analytics and bid refinement only</strong> (the roadmap's stated purpose: "so buyers can refine bids"). A report contradicting the platform's own auction outcome is not an error — it is the point (external sales); disputes about it ride the existing ack/rejection and dispute paths, not a new one.</li>
+<li><strong>Trust model: authenticated-sender attestation, format+bounds sanity only</strong> — the LEP-0003 <code>CONTACTED</code> model. The platform cannot verify what a lead sold for on another network; <code>FINAL_PRICING</code> values are attestations by the authenticated publisher (<code>event:submit</code> scope + HMAC signature, SPEC.md §9), scoped to one <code>lead_id</code>. Malformed or out-of-bound reports are validation rejections, not stores.</li>
+<li><strong>Keying and replay.</strong> The event's required <code>lead_id</code> keys the report; <code>details.ping_id</code> keys the correction chain. Replay collapses on the event <code>message.id</code> (the reference platform's existing mechanism: same-id-same-bytes → <code>DUPLICATE</code>, reuse-with-different-bytes → <code>LCP-005</code> 409; <code>router.py:1260-1283</code>). Corrections are normal: a later report for the same <code>(lead_id, ping_id)</code> <strong>supersedes</strong> the earlier one when its payload <code>timestamp</code> is newer (ties: higher message <code>id</code> lexicographic). Receivers SHOULD keep report history and MUST expose the superseding view.</li>
+<li><strong>PII discipline.</strong> <code>event</code> is a non-PII message class (SPEC.md §4 table: the <code>event</code> row reads <code>None</code>, <code>spec/02-envelope.md:48</code>; the "(hashes only)" qualifier belongs to the <code>ping</code> row, <code>spec/02-envelope.md:44</code> — quote misattribution fixed post-dossier, #185 F3). A <code>FINAL_PRICING</code> report carries no consumer data at all: the contact is identified by <code>lead_id</code> alone; phone/email/hash values MUST NOT appear in <code>details</code>. Receivers MUST reject PII-bearing reports at ingest (see invalid example A-1; honest status recorded there — the open <code>details</code> cannot express this in schema, so it is an ingest-behavior requirement).</li>
+<li><strong>Capability gating.</strong> A publisher MUST send <code>FINAL_PRICING</code> only to a platform whose §8 advertisement lists it in <code>capabilities().events</code> and whose <code>lcp_versions</code> contains a parsed <code>major == 1</code>, <code>minor &gt;= 1</code> full-semver element (the normative membership rule of SPEC.md §8, landed via LEP-0003 F6/T10). The reference platform today: <code>router.py:1730-1763</code> advertises thirteen values and <code>["1.0.0", "1.1.0"]</code> (<code>router.py:1738</code> reading <code>validation.py:23</code>, <code>router.py:1749-1763</code>). <strong>Zero schema cost, nonzero platform cost (measured path):</strong> the publisher-reportable set <code>_PUBLISHER_EVENT_TYPES</code> (<code>router.py:107-112</code>: <code>REJECTED</code>, <code>DISPUTED</code>, <code>CONSENT_WITHDRAWN</code>, <code>ERASURE_REQUEST</code>) does not contain <code>FINAL_PRICING</code>, and the sender authorization at <code>router.py:1250-1258</code> rejects any other name with <code>LCP-002</code> ("Sender is not authorized for this lead event"). Acceptance therefore obligates the implementation PR to add <code>FINAL_PRICING</code> to <code>_PUBLISHER_EVENT_TYPES</code> behind the v1.1 gate and advertise it — the exact F5/T6 correction pattern LEP-0003 recorded. <code>FINAL_PRICING</code> MUST NOT be added to <code>_EVENT_STATUS_TARGETS</code> (<code>router.py:74-82</code>): it asserts no lifecycle transition; a price report does not move <code>status</code> (see §3 status transition table, spec/03-payloads.md:184).</li>
+</ul>
+<h3 id="track-b--extensions-on-leadpost-and-the-registered-orgformquestions-shape">Track B — <code>extensions</code> on <code>lead</code>/<code>post</code>, and the registered <code>{org}.form.questions</code> shape</h3>
+<h4 id="b1-the-payload-surface-lep-carried-schema-change">B.1 The payload surface (LEP-carried schema change)</h4>
+<p>Add <strong>one</strong> optional field to <code>lead</code> and <code>post</code>, identical shape, drafted as the overlay validated below:</p>
+<pre class="code-block"><code class="language-json">"extensions": {
+  "type": "object",
+  "description": "Namespaced LCP extensions (SPEC.md section 6;
+    governance/EXTENSION-REGISTRY.md). Keys must follow
+    {org}.{division}.{purpose}; lcp.core.* is reserved. Unknown
+    namespaces are ignored by implementations that do not recognize
+    them.",
+  "propertyNames": {
+    "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$",
+    "not": { "pattern": "^lcp\\.core\\." }
+  },
+  "additionalProperties": true
+}</code></pre>
+<ul>
+<li><strong>Where, and why exactly there.</strong> <code>lead</code> (publisher→platform intake) and <code>post</code> (platform→buyer delivery): the data must ride the delivery itself — the buyer needs the questions when it works the lead, not in a side-channel notification (the event alternative is analyzed and rejected under Alternatives). <code>call</code> is deliberately excluded at v1.1 (telephony Q&amp;A migration has no adopter evidence yet; deferred with trigger). <code>ping</code>/<code>bid</code>/<code>ack</code> stay closed — that is the "never ping_safe" guardrail made structural (see B.3).</li>
+<li><strong>Key shape is expressible and enforced:</strong> the <code>propertyNames</code> pattern requires ≥3 lowercase segments per the registry format and forbids <code>lcp.core.*</code> claims per the registry's rejection grounds (<code>governance/EXTENSION-REGISTRY.md</code>, "Rejection grounds"). Measured: <code>"questions"</code> and <code>"lcp.core.form_questions"</code> <code>REJ</code> under the overlay; three-segment namespaces <code>PASS</code>.</li>
+<li><strong>Values stay deployment-defined</strong> (<code>additionalProperties: true</code> per namespace): the core cannot and does not validate namespaced payloads — same as <code>schemas/offer.json:248-252</code> and <code>event.details</code>. Shape authority for a registered namespace is this LEP's §B.2 for <code>{org}.form.questions</code>; receiver-side rules below stand in for the schema, and this record states that boundary honestly rather than implying a validator that does not exist.</li>
+<li><strong>Capability gating (mandatory, measured):</strong> <code>lead</code>/<code>post</code> are closed objects, so the §6 "unknown optional fields ignored" guarantee does <strong>not</strong> cover this field (spec/04-errors.md:12-18 — closed-object additions "rely on version negotiation"). A v1.1 <code>extensions</code>-bearing lead sent to a receiver advertising only <code>["1.0.0"]</code> fails that receiver's strict allowlist — measured: <code>Additional properties are not allowed ('extensions' was unexpected)</code>. Senders gate emission on the receiver's parsed <code>lcp_versions</code> ≥ 1.1 (§8, LEP-0003 F6 rule); absent <code>extensions</code> = bit-for-bit v1.0 behavior.</li>
+<li><strong>The matcher gap closes.</strong> With this surface legal, the claim-language evidence <code>matching.py:193-196</code> already reads becomes sendable; today that code path is only reachable if validation is bypassed (it is not — such leads are rejected upstream — so the predicate currently fail-closes for schema-validating senders, which is the trap this fix removes). No matcher code change is required by Track B beyond passing the object through validation.</li>
+</ul>
+<h4 id="b2-the-registered-payload-shape-orgformquestions">B.2 The registered payload shape <code>{org}.form.questions</code></h4>
+<p>Normative for any org registering the namespace (reference platform registers <code>lcp.form.questions</code>; other adopters register <code>{org}.form.questions</code> for their own org id):</p>
+<pre class="code-block"><code class="language-json">"extensions": {
+  "acme.form.questions": [
+    {
+      "question_id": "own_or_rent",
+      "question_text": "Do you own the property or are you renting?",
+      "answer_text": "Own outright"
+    }
+  ]
+}</code></pre>
+<ul>
+<li>Array of <strong>at most 25</strong> entries.</li>
+<li>Each entry an object: <code>question_id</code> optional, <code>^[a-z0-9][a-z0-9_-]{0,63}$</code>; <code>question_text</code> required string, <strong>≤ 300 characters</strong>; <code>answer_text</code> required string, <strong>≤ 1000 characters</strong>; <strong>no other keys</strong> (strings only — nested objects are out of the registered shape, which keeps content scanning tractable).</li>
+<li>Total serialized <code>extensions</code> object — the bound hierarchy, with the arithmetic (computed post-dossier, #185 F1 / #197; measured plant in the Revision section): the shape bounds above admit a worst-case shape-legal <code>form.questions</code> block — 25 entries, <code>question_id</code> at the 64-character maximum, <code>question_text</code> 300, <code>answer_text</code> 1000 — serializing to <strong>35,640 bytes</strong> ASCII (25 × (1300 + 64) + 1,540 structural) and <strong>133,140 bytes</strong> worst-case UTF-8 (<code>maxLength</code> counts codepoints; 4-byte text: 25 × (4 × 1300 + 64) + 1,540). Both exceed 32 KiB. Receivers SHOULD reject <code>extensions</code> totals beyond <strong>32 KiB</strong> (32,768 B) — an auditable, cheap-to-scan abuse target that is explicitly a <strong>soft policy bound</strong>, not a schema property: a fully shape-conformant worst-case sender exceeds it, so a receiver that hard-rejects at 32 KiB rejects shape-legal messages. Reconciling the policy target with the shape ceiling (lower the per-field bounds until the worst case fits, or move the total bound) is the Review re-tune decision tracked in <a href="https://github.com/SpearSystems/LCP/issues/197" rel="noopener">#197</a>; this revision states the arithmetic without renumbering the proposed bounds (the B.1/B.2 fences carry committed plant digests and Track B is unimplemented — the numbers are a Review item, not a silent record-side choice). A deployment MAY set tighter limits and MUST NOT loosen the shape bounds above. Values under <strong>unrecognized namespaces</strong> are schema-unbounded (B.1's <code>additionalProperties: true</code>; measured: a 1,000,000-byte value under <code>acme.a.b</code> PASSES the overlay). The operative hard ceiling on the wire is the transport body cap: the reference platform rejects request bodies above <code>max_body_bytes</code> — default <strong>2,000,000 bytes</strong> (<code>config.py:37</code>, enforced pre-parse at <code>service.py:103-105</code> as <code>LCP-001</code> 413; live 413 measured in the Revision battery) — capping whole messages of every class, <code>extensions</code> included.</li>
+<li>A receiver that has implemented support for a registered <code>form.questions</code> namespace MUST validate entries against this shape and MUST either accept the message or reject it (<code>LCP-100</code>) with the offending namespace identified — it MUST NOT silently store a non-conforming array. Receivers that do not recognize the namespace ignore its value (extension forward-compatibility, <code>governance/EXTENSION-REGISTRY.md</code> "Extension payload location"). These are receiver rules, not schema rules (B.1's boundary statement).</li>
+</ul>
+<h4 id="b3-the-guardrails-the-roadmap-set--post-only-never-ping_safe">B.3 The guardrails the roadmap set — "post-only, never ping_safe"</h4>
+<ol>
+<li><strong>Structural:</strong> the field exists only on <code>lead</code> and <code>post</code>. A ping carrying <code>extensions</code> is rejected by the unchanged strict allowlist — measured <code>REJ</code> under both the published and overlay trees (invalid example B-3). The auction PII firewall (SPEC.md §4 ping allowlist, <code>LCP-008</code>) gains nothing to leak.</li>
+<li><strong>Normative projection ban:</strong> a platform MUST NOT derive ping <code>attributes</code>, <code>compliance_flags</code>, or any other ping field from extension content. Matching against vertical taxonomy uses <code>attributes</code> only; extensions are content, not routing fuel.</li>
+<li><strong>Taxonomy integrity:</strong> publishers MUST NOT encode question text into vertical <code>attributes</code> fields to smuggle it into pings — the existing <code>ping_safe</code> tagging and reserved-core-name rules (<code>tools/check_reserved_fields.py</code>, SPEC.md §3/§12) already police that boundary; this LEP adds no exemption. The controlled-taxonomy normalization step of <code>home_services.json:5</code> is unchanged: questions that fit the taxonomy are <em>also</em> normalized there; the extension carries the verbatim residue, which never pings.</li>
+<li><p><strong>PII discipline inside the extension (the hard review question, answered head-on).</strong> Freeform question/answer text can smuggle consumer data, and post is already a full-PII message — so the real risk axes are:</p>
+<ul>
+<li><strong>Duplication defeats lifecycle keys.</strong> Suppression and erasure events (<code>CONSENT_WITHDRAWN</code>, <code>ERASURE_REQUEST</code>, SPEC.md §4) and the §9 dedup machinery operate on <code>phone_hash</code>/<code>email_hash</code> — a phone number <em>inside</em> <code>answer_text</code> is invisible to those flows (unhashed, unsearchable by hash, retained past field-scoped deletion in deployments that index structured fields). <strong>MUST (publisher):</strong> question/answer text MUST NOT contain phone numbers, email addresses, street addresses, government identifiers, payment credentials, consent tokens or evidence values (those belong in <code>consumer</code>, <code>compliance.consent_evidence[]</code>, or <code>attachments[]</code>), and MUST NOT duplicate the consumer's name when the structured <code>consumer</code> block already carries it.</li>
+<li><strong>Retention scope.</strong> An <code>extensions</code> value is stored lead content: it inherits §9 PII retention and MUST be purged by the same erasure execution as the rest of the record (platform erasure paths delete the stored lead/post record wholesale; this LEP states explicitly that <code>extensions</code> is in that record's PII scope — free text must never live in a side store excluded from erasure).</li>
+<li><strong>Egress/abuse volume.</strong> B.2 states the hierarchy with the arithmetic (post-dossier, #185 F1): shape bounds cap the worst-case shape-legal registered block at 133,140 bytes; the 32 KiB SHOULD is a scan-cheap soft policy target above that, not a schema ceiling; unrecognized-namespace values are schema-unbounded and land on the transport body cap (default 2 MB, <code>config.py:37</code> / <code>service.py:103-105</code>) as the operative hard bound — #197 tracks the bounds re-tune at Review.</li>
+<li><strong>Platform MAY scrub/truncate, deterministically.</strong> A platform MAY apply a deterministic redaction pass (pattern-based contact-identifier redaction) or truncate over-bound values before delivering a post; it MUST apply the same policy to every message (no per-recipient discretion), MUST log each redaction/truncation event against the <code>lead_id</code>, and SHOULD reject (rather than deliver) content matching credential/token shapes listed above. A deployment MAY configure reject-vs-redact policy; neither mode may silently drop the whole <code>extensions</code> object on a supporting receiver. The reviewer question this record pre-empts for the dossier: should redaction be a MUST on the platform side (the publisher-side scrub is a MUST already)? The Draft keeps platform redaction at MAY because the protocol cannot guarantee every platform runs DLP before it can refuse the lead without breaking delivery in markets where the publisher is compliant; Review should test that reasoning.</li>
+<li><strong>No new recipient class:</strong> the data crosses exactly the same publisher→platform→winning-buyer PII path the lead already uses (SPEC.md §4 post is the full-PII channel; §9 transport/auth requirements unchanged). This is data-shape guidance inside an existing boundary, not a boundary change — but it does move a PII-adjacent surface (freeform consumer answers now ride a protocol-defined extension), so LEP.md requires the named human security/privacy reviewer or the ARB-Security co-sign at decision.</li>
+</ul></li>
+<li><strong>Consent/scrub evidence MUST NOT ride <code>form.questions</code>.</strong> Answer text such as "her consent code is 4471" is a compliance-evidence value with a structured home (<code>consent_evidence[]</code>); free-text evidence is unverifiable and unrevocable. Invalid example B-4 covers a contact-identifier case; the same receiver rule covers tokens.</li>
+</ol>
+<h3 id="registry-notes">Registry notes</h3>
+<p>Two <code>governance/EXTENSION-REGISTRY.md</code> rows land with this Draft as <strong>proposed-on-acceptance</strong> (the reference platform's own registrations; adopters register their own <code>{org}.*</code> namespaces under the open registration rules, which are format-checked only):</p>
+<table>
+<thead>
+<tr>
+<th>Namespace</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lcp.form.questions</code></td>
+<td>Track B registered shape on <code>lead</code>/<code>post</code> <code>extensions</code>; post-only, never ping_safe.</td>
+</tr>
+<tr>
+<td><code>lcp.marketplace.final_pricing</code></td>
+<td>Track A deployment-specific additions inside <code>FINAL_PRICING</code> event <code>details</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Registry hygiene noticed while drafting (no LEP needed; registration is open): <code>matching.py:116-120</code> and <code>matching.py:193-196</code> already consume <code>lcp.platform.required_consent_purposes</code>, <code>lcp.platform.contact_purpose</code>, and <code>lcp.platform.claim_language</code>, which are not yet registry rows (<code>governance/EXTENSION-REGISTRY.md</code> ships two rows). Backfilling those rows is a documentation PR following this LEP.</p>
+<h3 id="valid-example--track-a-final_pricing-on-the-published-tree">Valid example — Track A, <code>FINAL_PRICING</code> on the published tree</h3>
+<p><em>(Validated by execution 2026-11-03 against the published v1.0/current tree with the reference platform's <code>SchemaValidator</code> (<code>jsonschema 4.26.0</code>): <code>PASS</code>. No overlay exists for Track A — that PASS on the unmodified tree is the zero-schema-cost claim in action. The example mirrors the repository's <code>examples/lead.json</code>/<code>examples/post.json</code> fixture: <code>pub_123</code> owns <code>lead_abc123</code>, which cleared <code>post</code> at 2200 AUD cents; the publisher now reports the lead actually sold externally for 2450 AUD cents — <code>post.pricing</code> remains the billing record and is untouched by the report.)</em></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "f10e8400-0000-4000-8000-000000000601",
+      "type": "event",
+      "timestamp": "2026-11-03T10:00:00Z",
+      "sender_id": "pub_123",
+      "receiver_id": "platform_001",
+      "correlation_id": "880e8400-e29b-41d4-a716-446655440003",
+      "idempotency_key": "pub-123-event-lead_abc123-finalpricing-1",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "event": "FINAL_PRICING",
+      "timestamp": "2026-11-03T09:59:41Z",
+      "details": {
+        "ping_id": "ping_550e8400-1",
+        "sale_scope": "external",
+        "winning_price_cents": 2450,
+        "currency": "AUD",
+        "duration_seconds": 0,
+        "sold_at": "2026-11-02T23:40:00Z",
+        "acme.marketplace.final_pricing": {
+          "source_network": "legacy_hs_network_a",
+          "sale_record_id": "hsn-88117"
+        }
+      },
+      "external_reference": "hsn-88117"
+    }
+  }
+}</code></pre>
+<h3 id="valid-lead-example-overlay--track-b-lead-with-extensions">Valid lead example (overlay) — Track B, lead with <code>extensions</code></h3>
+<p><em>(Validated by execution 2026-11-03: <code>PASS</code> under the draft overlay (<code>lead.json</code>/<code>post.json</code> gain exactly the B.1 field), <code>REJ</code> under the published tree with "Additional properties are not allowed ('extensions' was unexpected)" — the published-tree REJ is Track B's problem statement: the surface does not exist today. The lead body is the repository's <code>examples/lead.json</code> fixture verbatim (mortgage vertical), with <code>extensions</code> added; the claim-language key is the exact namespace <code>matching.py:193-196</code> already reads, showing the gap this LEP closes.)</em></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "b20e8400-0000-4000-8000-000000000611",
+      "type": "lead",
+      "timestamp": "2026-11-03T10:00:00Z",
+      "sender_id": "pub_123",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "pub-lead-20261103-ext-001",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "external_id": "pub-internal-456",
+      "submitted_at": "2026-08-15T10:19:50Z",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": ["calls", "sms", "email", "share_with_partners"],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true,
+        "scrubs": [
+          { "type": "dnc_national", "provider": "au_dncregister", "result": "clean", "checked_at": "2026-08-15T10:19:48Z" },
+          { "type": "litigator", "provider": "litigator_list", "result": "clean", "checked_at": "2026-08-15T10:19:49Z" },
+          { "type": "blacklist", "provider": "internal", "result": "clean", "checked_at": "2026-08-15T10:19:49Z" }
+        ]
+      },
+      "provenance": {
+        "received_at": "2026-08-15T10:20:01Z",
+        "source_type": "publisher",
+        "source_id": "pub_123",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage"
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
+      },
+      "expiry": {
+        "expires_at": "2026-08-15T10:50:00Z"
+      },
+      "extensions": {
+        "lcp.platform.claim_language": "none",
+        "acme.form.questions": [
+          {
+            "question_id": "own_or_rent",
+            "question_text": "Do you own the property or are you renting?",
+            "answer_text": "Own outright"
+          },
+          {
+            "question_id": "settle_timeline",
+            "question_text": "How soon would you like to settle the refinance?",
+            "answer_text": "Within 60 days"
+          }
+        ]
+      }
+    }
+  }
+}</code></pre>
+<h3 id="valid-post-example-overlay--track-b-post-delivering-the-extension">Valid post example (overlay) — Track B, post delivering the extension</h3>
+<p><em>(Validated by execution 2026-11-03: <code>PASS</code> under the overlay, <code>REJ</code> under the published tree — same rule, same reason. The post body is the repository's <code>examples/post.json</code> fixture with <code>extensions</code> appended and the envelope re-keyed; byte-exact as executed, including the fixture's unchanged blocks.)</em></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "b30e8400-0000-4000-8000-000000000612",
+      "type": "post",
+      "timestamp": "2026-11-03T10:00:00Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_001",
+      "correlation_id": "b20e8400-0000-4000-8000-000000000611",
+      "idempotency_key": "platform-001-post-lead_abc123-ext-1",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_abc123",
+      "delivered_at": "2026-08-15T10:20:10Z",
+      "submitted_at": "2026-08-15T10:19:50Z",
+      "price_cents": 2200,
+      "currency": "AUD",
+      "buyer_id": "buyer_001",
+      "buyer_reference": "buyer-internal-987",
+      "pricing": {
+        "floor_price_cents": 1500,
+        "premium_cents": 700,
+        "final_price_cents": 2200,
+        "uncapped_price_cents": 2500,
+        "max_allowed_price_cents": 3000,
+        "price_guardrails": true,
+        "is_duplicate_resub": false,
+        "payable_definition": "form_lead_valid_phone",
+        "payable_status": "payable"
+      },
+      "matched_preferences": {
+        "states": [
+          "NSW"
+        ],
+        "loan_types": [
+          "refinance",
+          "cash_out_refinance"
+        ],
+        "credit_bands": [
+          "excellent",
+          "good"
+        ]
+      },
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": [
+          "calls",
+          "sms",
+          "email",
+          "share_with_partners"
+        ],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "provenance": {
+        "received_at": "2026-08-15T10:20:01Z",
+        "source_type": "publisher",
+        "source_id": "pub_123",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage"
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
+      },
+      "extensions": {
+        "acme.form.questions": [
+          {
+            "question_id": "own_or_rent",
+            "question_text": "Do you own the property or are you renting?",
+            "answer_text": "Own outright"
+          },
+          {
+            "question_id": "settle_timeline",
+            "question_text": "How soon would you like to settle the refinance?",
+            "answer_text": "Within 60 days"
+          }
+        ]
+      }
+    }
+  }
+}</code></pre>
+<h3 id="invalid-example-a-1--plaintext-phone-in-final_pricing-details">Invalid example A-1 — plaintext phone in <code>FINAL_PRICING</code> details</h3>
+<pre class="code-block"><code class="language-json">"details": {
+  "ping_id": "ping_550e8400-1",
+  "sale_scope": "external",
+  "winning_price_cents": 2450,
+  "currency": "AUD",
+  "duration_seconds": 0,
+  "sold_at": "2026-11-02T23:40:00Z",
+  "consumer_phone": "+61412345678"
+}</code></pre>
+<p>Violates the event class's PII rule (SPEC.md §4 table: <code>event</code> PII — <code>None</code>, <code>spec/02-envelope.md:48</code>) and this record's ingest MUST: receivers MUST reject <code>FINAL_PRICING</code> reports whose <code>details</code> contain contact-identifier values (phone/email forms, digits strings matching the §9 preimage normalization inputs). <strong>Honest status of "reject":</strong> the shape validates — measured <code>PASS</code> on the published tree, because <code>details</code> is <code>additionalProperties: true</code> (<code>schemas/event.json:25-28</code>) and no schema change reaches into it. Same boundary as LEP-0003 §4's report rules: this is a receiver ingest requirement, not a schema rule, and the implementation PR must land the matching platform test (named under Conformance impact) rather than relying on <code>event.json</code>.</p>
+<h3 id="invalid-example-a-2--float-dollars-missing-currency">Invalid example A-2 — float dollars, missing currency</h3>
+<pre class="code-block"><code class="language-json">"details": {
+  "ping_id": "ping_550e8400-1",
+  "sale_scope": "external",
+  "winning_price_cents": 24.50,
+  "duration_seconds": 0,
+  "sold_at": "2026-11-02T23:40:00Z"
+}</code></pre>
+<p>Violates the units discipline — integer minor units, <code>currency</code> REQUIRED on every price-bearing fact (core <code>$defs/currency</code>; §4 <code>post</code> requires <code>currency</code> alongside <code>price_cents</code>) — and the bounds rules (<code>winning_price_cents</code> MUST be an integer &gt; 0). The reference network's decimal-dollar price field is the migration trap this exists to refuse: minor units only, per-pair currency explicit, NEVER a bare float. Also measured <code>PASS</code> under both trees for the same honest reason as A-1 (open <code>details</code>); ingest MUST rejects.</p>
+<h3 id="invalid-example-a-3--final_pricing-to-a-v10-only-platform">Invalid example A-3 — <code>FINAL_PRICING</code> to a v1.0-only platform</h3>
+<p><code>GET /v1/lcp/capabilities</code> returns <code>"lcp_versions": ["1.0.0"]</code> and no <code>FINAL_PRICING</code> in <code>events</code>, yet <code>pub_123</code> submits the valid example above anyway. The event's shape passes the receiver's schema (the value is an open enum) — but the platform has no price-report store, so the report degrades to store-and-pass-through with zero analytics effect; worse, a platform that added <code>FINAL_PRICING</code> to its status-transition map would move the lead's lifecycle on a price report, which this LEP forbids. The §8 capability gate exists to keep reports from landing in silence; violating it is a publisher-conformance failure (same invalid-D class as LEP-0003).</p>
+<h3 id="invalid-example-b-1--un-namespaced-key-questions">Invalid example B-1 — un-namespaced key <code>"questions"</code></h3>
+<pre class="code-block"><code class="language-json">"extensions": { "questions": [ { "question_text": "…", "answer_text": "…" } ] }</code></pre>
+<p><code>REJ</code> under the overlay: <code>'questions' does not match '^[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*){2,}$'</code> — extension keys must be <code>{org}.{division}.{purpose}</code> namespaced (<code>lcp.core.*</code> also forbidden; measured: <code>"lcp.core.form_questions"</code> <code>REJ</code>). Registration stays self-service but name-collision-free by construction; the wire enforces the registry's format and rejection grounds (<code>governance/EXTENSION-REGISTRY.md</code>).</p>
+<h3 id="invalid-example-b-2--contact-identifiers-in-answer_text">Invalid example B-2 — contact identifiers in <code>answer_text</code></h3>
+<pre class="code-block"><code class="language-json">"extensions": {
+  "acme.form.questions": [
+    {
+      "question_id": "callback",
+      "question_text": "Best number and address for the crew?",
+      "answer_text": "Call Jane at 0412 345 678, 12 Smith St, Sydney NSW 2000"
+    }
+  ]
+}</code></pre>
+<p>Schema-validates (measured <code>PASS</code> under the overlay — the open value space cannot police free text, stated boundary B.1) but violates this record's publisher MUST (B.3.4): phone number, street address, and consumer-name duplication invisible to hash-keyed suppression/erasure flows. A conformant publisher routes those facts into <code>consumer</code> / <code>location</code> (already present on this very lead — the answer is a stale duplicate by construction) and either drops the question or rewrites the answer ("side gate access preferred"). A platform running the B.3.4 MAY-redaction delivers <code>Call Jane at [REDACTED], [REDACTED], Sydney NSW 2000</code>-style output with a logged redaction event; a reject-policy platform refuses the lead (<code>LCP-100</code>, <code>field: extensions.acme.form.questions[0].answer_text</code>). This is the negative example the privacy review centers on: the guardrail is normative text</p>
+<ul>
+<li>receiver behavior, exactly as <code>free_text</code> already works inside the</li>
+</ul>
+<p>vertical today (<code>verticals/home_services.json:103</code>, <code>ping_safe: false</code>).</p>
+<h3 id="invalid-example-b-3--extensions-on-a-ping">Invalid example B-3 — <code>extensions</code> on a ping</h3>
+<pre class="code-block"><code class="language-json">"extensions": { "acme.form.questions": [ "…" ] }</code></pre>
+<p>appended to the repository's <code>examples/ping.json</code>. <code>REJ</code> under <strong>both</strong> the published tree and the overlay (<code>Additional properties are not allowed ('extensions' was unexpected)</code>, <code>schemas/ping.json:206</code>) — because Track B deliberately does not touch the ping allowlist. The roadmap's "never ping_safe" guardrail is structural, not advisory. Corollary (B.3.2): deriving a ping field <em>from</em> extension content is equally refused by the existing <code>ping_safe</code> runner (<code>LCP-008</code>).</p>
+<h3 id="invalid-example-b-4--over-bound-registered-shape">Invalid example B-4 — over-bound registered shape</h3>
+<p>A 40-entry <code>acme.form.questions</code> array with 1200-character answers (the kind of shape a legacy <code>questions[]</code> blob arrives with). Measured <code>PASS</code> even under the overlay — core schemas do not validate namespaced values (B.1 boundary, stated twice). The registered shape makes it a receiver-conformance failure for orgs advertising <code>form.questions</code> support: they MUST <code>REJ</code> per B.2. Deployments wanting schema-enforced bound validation for registered shapes is Deferred question D3 with its trigger.</p>
+<h3 id="validation-runs-executed-2026-11-03">Validation runs (executed 2026-11-03)</h3>
+<p>Every example in this section was run through the reference platform's own <code>SchemaValidator</code> (<code>lcp_platform.validation.SchemaValidator</code>, <code>jsonschema 4.26.0</code>) against the <strong>published</strong> tree (run at <code>5d6000d</code>; re-executed after this lane's rebase onto the PR base <code>ace8861</code> with byte-identical results — the ten commits between the two bases touch no schema or vertical file (<code>git diff --stat</code> on <code>schemas/</code> and <code>verticals/</code> is empty across the range)) and a <strong>draft overlay</strong> carrying exactly the B.1 <code>extensions</code> object on <code>lead.json</code>/<code>post.json</code> (Track A needs no overlay — that is its claim). Full commands, outputs, and the byte-exact example files are recorded on the draft PR. Results:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Case</th>
+<th>Published tree</th>
+<th>Draft overlay</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A-valid</td>
+<td><code>FINAL_PRICING</code> event</td>
+<td><strong>PASS</strong> (zero-schema route proven)</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>A-invalid-I</td>
+<td>plaintext phone in <code>details</code></td>
+<td>PASS — open <code>details</code> cannot catch (ingest MUST governs)</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>A-invalid-II</td>
+<td>float price, missing currency</td>
+<td>PASS — same boundary (units rule governs)</td>
+<td>PASS</td>
+</tr>
+<tr>
+<td>B-valid-1</td>
+<td>lead + <code>extensions</code> (<code>lcp.platform.claim_language</code>, <code>acme.form.questions</code>)</td>
+<td><strong>REJ</strong> — <code>Additional properties are not allowed ('extensions' was unexpected)</code> at (root): the matcher/schema contradiction of the Problem section, measured</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td>B-valid-2</td>
+<td>post + <code>extensions</code></td>
+<td><strong>REJ</strong> (same rule; the v1.0 receiver boundary the capability gate defends)</td>
+<td><strong>PASS</strong></td>
+</tr>
+<tr>
+<td>B-invalid-I</td>
+<td>un-namespaced key <code>"questions"</code></td>
+<td>REJ</td>
+<td><strong>REJ</strong> — <code>propertyNames</code> pattern</td>
+</tr>
+<tr>
+<td>B-invalid-II</td>
+<td><code>"lcp.core.form_questions"</code></td>
+<td>REJ</td>
+<td><strong>REJ</strong> — <code>lcp.core.*</code> forbidden</td>
+</tr>
+<tr>
+<td>B-invalid-III</td>
+<td><code>extensions</code> on a ping</td>
+<td>REJ</td>
+<td><strong>REJ</strong> — ping allowlist untouched (structural never-ping_safe)</td>
+</tr>
+<tr>
+<td>B-invalid-IV</td>
+<td>contact identifiers in <code>answer_text</code></td>
+<td>REJ</td>
+<td>PASS — stated boundary; publisher MUST + receiver rules (B.3.4)</td>
+</tr>
+<tr>
+<td>B-invalid-V</td>
+<td>40-entry / 1200-char <code>form.questions</code></td>
+<td>REJ</td>
+<td>PASS — stated boundary; registered-shape receiver rejection (B.2)</td>
+</tr>
+</tbody>
+</table>
+<p>The PASS rows under "invalid" headings are not mistakes: they are the honest measurement of what the open surfaces (<code>event.details</code>, namespaced extension values) cannot enforce in schema, mirroring LEP-0003 §4's "the report rule cannot be drafted; state what it is instead" discipline — every such row has the matching normative receiver rule and named implementation-phase test in the impact section.</p>
+<p>The two overlay-only headings deliberately read <code>### Valid lead/post example (overlay)</code>, not <code>### Valid example …</code>: the T1 gate (<code>tools/tests/test_lep_wire_examples.py</code>) validates every <code>### Valid example</code> block against the <strong>published</strong> tree — where Track B examples must (and do) fail — so the battery above, not that gate, is their recorded status; the Track A heading keeps the T1 form because its envelope passes the published tree unmodified, which is the claim being asserted.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>Track A — privacy.</strong> No consumer data on the wire: <code>event</code> is a non-PII message class (SPEC.md §4 table), the report is keyed by <code>lead_id</code> + <code>details.ping_id</code> only, and PII-shaped <code>details</code> values are ingest rejections (A-1; the receiver rule that the open schema cannot express). The report references only parties who already know the ping happened (the publisher and the platform). Commercial-sensitivity note: a winning price from a third-party network is the publisher's data to share and the platform's to hold — retention follows the §9 PII policy already applied to lifecycle events; a deployment MAY scope reports to the analytics store's own retention.</p>
+<p><strong>Track A — security/abuse.</strong> Forged or poisoned price reports are the abuse axis: blast radius is bid-refinement analytics, never settlement (the settlement-neutrality MUSTs), under the authenticated-sender attestation model (<code>event:submit</code> scope + HMAC per SPEC.md §9) — the same "unverifiable-by-design" honesty LEP-0003 recorded for contact reports. Bounds (integer minor units, ≤ 10^8, <code>duration_seconds</code> ≤ 86400, required ISO-4217) refuse typo/fuzz payloads; correction chains are keyed, monotone-expire, and auditable (<code>router.py:1260-1283</code> event dedup unchanged). Replay: same-id collapse + <code>LCP-005</code> id-reuse rejection, inherited mechanisms. Rate limits apply per §9.</p>
+<p><strong>Track B — privacy.</strong> The extension rides the existing full-PII delivery channel (post) under unchanged §9 transport/auth/retention; the delta risk is unstructured duplication of contact data — analyzed with its three axes (lifecycle-key evasion, retention scope, egress volume) and its mitigations (publisher scrub MUST, deterministic platform redaction/truncation MAY with per-lead logging, shape+size bounds, erasure purge-scope statement, credential/token ban) in B.3.4. The never-ping_safe guardrail is structural (B.3.1, measured). No new recipient class, no new transport, no hash-preimage change (per-pair hashing discipline untouched; this LEP ships no new hash semantics). Per LEP.md, a decision on this track requires the named human security/privacy reviewer or the ARB-Security co-sign; agent/ARB lanes certify spec consistency, not privacy fitness — the D7 DLP MUST-vs-MAY question is explicitly routed to that reviewer rather than assumed settled.</p>
+<p><strong>Track B — security/abuse.</strong> The DoS story is B.2's three-tier bound with the arithmetic stated there (post-dossier revision, #185 F1): shape bounds cap the worst-case shape-legal registered block at 133,140 bytes (measured plants: 35,640 B ASCII / 133,140 B UTF-8 worst — <code>REJ</code> on the published tree, <code>PASS</code> under the overlay); the 32 KiB SHOULD is a receiver policy target, not a schema ceiling; and values under unrecognized namespaces are schema-unbounded (1 MB plant <code>PASS</code>), so the operative hard bound is the transport body cap — default 2,000,000 bytes (<code>config.py:37</code>, enforced pre-parse at <code>service.py:103-105</code>; measured <code>LCP-001</code> 413 at 2,102,518 B in the Revision battery). The <code>propertyNames</code> pattern refuses misleading un-namespaced and <code>lcp.core.*</code>-claimed keys at the schema boundary (measured); value-content policing is receiver behavior against the registered shape (stated boundary, tests named). <code>offer_extensions.py</code> precedent applies to matching only: implementations MUST NOT execute extension values as code (the offer surface's own <code>description</code> rule — <code>schemas/offer.json:250</code> — extends to lead/post <code>extensions</code> by this record: values are data, no predicate or expression semantics; pointer fixed post-dossier, #185 F3 — the rule was never in a <code>$comment</code>).</p>
+<p><strong>Universal-core audit (SPEC.md §12), per item on the delta:</strong></p>
+<ul>
+<li>No vertical-specific or market-specific fields in core — Track B's field is shape-neutral (<code>extensions</code>, namespaced keys, values deployment-defined); <code>form.questions</code> carries whatever a form asked, not vertical semantics; Track A adds no field at all.</li>
+<li>No market-specific fields including named <code>compliance</code> sub-fields: untouched; consent questions that arrive as answers route to <code>consent_evidence[]</code> (B.3.4 credential/evidence ban).</li>
+<li>Consumer name-splitting / gender / phone / call / agent items: not touched (no <code>consumer</code> or vertical changes).</li>
+<li>Ping strict-allowlist: unchanged and load-bearing (B-invalid-III).</li>
+<li><code>ping_safe</code> tagging and reserved-core-name rules: no vertical edits; <code>tools/check_reserved_fields.py</code> still green (the new payload field name <code>extensions</code> exists nowhere in <code>core.json</code>'s derived reserved set — checker run recorded on this PR).</li>
+<li>Status transition table, capabilities shape, open/closed enum policy: unchanged; Track A rides the already-open <code>event</code> row of §6.</li>
+<li>Legacy production wire contract fields map 1:1 into LCP: the roadmap comparison's <code>final_pricing</code> and <code>questions[]</code> shapes map to Track A details and Track B entries respectively (migration table in the rollout section) — which is the §12 migration story this LEP completes for Phase 6's second and third findings.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Additive MINOR to v1.1.0</strong> (SPEC.md §6): one new documented known value on an open enum + recommended <code>details</code> guidance (Track A); one new optional field each on <code>lead.json</code> and <code>post.json</code> (Track B). No renames, no removals, no semantic change to any existing field; the closed <code>message.type</code> enum (spec/04-errors.md:27) is untouched — this LEP adds <strong>zero new message types</strong>, so the LEP.md two-adopters/necessity gate for new universal message types is never engaged.</li>
+<li><strong>v1.0 bit-compatibility:</strong> <code>extensions</code> absent = identical v1.0 validation and routing (Track B); <code>FINAL_PRICING</code> unknown = stored and passed through by any §6-conformant receiver, and never triggers a status transition (<code>router.py:74-82</code> unchanged; §3 transition table, spec/03-payloads.md:184).</li>
+<li><strong>Capability-gated directionality (normative):</strong> Track A gated on the receiver's <code>events</code> advertisement + parsed <code>lcp_versions</code> ≥ 1.1 (§8); Track B gated on parsed <code>lcp_versions</code> ≥ 1.1 in the <strong>sending direction toward a closed-object receiver</strong> — the §6 closed-object rule means an unvalidated v1.0 receiver breaks, and the measured <code>REJ</code> (valid example B, published tree) is the boundary the gate defends. Both gates reuse the LEP-0003 F6/T10 membership rule verbatim; no new matching mechanics.</li>
+<li><strong>Simplicity budget (AGENTS.md rule 2):</strong> Track A adds one documented vocabulary entry and a six-field recommended table — same footprint as the <code>CONVERTED</code> guidance it mirrors. Track B adds one field whose <em>concept</em> SPEC.md §6/§3 and <code>governance/EXTENSION-REGISTRY.md</code> already document platform-wide; the change deletes an inconsistency (the protocol's stated extension mechanism had no lead/post surface). Core remains comprehensible in two documents.</li>
+<li><strong>Universal audit (SPEC.md §12):</strong> executed item-by-item in the Privacy, security, and universal-core audit section above; no core field names shadowed, no ping allowlist change, no enum-policy change.</li>
+<li><strong>Deprecation:</strong> none introduced; N+2/2-year windows untouched.</li>
+<li><strong>Rollback safety:</strong> stop sending → every receiver reverts to its pre-LEP behavior bit-for-bit (both tracks are sender-side opt-ins).</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<p>Change-gated at implementation per LEP.md traceability (Draft authorizes none of it). Per-surface impact:</p>
+<ul>
+<li><strong>Schemas.</strong> Track A: none (<code>event.json</code> unchanged — zero-schema claim, verified). Track B: <code>schemas/lead.json</code> + <code>schemas/post.json</code> gain the B.1 object; regenerated Draft 2020-12 bundles and SHA-256 manifests per AGENTS.md rule 6 — the SDK-sync gate (<code>tools/check_sdk_schema_sync.py</code>) then REQUIRES every shipped SDK's generated typed models, runtime bundle, and manifest to be regenerated together (<code>implementations/sdk/</code>: csharp, go, java, kotlin, php, python, ruby, rust, swift, typescript — all derive from these schemas; nothing may be hand-patched around the gate).</li>
+<li><strong>OpenAPI.</strong> <code>api/lcp-openapi.yaml</code>: the <code>/events</code> endpoint and <code>submitEvent</code> operation (api/lcp-openapi.yaml:175-180) are unchanged for Track A (event <code>details</code> is already an open object; the capabilities <code>events</code> array schema (:327, :835) needs no change — contents, not contract). Track B: lead/post request bodies gain <code>extensions</code> alongside the schema change.</li>
+<li><strong>MCP.</strong> The adapter exposes seven tools (<code>submit_lead</code>, <code>submit_call</code>, <code>query_lead_status</code>, <code>get_schema</code>, <code>get_capabilities</code>, <code>list_offers</code>, <code>submit_bid</code> — <code>implementations/mcp-server/lcp_mcp_server/server.py:80-160</code>); there is <strong>no event-submission tool</strong>, so Track A is REST-only until an <code>submit_event</code> MCP tool lands (tracked as its own gap — MCP parity, not a Track A blocker). Track B's <code>submit_lead</code> tool needs no schema change until the lead schema lands; then the adapter's schema loader passes the extension object through transparently.</li>
+<li><p><strong>Reference platform (implementation-phase obligations, named):</strong></p>
+<ul>
+<li>Track A: add <code>FINAL_PRICING</code> to <code>_PUBLISHER_EVENT_TYPES</code> (<code>router.py:107-112</code>) gated on v1.1; advertise it in <code>capabilities().events</code> (<code>router.py:1749-1763</code>); price-report ingest (bounds + supersedes chain + PII rejection per A-1, landed as the §4 class test named under Conformance impact — #198, not a <code>FINAL_PRICING</code> special case); store reports; MUST NOT touch <code>_EVENT_STATUS_TARGETS</code> (<code>router.py:74-82</code>).</li>
+<li>Track B: accept <code>extensions</code> on lead intake, carry it in delivery posts, apply configured redaction policy with per-lead logging, include extension bytes in erasure purge scope (B.3.4).</li>
+</ul></li>
+<li><strong>Conformance vectors / test vectors.</strong> Track A: accept vector (<code>event-final-pricing.json</code>) added to <code>test-vectors/</code> (L2/L3) and the SDK validation corpus (<code>test-vectors/sdk/validation-corpus.json</code>); no <em>schema</em> negative is expressible (open <code>details</code>) — the runner's open-object boundary is recorded honestly (LEP-0003 O3 precedent: "ship real tests, not fake vectors"), so A-1/A-2 land as <strong>platform ingest tests</strong> (<code>plat: test_final_pricing_rejects_pii_report</code>, <code>plat: test_final_pricing_bounds_reject</code>, <code>plat: test_final_pricing_supersedes_by_timestamp</code>) rather than schema vectors, plus a capability-gate test (<code>plat: test_publisher_final_pricing_accepted_and_advertised</code> — scoped-publisher credential path, mirroring T6), and the <strong>generalized class test</strong> <code>plat: test_event_details_pii_reject</code> — deterministic; asserts plaintext phone/email-shaped <code>details</code> values are ingest-rejected for <strong>every</strong> publisher-reportable event name under the SPEC.md §4 class rule, not <code>FINAL_PRICING</code>-specifically (ARB-Security F2 / <a href="https://github.com/SpearSystems/LCP/issues/198" rel="noopener">#198</a>). #198 is pre-existing shipped v1.0 behavior — measured at the dossier head: a <code>CONSENT_WITHDRAWN</code> report with a plaintext phone in <code>details</code> is accepted and persisted (<code>RECEIVED</code>, plaintext in the stored envelope; <code>router.py:1284-1285</code> runs the ingest validator only for <code>CONTACTED</code>, <code>_validate_contact_report</code> at <code>router.py:1160</code>) — so this record names the obligation for the Track A implementation PR (generalize the validator, or an explicit tracked waiver) and authorizes no fix of it here. Track B: lead/post <code>extensions</code> accept vectors in the SDK validation corpus (<code>test-vectors/sdk/validation-corpus.json</code>, same entry form <code>test-vectors/sdk/contact-hash.json</code> shipped for LEP-0003); negatives <code>lcp-neg-extensions-unnamespaced-001</code>, <code>lcp-neg-extensions-lcpcore-001</code> (B-1), <code>lcp-neg-extensions-on-ping-001</code> (B-3); published-tree cross-checks (B-2/B-4 recorded as runner behavior tests, not schema vectors). Docs/SPEC-COVERAGE rows follow at implementation.</li>
+<li><strong>Observability:</strong> counters + audit events named in the rollout section (report volume/malformed-reject/PII-reject; extension redaction events with per-lead log lines).</li>
+<li><strong>SDKs:</strong> Track B adds optional <code>extensions</code> to the generated lead/post model classes; Track A needs none (<code>details</code> is a free map in every generated SDK today — verify at implementation; the <code>event</code> model is unchanged).</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>Track A:</strong></p>
+<ul>
+<li><em>LEP-carried payload change (a <code>final_pricing</code> field on an existing message or a new report message).</em> Rejected for Track A on the roadmap's own analysis axes: no existing closed message is the natural carrier (a field on <code>post</code> would invert the direction — <code>post</code> is platform→buyer), and a new message type fails the LEP.md two-adopters/necessity decision rule with an open-enum surface already purpose-built for lifecycle-value facts (<code>CONVERTED</code> precedent, §3/§4). The zero-schema route lands the mechanism with zero v1.0 compatibility surface: the value passes through unhandled rather than hard-failing. The payload <code>extensions</code> surface this Draft adds for Track B would <em>also</em> have worked post-Track-B — but Track A's independence (it needs nothing Track B adds) keeps the tracks decidable in either order, which is the point of the separation rule.</li>
+<li><em>Namespaced event value instead of a documented known value</em> (<code>acme.marketplace.final_pricing</code> as the <code>event</code> string itself). Rejected: a universal lifecycle vocabulary is what makes the signal readable across publisher→platform pairs without org-by-org vocabulary discovery, and §6 explicitly prices that as a MINOR on the open enum; the roadmap's extension name is preserved <em>inside</em> the details (where deployment specifics belong).</li>
+<li><em>Putting the price into <code>post.pricing</code> (extending the settlement block).</em> Rejected — direct roadmap conflict-clause violation: the auction price and an attested external price are different facts with different authority; co-locating them would let an unverifiable attestation touch billing.</li>
+<li><em>Keeping final-pricing deployment-specific (no LEP).</em> Available until acceptance and legitimate as a private route (registry is open), but rejected as the destination: the mechanism's value is cross-platform bid refinement, which vendor vocabularies cannot standardize; the roadmap lists it for adoption ("the mechanism, not the implementation details").</li>
+</ul>
+<p><strong>Track B:</strong></p>
+<ul>
+<li><em>Event-channel for questions (zero payload change).</em> Rejected on delivery semantics: questions are part of the delivered lead content; a post must be self-contained. Replaying questions as post-delivery events adds ordering (buyer must join two surfaces before working the lead), completeness (a dropped event is silently missing job context), and a second ingest path for the same data — the "partial delivery" class LCP's post design avoids. Also rejected on precedent: <code>lead</code>/ <code>call</code> carry content blocks directly; events carry notifications.</li>
+<li><em>Vertical <code>attributes</code> home (extend <code>home_services</code> etc.).</em> Rejected by design constraint and by the vertical's own text (<code>home_services.json:5</code>): the controlled taxonomy is the matching substrate; unbounded per-brand question keys would break the taxonomy and re-open the §12/§3 reserved-name and <code>ping_safe</code> audit surface with every campaign.</li>
+<li><em>Lean on <code>free_text</code> (<code>home_services.json:103</code>) alone.</em> Rejected: structure-free single string loses question/answer pairing and defeats the shape bounds + receiver validation this LEP defines; it remains available as today's informal practice, which the roadmap asks to replace with an "approved post-only extension."</li>
+<li><em><code>extensions</code> on every message type at once (lead/post/call/event/ack).</em> Rejected as scope pressure: <code>ping</code>/<code>bid</code>/<code>ack</code> must stay closed (firewall/response-minimalism); <code>call</code> lacks adopter evidence (Deferred question D1); <code>event.details</code> is already open (no field needed).</li>
+<li><em>Keeping questions deployment-specific (status quo + source archive).</em> Rejected with evidence: the source archive helps nobody at delivery time, and the matcher/schema contradiction (Problem section) means a deployment-private extension is <em>illegal on the published schemas today</em> — the status quo is not a neutral option, it is a broken one.</li>
+</ul>
+<p><strong>Both tracks:</strong> the umbrella was kept to one LEP because LEP.md allows umbrella discussions sharing the migration story while mandating independent decidability; splitting into two numbers was considered and would be acceptable — the maintainers may renumber at Review without restarting the discussion if the ARB prefers that.</p>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<p>Per-track, implementation gated on that track's acceptance:</p>
+<ol>
+<li><strong>Track A first step is prose-only:</strong> SPEC §4 guidance table + §6 known-value + the registry row, landing in the wire-docs PR; the platform PR adds <code>_PUBLISHER_EVENT_TYPES</code>, advertisement, ingest, and the named tests. Publishers adopt when their platform advertises.</li>
+<li><strong>Track B order:</strong> schemas + examples + vectors in one wire PR (the overlay in this record becomes the diff verbatim — validated); generated bundles + manifests + SDK regen (check_sdk_schema_sync gate); platform passthrough + redaction policy + erasure coverage; SPEC §3/§4/§6 extension-location text (<code>payload.extensions</code> gains its documented message list); then publishers/buyers gate on capability.</li>
+<li><strong>Migration mapping for legacy adopters</strong> (the roadmap's migration story): legacy <code>final_pricing</code> winning-amount → <code>winning_price_cents</code> (multiply decimals by minor-unit factor, NEVER copy floats; the reference network's <code>$</code> decimal shape is invalid example A-2 by construction); call-sale <code>duration</code> → <code>duration_seconds</code>; network sale id → <code>external_reference</code>; per-campaign <code>questions[]</code> → <code>acme.form.questions</code> entries (truncation + scrub MUST run during import, not after — legacy blobs exceed the bounds; B-4 is the shape such imports produce unscrubbed).</li>
+<li><strong>Observability:</strong> counters <code>lcp_final_pricing_reports_total</code> (labels: scope, disposition ∈ {stored, superseded, rejected_malformed, rejected_pii}); <code>lcp_redaction_events_total</code> (label: policy ∈ {reject, redact}); malformed/PII reports MUST be logged and counted but never stored as reports (they enter the audit trail only).</li>
+<li><strong>Rollback:</strong> stop sending (both tracks are sender-side opt-ins); platform feature-flag the <code>FINAL_PRICING</code> ingestion and the <code>extensions</code> intake surface; no data migration either direction; the capability advertisement (<code>events</code> list, <code>lcp_versions</code>) is the kill switch at the §8 boundary.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>D1 — <code>call</code> payload <code>extensions</code>.</strong> Telephony intake has question/answer analogues (IVR keys, agent-asked questions; <code>schemas/call.json:148</code> already says "platform-specific IVR data goes in extensions" while <code>call.json</code> ships no <code>extensions</code> field — the same promised-destination gap as Track B). <strong>Trigger:</strong> two independent adopters migrating call-center Q&amp;A, or an IVR attestation requirement; then add <code>call</code> to the B.1 surface (a pure copy of the object, no new shape).</li>
+<li><strong>D2 — Multi-currency price reports.</strong> <code>winning_price_cents</code> is an integer in a REQUIRED <code>currency</code>; cross-currency comparison is the roadmap's deferred "Multi-currency auction semantics" item. <strong>Trigger:</strong> any auction where bids and final-pricing reports can be denominated differently (a platform operating two currencies); until then reports MUST use the auction currency when <code>sale_scope</code> is <code>internal_auction</code> and publishers SHOULD report the currency the external sale settled in (no FX guessing in the platform).</li>
+<li><strong>D3 — Schema-enforceable validation of registered shapes.</strong> Today namespaced values are validated only by receiver conformance to the registry spec (B.2; B-4 is <code>PASS</code> in the schema by design). <strong>Trigger:</strong> a third registered shape with bounds worth a shared mechanism (a <code>$defs</code> + registry-metadata scheme), or one incident of over-bound delivery causing harm.</li>
+<li><strong>D4 — Signed external-sale proof.</strong> <code>FINAL_PRICING</code> is attestation-grade (trust model); signed third-party proofs (e.g. a network-issued sale receipt) are out of scope. <strong>Trigger:</strong> adopters paying real money on these signals or dispute flows demanding proof.</li>
+<li><strong>D5 — Payable/dispute interaction.</strong> A report revealing a higher external price could tempt refund claims on lower auction prices. Settlement neutrality (Track A MUSTs) says no today; a market that wants price-guarantee clauses needs a commercial policy, not a wire change. <strong>Trigger:</strong> two independent adopters' contracts asserting such claims.</li>
+<li><strong>D6 — Per-namespace capability advertisement.</strong> §8 <code>events</code> is a list of event values; there is no "extensions supported / which namespaces policy applies" surface (redaction policy varies by platform). <strong>Trigger:</strong> interop friction when one platform redacts and another rejects.</li>
+<li><strong>D7 — DLP MUST vs MAY (B.3.4): DECIDED 2026-11-03 (maintainer).</strong> The platform side stays <strong>MAY</strong> (best-effort), with the publisher MUST governing. Rationale: the shipped implementation already rejects <em>deterministically detectable</em> contact shapes at lead ingest (LCP-100, nothing stored) and redacts them at post emission with a per-lead audit row; non-contact shapes named by this question (street address, government identifier, payment credential, consent token/evidence) have no deterministic detector, so elevating the platform side to a universal MUST would require a DLP dependency and would make delivery availability depend on an unverifiable classifier — the tradeoff this question flagged. Structured homes for those values (core <code>consumer</code>/ <code>location</code>/<code>compliance</code> fields) remain the conformant route. <strong>Revisit trigger:</strong> an adopter requires platform-enforced non-contact PII detection, or a maintained DLP dependency becomes acceptable to the project — either reopens this as a Review item.</li>
+</ul>
+<h2 id="revision-2026-11-03-post-dossier">Revision 2026-11-03 (post-dossier)</h2>
+<p>Record-only revision resolving the ARB L-Security dossier on <a href="https://github.com/SpearSystems/LCP/issues/185" rel="noopener">#185</a> (tracked findings <a href="https://github.com/SpearSystems/LCP/issues/197" rel="noopener">#197</a>, <a href="https://github.com/SpearSystems/LCP/issues/198" rel="noopener">#198</a>, <a href="https://github.com/SpearSystems/LCP/issues/199" rel="noopener">#199</a>), reviewed at SHA <code>49e84794ae61ef8c50ff0269460ff2b39905f0e0</code> and re-validated on this PR's base <code>origin/main</code> = <code>052970226f90cef220ea31f98946736f8fbaf563</code> (#207). <strong>Status stays Draft</strong>: no implementation is authorized; every <code>plat:</code> test named in this revision belongs to the implementation PR (G5), not to this record. <code>governance/LEP-REGISTRY.md</code>, the coverage matrix, and the CHANGELOG are untouched; the only edit outside this record is the one-sentence status definition in <code>governance/EXTENSION-REGISTRY.md</code> Registration section (lines 33–39, F3-2) — no registry row, <code>Since</code> value, or status is touched.</p>
+<h3 id="why-the-code-citations-moved-re-pin">Why the code citations moved (re-pin)</h3>
+<p>The dossier head is an ancestor of this base; <code>8ec93dc</code> (§5 intake error codings) and its pinning test landed after the draft's anchors were verified, moving <code>router.py</code> by ~100 lines. Every <code>router.py</code> anchor was re-pinned against this base and re-executed: <code>67-75</code>→<code>74-82</code> (<code>_EVENT_STATUS_TARGETS</code>, still seven entries), <code>76-81</code>→<code>107-112</code> (<code>_PUBLISHER_EVENT_TYPES</code>, still the same four), <code>1219-1226</code>→<code>1250-1258</code> (<code>LCP-002</code> sender gate), <code>1229-1252</code>→<code>1260-1283</code> (event dedup / <code>LCP-005</code>), <code>1699-1730</code>→<code>1730-1763</code> (capabilities advertisement), <code>1705</code>→<code>1738</code> (<code>lcp_versions</code>, now read from <code>SUPPORTED_LCP_VERSIONS</code>, <code>validation.py:23</code> — values still <code>("1.0.0", "1.1.0")</code>, thirteen events advertised), <code>1716-1730</code>→<code>1749-1763</code> (the events list). No other cited surface moved: <code>git diff --stat 49e8479..0529702</code> over the cited files touches only <code>router.py</code>, <code>validation.py</code>, <code>schemas/core.json</code> (no line-citations into it from this record), and <code>test-vectors/l1-envelope.json</code> (not cited by this record).</p>
+<h3 id="findings--edits">Findings → edits</h3>
+<table>
+<thead>
+<tr>
+<th>Dossier item</th>
+<th>Disposition in record</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F1 (#197)</strong> — shape-legal worst case (35,640 B ASCII / 133,140 B UTF-8) collides with the 32 KiB SHOULD; unrecognized-namespace values schema-unbounded; transport cap unstated</td>
+<td>B.2's total-bound bullet (331–361) rewritten as the three-tier bound with the arithmetic shown in-record and the re-tune explicitly routed: shape ceiling <strong>133,140 B</strong> (decomposition <code>25 × (4·1300 + 64) + 1,540</code> structural+serialization bytes, default JSON separators — matches the measured plant below), 32 KiB = <strong>soft policy target</strong> stated honestly (a receiver hard-rejecting there rejects shape-legal messages), operative <strong>hard bound = transport body cap</strong> (<code>max_body_bytes</code> default 2,000,000; <code>config.py:37</code>, <code>service.py:103-105</code>; live <code>LCP-001</code> 413 measured at 2,102,518 B). B.3.4 "Egress/abuse volume" (412–419) and the Track B security/abuse paragraph (988–1007) restated to the same hierarchy. Framing chosen: transport-as-hard-bound with the SHOULD re-worded as a soft target and the computed worst case shown (disposition option 2). The alternative framing — lowering per-field caps so the worst case fits 32 KiB — is recorded as the Review re-tune decision in #197 rather than silently taken here: the B.1/B.2 fences carry committed plant digests, Track B is unimplemented, and the numbers are a Review item alongside D7 (the record's own routing). No schema-object text changed; both trees re-run: <code>REJ</code> published / <code>PASS</code> overlay for the worst-case shape (X-maxshape) and the 1 MB unknown-namespace blob (X-1mb).</td>
+</tr>
+<tr>
+<td><strong>F2 (#198)</strong> — plaintext-phone <code>CONSENT_WITHDRAWN</code> accepted and persisted today (pre-existing shipped v1.0 behavior)</td>
+<td>No record-side fix — the gap predates and outranks this record; nothing outside these two files' text was touched. Track A's named implementation-phase obligations gained the generalized class test <code>plat: test_event_details_pii_reject</code> (Conformance impact, 1121–1134): plaintext phone/email-shaped <code>details</code> values ingest-rejected for <strong>every</strong> publisher-reportable event name under the SPEC §4 class rule, with the honest cross-ref to #198 and the measured call-site fact (<code>router.py:1284-1285</code> validates only <code>CONTACTED</code>; <code>_validate_contact_report</code> def at <code>router.py:1160</code>). The Reference-platform obligations bullet (1098–1104) points at it — "not a <code>FINAL_PRICING</code> special case". The record authorizes the implementation PR to generalize the validator or land an explicit tracked waiver; F2 stays open on the #185 disposition checklist until that PR lands.</td>
+</tr>
+<tr>
+<td><strong>F3 (#199)</strong></td>
+<td>(1) SPEC §4 misattribution fixed at both sites — PII-discipline bullet (214–223) and invalid example A-1 (790–791): the <code>event</code> row reads <code>None</code> (<code>spec/02-envelope.md:48</code>); "(hashes only)" is the <code>ping</code> row (<code>spec/02-envelope.md:44</code>). (2) <code>governance/EXTENSION-REGISTRY.md</code> Registration section defines <strong>proposed-on-acceptance</strong> (33–39): rows land pre-decision with the Draft for name visibility/reservation, carry <code>proposed (LEP-NNNN)</code> in <strong>Since</strong> instead of a version, are not live until the named LEP track is accepted, and registry rows never mark acceptance themselves — decisions live in <code>governance/LEP-REGISTRY.md</code>. (3) values-are-data pointer fixed by measurement: the rule sits in <code>schemas/offer.json:250</code> <code>description</code>, never in a <code>$comment</code> (Track B security/abuse paragraph, 988–1007).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="battery-re-run-executed-2026-11-03-post-edit">Battery re-run (executed 2026-11-03, post-edit)</h3>
+<p>Environment: repo <code>.venv</code> (Python 3.12.12, <code>jsonschema 4.26.0</code>) — identical harness version to the dossier. The dossier's consolidated harness (fence extraction → B.1 overlay → 14-row battery) re-executed against the edited record reproduced every verdict verbatim: schema trees and all committed fences untouched (<code>json blocks found: 9</code>; the five committed fence digests identical pre- and post-edit; the max-shape serialization digest matches the dossier's plant P14, <code>84d2f2990f049ab7…</code>). The adversarial plants re-ran: size math (F1's arithmetic, both serialization trees), the C11 leak sweep over all twelve example envelopes (only <code>lead</code>/<code>post</code> pass under the overlay — never-ping_safe remains structural), the C12 projection probes on the <code>home_services</code> vertical (<code>free_text</code> slot and enum slot both refused; a valid control ping passes — probe sanity added this run), and the live-router C5–C8 sequence verbatim. New measurement for the F1 framing: the transport-cap probe — <code>PlatformService.dispatch</code> rejects a 2,102,518-byte lead body with <code>LCP-001</code> 413 before any schema validation, proving the operative hard ceiling; the 133,140-byte shape-legal worst case and the 1 MB unknown-namespace blob both still <code>PASS</code> the overlay. Transcript (record state pre-append of this section: <code>2cc07cc46ecd9798…</code>; <code>jsonschema 4.26.0</code>):</p>
+<pre class="code-block"><code class="language-text">record sha256: 2cc07cc46ecd9798
+json blocks found: 9
+fence 'Valid example — Track A'                8688effd
+fence 'Valid lead example'                     776eb04f
+fence 'Valid post example'                     d5565398
+fence 'Track B — `extensions`'                 11979e09
+fence 'Invalid example B-3'                    3489ddc2
+A-valid    pub:PASS | ovl:PASS
+A-inv-1    pub:PASS | ovl:PASS
+A-inv-2    pub:PASS | ovl:PASS
+B-valid-1  pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-valid-2  pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-inv-1    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+B-inv-2    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'lcp.core.form_questions' should not be valid under {'pattern': '^lcp\\.core\\.'} at extensions
+B-inv-3    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root)
+B-inv-4    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+B-inv-5    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+X-2seg     pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'acme.questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+X-upper    pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:REJ:'ACME.Form.Questions' does not match '^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$' at extensions
+X-1mb      pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+X-maxshape pub:REJ:Additional properties are not allowed ('extensions' was unexpected) at (root) | ovl:PASS
+
+== size math ==
+maxshape ASCII: 35640 bytes sha256 84d2f2990f049ab7d41ef8841fc2eaf8b7337a9ec326dc6884e6b735c8c228b8
+maxshape UTF-8 worst: 133140 bytes
+32 KiB = 32768 | ASCII over: True | UTF-8 over: True
+b-inv-5 shape: 62425
+
+== C11 sweep (P13 onto every example) ==
+ack.json             pub:REJ ovl:REJ
+bid-slots.json       pub:REJ ovl:REJ
+bid.json             pub:REJ ovl:REJ
+call.json            pub:REJ ovl:REJ
+event-contacted.json pub:REJ ovl:REJ
+event.json           pub:REJ ovl:REJ
+lead.json            pub:REJ ovl:PASS
+mva-call.json        pub:REJ ovl:REJ
+ping-slots.json      pub:REJ ovl:REJ
+ping.json            pub:REJ ovl:REJ
+post-contacted.json  pub:REJ ovl:PASS
+post.json            pub:REJ ovl:PASS
+
+== C12 projection probes (home_services vertical) ==
+attributes.free_text pub: REJ: attributes.free_text is not tagged ping_safe: true in vertical 'home_services' | ovl: REJ: attributes.free_text is not tagged ping_safe: true in vertic
+attributes.service_type pub: REJ: 'Call Jane at 0412 345 678' is not one of ['roofing', 'gutters', 'downspouts', 'plumbing', 'hvac', 'electrical | ovl: REJ: 'Call Jane at 0412 345 678' is not one of ['roofing', 'gutte
+control home_services ping pub: PASS | ovl: PASS
+
+== live router (C5-C8) ==
+FINAL_PRICING today -&gt; LCP-002 401: Sender is not authorized for this lead event
+control ack: RECEIVED
+replay ack: DUPLICATE
+id reuse -&gt; LCP-005
+PII details ack: RECEIVED
+plaintext persisted: True
+
+== transport cap probe ==
+body bytes: 2102518
+dispatch status: 413 {"errors": [{"code": "LCP-001", "message": "Request body is too large"}], "request_id": "req_568ede98ec7d45b4a0a41ebe62f95d0d"}</code></pre>
+<p>This section adds no <code>json</code> fences; re-running the harness against the completed record extracts identically (<code>json blocks found: 9</code>, the same fence digests, the same verdict rows), so the revision is non-perturbative to the battery.</p>
+<p>Repository gates on the revised record:</p>
+<pre class="code-block"><code class="language-text">check_doc_citations.py  : 393 citation(s) checked, 0 broken [advisory]
+test_lep_wire_examples  : Ran 3 tests — OK   (T1, published tree)
+check_reserved_fields.py: passed (87 core field names)
+check_universal_core.py : 14/14 machine-checkable §12 checks passed
+check_lep_registry.py   : passed (8 proposals; status unchanged: Draft)
+conformance.py          : ALL 56 tests PASSED</code></pre>
+<p>Remaining for the implementation PR (unticked in the #185 disposition checklist by design, G5): the named <code>plat:</code> tests, the Track B schema landing, the #197 bounds re-tune, and the #198 generalized ingest validator — Review decision items alongside D7.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</a></li><li class="depth-2"><a href="#separation-of-the-two-tracks">Separation of the two tracks</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-3"><a href="#track-a--final-pricing-feedback">Track A — final-pricing feedback</a></li><li class="depth-3"><a href="#track-b--the-orgformquestions-home">Track B — the {org}.form.questions home</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#track-a--final_pricing-event-publisher--platform">Track A — FINAL_PRICING event (publisher → platform)</a></li><li class="depth-3"><a href="#track-b--extensions-on-leadpost-and-the-registered-orgformquestions-shape">Track B — extensions on lead/post, and the registered {org}.form.questions shape</a></li><li class="depth-4"><a href="#b1-the-payload-surface-lep-carried-schema-change">B.1 The payload surface (LEP-carried schema change)</a></li><li class="depth-4"><a href="#b2-the-registered-payload-shape-orgformquestions">B.2 The registered payload shape {org}.form.questions</a></li><li class="depth-4"><a href="#b3-the-guardrails-the-roadmap-set--post-only-never-ping_safe">B.3 The guardrails the roadmap set — &quot;post-only, never ping_safe&quot;</a></li><li class="depth-3"><a href="#registry-notes">Registry notes</a></li><li class="depth-3"><a href="#valid-example--track-a-final_pricing-on-the-published-tree">Valid example — Track A, FINAL_PRICING on the published tree</a></li><li class="depth-3"><a href="#valid-lead-example-overlay--track-b-lead-with-extensions">Valid lead example (overlay) — Track B, lead with extensions</a></li><li class="depth-3"><a href="#valid-post-example-overlay--track-b-post-delivering-the-extension">Valid post example (overlay) — Track B, post delivering the extension</a></li><li class="depth-3"><a href="#invalid-example-a-1--plaintext-phone-in-final_pricing-details">Invalid example A-1 — plaintext phone in FINAL_PRICING details</a></li><li class="depth-3"><a href="#invalid-example-a-2--float-dollars-missing-currency">Invalid example A-2 — float dollars, missing currency</a></li><li class="depth-3"><a href="#invalid-example-a-3--final_pricing-to-a-v10-only-platform">Invalid example A-3 — FINAL_PRICING to a v1.0-only platform</a></li><li class="depth-3"><a href="#invalid-example-b-1--un-namespaced-key-questions">Invalid example B-1 — un-namespaced key &quot;questions&quot;</a></li><li class="depth-3"><a href="#invalid-example-b-2--contact-identifiers-in-answer_text">Invalid example B-2 — contact identifiers in answer_text</a></li><li class="depth-3"><a href="#invalid-example-b-3--extensions-on-a-ping">Invalid example B-3 — extensions on a ping</a></li><li class="depth-3"><a href="#invalid-example-b-4--over-bound-registered-shape">Invalid example B-4 — over-bound registered shape</a></li><li class="depth-3"><a href="#validation-runs-executed-2026-11-03">Validation runs (executed 2026-11-03)</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li><li class="depth-2"><a href="#revision-2026-11-03-post-dossier">Revision 2026-11-03 (post-dossier)</a></li><li class="depth-3"><a href="#why-the-code-citations-moved-re-pin">Why the code citations moved (re-pin)</a></li><li class="depth-3"><a href="#findings--edits">Findings → edits</a></li><li class="depth-3"><a href="#battery-re-run-executed-2026-11-03-post-edit">Battery re-run (executed 2026-11-03, post-edit)</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0006-marketplace-migration-extensions.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

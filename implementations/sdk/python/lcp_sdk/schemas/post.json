@@ -16,22 +16,27 @@
   ],
   "properties": {
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "delivered_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "date-time"
     },
     "submitted_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "date-time",
       "description": "When the consumer originally submitted the lead. Lets buyer assess lead age."
     },
     "offer_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "ID of the buyer offer that matched. Audit trail for billing and disputes."
     },
     "price_cents": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0
     },
@@ -39,73 +44,92 @@
       "$ref": "core.json#/$defs/currency"
     },
     "buyer_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "buyer_reference": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Buyer's internal reference."
     },
     "pricing": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "properties": {
         "floor_price_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "premium_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "final_price_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "uncapped_price_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "max_allowed_price_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "currency": {
+          "x-lcp-pii": "public",
           "type": "string",
           "pattern": "^[A-Z]{3}$"
         },
         "original_price_cents": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0
         },
         "fx_rate": {
+          "x-lcp-pii": "internal",
           "type": "string",
-          "pattern": "^[0-9]+(\\.[0-9]{6,})?$"
+          "pattern": "^(?:[1-9][0-9]*\\.[0-9]{6,12}|0\\.[0-9]*[1-9][0-9]{5,11})$",
+          "description": "LEP-0010 \u00a74.1: native major units per 1 settlement major unit. Plain decimal \u2014 no sign, exponent, grouping or leading-zero integer part \u2014 with a mandatory fractional part of 6\u201312 digits, minimum six *significant* digits below 1, and a value in [0.000001, 1000000]."
         },
         "fx_source": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "minLength": 1,
           "maxLength": 64
         },
         "fx_timestamp": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
         },
         "fx_expires_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
         },
         "price_guardrails": {
+          "x-lcp-pii": "internal",
           "type": "boolean"
         },
         "is_duplicate_resub": {
+          "x-lcp-pii": "internal",
           "type": "boolean",
           "description": "True if this is an accidental resubmission of a previously delivered lead."
         },
         "payable_definition": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "What makes this lead payable (e.g. 'form_lead_valid_phone', 'call_answered_30s', 'connected_transfer', 'exclusive_delivery'). Open enumeration.",
           "$comment": "Payable definition is agreed bilaterally between publisher and buyer. This field records which definition applies to this delivery."
         },
         "payable_status": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "enum": [
             "pending",
@@ -116,11 +140,13 @@
           "description": "Current payable status. 'pending' = within validation window, 'payable' = meets payable definition, 'not_payable' = failed validation, 'disputed' = under review."
         },
         "dispute_window_hours": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 1,
           "description": "Contractually agreed return window in hours. Buyer can dispute within this window."
         },
         "dispute_window_expires_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time",
           "description": "When the dispute window closes. Platforms mechanically reject disputes after this timestamp."
@@ -129,6 +155,7 @@
       "additionalProperties": false
     },
     "matched_preferences": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Buyer preferences that matched this lead.",
       "additionalProperties": true
@@ -146,35 +173,37 @@
       "$ref": "core.json#/$defs/attributes"
     },
     "call": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "description": "Call detail block copied from a call intake when the post represents a call.",
       "required": ["call_id", "status", "started_at"],
       "properties": {
-        "call_id": { "type": "string" },
-        "status": { "type": "string" },
-        "hangup_cause": { "type": "string" },
-        "direction": { "type": "string", "enum": ["inbound", "outbound"] },
-        "did": { "type": "string" },
-        "forwarded_to": { "type": "string" },
-        "tracking_number": { "type": "string" },
-        "caller_phone_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "started_at": { "type": "string", "format": "date-time" },
+        "call_id": { "x-lcp-pii": "internal", "type": "string" },
+        "status": { "x-lcp-pii": "internal", "type": "string" },
+        "hangup_cause": { "x-lcp-pii": "internal", "type": "string" },
+        "direction": { "x-lcp-pii": "internal", "type": "string", "enum": ["inbound", "outbound"] },
+        "did": { "x-lcp-pii": "internal", "type": "string" },
+        "forwarded_to": { "x-lcp-pii": "internal", "type": "string" },
+        "tracking_number": { "x-lcp-pii": "internal", "type": "string" },
+        "caller_phone_hash": { "x-lcp-pii": "contact", "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "started_at": { "x-lcp-pii": "internal", "type": "string", "format": "date-time" },
         "durations": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "properties": {
-            "total_seconds": { "type": "integer", "minimum": 0 },
-            "ivr_seconds": { "type": "integer", "minimum": 0 },
-            "hold_seconds": { "type": "integer", "minimum": 0 },
-            "agent_seconds": { "type": "integer", "minimum": 0 }
+            "total_seconds": { "x-lcp-pii": "internal", "type": "integer", "minimum": 0 },
+            "ivr_seconds": { "x-lcp-pii": "internal", "type": "integer", "minimum": 0 },
+            "hold_seconds": { "x-lcp-pii": "internal", "type": "integer", "minimum": 0 },
+            "agent_seconds": { "x-lcp-pii": "internal", "type": "integer", "minimum": 0 }
           },
           "additionalProperties": false
         },
-        "recording": { "type": "object", "additionalProperties": true },
-        "ivr": { "type": "object", "additionalProperties": true },
-        "disposition": { "type": "string" },
-        "transferred_from": { "type": "object", "additionalProperties": false },
-        "queue": { "type": "object", "additionalProperties": false },
-        "agent": { "type": "object", "additionalProperties": false }
+        "recording": { "x-lcp-pii": "restricted", "type": "object", "additionalProperties": true },
+        "ivr": { "x-lcp-pii": "restricted", "type": "object", "additionalProperties": true },
+        "disposition": { "x-lcp-pii": "internal", "type": "string" },
+        "transferred_from": { "x-lcp-pii": "internal", "type": "object", "additionalProperties": false },
+        "queue": { "x-lcp-pii": "internal", "type": "object", "additionalProperties": false },
+        "agent": { "x-lcp-pii": "contact", "type": "object", "additionalProperties": false }
       },
       "additionalProperties": false
     },
@@ -188,6 +217,7 @@
       "$ref": "core.json#/$defs/exclusivity"
     },
     "contacted_hashes": {
+      "x-lcp-pii": "contact",
       "type": "array",
       "items": {
         "type": "string",
@@ -198,6 +228,7 @@
       "description": "v1.1 (LEP-0003 §3): parties already contacted for this lead by the publisher or prior slot holders, re-keyed under THIS receiving buyer's per-pair secret. Each entry is HMAC-SHA256(pair_secret, contact-preimage) — lowercase 64-hex, the same form as phone_hash (SPEC.md §9); the unsalted SHA-1-shaped digest of the reference network is explicitly NOT adopted (enumerable keyspaces invert it; §14 blocker B3). The platform matches digests only against values it holds in plaintext for this pair and cannot verify reported digests without the plaintext — the trust model is format + count sanity plus authenticated-sender attestation, scoped to one lead_id. Absent = the platform has no contact reports; [] = the platform attests no prior contacts (the two are distinct). Preimage rules and the phone-only/email-gated state are normative in SPEC.md §9. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1."
     },
     "extensions": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "description": "v1.1 (LEP-0006 Track B): namespaced deployment-specific data (SPEC.md section 6; governance/EXTENSION-REGISTRY.md). Keys MUST follow {org}.{division}.{purpose} - at least three lowercase dot-separated segments - and lcp.core.* is reserved for the core. Values stay deployment-defined: the core does not and cannot validate namespaced payloads. Shape authority for a registered namespace is its record (LEP-0006 section B.2 defines {org}.form.questions: at most 25 entries of question_id/question_text/answer_text, question_text at most 300 and answer_text at most 1000 characters). These are receiver rules, not schema rules: a receiver that implements a registered form.questions namespace MUST validate entries and accept or reject the message (LCP-100), while receivers that do not recognize a namespace ignore its value. Bound hierarchy (LEP-0006 section B.2): the registered form.questions shape ceiling is 133,140 B worst-case UTF-8, receivers SHOULD reject extension totals above the 32 KiB soft policy target (a fully shape-conformant sender can exceed it; issue #197 tracks the re-tune), and the operative hard bound is the transport body cap (max_body_bytes, default 2,000,000 B). Never ping_safe: this field exists only on lead and post - ping/bid/ack keep their strict allowlists - and a platform MUST NOT derive ping attributes, compliance_flags, or any other ping field from extension content. Extension content is lead/post PII-scope content: it inherits section 9 retention and erasure, and question/answer text MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values (those have structured homes in consumer, compliance.consent_evidence[], and attachments[]).",
       "propertyNames": {

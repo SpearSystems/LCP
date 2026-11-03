@@ -94,7 +94,7 @@ def write_outputs() -> None:
     # gate runs pre-hash in check_sdk_schema_sync.main() for --check.
     from check_reserved_fields import find_violations
 
-    violations = find_violations(ROOT / "schemas", ROOT / "verticals", ROOT / "SPEC.md")
+    violations = find_violations(ROOT / "schemas", ROOT / "verticals", ROOT / "spec")
     if violations:
         print("Refusing to generate SDK schema bundles:")
         for violation in violations:

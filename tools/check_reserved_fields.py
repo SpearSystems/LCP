@@ -125,12 +125,25 @@ def scan_vertical(
     return violations
 
 
+def load_spec_text(spec_path: Path) -> str:
+    """The specification as one text.
+
+    ``spec_path`` is either a single document or the ``spec/`` directory of
+    split documents (SPEC.md is the index; the normative text lives there).
+    """
+    if spec_path.is_dir():
+        return "\n".join(
+            path.read_text(encoding="utf-8") for path in sorted(spec_path.glob("*.md"))
+        )
+    return spec_path.read_text(encoding="utf-8")
+
+
 def spec_prose_names(spec_text: str) -> list[str] | str:
     """The backtick names in the SPEC §3 'MUST NOT redefine' sentence."""
     match = SPEC_RESERVED_RE.search(spec_text)
     if not match:
         return (
-            "SPEC.md: §3 reserved-core-field sentence "
+            "spec/: §3 reserved-core-field sentence "
             "('MUST NOT redefine core field names (...)') not found — "
             "update this checker together with the prose"
         )
@@ -154,7 +167,7 @@ def find_violations(
             "not a usable reserved-name source"
         ]
 
-    prose = spec_prose_names(spec_path.read_text(encoding="utf-8"))
+    prose = spec_prose_names(load_spec_text(spec_path))
     if isinstance(prose, str):
         errors.append(prose)
     else:
@@ -185,7 +198,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--schemas-dir", default=str(ROOT / "schemas"))
     parser.add_argument("--verticals-dir", default=str(ROOT / "verticals"))
-    parser.add_argument("--spec", default=str(ROOT / "SPEC.md"))
+    parser.add_argument("--spec", default=str(ROOT / "spec"))
     options = parser.parse_args()
     errors = find_violations(
         Path(options.schemas_dir), Path(options.verticals_dir), Path(options.spec)

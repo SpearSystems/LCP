@@ -12,8 +12,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public final class LcpSdk {
     private LcpSdk() {}
@@ -118,6 +125,42 @@ public final class LcpSdk {
         public String submitLead(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/leads", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
         public String submitCall(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/calls", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
         public String submitBid(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/bids", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
+        /** One lead in a batch: per-item identifiers plus the lead payload as JSON (schemas/batch.json). */
+        public record BatchItem(String itemId, String idempotencyKey, String payloadJson) {}
+
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+
+        /**
+         * Submit up to 100 lead items in one request (LEP-0001 W2-01) and
+         * return the per-item receipts in input order. HTTP 207 partial success
+         * is a successful response; per-item error objects are preserved. The
+         * batch is never retried as a whole — retrying only rejected/error
+         * receipts is the caller's job.
+         */
+        public List<JsonNode> submitLeadsBatch(List<BatchItem> items) throws Exception { return submitLeadsBatch(items, null); }
+
+        public List<JsonNode> submitLeadsBatch(List<BatchItem> items, String requestId) throws Exception {
+            if (items.isEmpty() || items.size() > 100) throw new IllegalArgumentException("batch supports 1..100 items, got " + items.size());
+            var root = MAPPER.createObjectNode();
+            root.put("request_id", requestId == null ? UUID.randomUUID().toString() : requestId);
+            var array = root.putArray("items");
+            for (var item : items) {
+                var node = array.addObject();
+                node.put("item_id", item.itemId());
+                node.put("idempotency_key", item.idempotencyKey());
+                node.set("payload", MAPPER.readTree(item.payloadJson()));
+            }
+            var response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false));
+            var results = response.path("results");
+            if (!results.isArray()) throw new IllegalStateException("batch response missing results");
+            var order = new HashMap<String, Integer>();
+            for (int index = 0; index < items.size(); index++) order.put(items.get(index).itemId(), index);
+            var ordered = new ArrayList<JsonNode>();
+            results.forEach(ordered::add);
+            ordered.sort(Comparator.comparingInt(node -> order.getOrDefault(node.path("item_id").asText(), items.size())));
+            return ordered;
+        }
+
         public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + URI.create("https://lcp.invalid/" + id).getRawPath(), null, null, false); }
         public String getCapabilities() throws Exception { return request("GET", "/v1/lcp/capabilities", null, null, false); }
         public String listOffers(String vertical) throws Exception { return request("GET", "/v1/lcp/offers" + (vertical == null ? "" : "?vertical=" + URI.create("https://lcp.invalid/?v=" + vertical).getRawQuery().substring(2)), null, null, false); }

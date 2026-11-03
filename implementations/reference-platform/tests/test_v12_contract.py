@@ -316,6 +316,207 @@ class V12ContractTests(unittest.TestCase):
         self.assertIsNone(converted)
         self.assertEqual(reason, "fx_rate_malformed")
 
+    def test_fx_minor_unit_exponent_conversion(self) -> None:
+        """T-EXPONENT: USD→JPY must apply 10^(0−2), not divide minor units.
+
+        LEP-0010 §4.2 worked example: 50000 USD cents at `0.00636943` is
+        78499.959965… JPY minor units (a 78500 JPY charge under §7), never the
+        100× overcharge `50000 / 0.00636943 = 7849995.96` the unadjusted
+        division produces.
+        """
+        converted, reason = self.price(
+            50_000, "USD", self.fx_pricing(rate="0.00636943"), settlement="JPY"
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(
+            converted, Decimal(50_000) * Decimal("0.01") / Decimal("0.00636943")
+        )
+        self.assertEqual(
+            converted.quantize(Decimal("0.000001")), Decimal("78499.959965")
+        )
+        unadjusted = Decimal(50_000) / Decimal("0.00636943")
+        self.assertNotEqual(converted, unadjusted)
+        self.assertEqual(converted * 100, unadjusted)
+
+        # Round-trip: JPY (0 exponent) native → USD (2) settlement.
+        back, reason = self.price(
+            78_500, "JPY", self.fx_pricing(rate="157.000000"), settlement="USD"
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(
+            back, Decimal(78_500) * Decimal(100) / Decimal("157.000000")
+        )
+
+        # A three-exponent currency is honoured in both directions.
+        kwd, reason = self.price(
+            1_500, "USD", self.fx_pricing(rate="0.306000"), settlement="KWD"
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(
+            kwd, Decimal(1_500) * Decimal(10) / Decimal("0.306000")
+        )
+
+    def test_fx_rate_pattern_rejects_loose_shapes(self) -> None:
+        """LEP-0010 §4.1: bare integers, zero, leading zeros and short
+        fractions are malformed rather than coerced."""
+        for rate in ("1", "0", "007.000000", "0.000123", "1.52", "1.52e0", "1,52"):
+            with self.subTest(rate=rate):
+                converted, reason = self.price(
+                    10_000, "USD", self.fx_pricing(rate=rate), settlement="AUD"
+                )
+                self.assertIsNone(converted)
+                self.assertEqual(reason, "fx_rate_malformed")
+        # A full 6-digit rate and a 12-digit rate stay valid.
+        for rate in ("0.650000", "1.520000000000"):
+            with self.subTest(rate=rate):
+                converted, reason = self.price(
+                    10_000, "USD", self.fx_pricing(rate=rate), settlement="AUD"
+                )
+                self.assertIsNone(reason)
+                self.assertIsNotNone(converted)
+
+    def test_fx_rate_schema_rejects_the_same_loose_shapes(self) -> None:
+        """`schemas/post.json` and `schemas/bid.json` pin the same pattern."""
+        with (ROOT / "examples" / "post.json").open(encoding="utf-8") as handle:
+            post = json.load(handle)
+        post["lcp"]["payload"]["pricing"]["fx_rate"] = "1"
+        with self.assertRaises(ValidationError) as caught:
+            self.platform.validator.require_valid_envelope(post)
+        self.assertIn("fx_rate", str(caught.exception))
+
+        bid = _envelope(
+            "bid",
+            BUYER_ID,
+            PLATFORM_ID,
+            {
+                "ping_id": "ping-1",
+                "decision": "accept",
+                "bid_price_cents": 100,
+                "currency": "AUD",
+                **self.fx_pricing(rate="1"),
+            },
+            test=True,
+        )
+        with self.assertRaises(ValidationError) as caught:
+            self.platform.validator.require_valid_envelope(bid)
+        self.assertIn("fx_rate", str(caught.exception))
+
+        # A cross-currency bid with the four FX fields validates at intake.
+        bid["lcp"]["payload"].update(self.fx_pricing(rate="0.650000"))
+        self.assertEqual(self.platform.validator.validate_envelope(bid), [])
+
+    def _auction_bid(
+        self,
+        *,
+        floor_price_cents: int,
+        bid_price_cents: int,
+        bid_currency: str,
+        rate: str,
+    ) -> tuple[dict[str, Any], str, str]:
+        """Ingest a lead against an auction offer, bid, and route.
+
+        Returns ``(post_pricing_or_empty, lead_id, bid_id)``. The lead is
+        ingested through the single-item path, so the offer pings this buyer
+        and the bid answers that ping.
+        """
+        offer = self.offer(
+            floor_price_cents=floor_price_cents,
+            currency="USD",
+            routing_mode="auction",
+        )
+        self.platform.upsert_offer(offer)
+        lead = self.lead()
+        self.ingest(lead)
+        lead_id = lead["lcp"]["payload"]["lead_id"]
+        pings = [
+            ping
+            for ping in self.platform.store.list_pings(lead_id)
+            if ping["offer_id"] == offer["offer_id"]
+        ]
+        self.assertEqual(len(pings), 1, pings)
+        bid = _envelope(
+            "bid",
+            BUYER_ID,
+            PLATFORM_ID,
+            {
+                "ping_id": pings[0]["ping_id"],
+                "decision": "accept",
+                "bid_price_cents": bid_price_cents,
+                "currency": bid_currency,
+                **self.fx_pricing(rate=rate),
+            },
+            correlation_id=pings[0]["message_id"],
+            test=True,
+        )
+        self.platform.submit_bid(
+            bid, headers={"X-LCP-Test": "true"}, raw_body=_compact(bid)
+        )
+        bid_id = self.platform.store.list_bids_for_lead(lead_id)[0]["bid_id"]
+        self.platform._route_lead(lead_id)
+        posts = [
+            row
+            for row in self.platform.store.deliveries_for_lead(lead_id)
+            if row["kind"] == "post"
+        ]
+        if not posts:
+            return {}, lead_id, bid_id
+        delivered = json.loads(posts[0]["envelope_json"])
+        return delivered["lcp"]["payload"]["pricing"], lead_id, bid_id
+
+    def test_post_echoes_fx_evidence_on_converted_award(self) -> None:
+        """T-ECHO: a converted award echoes currency, native amount and the
+        winning bid's four fx_* values verbatim; a same-currency award
+        carries none."""
+        pricing, _lead_id, _bid_id = self._auction_bid(
+            floor_price_cents=1_000,
+            bid_price_cents=10_000,
+            bid_currency="AUD",
+            rate="0.650000",
+        )
+        self.assertEqual(pricing["currency"], "USD")
+        self.assertEqual(pricing["original_price_cents"], 10_000)
+        self.assertEqual(pricing["fx_rate"], "0.650000")
+        self.assertEqual(pricing["fx_source"], "ECB")
+        self.assertRegex(
+            pricing["fx_timestamp"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
+        )
+        self.assertRegex(
+            pricing["fx_expires_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
+        )
+        # 10000 AUD cents quote 0.650000 USD per AUD → 15385 settlement cents.
+        self.assertEqual(pricing["final_price_cents"], 15_385)
+
+        same_currency, _lead_id, _bid_id = self._auction_bid(
+            floor_price_cents=1_000,
+            bid_price_cents=2_200,
+            bid_currency="USD",
+            rate="0.650000",
+        )
+        self.assertNotIn("fx_rate", same_currency)
+        self.assertNotIn("original_price_cents", same_currency)
+        self.assertNotIn("currency", same_currency)
+
+    def test_fx_sub_floor_after_conversion_is_excluded_with_reason(self) -> None:
+        """T-FLOOR: exact 149999.666… under a 150000 floor is excluded with
+        `price_below_floor` — recorded, not silently skipped — and no post."""
+        pricing, lead_id, bid_id = self._auction_bid(
+            floor_price_cents=150_000,
+            bid_price_cents=449_999,
+            bid_currency="AUD",
+            rate="3.000000",
+        )
+        self.assertEqual(pricing, {})
+        rows = [
+            row
+            for row in self.platform.store.list_audit_events("bid", bid_id)
+            if row["action"] == "bid.non_comparable"
+        ]
+        self.assertEqual(len(rows), 1, rows)
+        metadata = rows[0]["metadata"]
+        self.assertEqual(metadata["reason"], "price_below_floor")
+        self.assertEqual(metadata["currency"], "AUD")
+        self.assertEqual(self.platform.store.get_lead(lead_id)["status"], "EXPIRED")
+
     def test_fx_mixed_sources_are_non_comparable_with_reason(self) -> None:
         converted, reason = self.price(
             10_000,

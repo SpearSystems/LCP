@@ -14,13 +14,16 @@
   ],
   "properties": {
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "external_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Publisher's internal lead ID."
     },
     "submitted_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "date-time",
       "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it)."
@@ -50,22 +53,27 @@
       "$ref": "core.json#/$defs/exclusivity"
     },
     "contact_window": {
+      "x-lcp-pii": "contact",
       "type": "object",
       "description": "Optional. Publisher hint for when the consumer is available to be contacted.",
       "properties": {
         "timezone": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "IANA timezone for the window times (e.g. Australia/Sydney)."
         },
         "available_from": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "description": "Local time HH:MM format (24h)."
         },
         "available_to": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "description": "Local time HH:MM format (24h)."
         },
         "days": {
+          "x-lcp-pii": "contact",
           "type": "array",
           "items": {
             "type": "string",
@@ -85,44 +93,54 @@
       "additionalProperties": false
     },
     "lead_quality": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Optional. Publisher-provided quality signals. Buyers use these to filter/route. All fields are publisher-declared and not independently verified by LCP.",
       "properties": {
         "verified_phone": {
+          "x-lcp-pii": "internal",
           "type": "boolean",
           "description": "Phone number was verified (OTP, call connect, or carrier lookup)."
         },
         "verified_email": {
+          "x-lcp-pii": "internal",
           "type": "boolean",
           "description": "Email was verified (OTP, bounce check, or SMTP validation)."
         },
         "verification": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "description": "Details on how phone/email were verified. Supports OTP, enrichment tools, carrier lookup, SMTP validation, etc.",
           "properties": {
             "phone_method": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "How the phone was verified. Known values: otp, carrier_lookup, call_connect, twilio_lookup, manual_call, none. Open enumeration.",
               "$comment": "Open enum \u2014 new verification methods (e.g. new enrichment providers) are additive."
             },
             "phone_verified_at": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "format": "date-time"
             },
             "phone_verified_by": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "Provider that performed the verification (e.g. twilio, numverify, internal, publisher_otp)."
             },
             "email_method": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "How the email was verified. Known values: otp, smtp_check, bounce_check, briteverify, zerobounce, kickbox, none. Open enumeration.",
               "$comment": "Open enum \u2014 new email verification services are additive."
             },
             "email_verified_at": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "format": "date-time"
             },
             "email_verified_by": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "Provider that performed the verification (e.g. briteverify, zerobounce, internal, publisher_otp)."
             }
@@ -130,6 +148,7 @@
           "additionalProperties": false
         },
         "duplicate_risk": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "enum": [
             "low",
@@ -139,12 +158,14 @@
           "description": "Publisher's assessment of duplicate risk based on their dedup window."
         },
         "spam_risk_score": {
+          "x-lcp-pii": "internal",
           "type": "integer",
           "minimum": 0,
           "maximum": 100,
           "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined."
         },
         "data_completeness": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "enum": [
             "minimal",
@@ -163,6 +184,7 @@
       "$ref": "core.json#/$defs/attachments"
     },
     "extensions": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "description": "v1.1 (LEP-0006 Track B): namespaced deployment-specific data (SPEC.md section 6; governance/EXTENSION-REGISTRY.md). Keys MUST follow {org}.{division}.{purpose} - at least three lowercase dot-separated segments - and lcp.core.* is reserved for the core. Values stay deployment-defined: the core does not and cannot validate namespaced payloads. Shape authority for a registered namespace is its record (LEP-0006 section B.2 defines {org}.form.questions: at most 25 entries of question_id/question_text/answer_text, question_text at most 300 and answer_text at most 1000 characters). These are receiver rules, not schema rules: a receiver that implements a registered form.questions namespace MUST validate entries and accept or reject the message (LCP-100), while receivers that do not recognize a namespace ignore its value. Bound hierarchy (LEP-0006 section B.2): the registered form.questions shape ceiling is 133,140 B worst-case UTF-8, receivers SHOULD reject extension totals above the 32 KiB soft policy target (a fully shape-conformant sender can exceed it; issue #197 tracks the re-tune), and the operative hard bound is the transport body cap (max_body_bytes, default 2,000,000 B). Never ping_safe: this field exists only on lead and post - ping/bid/ack keep their strict allowlists - and a platform MUST NOT derive ping attributes, compliance_flags, or any other ping field from extension content. Extension content is lead/post PII-scope content: it inherits section 9 retention and erasure, and question/answer text MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values (those have structured homes in consumer, compliance.consent_evidence[], and attachments[]).",
       "propertyNames": {

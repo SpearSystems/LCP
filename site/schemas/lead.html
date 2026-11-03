@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/lead.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Lead Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Lead Message</h1>
+<p><code>https://lcp.dev/schemas/lead.json</code> · Intake message — form/chat/click/api/agent/referral channel. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>attachments</code></td><td>ref <code>core.json#/$defs/attachments</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>attributes</code></td><td>ref <code>core.json#/$defs/attributes</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>channel</code></td><td>ref <code>core.json#/$defs/channel</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>compliance</code></td><td>ref <code>core.json#/$defs/compliance</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>consumer</code></td><td>ref <code>core.json#/$defs/consumer</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>contact_window</code></td><td><code>object</code></td><td><code>contact</code></td><td></td><td>Optional. Publisher hint for when the consumer is available to be contacted.</td></tr>
+<tr><td><code>exclusivity</code></td><td>ref <code>core.json#/$defs/exclusivity</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>expiry</code></td><td>ref <code>core.json#/$defs/expiry</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>extensions</code></td><td><code>object</code></td><td><code>restricted</code></td><td></td><td>v1.1 (LEP-0006 Track B): namespaced deployment-specific data (SPEC.md section 6; governance/EXTENSION-REGISTRY.md). Keys MUST follow {org}.{division}.{purpose} - at least three lowercase dot-separated segments - and lcp.core.* is reserved for the core. Values stay deployment-defined: the core does not and cannot validate namespaced payloads. Shape authority for a registered namespace is its record (LEP-0006 section B.2 defines {org}.form.questions: at most 25 entries of question_id/question_text/answer_text, question_text at most 300 and answer_text at most 1000 characters). These are receiver rules, not schema rules: a receiver that implements a registered form.questions namespace MUST validate entries and accept or reject the message (LCP-100), while receivers that do not recognize a namespace ignore its value. Bound hierarchy (LEP-0006 section B.2): the registered form.questions shape ceiling is 133,140 B worst-case UTF-8, receivers SHOULD reject extension totals above the 32 KiB soft policy target (a fully shape-conformant sender can exceed it; issue #197 tracks the re-tune), and the operative hard bound is the transport body cap (max_body_bytes, default 2,000,000 B). Never ping_safe: this field exists only on lead and post - ping/bid/ack keep their strict allowlists - and a platform MUST NOT derive ping attributes, compliance_flags, or any other ping field from extension content. Extension content is lead/post PII-scope content: it inherits section 9 retention and erasure, and question/answer text MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values (those have structured homes in consumer, compliance.consent_evidence[], and attachments[]).</td></tr>
+<tr><td><code>external_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Publisher's internal lead ID.</td></tr>
+<tr><td><code>lead_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>lead_quality</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Optional. Publisher-provided quality signals. Buyers use these to filter/route. All fields are publisher-declared and not independently verified by LCP.</td></tr>
+<tr><td><code>location</code></td><td>ref <code>core.json#/$defs/location</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>provenance</code></td><td>ref <code>core.json#/$defs/provenance</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>status</code></td><td>ref <code>core.json#/$defs/status</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>submitted_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it).</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/lead.json",
+  "title": "LCP Lead Message",
+  "description": "Intake message — form/chat/click/api/agent/referral channel. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "lead_id",
+    "status",
+    "channel",
+    "consumer",
+    "location",
+    "attributes"
+  ],
+  "properties": {
+    "lead_id": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "external_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Publisher's internal lead ID."
+    },
+    "submitted_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it)."
+    },
+    "status": {
+      "$ref": "core.json#/$defs/status"
+    },
+    "channel": {
+      "$ref": "core.json#/$defs/channel"
+    },
+    "consumer": {
+      "$ref": "core.json#/$defs/consumer"
+    },
+    "location": {
+      "$ref": "core.json#/$defs/location"
+    },
+    "compliance": {
+      "$ref": "core.json#/$defs/compliance"
+    },
+    "provenance": {
+      "$ref": "core.json#/$defs/provenance"
+    },
+    "attributes": {
+      "$ref": "core.json#/$defs/attributes"
+    },
+    "exclusivity": {
+      "$ref": "core.json#/$defs/exclusivity"
+    },
+    "contact_window": {
+      "x-lcp-pii": "contact",
+      "type": "object",
+      "description": "Optional. Publisher hint for when the consumer is available to be contacted.",
+      "properties": {
+        "timezone": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "IANA timezone for the window times (e.g. Australia/Sydney)."
+        },
+        "available_from": {
+          "x-lcp-pii": "contact",
+          "type": "string",
+          "description": "Local time HH:MM format (24h)."
+        },
+        "available_to": {
+          "x-lcp-pii": "contact",
+          "type": "string",
+          "description": "Local time HH:MM format (24h)."
+        },
+        "days": {
+          "x-lcp-pii": "contact",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ]
+          },
+          "description": "Days of week the consumer is available."
+        }
+      },
+      "additionalProperties": false
+    },
+    "lead_quality": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Optional. Publisher-provided quality signals. Buyers use these to filter/route. All fields are publisher-declared and not independently verified by LCP.",
+      "properties": {
+        "verified_phone": {
+          "x-lcp-pii": "internal",
+          "type": "boolean",
+          "description": "Phone number was verified (OTP, call connect, or carrier lookup)."
+        },
+        "verified_email": {
+          "x-lcp-pii": "internal",
+          "type": "boolean",
+          "description": "Email was verified (OTP, bounce check, or SMTP validation)."
+        },
+        "verification": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "description": "Details on how phone/email were verified. Supports OTP, enrichment tools, carrier lookup, SMTP validation, etc.",
+          "properties": {
+            "phone_method": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "How the phone was verified. Known values: otp, carrier_lookup, call_connect, twilio_lookup, manual_call, none. Open enumeration.",
+              "$comment": "Open enum — new verification methods (e.g. new enrichment providers) are additive."
+            },
+            "phone_verified_at": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "format": "date-time"
+            },
+            "phone_verified_by": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "Provider that performed the verification (e.g. twilio, numverify, internal, publisher_otp)."
+            },
+            "email_method": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "How the email was verified. Known values: otp, smtp_check, bounce_check, briteverify, zerobounce, kickbox, none. Open enumeration.",
+              "$comment": "Open enum — new email verification services are additive."
+            },
+            "email_verified_at": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "format": "date-time"
+            },
+            "email_verified_by": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "Provider that performed the verification (e.g. briteverify, zerobounce, internal, publisher_otp)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "duplicate_risk": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "Publisher's assessment of duplicate risk based on their dedup window."
+        },
+        "spam_risk_score": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined."
+        },
+        "data_completeness": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "rich"
+          ],
+          "description": "How complete the lead data is. 'minimal' = name+phone only, 'standard' = core fields, 'rich' = core + vertical attributes fully populated."
+        }
+      },
+      "additionalProperties": false
+    },
+    "expiry": {
+      "$ref": "core.json#/$defs/expiry"
+    },
+    "attachments": {
+      "$ref": "core.json#/$defs/attachments"
+    },
+    "extensions": {
+      "x-lcp-pii": "restricted",
+      "type": "object",
+      "description": "v1.1 (LEP-0006 Track B): namespaced deployment-specific data (SPEC.md section 6; governance/EXTENSION-REGISTRY.md). Keys MUST follow {org}.{division}.{purpose} - at least three lowercase dot-separated segments - and lcp.core.* is reserved for the core. Values stay deployment-defined: the core does not and cannot validate namespaced payloads. Shape authority for a registered namespace is its record (LEP-0006 section B.2 defines {org}.form.questions: at most 25 entries of question_id/question_text/answer_text, question_text at most 300 and answer_text at most 1000 characters). These are receiver rules, not schema rules: a receiver that implements a registered form.questions namespace MUST validate entries and accept or reject the message (LCP-100), while receivers that do not recognize a namespace ignore its value. Bound hierarchy (LEP-0006 section B.2): the registered form.questions shape ceiling is 133,140 B worst-case UTF-8, receivers SHOULD reject extension totals above the 32 KiB soft policy target (a fully shape-conformant sender can exceed it; issue #197 tracks the re-tune), and the operative hard bound is the transport body cap (max_body_bytes, default 2,000,000 B). Never ping_safe: this field exists only on lead and post - ping/bid/ack keep their strict allowlists - and a platform MUST NOT derive ping attributes, compliance_flags, or any other ping field from extension content. Extension content is lead/post PII-scope content: it inherits section 9 retention and erasure, and question/answer text MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values (those have structured homes in consumer, compliance.consent_evidence[], and attachments[]).",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$",
+        "not": {
+          "pattern": "^lcp\\.core\\."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/lead.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/subscription.json",
+  "title": "LCP Subscription Message",
+  "description": "v1.2 (LEP-0001 W3): event-subscription registration and its resource view. The payload is a strict object: an explicit event allowlist drawn from the receiver's advertised `capabilities().events`, an HTTPS callback URL, and a filter whose keys are a closed set of core enums and identifiers. Consumer, provenance, attributes, details, contact, and security paths are never filter keys. The registration response carries `subscription_id`, `active`, `created_at`, and the per-subscription `secret` exactly once. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "event_types",
+    "callback_url"
+  ],
+  "properties": {
+    "subscription_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^sub_[A-Za-z0-9_-]{8,64}$",
+      "description": "Opaque subscription identifier returned on registration. It is not a bearer credential: every read, disable, and delivery is authorized against the subscriber's tenant."
+    },
+    "event_types": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 14,
+      "uniqueItems": true,
+      "description": "Explicit event allowlist. Values are the receiver's advertised event names; no wildcard and no second vocabulary exist. An unadvertised value is refused, never silently ignored.",
+      "items": {
+        "x-lcp-pii": "internal",
+        "type": "string",
+        "enum": [
+          "DELIVERED",
+          "ACCEPTED",
+          "REJECTED",
+          "DISPUTED",
+          "REFUNDED",
+          "EXPIRED",
+          "CONVERTED",
+          "ARCHIVED",
+          "CALL_OFFERED",
+          "CALL_CONNECTED",
+          "CALL_ENDED",
+          "CALL_OUTCOME",
+          "CONTACTED",
+          "FINAL_PRICING"
+        ]
+      }
+    },
+    "callback_url": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^https?://",
+      "maxLength": 2048,
+      "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses."
+    },
+    "filter": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Closed filter over core enums and identifiers. Any other key, including consumer.email, provenance.*, and attributes.*, is refused with a named error.",
+      "additionalProperties": false,
+      "properties": {
+        "event_type": {
+          "x-lcp-pii": "internal",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          ]
+        },
+        "message_type": {
+          "x-lcp-pii": "internal",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          ]
+        },
+        "vertical": {
+          "x-lcp-pii": "internal",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          ]
+        },
+        "status": {
+          "x-lcp-pii": "internal",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          ]
+        },
+        "lead_id": {
+          "x-lcp-pii": "internal",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          ]
+        }
+      }
+    },
+    "replay_from": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque cursor from GET /v1/lcp/events. A subscription created with it replays that event set deterministically; an expired cursor is an explicit error."
+    },
+    "secret": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "minLength": 32,
+      "description": "Per-subscription HMAC secret. Returned exactly once on registration and never again; deliveries are signed with it over the LEP-0002 canonical input."
+    },
+    "active": {
+      "x-lcp-pii": "internal",
+      "type": "boolean",
+      "description": "Subscription state. A disabled subscription receives no new deliveries."
+    },
+    "created_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "Registration time in whole-second UTC form."
+    }
+  },
+  "additionalProperties": false
+}

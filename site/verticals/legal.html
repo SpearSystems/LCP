@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="verticals/legal.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Legal Vertical Schema — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Legal Vertical Schema</h1>
+<p><code>https://lcp.dev/verticals/legal.json</code> · Legal lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Ping-safe</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>at_fault</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Was the consumer at fault? Sensitive legal liability data; post-only.</td></tr>
+<tr><td><code>case_type</code></td><td>enum (<code>"personal_injury"</code>, <code>"divorce"</code>, <code>"criminal"</code>, <code>"dui"</code>, <code>"bankruptcy"</code>, <code>"immigration"</code>, <code>"workers_comp"</code>, <code>"medical_malpractice"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>claim_status</code></td><td>enum (<code>"not_filed"</code>, <code>"filed"</code>, <code>"under_review"</code>, <code>"denied"</code>, <code>"settled"</code>, <code>"in_litigation"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td>Current status of the claim; sensitive legal data, post-only.</td></tr>
+<tr><td><code>has_attorney</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Does the consumer already have an attorney? Legal-representation data; post-only.</td></tr>
+<tr><td><code>incident_date</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Date of incident. Not ping_safe — could narrow identity.</td></tr>
+<tr><td><code>incident_state</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td><td>US state where incident occurred.</td></tr>
+<tr><td><code>injury_severity</code></td><td>enum (<code>"none"</code>, <code>"minor"</code>, <code>"moderate"</code>, <code>"severe"</code>, <code>"catastrophic"</code>, <code>"fatal"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td>Severity of injury sustained; sensitive health/legal data, post-only.</td></tr>
+<tr><td><code>insurance_company</code></td><td><code>string</code></td><td><code>internal</code></td><td>no</td><td></td><td>Insurance company involved. Company name — not ping_safe.</td></tr>
+<tr><td><code>medical_treatment_received</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Has medical treatment been received? Sensitive health/legal data; post-only.</td></tr>
+<tr><td><code>police_report_filed</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Was a police report filed? Sensitive incident data; post-only.</td></tr>
+<tr><td><code>schema_version</code></td><td>const <code>"1.0.0"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
+<tr><td><code>time_to_contact_deadline_days</code></td><td><code>integer</code></td><td><code>internal</code></td><td>no</td><td></td><td>Days remaining to contact before statute of limitations or deadline; sensitive legal timing, post-only.</td></tr>
+<tr><td><code>vertical</code></td><td>const <code>"legal"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/legal.json",
+  "title": "LCP Legal Vertical Schema",
+  "description": "Legal lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "vertical",
+    "schema_version"
+  ],
+  "properties": {
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "legal"
+    },
+    "schema_version": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "case_type": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "personal_injury",
+        "divorce",
+        "criminal",
+        "dui",
+        "bankruptcy",
+        "immigration",
+        "workers_comp",
+        "medical_malpractice"
+      ],
+      "ping_safe": true
+    },
+    "incident_date": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "format": "date",
+      "description": "Date of incident. Not ping_safe — could narrow identity.",
+      "ping_safe": false
+    },
+    "incident_state": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "US state where incident occurred.",
+      "ping_safe": true
+    },
+    "has_attorney": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Does the consumer already have an attorney? Legal-representation data; post-only.",
+      "ping_safe": false
+    },
+    "injury_severity": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "enum": [
+        "none",
+        "minor",
+        "moderate",
+        "severe",
+        "catastrophic",
+        "fatal"
+      ],
+      "description": "Severity of injury sustained; sensitive health/legal data, post-only.",
+      "ping_safe": false
+    },
+    "medical_treatment_received": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Has medical treatment been received? Sensitive health/legal data; post-only.",
+      "ping_safe": false
+    },
+    "at_fault": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Was the consumer at fault? Sensitive legal liability data; post-only.",
+      "ping_safe": false
+    },
+    "police_report_filed": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Was a police report filed? Sensitive incident data; post-only.",
+      "ping_safe": false
+    },
+    "insurance_company": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Insurance company involved. Company name — not ping_safe.",
+      "ping_safe": false
+    },
+    "claim_status": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "enum": [
+        "not_filed",
+        "filed",
+        "under_review",
+        "denied",
+        "settled",
+        "in_litigation"
+      ],
+      "description": "Current status of the claim; sensitive legal data, post-only.",
+      "ping_safe": false
+    },
+    "time_to_contact_deadline_days": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3650,
+      "description": "Days remaining to contact before statute of limitations or deadline; sensitive legal timing, post-only.",
+      "ping_safe": false
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>verticals/legal.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

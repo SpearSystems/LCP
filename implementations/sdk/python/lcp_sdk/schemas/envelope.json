@@ -9,6 +9,7 @@
   ],
   "properties": {
     "lcp": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "required": [
         "version",
@@ -17,11 +18,13 @@
       ],
       "properties": {
         "version": {
+          "x-lcp-pii": "public",
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
           "description": "Protocol semver (e.g. 1.0.0)."
         },
         "message": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "title": "Message Header",
           "required": [
@@ -34,11 +37,13 @@
           ],
           "properties": {
             "id": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "format": "uuid",
               "description": "Unique message identifier (UUID v4)."
             },
             "type": {
+              "x-lcp-pii": "public",
               "type": "string",
               "enum": [
                 "lead",
@@ -47,23 +52,31 @@
                 "post",
                 "ack",
                 "event",
-                "bid"
+                "bid",
+                "batch",
+                "quote",
+                "counter",
+                "subscription"
               ],
-              "description": "Message type. Closed enumeration \u2014 unknown types trigger LCP-006."
+              "description": "Message type. Closed enumeration \u2014 unknown types trigger LCP-006. `quote`/`counter` are the LEP-0009 negotiation types, emitted only toward a peer advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later. `subscription` is the LEP-0001 W3 registration type, emitted only toward a receiver advertising `event_subscriptions`."
             },
             "timestamp": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "format": "date-time"
             },
             "sender_id": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "Sender identifier (publisher/platform/buyer)."
             },
             "receiver_id": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "Receiver identifier."
             },
             "correlation_id": {
+              "x-lcp-pii": "internal",
               "type": [
                 "string",
                 "null"
@@ -71,15 +84,18 @@
               "description": "Correlates this message with a prior message (e.g. ping \u2192 bid response)."
             },
             "idempotency_key": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "Idempotency key \u2014 duplicate submissions with the same key return the original result."
             },
             "test": {
+              "x-lcp-pii": "public",
               "type": "boolean",
               "default": false,
               "description": "Test message. Mirrored as X-LCP-Test header in the HTTP binding."
             },
             "security": {
+              "x-lcp-pii": "restricted",
               "$ref": "core.json#/$defs/security",
               "description": "Transport-neutral HMAC signature. Optional for HTTP (headers used instead); required for non-HTTP transports."
             }
@@ -87,9 +103,45 @@
           "additionalProperties": false
         },
         "payload": {
-          "description": "Message payload. Shape determined by message.type \u2014 see message-type schemas (lead.json, call.json, ping.json, post.json, ack.json, event.json)."
+          "x-lcp-pii": "computed",
+          "description": "Message payload. Shape determined by message.type \u2014 see message-type schemas (lead.json, call.json, ping.json, post.json, ack.json, event.json, bid.json, batch.json, quote.json, counter.json, subscription.json)."
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "message": {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "quote",
+                      "counter"
+                    ],
+                    "x-lcp-pii": "public"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "x-lcp-pii": "internal"
+              }
+            },
+            "required": [
+              "message"
+            ]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "pattern": "^1\\.(?:[2-9]|[1-9][0-9]+)\\.\\d+$",
+                "x-lcp-pii": "public"
+              }
+            },
+            "description": "LEP-0009 C1/C2: negotiation types exist from protocol 1.2.0 (MINOR); a later major is a different contract and never rides this pattern."
+          }
+        }
+      ],
       "additionalProperties": false
     }
   },

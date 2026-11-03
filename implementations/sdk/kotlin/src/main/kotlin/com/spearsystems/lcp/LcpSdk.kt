@@ -14,11 +14,18 @@ import java.util.HexFormat
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 
 data class Message(val id: String, val type: String, val timestamp: String, val senderId: String, val receiverId: String, val idempotencyKey: String, val test: Boolean = false)
 data class Envelope(val json: String, val message: Message)
 
+/** One lead in a batch: per-item identifiers plus the lead payload as JSON (schemas/batch.json). */
+data class BatchItem(val itemId: String, val idempotencyKey: String, val payloadJson: String)
+
 object LcpSdk {
+    private val MAPPER = ObjectMapper()
+
     /**
      * Canonical whole-second UTC wire format for `X-LCP-Timestamp` and the mirrored
      * envelope field (LEP-0002). Signers MUST emit exactly this shape; the HMAC
@@ -84,6 +91,31 @@ object LcpSdk {
         fun submitLead(envelope: Envelope) = request("POST", "/v1/lcp/leads", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
         fun submitCall(envelope: Envelope) = request("POST", "/v1/lcp/calls", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
         fun submitBid(envelope: Envelope) = request("POST", "/v1/lcp/bids", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
+        /**
+         * Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
+         * the per-item receipts in input order. HTTP 207 partial success is a
+         * successful response; per-item error objects are preserved. The batch
+         * is never retried as a whole — retrying only rejected/error receipts
+         * is the caller's job.
+         */
+        fun submitLeadsBatch(items: List<BatchItem>, requestId: String? = null): List<JsonNode> {
+            require(items.isNotEmpty() && items.size <= 100) { "batch supports 1..100 items, got ${items.size}" }
+            val root = MAPPER.createObjectNode()
+            root.put("request_id", requestId ?: UUID.randomUUID().toString())
+            val array = root.putArray("items")
+            for (item in items) {
+                val node = array.addObject()
+                node.put("item_id", item.itemId)
+                node.put("idempotency_key", item.idempotencyKey)
+                node.set("payload", MAPPER.readTree(item.payloadJson))
+            }
+            val response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false))
+            val results = response.path("results")
+            check(results.isArray) { "batch response missing results" }
+            val order = items.withIndex().associate { it.value.itemId to it.index }
+            return results.sortedBy { order[it.path("item_id").asText()] ?: items.size }
+        }
+
         fun getCapabilities() = request("GET", "/v1/lcp/capabilities")
         fun listOffers(vertical: String? = null) = request("GET", "/v1/lcp/offers${if (vertical == null) "" else "?vertical=$vertical"}")
     }

@@ -241,8 +241,8 @@ Normative semantics:
   message `id` lexicographic). Receivers SHOULD keep report history and
   MUST expose the superseding view.
 - **PII discipline.** `event` is a non-PII message class (SPEC.md §4
-  table: the `event` row reads `None`, `SPEC.md:341`; the "(hashes
-  only)" qualifier belongs to the `ping` row, `SPEC.md:337` — quote
+  table: the `event` row reads `None`, `spec/02-envelope.md:48`; the "(hashes
+  only)" qualifier belongs to the `ping` row, `spec/02-envelope.md:44` — quote
   misattribution fixed post-dossier, #185 F3). A `FINAL_PRICING`
   report carries no consumer data at all: the contact is identified
   by `lead_id` alone;
@@ -270,7 +270,7 @@ Normative semantics:
   `FINAL_PRICING` MUST NOT be added to `_EVENT_STATUS_TARGETS`
   (`router.py:74-82`): it asserts no lifecycle transition; a price
   report does not move `status` (see §3 status transition table,
-  SPEC.md:260).
+  spec/03-payloads.md:184).
 
 ### Track B — `extensions` on `lead`/`post`, and the registered `{org}.form.questions` shape
 
@@ -318,7 +318,7 @@ as the overlay validated below:
   implying a validator that does not exist.
 - **Capability gating (mandatory, measured):** `lead`/`post` are closed
   objects, so the §6 "unknown optional fields ignored" guarantee does
-  **not** cover this field (SPEC.md:660-666 — closed-object additions
+  **not** cover this field (spec/04-errors.md:12-18 — closed-object additions
   "rely on version negotiation"). A v1.1 `extensions`-bearing lead sent
   to a receiver advertising only `["1.0.0"]` fails that receiver's
   strict allowlist — measured: `Additional properties are not allowed
@@ -817,7 +817,7 @@ unchanged blocks.)*
 ```
 
 Violates the event class's PII rule (SPEC.md §4 table: `event` PII —
-`None`, `SPEC.md:341`) and this record's ingest MUST: receivers MUST reject
+`None`, `spec/02-envelope.md:48`) and this record's ingest MUST: receivers MUST reject
 `FINAL_PRICING` reports whose `details` contain contact-identifier
 values (phone/email forms, digits strings matching the §9 preimage
 normalization inputs). **Honest status of "reject":** the shape validates —
@@ -1065,14 +1065,14 @@ F3 — the rule was never in a `$comment`).
   value on an open enum + recommended `details` guidance (Track A); one
   new optional field each on `lead.json` and `post.json` (Track B). No
   renames, no removals, no semantic change to any existing field; the
-  closed `message.type` enum (SPEC.md:675) is untouched — this LEP adds
+  closed `message.type` enum (spec/04-errors.md:27) is untouched — this LEP adds
   **zero new message types**, so the LEP.md two-adopters/necessity gate
   for new universal message types is never engaged.
 - **v1.0 bit-compatibility:** `extensions` absent = identical v1.0
   validation and routing (Track B); `FINAL_PRICING` unknown = stored and
   passed through by any §6-conformant receiver, and never triggers a
   status transition (`router.py:74-82` unchanged; §3 transition table,
-  SPEC.md:260).
+  spec/03-payloads.md:184).
 - **Capability-gated directionality (normative):** Track A gated on the
   receiver's `events` advertisement + parsed `lcp_versions` ≥ 1.1 (§8);
   Track B gated on parsed `lcp_versions` ≥ 1.1 in the **sending
@@ -1383,7 +1383,7 @@ line-citations into it from this record), and
 |---|---|
 | **F1 (#197)** — shape-legal worst case (35,640 B ASCII / 133,140 B UTF-8) collides with the 32 KiB SHOULD; unrecognized-namespace values schema-unbounded; transport cap unstated | B.2's total-bound bullet (331–361) rewritten as the three-tier bound with the arithmetic shown in-record and the re-tune explicitly routed: shape ceiling **133,140 B** (decomposition `25 × (4·1300 + 64) + 1,540` structural+serialization bytes, default JSON separators — matches the measured plant below), 32 KiB = **soft policy target** stated honestly (a receiver hard-rejecting there rejects shape-legal messages), operative **hard bound = transport body cap** (`max_body_bytes` default 2,000,000; `config.py:37`, `service.py:103-105`; live `LCP-001` 413 measured at 2,102,518 B). B.3.4 "Egress/abuse volume" (412–419) and the Track B security/abuse paragraph (988–1007) restated to the same hierarchy. Framing chosen: transport-as-hard-bound with the SHOULD re-worded as a soft target and the computed worst case shown (disposition option 2). The alternative framing — lowering per-field caps so the worst case fits 32 KiB — is recorded as the Review re-tune decision in #197 rather than silently taken here: the B.1/B.2 fences carry committed plant digests, Track B is unimplemented, and the numbers are a Review item alongside D7 (the record's own routing). No schema-object text changed; both trees re-run: `REJ` published / `PASS` overlay for the worst-case shape (X-maxshape) and the 1 MB unknown-namespace blob (X-1mb). |
 | **F2 (#198)** — plaintext-phone `CONSENT_WITHDRAWN` accepted and persisted today (pre-existing shipped v1.0 behavior) | No record-side fix — the gap predates and outranks this record; nothing outside these two files' text was touched. Track A's named implementation-phase obligations gained the generalized class test `plat: test_event_details_pii_reject` (Conformance impact, 1121–1134): plaintext phone/email-shaped `details` values ingest-rejected for **every** publisher-reportable event name under the SPEC §4 class rule, with the honest cross-ref to #198 and the measured call-site fact (`router.py:1284-1285` validates only `CONTACTED`; `_validate_contact_report` def at `router.py:1160`). The Reference-platform obligations bullet (1098–1104) points at it — "not a `FINAL_PRICING` special case". The record authorizes the implementation PR to generalize the validator or land an explicit tracked waiver; F2 stays open on the #185 disposition checklist until that PR lands. |
-| **F3 (#199)** | (1) SPEC §4 misattribution fixed at both sites — PII-discipline bullet (214–223) and invalid example A-1 (790–791): the `event` row reads `None` (`SPEC.md:341`); "(hashes only)" is the `ping` row (`SPEC.md:337`). (2) `governance/EXTENSION-REGISTRY.md` Registration section defines **proposed-on-acceptance** (33–39): rows land pre-decision with the Draft for name visibility/reservation, carry `proposed (LEP-NNNN)` in **Since** instead of a version, are not live until the named LEP track is accepted, and registry rows never mark acceptance themselves — decisions live in `governance/LEP-REGISTRY.md`. (3) values-are-data pointer fixed by measurement: the rule sits in `schemas/offer.json:250` `description`, never in a `$comment` (Track B security/abuse paragraph, 988–1007). |
+| **F3 (#199)** | (1) SPEC §4 misattribution fixed at both sites — PII-discipline bullet (214–223) and invalid example A-1 (790–791): the `event` row reads `None` (`spec/02-envelope.md:48`); "(hashes only)" is the `ping` row (`spec/02-envelope.md:44`). (2) `governance/EXTENSION-REGISTRY.md` Registration section defines **proposed-on-acceptance** (33–39): rows land pre-decision with the Draft for name visibility/reservation, carry `proposed (LEP-NNNN)` in **Since** instead of a version, are not live until the named LEP track is accepted, and registry rows never mark acceptance themselves — decisions live in `governance/LEP-REGISTRY.md`. (3) values-are-data pointer fixed by measurement: the rule sits in `schemas/offer.json:250` `description`, never in a `$comment` (Track B security/abuse paragraph, 988–1007). |
 
 ### Battery re-run (executed 2026-11-03, post-edit)
 

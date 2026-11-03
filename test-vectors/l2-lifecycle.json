@@ -2129,6 +2129,142 @@
         "ping_schema",
         "ping_allowlist_no_pii"
       ]
+    },
+    {
+      "id": "L2-037",
+      "name": "valid_event_subscription_registration",
+      "expect": "pass",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000037",
+            "type": "subscription",
+            "timestamp": "2026-08-18T09:00:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "buyer-002-subscription-037",
+            "test": true
+          },
+          "payload": {
+            "subscription_id": "sub_3f9a1c2b4d5e6f70",
+            "event_types": [
+              "DELIVERED",
+              "ACCEPTED",
+              "CONTACTED"
+            ],
+            "callback_url": "https://buyer.example/hooks/lcp",
+            "filter": {
+              "vertical": "mortgage",
+              "lead_id": "lead_abc123"
+            },
+            "active": true,
+            "created_at": "2026-08-18T09:00:00Z"
+          }
+        }
+      },
+      "checks": [
+        "envelope_schema",
+        "subscription_schema",
+        "subscription_allowlist",
+        "subscription_filter_closed"
+      ]
+    },
+    {
+      "id": "L2-038",
+      "name": "subscription_unadvertised_event_refused",
+      "expect": "fail",
+      "error_contains": "CONSUMER_EMAIL_CHANGED",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000038",
+            "type": "subscription",
+            "timestamp": "2026-08-18T09:00:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "buyer-002-subscription-038",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "CONSUMER_EMAIL_CHANGED"
+            ],
+            "callback_url": "https://buyer.example/hooks/lcp"
+          }
+        }
+      },
+      "checks": [
+        "subscription_schema",
+        "subscription_allowlist"
+      ]
+    },
+    {
+      "id": "L2-039",
+      "name": "subscription_consumer_filter_refused",
+      "expect": "fail",
+      "error_contains": "consumer.email",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000039",
+            "type": "subscription",
+            "timestamp": "2026-08-18T09:00:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "buyer-002-subscription-039",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "DELIVERED"
+            ],
+            "callback_url": "https://buyer.example/hooks/lcp",
+            "filter": {
+              "consumer.email": "jane.smith@example.com"
+            }
+          }
+        }
+      },
+      "checks": [
+        "subscription_schema",
+        "subscription_filter_closed"
+      ]
+    },
+    {
+      "id": "L2-040",
+      "name": "subscription_wildcard_refused",
+      "expect": "fail",
+      "error_contains": "wildcard",
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "a1000000-0000-4000-8000-000000000040",
+            "type": "subscription",
+            "timestamp": "2026-08-18T09:00:00Z",
+            "sender_id": "buyer_002",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "buyer-002-subscription-040",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "*"
+            ],
+            "callback_url": "https://buyer.example/hooks/lcp"
+          }
+        }
+      },
+      "checks": [
+        "subscription_allowlist"
+      ]
     }
   ]
 }

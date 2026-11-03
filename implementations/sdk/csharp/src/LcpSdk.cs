@@ -127,13 +127,17 @@ public sealed class LcpHttpException(int statusCode, string body) : Exception($"
     public string ResponseBody { get; } = body;
 }
 
+/// <summary>One lead in a batch: per-item identifiers plus the lead payload (schemas/batch.json).</summary>
+public sealed record LcpBatchItem(string ItemId, string IdempotencyKey, object Payload);
+
 public sealed class LcpClient(HttpClient httpClient, string endpoint, string? senderId = null, string? apiKey = null, string? hmacSecret = null, int maxRetries = 2)
 {
-    public async Task<JsonElement> RequestAsync(string method, string path, object? payload = null, bool test = false, CancellationToken cancellationToken = default)
+    public async Task<JsonElement> RequestAsync(string method, string path, object? payload = null, bool test = false, CancellationToken cancellationToken = default, int? maxRetries = null)
     {
         var body = payload is null ? Array.Empty<byte>() : JsonSerializer.SerializeToUtf8Bytes(payload);
         var idempotencyKey = payload is null ? null : ExtractIdempotencyKey(payload);
-        for (var attempt = 0; attempt <= Math.Max(maxRetries, 0); attempt++)
+        var retryLimit = Math.Max(maxRetries ?? this.maxRetries, 0);
+        for (var attempt = 0; attempt <= retryLimit; attempt++)
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), $"{endpoint.TrimEnd('/')}/{path.TrimStart('/')}");
             request.Content = body.Length == 0 ? null : new ByteArrayContent(body);
@@ -153,9 +157,9 @@ public sealed class LcpClient(HttpClient httpClient, string endpoint, string? se
                     using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody);
                     return document.RootElement.Clone();
                 }
-                if (!(response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500) || attempt == maxRetries) throw new LcpHttpException((int)response.StatusCode, responseBody);
+                if (!(response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500) || attempt == retryLimit) throw new LcpHttpException((int)response.StatusCode, responseBody);
             }
-            catch (HttpRequestException) when (attempt < maxRetries) { }
+            catch (HttpRequestException) when (attempt < retryLimit) { }
             await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
         }
         throw new InvalidOperationException("LCP request failed");
@@ -164,6 +168,29 @@ public sealed class LcpClient(HttpClient httpClient, string endpoint, string? se
     public Task<JsonElement> SubmitLeadAsync<T>(LcpEnvelope<T> envelope, bool test = false, CancellationToken cancellationToken = default) { LcpEnvelope.Validate(envelope); return RequestAsync("POST", "/v1/lcp/leads", envelope.ToWire(), test, cancellationToken); }
     public Task<JsonElement> SubmitCallAsync<T>(LcpEnvelope<T> envelope, bool test = false, CancellationToken cancellationToken = default) { LcpEnvelope.Validate(envelope); return RequestAsync("POST", "/v1/lcp/calls", envelope.ToWire(), test, cancellationToken); }
     public Task<JsonElement> SubmitBidAsync<T>(LcpEnvelope<T> envelope, bool test = false, CancellationToken cancellationToken = default) { LcpEnvelope.Validate(envelope); return RequestAsync("POST", "/v1/lcp/bids", envelope.ToWire(), test, cancellationToken); }
+
+    /// <summary>
+    /// Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
+    /// the per-item receipts in input order. HTTP 207 partial success is a
+    /// successful response; per-item error objects are preserved. The batch is
+    /// never retried as a whole — retrying only rejected/error receipts is the
+    /// caller's job.
+    /// </summary>
+    public async Task<IReadOnlyList<JsonElement>> SubmitLeadsBatchAsync(IReadOnlyList<LcpBatchItem> items, string? requestId = null, CancellationToken cancellationToken = default)
+    {
+        if (items.Count is < 1 or > 100) throw new ArgumentException($"batch supports 1..100 items, got {items.Count}", nameof(items));
+        var batch = new
+        {
+            request_id = requestId ?? Guid.NewGuid().ToString(),
+            items = items.Select(item => new { item_id = item.ItemId, idempotency_key = item.IdempotencyKey, payload = item.Payload }).ToArray(),
+        };
+        var response = await RequestAsync("POST", "/v1/lcp/leads/batch", batch, cancellationToken: cancellationToken, maxRetries: 0);
+        if (!response.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array) throw new InvalidOperationException("batch response missing results");
+        var order = new Dictionary<string, int>();
+        for (var index = 0; index < items.Count; index++) order[items[index].ItemId] = index;
+        int Rank(JsonElement result) => result.TryGetProperty("item_id", out var id) && order.TryGetValue(id.GetString() ?? string.Empty, out var index) ? index : items.Count;
+        return results.EnumerateArray().Select((result, index) => (Result: result, Index: index)).OrderBy(entry => Rank(entry.Result)).ThenBy(entry => entry.Index).Select(entry => entry.Result).ToArray();
+    }
     public Task<JsonElement> QueryLeadStatusAsync(string id, CancellationToken cancellationToken = default) => RequestAsync("GET", $"/v1/lcp/leads/{Uri.EscapeDataString(id)}", cancellationToken: cancellationToken);
     public Task<JsonElement> GetSchemaAsync(string name, CancellationToken cancellationToken = default) => RequestAsync("GET", $"/v1/lcp/schemas/{name}", cancellationToken: cancellationToken);
     public Task<JsonElement> GetCapabilitiesAsync(CancellationToken cancellationToken = default) => RequestAsync("GET", "/v1/lcp/capabilities", cancellationToken: cancellationToken);

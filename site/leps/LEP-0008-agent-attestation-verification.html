@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0008-agent-attestation-verification.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0008 — Agent attestation verification: making §9&#x27;s L3 real (closes #192) — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0008--agent-attestation-verification-making-9s-l3-real-closes-192">LEP-0008 — Agent attestation verification: making §9's L3 real (closes #192)</h1>
+<ul>
+<li><strong>Title:</strong> Agent attestation verification — issuer-anchored JWS verification at intake, §5 mapping, and staged L3 advertisement honesty</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-03</li>
+<li><strong>Status:</strong> <strong>Implemented</strong> — accepted 2026-11-03; implemented (#213 verifier, #215 schema/SPEC + mode-derived L3)</li>
+<li><strong>Target version:</strong> v1.1.0 (MINOR — security/verification semantics and error-mapping text; <strong>no new wire field, no new message type, no new §5 code</strong>; <code>schemas/core.json</code> tightens the <em>existing</em> <code>attestation</code> string's form, which is wire-visible for non-conformant traffic only — see Compatibility)</li>
+<li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/205" rel="noopener">#205</a> (<code>[LEP] Agent attestation verification — making L3 real (closes #192)</code>)</li>
+<li><strong>Origin trigger:</strong> not a roadmap item — this record exists because <a href="https://github.com/SpearSystems/LCP/issues/192" rel="noopener">#192</a> (found landing <code>test/gap-security-w5</code>, filed from PR #195) demonstrated the platform advertises <code>conformance_level: "L3"</code> while performing zero attestation verification, and <code>docs/SPEC-COVERAGE.md:187</code> (<code>SEC-09</code>) stays <code>gap</code> for exactly that reason. <code>docs/V1.1-ROADMAP.md</code> carries no attestation line (verified at <code>974b9ca</code>); the trigger is the coverage matrix and the §7 honesty gap itself.</li>
+<li><strong>Security/privacy reviewer:</strong> this proposal touches an authentication/ identity rule, so per <code>governance/LEP.md</code> (Roles and independence) the Decision requires a named human security/privacy reviewer or the decision maintainer's explicit co-sign of an ARB-Security dossier. Draft status names none; the role MUST be filled at Review.</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</h2>
+<p>Implementation: PR #213 (13-step §5 verifier, issuer-JWKS resolver, kid-norm A, observe/enforce) and PR #215 (SPEC §9 normative text, <code>schemas/core.json</code> token form, corpus sdk-024–028, <code>conformance_level</code> follows enforcement).</p>
+<p><strong>Accepted.</strong> Basis: two independent dossier rounds on issue #205 — the first found three majors (a half-guarded egress path, undecided decode-time claim validation, and an unspecified ES256 signature encoding), the second re-attacked the revision and found five minors (sandbox-mode egress escape, nested/exponent/typ parser forks, an anchor drift); all were folded in-record (PRs #209/#210). Decision parameters, both chosen deliberately:</p>
+<ul>
+<li><strong>F5 duplicate-<code>kid</code> norm: option A</strong> — a document carrying two JWKs with the same <code>kid</code> is invalid, and verification fails <code>key_unknown</code> (401). Fail-closed and deterministic; option B (first-wins plus a MUST-warn) leaves the outcome implementation-dependent, which is the class of defect the rounds were written to eliminate.</li>
+<li><strong>Phase 0 ratified:</strong> the reference platform MUST advertise <code>conformance_level: "L2"</code> until enforce-mode verification is live and green in CI, and MUST NOT advertise L3 on the strength of schema presence. This is executed <strong>ahead of implementation</strong> as a bug-class honesty fix — the current <code>"L3"</code> advertisement (<code>router.py:1769</code>) is a false claim while forged and free-text attestations ingest <code>200</code> (reproduced at every audited SHA).</li>
+</ul>
+<p>Conditions carried to implementation: the V13–V24 gates land as named tests (including the zero-dereference header policy and P1363-only ES256); L3 is re-advertised only when enforce-mode verification is green; the observe mode ships configurable with <code>enforce</code> the default at ship.</p>
+<p><strong>Independence note (recorded, not glossed):</strong> both dossier rounds were maintainer-controlled SELF-AUDIT runs under the ARB charter's rule 2, which does not satisfy independent review on its own. The maintainer's co-sign recorded here is the record's independent-review anchor for this PII/authentication surface; the charter's dissent path stays open — an adopter re-run of the published harness at <code>6926246</code> that contradicts any claim above blocks this decision until adjudicated.</p>
+<p>Public window waived by the maintainer's recorded decision; #205 stays open.</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p>SPEC.md §9 "Agent attestation" (<code>spec/01-transport.md:59-75</code>) states the requirement in three sentences that the shipping stack does not honor:</p>
+<blockquote>
+<p><code>provenance.agent.attestation</code> is a signed token proving the agent's identity and authority. … The token is verifiable against a published key (JWKS or pinned public key). Free-text attestations are non-conformant — the token MUST be verifiable. This is a fraud-resistance requirement for high-volume agent-submitted leads. (<code>spec/01-transport.md:61-75</code>, condensed)</p>
+</blockquote>
+<p>And SPEC.md §7 grades the tier on it: <strong>L3 = "full + dedup fingerprints + capability discovery + published JSON Schemas + agent binding (attestation verification)"</strong> (<code>spec/04-errors.md:43-44</code>).</p>
+<p><strong>What ships.</strong> <code>schemas/core.json:128-137</code> defines the agent block as three plain strings, required-presence only (<code>attestation</code> is <code>{"type": "string"}</code>, <code>core.json:133</code>). The reference platform's intake (<code>implementations/reference-platform/lcp_platform/router.py:262-298</code>, <code>ingest()</code>) validates presence via <code>_validate_envelope</code> (<code>router.py:1858</code>, schema errors → <code>"LCP validation failed"</code>/<code>LCP-100</code> at <code>router.py:1910-1917</code>) and never inspects the value again; the lead is persisted at <code>router.py:359</code>. Meanwhile <code>capabilities()</code> advertises <code>"conformance_level": "L3"</code> (<code>router.py:1769</code>). There is no JWT decode, no signature check, no <code>exp</code> enforcement, no claim binding, and no published-key (JWKS/pinned) surface on any shipped surface — platform, SDKs, or MCP adapter. #192 quoted <code>grep -rn "jwks|jwt.decode|verify_attestation" implementations/</code> as "matches only vendored dependency copies"; re-executed at <code>0529702</code> the same grep returns <strong>zero</strong> matches — vendored copies were pruned since #192, so the current state is stronger than the quoted evidence, not weaker (revision F9; the claim of record is "no verification surface exists", which both grep generations prove).</p>
+<p><strong>Measured evidence (re-executed at <code>974b9ca</code>, this record's base).</strong> Against the in-memory reference platform (<code>require_auth=True</code>, HMAC-signed <code>POST /v1/lcp/leads</code>, <code>X-LCP-Test: true</code>, <code>test_mode=True</code>, sender <code>pub_123</code> registered), an agent-provenance lead ingests <code>200 RECEIVED</code> with <strong>any</strong> attestation value; only key <em>absence</em> fails:</p>
+<table>
+<thead>
+<tr>
+<th>attestation value</th>
+<th>HTTP result today</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"trust me, I am a real agent (free text)"</code></td>
+<td><strong>200 <code>RECEIVED</code></strong></td>
+</tr>
+<tr>
+<td><code>alg=HS256</code> JWT, claims <code>{iss:"fake", agent_id:"ai-1", …}</code>, signature segment <code>AAAA…</code> (wrong signature)</td>
+<td><strong>200 <code>RECEIVED</code></strong></td>
+</tr>
+<tr>
+<td>same token expired (<code>exp=1000000000</code>) <strong>and</strong> <code>agent_id</code> contradicting <code>provenance.agent.agent_id</code></td>
+<td><strong>200 <code>RECEIVED</code></strong></td>
+</tr>
+<tr>
+<td>key absent</td>
+<td><code>400 LCP-100</code> (<code>'attestation' is a required property at provenance/agent</code>) — presence only</td>
+</tr>
+</tbody>
+</table>
+<p>This is #192's table reproduced at the new base SHA; the exact commands and outputs are in "Verification runs" below.</p>
+<p><strong>The MCP lane agrees the obligation exists and nobody performs it.</strong> The surface test carries the token byte-for-byte and explicitly notes that normalization would break "§9 agent attestation verification" (<code>implementations/mcp-server/tests/test_gap_mcp_surface.py:223-267</code>) — the adapter is an HTTP client (<code>implementations/mcp-server/lcp_mcp_server/client.py:67</code>), so whatever the platform enforces, MCP inherits; nothing enforces.</p>
+<p><strong>Coverage-matrix honesty.</strong> <code>SEC-09</code> is <code>gap</code> precisely because "a forged-token rejection test cannot exist because the behavior does not" (<code>docs/SPEC-COVERAGE.md:187</code>), and <code>CNF-03</code>'s green note rests on shape checks: "attestation via L3-001" (<code>docs/SPEC-COVERAGE.md:165</code>). L3-001's own fixture token cannot verify under <strong>any</strong> key — decoded (Verification runs §1): header <code>{"alg":"HS256","typ":"JWT"}</code>, claims <code>{"agent_id":"ai-assist-001","acting_for":"pub_123","issuer":"spd-agent-auth","iat":"2026-08-15T12:00:00Z","exp":"2026-08-15T12:30:00Z"}</code>, signature segment the literal string <code>signature</code>, <code>iat</code>/<code>exp</code> string-typed, and the issuer claim named <code>issuer</code> instead of the JWT registered claim <code>iss</code> (<code>test-vectors/l3-advanced.json:53</code>). The v1.0 review log settled the <em>decision</em> ("<code>attestation</code> is free text → Defined as signed JWT with verifiable claims", <code>spec/01-transport.md:238</code>); what never landed is the <em>mechanism</em>: key distribution, claim vocabulary, verification timing, and failure mapping were left undefined (#192, "Why this is filed instead of fixed here").</p>
+<p><strong>Why the envelope's own HMAC is not the answer.</strong> Transport authentication (<code>spec/05-capabilities.md:78-109</code>) already signs the exact request bytes (<code>&lt;timestamp&gt;\n&lt;idempotency-key&gt;\n&lt;raw-request-body&gt;</code>, HMAC-SHA256 under the per-pair secret) and LCP-012/LCP-002 already cover signature and identity failures (<code>spec/02-envelope.md:345-348</code>). That proves <em>which pair secret</em> produced <em>this request</em>. It cannot assert <em>which acting principal</em> — one publisher credential may front many agents, agents rotate, and §10's roles (<code>spec/01-transport.md:117-122</code>) make "agent as transporter … requires attestation ('acting for partner X')" (<code>spec/01-transport.md:121-122</code>) a first-class binding the transport layer structurally cannot carry. The attestation is therefore an <strong>assertion about the acting principal, signed by an authority the receiver can resolve</strong> — not a second transport MAC. This distinction drives every design decision below (asymmetric-only algorithms, <code>aud</code>/sender binding, and the failure-code mapping).</p>
+<p><strong>Adopter evidence.</strong> #192 is the interop-testing evidence required by <code>LEP.md</code> ("evidence from adopters or interoperability testing"): the conformance grind lane proved the gap adversarially on the reference platform. External corroboration for the demand direction: SPEC §9 itself calls attestation "fraud-resistance … for high-volume agent-submitted leads" (<code>spec/01-transport.md:74-75</code>) — the fraud class (forged agent provenance) is exactly what L3 exists to bind.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Core protocol (additive MINOR with one tightening):</strong> normative §9 text (verification procedure, claim vocabulary — <code>iss</code>/<code>aud</code>/<code>agent_id</code>/ <code>acting_for</code>/<code>iat</code>/<code>exp</code> as NumericDate, algorithm allowlist, timing, binding, failure classes), one §5 clarification sentence extending the identity axis (<code>LCP-002</code>) to attestation verification failures — the class <code>docs/err-auth-triage.md</code> §3 already established — and a <code>schemas/core.json</code> form tightening of the existing <code>attestation</code> string (compact-JWS pattern + size bound). <strong>No new envelope field. No new message type. No new §5 code. No vertical change.</strong></li>
+<li><strong>SPEC text:</strong> §9 "Agent attestation" rewrite (exact normative sentences in §5–§9 of "Proposed wire shape"); §5 scope sentences at <code>spec/02-envelope.md:345-348</code>; §7/§8 one-sentence advertisement-honesty rule (§Proposed wire shape 9).</li>
+<li><strong>Reference implementation:</strong> an intake verification step in <code>ingest()</code> pinned after the auth/rate-limit block and the dedup early-return paths (<code>router.py:279-295</code>, <code>router.py:297-318</code>) and before <code>insert_lead</code> (<code>router.py:359</code>) — §5 placement, revision F6a; an issuer-JWKS resolver carrying the <strong>paired</strong> egress controls as shipped on the delivery path (<code>validate_webhook_url</code> + resolve-aware <code>validate_egress_host</code>, <code>security.py:16</code>/<code>security.py:33</code>, <code>follow_redirects=False</code>, <code>trust_env=False</code> — pattern at <code>router.py:1019-1028</code>, revision F1; precedent mapping <code>SecurityPolicyError</code>→<code>LCP-100</code> at <code>router.py:243-246</code>), and the staged rollout modes (observe/enforce) plus the Phase 0 advertisement gate (see Rollout).</li>
+<li><strong>SDK / OpenAPI / MCP / vectors:</strong> impact list below (test names V1–V24); MCP inherits through the HTTP path — no adapter logic (<code>client.py:67</code>); OpenAPI's <code>conformance_level</code> documentation (<code>api/lcp-openapi.yaml:839</code>) already exists; only the L3-001 fixture token and its <code>checks</code> list change, plus new attestation vectors and a pinned fixture JWKS.</li>
+<li><strong>Not in scope (each with a trigger under Deferred questions):</strong> buyer-side (agent-as-consumer) attestation; <code>jti</code> single-use replay caches; DID/VC or third-party-PKI trust chains; RSA algorithm expansion; a §8 capability flag for verification mode; forwarding-direction re-verification; a platform-hosted key-registry surface; per-lead token freshness (<code>iat</code>/<code>nbf</code> enforcement).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-what-the-attestation-binds-normative-framing">1. What the attestation binds (normative framing)</h3>
+<p>The attestation asserts: <em>principal <code>agent_id</code>, acting for party <code>acting_for</code>, at the authority <code>iss</code>, for the audience <code>aud</code>, within <code>iat</code>..<code>exp</code></em> — signed with an <strong>asymmetric</strong> key the receiver can resolve. It MUST NOT be used as, or replaced by, transport authentication: the envelope HMAC (§9) stays the wire authorization (§Authentication), and a receiver MUST NOT downgrade the HMAC check because an attestation verified (or vice versa). The two axes answer different questions and fail with different codes (§8 below).</p>
+<p>A symmetric (MAC) attestation is prohibited: any receiver able to verify it can also mint it, so it carries no non-repudiable principal binding and is indistinguishable from the envelope signature the request already carries. This is why candidate trust model C (Alternatives) adds nothing.</p>
+<h3 id="2-token-form">2. Token form</h3>
+<p>Compact JWS (RFC 7519 §7.1): <code>base64url(ASCII-header) "." base64url(ASCII-claims) "." base64url(signature)</code>, three non-empty segments, UTF-8/JSON payloads, standard base64url alphabet without padding (padded segments are decodable by parsers but MUST NOT be generated, mirroring the LEP-0002 canonical-generation discipline at <code>spec/05-capabilities.md:111-124</code>). Precedence is pinned: the §2 schema pattern excludes <code>=</code>, so a receiver rejects any padded token at the <strong>schema layer</strong> (<code>400 LCP-100</code>) before the verifier runs — "decodable by parsers" describes generator discipline and the base64 libraries honest producers use, not receiver leniency (revision F6b; <code>vec: lcp-neg-attestation-padded-100</code>).</p>
+<p>Schema-layer tightening (lands in <code>schemas/core.json:133</code>, <code>$defs/provenance → properties.agent → properties.attestation</code>):</p>
+<pre class="code-block"><code class="language-json">"attestation": {
+  "type": "string",
+  "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+  "maxLength": 8192
+}</code></pre>
+<p>The pattern is <em>shape</em> validation only (three non-empty base64url segments); everything above shape is verification (§5), which the schema cannot express. Free-text values therefore fail early with the present class of error (<code>LCP-100</code>, <code>field: "provenance.agent.attestation"</code>), while JWT-shaped junk fails verification (<code>LCP-002</code>) — see §8.</p>
+<p>Header requirements: <code>alg</code> MUST be present and in the allowlist (§3); <code>kid</code> MUST be present (key selection, §4); <code>typ</code> SHOULD be <code>JWT</code>. A <code>b64</code> header or detached signature (<code>alg:none</code>, empty signature segment) is non-conformant (and the empty third segment already violates the §2 pattern).</p>
+<p>Receiver-side header policy (re-dossier R4; decided at §5 step 2, the shape step — generation-side <code>typ</code> stays a SHOULD, unchanged): <code>typ</code> is OPTIONAL on receipt and MUST NOT decide a verification outcome — its value never admits a token, and a non-<code>JWT</code> value (<code>at+jwt</code>, RFC 8725-style) MUST NOT reject one (JWT and <code>at+jwt</code> variants of identical claims verify identically). §6's claims analogue ("others … Ignored") is hereby mirrored to headers: receivers MUST ignore header members outside <code>alg</code>/<code>kid</code>/<code>typ</code>, and MUST NOT dereference URL-bearing members (<code>x5u</code>, <code>x5c</code>, <code>jku</code>) — §5 step 7's <code>iss → JWK[kid]</code> resolution (or a configured pin) is the <em>only</em> key-resolution path. <code>crit</code> is the one member that MUST NOT be ignored: this profile defines no extensions, so any <code>crit</code> header names an extension the receiver cannot understand — unknown crit-adjacent members are a <code>format</code> failure at step 2, not silence.</p>
+<h3 id="3-algorithm-allowlist-closed">3. Algorithm allowlist (closed)</h3>
+<table>
+<thead>
+<tr>
+<th><code>alg</code></th>
+<th>Key type</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EdDSA</code></td>
+<td>OKP/Ed25519</td>
+<td>MUST be supported; RECOMMENDED default</td>
+</tr>
+<tr>
+<td><code>ES256</code></td>
+<td>P-256 EC</td>
+<td>MUST be supported</td>
+</tr>
+<tr>
+<td><code>HS256</code>/<code>HS384</code>/<code>HS512</code> (any MAC)</td>
+<td>—</td>
+<td>MUST be rejected — reason <code>algorithm</code></td>
+</tr>
+<tr>
+<td><code>none</code>, or anything outside the table</td>
+<td>—</td>
+<td>MUST be rejected — reason <code>algorithm</code></td>
+</tr>
+</tbody>
+</table>
+<p>Rationale in §1; the MAC-rejection rule also closes the classic algorithm-confusion attack surface (an attacker re-signing with the <em>public</em> key as a symmetric secret). Receivers MUST read <code>alg</code> from the header only to select a verifier from this allowlist, and MUST derive the expected algorithm from the resolved JWK's <code>alg</code> when present (mismatch → <code>algorithm</code>). The allowlist test is an <strong>exact, case-sensitive string match</strong> performed at §5 step 3, before any key lookup: no trimming, case-folding, aliasing, or post-lookup relaxation — <code>"edDSA"</code>, <code>"EdDSA "</code>, or <code>"ES256"</code>-shaped-with- whitespace are <code>algorithm</code> failures, and a token that fails step 3 MUST NOT cause issuer resolution (§4) to run.</p>
+<p><strong>Signature encoding (normative; revision F3).</strong> An EC signature is the IEEE P1363 fixed-width <code>r ‖ s</code> concatenation per RFC 7518 §3.4: for ES256 each of <code>r</code> and <code>s</code> is the field-element magnitude left-padded with zeros to 32 octets, big-endian — the signature is <strong>exactly 64 bytes</strong>. DER (<code>ECDSA-Sig-Value</code> SEQUENCE) and any other variable-width encoding MUST NOT be accepted: a receiver that accepts DER and one that accepts only JWS canonical bytes reject each other's valid tokens (70–72-octet DER — length depends on the top bits of <code>r</code>/<code>s</code> — vs a fixed 64-octet <code>r ‖ s</code> for the same signature; both observed, see Revision battery), which breaks the determinism this record sells. Width is checked before the cryptographic verify (step 8 precheck → <code>format</code>); a correct-width buffer that fails the math fails <code>signature</code>. EdDSA signatures are likewise fixed-width (64 bytes, <code>crypto_sign</code> output; no alternative encoding exists). Implementation-phase gates: <code>plat: test_attestation_es256_der_rejected</code> (V17) and an ES256 positive vector in the V8 family (V8 amended below); fixture note: the vector lane ships an ES256 fixture keypair derived deterministically from a published seed — private scalar <code>d = int.from_bytes(SHA-256("lep-0008-fixture-p256-seed"), "big")</code> on P-256 (valid scalar; pinned <code>kid</code> <code>attest-es256-1</code>) — mirroring the reproducible- from-seed property of the Ed25519 fixture above; the implementation PR publishes the resulting public JWK, and reviewers re-derive every ES256 vector byte-for-byte as they do the Ed25519 ones (executed in the Revision battery).</p>
+<h3 id="4-key-distribution--recommended-trust-model-settles-192s-open-item">4. Key distribution — RECOMMENDED trust model (settles #192's open item)</h3>
+<p><code>spec/01-transport.md:72-73</code> names "JWKS or pinned public key" but defines no surface. The record settles on:</p>
+<p><strong>Canonical: issuer-published JWKS over HTTPS.</strong> <code>iss</code> is an HTTPS issuer URL under the publisher's or agent-authority's control; the verification document is resolved deterministically as <code>jwks_url = iss + "/.well-known/jwks.json"</code> (RFC 8615 path, per-issuer). Rules the implementation MUST honor:</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Normative rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resolution</td>
+<td>Fetch over TLS 1.3 (§9 Transport, <code>spec/05-capabilities.md:74-76</code>); MUST NOT fetch before the request is transport-authenticated (unauthenticated callers get LCP-012/LCP-002 first — no fetch amplification). Egress is guarded by the <strong>paired controls exactly as shipped on the delivery path</strong> (<code>router.py:1019-1028</code>) — the pre-resolution string check alone is NOT the guard: every JWKS fetch MUST (a) pass <code>validate_webhook_url</code> (<code>security.py:16</code>) tightened to <strong>HTTPS-only</strong> (the shipped class permits <code>http</code> under <code>allow_insecure_webhooks</code>; attestation resolution MUST NOT, in any mode) with no user-info in the URL (already enforced: "must not contain embedded credentials", <code>security.py:20-21</code>); (b) pass <code>validate_egress_host</code> (<code>security.py:33</code>) — the <strong>resolve-aware</strong> leg, <strong>in every deployment mode</strong>: the attestation fetch MUST NOT inherit the shipped class's <code>allow_insecure_webhooks</code> skip (<code>security.py:42-43</code> returns before <code>getaddrinfo</code>; <code>security.py:66-67</code> short-circuits the predicate block), so no insecure-webhook escape hatch applies to a JWKS fetch, <code>test_mode</code> sandbox deployments included (<code>config.py:86</code> — the flag is reachable only there; re-dossier R1): <code>getaddrinfo</code> the hostname and reject <code>is_private</code>/<code>is_loopback</code>/<code>is_link_local</code>/<code>is_multicast</code>/<code>is_reserved</code>/<code>is_unspecified</code> <strong>post-resolution</strong> (<code>security.py:44-54</code>, <code>66-74</code>), which is what kills the obfuscated-literal class the string check waves through (<code>https://2130706433</code>, <code>https://0x7f000001</code>, <code>https://127.1</code>, <code>https://localhost</code> all map to 127.0.0.1 at <code>getaddrinfo</code> and pass <code>validate_webhook_url</code> — executed, Revision battery); (c) <code>follow_redirects=False</code> — a 3xx from a policy-valid issuer is NOT followed (revalidation of a final URL is NOT an acceptable alternative at v1; the shipped delivery client is the precedent); and (d) <code>trust_env=False</code> — no <code>HTTP(S)_PROXY</code>/env interception of the fetch. These four are MUSTs on <strong>every outbound fetch attempted on the verification path</strong> — the JWKS dereference <em>by verifiers</em> included, not just "the JWKS fetch" as a service routine — including negative-cache retries (re-dossier R4: header bytes are attacker-chosen, so any egress an implementation might otherwise trigger from them, e.g. a library-side <code>x5u</code> dereference, inherits this guard; the §2 header-member rule forbids that dereference outright, so the paired controls guard the one path that legitimately exists). Residual DNS-rebinding TOCTOU (resolve at check ≠ resolve at connect) is named, not claimed closed: connection-pool reuse and re-resolve hardening are implementation-PR concerns; the no-redirect/no-proxy legs remove the two same-process escalation paths. Policy-invalid <code>iss</code> → rejection reason <code>issuer_policy</code> (a sender-fixable identity failure, §8).</td>
+</tr>
+<tr>
+<td>Selection</td>
+<td><code>kid</code> (required, §2) selects the JWK; <code>kty</code>/<code>crv</code>/<code>alg</code> of the selected JWK MUST be consistent with the header <code>alg</code> (§3 allowlist). No key found for <code>kid</code> in a successfully fetched <strong>valid</strong> document → <code>key_unknown</code>. <strong>Duplicate <code>kid</code> entries.</strong> The <code>keys</code> array MAY be malformed — two JWKs carrying the same <code>kid</code> give first-wins and last-wins implementations <em>opposite</em> answers for the same token (determinism broken across conformant receivers; dossier F5). A norm is required; two conformant resolutions exist and this record refuses to silently pick: <strong>(A)</strong> a document containing two JWKs with the same <code>kid</code> is an <strong>invalid document</strong> → routed with the Bounds row: fetched-but-invalid → <code>LCP-002</code>/401 <code>key_unknown</code> — this also covers the <code>use</code>/<code>key_ops</code> confusion class (a <code>use:"enc"</code> key selected for verification is likewise an invalid-document case); <strong>(B)</strong> selection is <strong>pinned to first-match</strong> in document order and the receiver MUST log a <code>duplicate_kid</code> warning — deterministic, more forgiving of honest issuer mistakes, but keeps serving tokens under a document the issuer shipped broken. Both options carry the same named-shape gate (<code>plat: test_attestation_jwks_duplicate_kid_rejected</code> asserts A; under B it becomes <code>…_first_match_pinned</code>). <strong>Marked for the maintainer at Accept</strong> (design decision, not a text fix); the reference implementation and Revision battery validate <strong>A</strong> (the stricter, closed-vocabulary-consistent option).</td>
+</tr>
+<tr>
+<td>Bounds</td>
+<td>JWKS document ≤ 16 KiB, ≤ 32 keys (format sanity, mirroring the LEP-0003 32-entry report bound); token ≤ 8192 bytes (§2 <code>maxLength</code>). <strong>Outcome attribution (revision F4, §8 blame rule):</strong> the bounds above are <em>format sanity</em>, not availability — a successfully fetched document that is oversized, key-count-exceeding, non-JSON, or otherwise invalid is a <strong>sender/issuer-fixable</strong> state and MUST fail the token: <code>LCP-002</code>/401 <code>key_unknown</code> (closed vocabulary preserved; a dedicated <code>jwks_oversize</code>-style reason was considered and rejected as vocabulary bloat for a state already named). <code>LCP-500</code>/500 <code>key_unavailable</code> is reserved for <strong>availability</strong> failure only: DNS/connect error, timeout, or a <strong>5xx</strong> response from the issuer (the server itself failed). A <strong>4xx</strong> (e.g. <code>404</code> on the <code>/.well-known/jwks.json</code> path) is the issuer's <em>configuration</em> — routed as fetched-but-invalid: <code>key_unknown</code>/401. An issuer serving garbage or pointing at a missing path must not convert its own fixable state into receiver-class 500s on every verified sender's request.</td>
+</tr>
+<tr>
+<td>Cache</td>
+<td>Cache per <code>(iss, kid)</code>; respect HTTP <code>cache-control</code>/<code>max-age</code>, hard cap 24 h; negative cache for fetch failures ≤ 30 s. Fetch timeout ≤ 2 s, and MUST NOT block the intake worker beyond it (bounded worker, else <code>key_unavailable</code>).</td>
+</tr>
+<tr>
+<td>Rotation</td>
+<td>Routine rotation = new <code>kid</code> alongside the old in the same JWKS; deployments MAY keep the previous key for a bounded window (mirrors §9's "During key rotation, a receiver MAY accept a previously active secret", <code>spec/05-capabilities.md:108-109</code>). No protocol change needed.</td>
+</tr>
+<tr>
+<td>Compromise</td>
+<td>Issuer removes the <code>kid</code>; propagation = cache TTL. Blast radius is per-issuer (each issuer publishes its own keys) — never global.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Fallback: pinned public key (deployment configuration).</strong> A closed publisher↔buyer pair MAY configure <code>iss → pinned JWK</code> locally (the §9 "pinned public key" leg). The pin <strong>replaces resolution for that issuer</strong> and is otherwise identical. Pins live in receiver deployment config — <strong>not</strong> a new protocol/registry surface; registering sender-scoped keys as a canonical protocol surface is Alternatives B (rejected as the primary, with reasons).</p>
+<p>Why issuer-anchored, decided against the candidates (full trade-off table in Alternatives considered): §9's <code>issuer</code> claim ("Authority that issued the token") only <em>means</em> something if the receiver can resolve it; agent-as-consumer/agent-as-source topologies (§10, <code>spec/01-transport.md:117-125</code>) put a single agent authority across many publishers, which per-pair registration cannot model without inventing a registry; and the reference platform ships zero discovery surface today, so both models pay bootstrap cost — issuer JWKS pays it once per issuer and gets revocation via rotation for free.</p>
+<h3 id="5-verification-procedure-reference-algorithm--executed-in-the-battery">5. Verification procedure (reference algorithm — executed in the battery)</h3>
+<p>Runs <strong>once per newly accepted lead</strong>, at a <strong>pinned intake slot</strong>: after <code>auth.authenticate</code> and the per-sender rate limit (<code>router.py:279-295</code>, LCP-011 at <code>router.py:295</code>) and after the idempotency dedup lookup (<code>router.py:297</code>), but <strong>before</strong> <code>insert_lead</code> (<code>router.py:359</code>) — the same ordering principle as §9's "Receivers MUST reject requests outside the acceptable timestamp window before processing PII" (<code>spec/05-capabilities.md:105-106</code>): a failed verification MUST NOT persist PII. Placement relative to the two early-return paths in the dedup block is normative: the LCP-005 mismatch 409 (<code>router.py:304-308</code>) and the DUPLICATE ack (<code>router.py:318</code>) both short-circuit <strong>before</strong> this procedure runs, so a DUPLICATE ack never re-verifies and never fetches keys (the bytes were verified at the original accept, whose verification gated the row that now produces the ack); an idempotency-key collision likewise fails on the idempotency axis without touching the issuer. Verification happens exactly once per lead, at its first acceptance attempt. <code>source_type != "agent"</code> or an absent <code>provenance.agent</code> block → the procedure does not run (presence semantics unchanged, <code>core.json:135</code>).</p>
+<p>Steps 2–5 are <strong>decode-time</strong> steps: they run on parsed structure and MUST complete before any key lookup, network fetch, or cryptographic evaluation — no implementation may let a signature-verified token smuggle a malformed claim set into the signature-time evaluation of steps 9–12, and no implementation may do cryptographic work for a token that will fail on shape alone.</p>
+<pre class="code-block"><code class="language-text">1  size ≤ 8192 and exactly 3 non-empty base64url segments  else FAIL format    (schema layer normally; a
+   — non-compact serializations (JWS JSON, 1/2/4 segments, padded) are format failures here or at the schema)
+2  header &amp; claims parse as strict UTF-8 JSON objects;     else FAIL format
+   duplicate member names REJECT AT PARSE — in EVERY
+   JSON object of either serialization, at any nesting
+   depth (parser rule below) — no last-wins fallback permitted
+   §2's receiver-side header policy (`crit`/`typ`/unknown
+   members) is likewise evaluated at this step (re-dossier R4)
+3  header.alg exact-match in {EdDSA, ES256}               else FAIL algorithm
+   (case-sensitive, no trimming/aliasing; checked BEFORE
+   any key lookup — §4 resolution is never reached)
+4  all §6 MUST claims present with declared types:        else FAIL format
+   iss/aud/agent_id/acting_for non-empty strings;
+   iat/exp present, integer NumericDate, &gt; 0 (string or
+   float or zero/absent timestamps → format, with the
+   type step named; never coerced, never ignored).
+   NumericDate is judged on the claims BYTES, not the
+   parsed value: a base-10 integer literal, no fraction
+   and no exponent part — `"exp":1e9`/`"exp":2e9` are
+   `format` here even though IEEE-double parsers read
+   `2e9` as integer-valued (re-dossier R3)
+5  header.kid present                                    else FAIL key_unknown
+6  iss policy-valid (HTTPS-only, no user-info, paired     else FAIL issuer_policy
+   egress class §4 — resolve-aware, post-resolution
+   private/loopback/link-local rejection)
+7  resolve (iss → JWK[kid]) via cache/§4                 transport failure → key_unavailable (500, §8)
+                                                         no such kid / invalid document → FAIL key_unknown
+8  fixed-width signature precheck (EdDSA 64 B; ES256      else FAIL format
+   P1363 r‖s 64 B — §3 encoding norm), then verify
+   signature over header.claims bytes                     else FAIL signature
+9  now ≥ claims.exp + skew → FAIL expired                 (reject AT equality; skew ≤ 30 s config cap is
+                                                           a MUST, not advisory — §7 clock rule)
+10 claims.aud == envelope lcp.message.receiver_id       else FAIL audience
+11 claims.agent_id == provenance.agent.agent_id         else FAIL claims_mismatch
+12 claims.acting_for == authenticated sender_id, OR
+   sender scopes contain "act_for:" + claims.acting_for else FAIL claims_mismatch
+13 all pass → ACCEPT (bind agent_id/acting_for/iss/kid into the lead record)</code></pre>
+<p><strong>Parser rule (duplicate claim names, normative).</strong> Header and claims MUST be parsed with RFC 8259 §5 duplicate-name rejection (e.g. Python <code>json.loads(..., object_pairs_hook=…)</code> that refuses a repeated key; equivalently any strict parser configured to reject, not last-wins). A token whose claims object carries <code>"aud"</code> twice with different values is a <code>format</code> failure at step 2 for <strong>every</strong> conformant receiver — an implementation that last-wins would accept the token at one receiver's <code>aud</code> and reject at another's (the divergence the dossier executed). Step 4 must therefore never see a duplicate, and no claim evaluation may define winner selection among duplicates.</p>
+<p><strong>Depth (re-dossier R2).</strong> The refusal applies to <strong>every JSON object in the header or claims serialization, at any nesting depth</strong> — the <code>object_pairs_hook</code> example fires per object, innermost first, so a repeated member inside a nested claim value (<code>{"meta":{"tier":"gold","tier":"platinum"}}</code>, validly signed) is the same <code>format</code> failure at step 2. This is the stricter of the two readings the re-dossier executed (the whole-document scan of the two top-level objects accepts it); both are deterministic, so the record chooses and states the rule rather than leaving the depth to library defaults.</p>
+<p>Reason vocabulary (normative, closed): <code>format</code>, <code>algorithm</code>, <code>issuer_policy</code>, <code>key_unknown</code>, <code>key_unavailable</code>, <code>signature</code>, <code>expired</code>, <code>audience</code>, <code>claims_mismatch</code>. Evaluation stops at the first failing step — the order is deterministic so the same forged input always yields the same reason (re-executed post-revision against the 13-step procedure: an expired <strong>and</strong> claims-contradicting token still reports <code>expired</code>, Revision battery).</p>
+<p>Step 12 reuses the shipped scope machinery (<code>auth.py:187-189</code> <code>has_scope</code>, scope strings per sender, <code>storage.py:502</code>): <code>act_for:&lt;party&gt;</code> is a scope string in the existing credential registry, not a wire field — an agent submitting with its <strong>own</strong> sender credential (<code>agent_pub_001</code> on behalf of <code>pub_123</code>, the L3-001 topology) verifies iff the delegation was registered. Scope matching is substring-free and exact (<code>act_for:pub_123</code> matches party <code>pub_123</code> only); delegation <em>graphs</em> (chain-of-agents) are Deferred.</p>
+<h3 id="6-claim-set-normative-vocabulary-settles-192s-claim-binding">6. Claim set (normative vocabulary; settles #192's "claim binding")</h3>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Required</th>
+<th>Type</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>iss</code></td>
+<td>MUST</td>
+<td>string</td>
+<td>HTTPS issuer URL (§4). <strong>Replaces</strong> the v1.0 table's non-JWT <code>issuer</code> private claim — the current §9 table (<code>spec/01-transport.md:64-70</code>) is corrected at implementation; existing tokens using <code>issuer</code> are already unverifiable, so this is a clarification, not a break.</td>
+</tr>
+<tr>
+<td><code>aud</code></td>
+<td>MUST</td>
+<td>string</td>
+<td>Equals the envelope <code>lcp.message.receiver_id</code>; the receiver MUST additionally confirm that value is its own platform identity — already enforced today (<code>router.py:277-280</code>, receiver mismatch → <code>LCP-002</code>). Stops cross-receiver replay (§7).</td>
+</tr>
+<tr>
+<td><code>agent_id</code></td>
+<td>MUST</td>
+<td>string</td>
+<td>Byte-equal to <code>provenance.agent.agent_id</code> (extends <code>spec/01-transport.md:66</code> "matches" into a normative MUST).</td>
+</tr>
+<tr>
+<td><code>acting_for</code></td>
+<td>MUST</td>
+<td>string</td>
+<td>Equal to the authenticated <code>sender_id</code>, or carried by its <code>act_for:</code> scope (§5 step 12).</td>
+</tr>
+<tr>
+<td><code>iat</code></td>
+<td>MUST</td>
+<td>integer (NumericDate, RFC 7519 2)</td>
+<td>Whole seconds. NOT enforced at intake in v1 (freshness = issuer policy; see Deferred). String timestamps are format-invalid — rejected at §5 step 4, decode-time, before any signature work; L3-001's string <code>iat</code>/<code>exp</code> is fixed at implementation (V8).</td>
+</tr>
+<tr>
+<td><code>exp</code></td>
+<td>MUST</td>
+<td>integer (NumericDate)</td>
+<td>Presence/type enforced at §5 step 4 (string/float/zero/absent → <code>format</code>); expiry enforced per §5 step 9.</td>
+</tr>
+<tr>
+<td><code>nbf</code>, <code>jti</code></td>
+<td>MAY</td>
+<td>—</td>
+<td><code>nbf</code> SHOULD be honored if present (same skew rule); <code>jti</code> is recorded but MUST NOT be required or single-use-cached in v1 (§7 rationale; Deferred trigger).</td>
+</tr>
+<tr>
+<td>others</td>
+<td>MAY</td>
+<td>—</td>
+<td>Ignored (forward-compatibility mirrors §6 "unknown optional fields ignored", <code>spec/04-errors.md:12-14</code> — claims are open by design inside a verified signature).</td>
+</tr>
+</tbody>
+</table>
+<p>Unknown-to-this-spec <em>required</em> claims are not a concept: absence of a MUST claim above, or a type violation of one, is a decode-time <strong><code>format</code></strong> failure at §5 step 4 — never <code>claims_mismatch</code> (that reason belongs to post-signature contradictions with the envelope, steps 11–12), never ignorable. The pre-revision text named both candidates; the revision pins one (dossier F2: two candidates meant two conformant implementations reporting different <code>details.reason</code> for the same bytes).</p>
+<h3 id="7-replay-clock-and-window-rules-units-precise">7. Replay, clock, and window rules (units-precise)</h3>
+<p><strong>Units (normative).</strong></p>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Unit</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one attestation</td>
+<td>one signed assertion</td>
+<td>exactly one (agent_id, acting_for, iss, aud) tuple per token; a token asserting two principals is not expressible (single claim set).</td>
+</tr>
+<tr>
+<td>one verification</td>
+<td>per lead acceptance</td>
+<td>exactly once per lead, at the first acceptance attempt, at the pinned §5 slot; a retry of an already-accepted envelope returns the DUPLICATE ack <strong>without re-verification</strong> (the original accept verified the bytes that minted the row — §5 placement; <code>plat: test_attestation_duplicate_ack_never_refetches</code>); a retry that did not previously reach acceptance verifies normally (deterministic result, cached keys).</td>
+</tr>
+<tr>
+<td>one failure</td>
+<td>exactly one reason</td>
+<td>first-failing step of §5 wins; no multi-reason payloads.</td>
+</tr>
+<tr>
+<td>token validity</td>
+<td>seconds</td>
+<td><code>exp</code> − <code>iat</code>, issuer-chosen; the protocol bounds only the <em>acceptance</em> window (§5 step 9's skew ≤ 30 s). The RECOMMENDED maximum lifetime is 900 s (advisory; normativizing it is Deferred with data).</td>
+</tr>
+<tr>
+<td>replay window (transport)</td>
+<td>300 s default</td>
+<td>unchanged §9 HMAC window (<code>spec/05-capabilities.md:107</code>, <code>config.py:33</code>); the attestation rules are independent of it.</td>
+</tr>
+<tr>
+<td>agent-evaluation window</td>
+<td>30 s default</td>
+<td>§9 agent-as-consumer (<code>spec/01-transport.md:104-111</code>), pinned "exactly 30" by the #195 lane (<code>implementations/reference-platform/tests/test_gap_security.py:491-517</code>; default <code>ping_timeout_seconds</code> 30, <code>messages.py:140</code>). Chosen as the <strong>ceiling for clock-skew allowance</strong> so no token accepted at intake can have been expired longer than one transaction window.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Clock rule.</strong> <code>exp</code> is compared against the <strong>receiver's</strong> wall clock in NumericDate seconds. Expiry boundary (revision F7): the check fails <code>expired</code> when <code>now ≥ exp + skew</code> — <strong>rejected at equality</strong>; this is a deliberate asymmetry with the shipped transport window, which accepts at equality (<code>abs(Δ) ≤ max_skew_seconds</code>, <code>auth.py:70-71</code> — that boundary is unassigned pending #143 per <code>docs/err-auth-triage.md</code> §2, and this record does not silently harmonize it). An expired token carries no authority even for one second, while a transport timestamp within the window is still replay-protected by the idempotency machinery — so strictness on the authority axis and laxity on the freshness axis are consistent, but the conventions <strong>differ</strong> and both are now named. Skew allowance: deployments MAY configure <code>skew ≤ 30 s</code> (default 0) and MUST NOT configure more — the cap is a MUST enforced at configuration time, not advisory (<code>plat: test_attestation_skew_config_capped_at_30</code>); its ceiling is the agent-evaluation window row above, and the reason the allowance exists at all is NumericDate <strong>whole-second truncation</strong>: a token minted anywhere inside a second and verified anywhere in a later clock tick of the receiver can legitimately appear up to one second early (plus honest clock drift); the ≤ 30 s bound keeps the total slack under one transaction window so no token accepted at intake can have been expired longer than the platform will wait on an agent anyway. No <code>iat</code> freshness requirement at intake — a 5-minute-old valid token is <em>expected</em> behavior (agents batch many submissions), which is why per-token single-use caching (<code>jti</code> replay cache) is deliberately absent: the transport replay defenses (envelope HMAC over exact bytes + idempotency-key equality + replay window — all shipped and pinned by the #195 lane's SEC-06 tests) already stop <em>request</em> replay; a <em>reused</em> token inside its <code>exp</code> on new envelopes is the intended use, and cross-receiver reuse is killed by <code>aud</code> (step 10). A <code>jti</code> cache would add unbounded state to defend a non-threat; the Deferred trigger covers the case where forwarding or exfiltration evidence changes that calculus.</p>
+<p><strong>Cross-pair/cross-receiver replay (the binding #192 asked to settle).</strong> <code>(aud, iss→kid, acting_for==sender|scope)</code> together mean: a token minted for platform_001 fails at platform_002 (<code>audience</code>); a token minted by publisher A's authority fails at publisher B's submissions (<code>claims_mismatch</code>/ <code>key_unknown</code> — B cannot even produce issuer A's signatures because the algorithms are asymmetric). No new state required.</p>
+<h3 id="8-failure-mapping-onto-the-existing-5-taxonomy-no-new-code">8. Failure mapping onto the existing §5 taxonomy (no new code)</h3>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Layer</th>
+<th>Code</th>
+<th>HTTP</th>
+<th>Wire <code>field</code></th>
+<th><code>details.reason</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>attestation</code> absent</td>
+<td>schema (present behavior, <code>core.json:135</code>)</td>
+<td>LCP-100</td>
+<td>400</td>
+<td><code>provenance.agent</code></td>
+<td>(schema error text, unchanged)</td>
+</tr>
+<tr>
+<td>not three-segment JWS (free text, <code>none</code>, detached) / &gt; 8 KiB</td>
+<td>schema (§2 pattern)</td>
+<td>LCP-100</td>
+<td>400</td>
+<td><code>provenance.agent.attestation</code></td>
+<td>(schema error text)</td>
+</tr>
+<tr>
+<td>decodable-shaped but malformed JWT: header/claims non-JSON or non-object, duplicate claim names, MUST-claim absent/wrong-type timestamps, wrong signature width</td>
+<td>verifier (steps 2/4/8 precheck)</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>format</code></td>
+</tr>
+<tr>
+<td>algorithm rejected</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>algorithm</code></td>
+</tr>
+<tr>
+<td><code>kid</code> missing; no <code>kid</code> match in a <strong>valid</strong> fetched document; fetched-but-invalid document (oversized / &gt;32 keys / non-JSON / duplicate-<code>kid</code> under §4 option A / issuer 4xx)</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>key_unknown</code></td>
+</tr>
+<tr>
+<td><code>iss</code> policy-invalid</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>issuer_policy</code></td>
+</tr>
+<tr>
+<td>signature invalid (correct width, wrong bytes)</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>signature</code></td>
+</tr>
+<tr>
+<td><code>exp</code> past (+skew; reject at equality, §7)</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>expired</code></td>
+</tr>
+<tr>
+<td><code>aud</code> mismatch</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>audience</code></td>
+</tr>
+<tr>
+<td>claim↔envelope contradiction</td>
+<td>verifier</td>
+<td>LCP-002</td>
+<td>401</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>claims_mismatch</code></td>
+</tr>
+<tr>
+<td>JWKS <strong>availability</strong> failure only: DNS/connect error, fetch timeout, issuer 5xx</td>
+<td>verifier I/O</td>
+<td>LCP-500</td>
+<td>500</td>
+<td><code>provenance.agent.attestation</code></td>
+<td><code>key_unavailable</code></td>
+</tr>
+</tbody>
+</table>
+<p>Why LCP-002 for verification failures rather than new policy invention: §5's taxonomy sentence names the axes — "these are different failure modes (<strong>identity</strong> vs. replay protection)" (<code>spec/02-envelope.md:346-348</code>); <code>docs/err-auth-triage.md</code> §3 ruled that credential failures on the <em>identity</em> axis belong to LCP-002; the platform already stamps intake <strong>binding</strong> failures LCP-002/401 — receiver-not-this-platform (<code>router.py:277-280</code>) and authenticated-sender-mismatch (<code>router.py:287-290</code>) — and <code>LCP-002</code> is <code>AuthenticationError</code>'s default code (<code>auth.py:28</code>). An unverifiable attestation is precisely a failing assertion of <em>who is acting</em>, on a message whose transport identity is fine — same axis, existing code, <code>details.reason</code> disambiguates. The §5 sentence at <code>spec/02-envelope.md:345</code> ("covers an unrecognized <code>sender_id</code>") is extended at implementation by one clause: "…or a recognized sender whose agent attestation fails §9 verification." LCP-500 for <code>key_unavailable</code>: the receiver cannot complete verification because of <em>its</em> (or its dependency's) availability; a 4xx would blame the sender for the receiver's infrastructure. The contrapositive is equally normative (revision F4): a 5xx would blame the sender for the <strong>issuer's</strong> fixable state — so a successfully fetched JWKS document that is invalid (over-bounds, non-JSON, duplicate <code>kid</code> under §4 option A) and an issuer answering 4xx join the sender-side class as <code>key_unknown</code>/401, while <code>key_unavailable</code>/500 keeps exactly the availability set (transport error, timeout, issuer 5xx — §4 Bounds row). <code>key_unavailable</code> is retryable and idempotency (<code>spec/05-capabilities.md:104-105</code> header-key equality + §4 ack semantics) keeps retries safe; deployments MUST NOT silently fail-open to 200 in enforce mode (observe-mode logging is the <em>only</em> sanctioned soft path, Rollout Phase 2).</p>
+<h3 id="9-capability-advertisement-honesty-the-l3-gate">9. Capability advertisement honesty (the L3 gate)</h3>
+<p>Normative addition for §7/§8 (and the reason Phase 0 exists):</p>
+<blockquote>
+<p>A receiver MUST NOT advertise <code>conformance_level: "L3"</code> unless it performs §9 agent-attestation verification as specified in §9; an endpoint that implements every other L3 leg except attestation verification advertises the highest tier it fully satisfies.</p>
+</blockquote>
+<p><code>spec/04-errors.md:43-44</code> already makes this true <em>by definition</em> — L3 <em>includes</em> attestation verification — the addition only names the advertisement consequence. For the reference platform, which today ships dedup fingerprints, capability discovery, and published schemas but not verification, the honest advertisement is <code>"L2"</code> (it fully satisfies L2; §7's tiers are cumulative grades, not per-leg flags). No new capabilities field is minted to express partial tiers — minting one is a larger wire surface than the fix.</p>
+<h3 id="valid-example--agent-submitted-lead-with-a-verified-attestation-direct-sender">Valid example — agent-submitted lead with a verified attestation (direct sender)</h3>
+<p>Publisher credential <code>pub_123</code> submits through its own sender identity; the token's <code>acting_for</code> equals the sender, <code>agent_id</code> matches the envelope, <code>aud</code> matches <code>receiver_id</code>, EdDSA signature verifies against the fixture issuer's pinned key (key material + seed below).</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "91d44346-f7d8-5d31-a8cd-c6c990858499",
+      "type": "lead",
+      "timestamp": "2026-11-03T09:00:00Z",
+      "sender_id": "pub_123",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "lep0008-valid-agent-lead-001"
+    },
+    "payload": {
+      "lead_id": "lead_lep0008_agent_001",
+      "external_id": "pub-internal-456",
+      "submitted_at": "2026-08-15T10:19:50Z",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": [
+          "calls",
+          "sms",
+          "email",
+          "share_with_partners"
+        ],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true,
+        "scrubs": [
+          {
+            "type": "dnc_national",
+            "provider": "au_dncregister",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:48Z"
+          },
+          {
+            "type": "litigator",
+            "provider": "litigator_list",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          },
+          {
+            "type": "blacklist",
+            "provider": "internal",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          }
+        ]
+      },
+      "provenance": {
+        "received_at": "2026-11-03T09:00:01Z",
+        "source_type": "agent",
+        "source_id": "pub_123",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage",
+        "agent": {
+          "agent_id": "ai-assist-001",
+          "acting_for": "pub_123",
+          "attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoiYWktYXNzaXN0LTAwMSIsImFjdGluZ19mb3IiOiJwdWJfMTIzIiwiaWF0IjoxNzgwMjcyMDAwLCJleHAiOjIwODAwMDAwMDB9.ndo1szT6NLNuZwaiEmvY4-4oxfrA_UUyuoFjTV_4hFzAfk9tsP4P9kcdEyLu1WsA3Qv6iw0pTa_YFMI_FELpDw"
+        }
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
+      }
+    }
+  }
+}</code></pre>
+<p>Verification against this example (executed — see Verification runs): schema PASS under the published tree <strong>and</strong> under the §2 overlay; verifier steps 1–13 PASS; the fixture JWK is</p>
+<pre class="code-block"><code class="language-json">{"kty": "OKP", "crv": "Ed25519", "x": "1bCirUUETlbD2Z3ZNcYH95IskGacAJdPgSxxLRswlbY", "kid": "attest-key-1", "alg": "EdDSA"}</code></pre>
+<p>with <code>iss = "https://agents.publisher.example/attestation"</code> (JWKS at <code>iss + /.well-known/jwks.json</code>), claims <code>{"iss": …, "aud": "platform_001", "agent_id": "ai-assist-001", "acting_for": "pub_123", "iat": 1780272000, "exp": 2080000000}</code>, and the private key derived deterministically from the seed <code>SHA-256("lep-0008-fixture-ed25519-seed")</code> — any reviewer regenerates every token byte-for-byte (<code>cryptography</code> 50.0.0, <code>Ed25519PrivateKey.from_private_bytes</code>). <code>exp</code> is deliberately far-future so the pinned example still verifies on re-runs; the claims otherwise match production shape.</p>
+<h3 id="valid-example--delegated-agent-sender-act_for-scope">Valid example — delegated agent sender (<code>act_for:</code> scope)</h3>
+<p>Same issuer token (claims unchanged), but submitted with the <strong>agent's own</strong> sender credential <code>agent_pub_001</code>, whose credential registry entry carries scopes <code>["lead:submit", "act_for:pub_123"]</code> (existing scope machinery, <code>auth.py:187-189</code>). Verifier step 12 accepts via the scope; the same token submitted by <code>agent_pub_001</code> <strong>without</strong> the scope fails <code>claims_mismatch</code> (executed — Verification runs §4).</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.0.0",
+    "message": {
+      "id": "957d1a12-4320-5d42-bec0-ef620fa8f464",
+      "type": "lead",
+      "timestamp": "2026-11-03T09:00:00Z",
+      "sender_id": "agent_pub_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "lep0008-valid-delegated-lead-001"
+    },
+    "payload": {
+      "lead_id": "lead_lep0008_delegated_001",
+      "external_id": "pub-internal-456",
+      "submitted_at": "2026-08-15T10:19:50Z",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": {
+        "first_name": "Jane",
+        "last_name": "Smith",
+        "email": "jane.smith@example.com",
+        "phone": "+61412345678",
+        "locale": "en-AU"
+      },
+      "location": {
+        "country_code": "AU",
+        "state_region": "NSW",
+        "postal_code": "2000",
+        "city": "Sydney",
+        "timezone": "Australia/Sydney"
+      },
+      "compliance": {
+        "consent_timestamp": "2026-08-15T10:19:45Z",
+        "consent_source_url": "https://publisher.example.com/landing/mortgage",
+        "consent_text_version": "v2.1",
+        "consent_purposes": [
+          "calls",
+          "sms",
+          "email",
+          "share_with_partners"
+        ],
+        "consent_evidence": [
+          {
+            "type": "verified_consent",
+            "provider": "internal",
+            "token_or_url": "evd_abc123def456"
+          }
+        ],
+        "otp_verified": true,
+        "dnc_checked": true,
+        "scrubs": [
+          {
+            "type": "dnc_national",
+            "provider": "au_dncregister",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:48Z"
+          },
+          {
+            "type": "litigator",
+            "provider": "litigator_list",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          },
+          {
+            "type": "blacklist",
+            "provider": "internal",
+            "result": "clean",
+            "checked_at": "2026-08-15T10:19:49Z"
+          }
+        ]
+      },
+      "provenance": {
+        "received_at": "2026-11-03T09:00:01Z",
+        "source_type": "agent",
+        "source_id": "agent_pub_001",
+        "source_url": "https://publisher.example.com/landing/mortgage",
+        "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+        "campaign_id": "camp_mortgage_nsw_2026",
+        "creative_id": "cre_001",
+        "landing_page_url": "https://publisher.example.com/landing/mortgage",
+        "agent": {
+          "agent_id": "ai-assist-001",
+          "acting_for": "pub_123",
+          "attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoiYWktYXNzaXN0LTAwMSIsImFjdGluZ19mb3IiOiJwdWJfMTIzIiwiaWF0IjoxNzgwMjcyMDAwLCJleHAiOjIwODAwMDAwMDB9.ndo1szT6NLNuZwaiEmvY4-4oxfrA_UUyuoFjTV_4hFzAfk9tsP4P9kcdEyLu1WsA3Qv6iw0pTa_YFMI_FELpDw"
+        }
+      },
+      "attributes": {
+        "vertical": "mortgage",
+        "schema_version": "1.0.0",
+        "loan_type": "refinance",
+        "loan_amount_cents": 65000000,
+        "loan_amount_band": "500k_750k",
+        "property_type": "single_family",
+        "property_value_cents": 88000000,
+        "property_value_band": "800k_1m",
+        "credit_rating_band": "excellent",
+        "employment_status": "employed",
+        "annual_income_cents": 12000000,
+        "annual_income_band": "100k_150k",
+        "ltv_ratio_band": "70_80",
+        "is_first_home_buyer": false,
+        "has_existing_mortgage": true
+      },
+      "exclusivity": {
+        "exclusivity": "shared",
+        "max_buyers": 3
+      }
+    }
+  }
+}</code></pre>
+<h3 id="invalid-example-a--free-text-attestation-the-192-row-1-forgery">Invalid example A — free-text attestation (the #192 row-1 forgery)</h3>
+<p><code>provenance.agent</code> block as otherwise-valid <code>valid-a</code> but</p>
+<pre class="code-block"><code class="language-json">"agent": {
+  "agent_id": "ai-assist-001",
+  "acting_for": "pub_123",
+  "attestation": "trust me, I am a real agent (free text)"
+}</code></pre>
+<p>Today: <code>200 RECEIVED</code> (#192; re-executed at <code>974b9ca</code> — Verification runs §1). Under this proposal: rejected at the <strong>schema</strong> layer — <code>'trust me, I am a real agent (free text)' does not match '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' at provenance/agent/attestation</code> → <code>400 LCP-100</code> (executed under the overlay — Verification runs §3). §9 already declares free text non-conformant (<code>spec/01-transport.md:73-74</code>); the pattern only makes the schema see what the spec always said.</p>
+<h3 id="invalid-example-b--forged-hs256-jwt-the-192-row-2-probe-verbatim">Invalid example B — forged HS256 JWT (the #192 row-2 probe, verbatim)</h3>
+<pre class="code-block"><code class="language-json">"agent": {
+  "agent_id": "ai-assist-001",
+  "acting_for": "pub_123",
+  "attestation": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZ2VudF9pZCI6ImFpLTEiLCJhY3RpbmdfZm9yIjoicHViXzEyMyIsImlzcyI6ImZha2UiLCJpYXQiOjE3ODAwMDAwMDAsImV4cCI6MTc4MDAwMDYwMH0.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}</code></pre>
+<p>This is the exact token from #192's reproduction probe (<code>alg=HS256</code>, claims <code>{iss:"fake", agent_id:"ai-1", …}</code>, <code>AAAA…</code> signature segment). Today: <code>200 RECEIVED</code>. Under this proposal: passes the §2 shape pattern (the schema cannot decode) → verifier step 3 rejects <code>algorithm</code> → <code>401 LCP-002</code>:</p>
+<pre class="code-block"><code class="language-json">{
+  "errors": [{
+    "code": "LCP-002",
+    "name": "UNKNOWN_SENDER",
+    "message": "Agent attestation failed verification",
+    "field": "provenance.agent.attestation",
+    "details": {"reason": "algorithm"}
+  }],
+  "request_id": "req-example"
+}</code></pre>
+<p>(Even if MACs were allowed, step 8 would fail <code>signature</code> — the token fails twice over.)</p>
+<h3 id="invalid-example-c--expired-and-claims-contradicting-the-192-row-3-probe">Invalid example C — expired and claims-contradicting (the #192 row-3 probe)</h3>
+<p>The same fixture issuer's key re-signing <code>{"iss": "https://agents.publisher.example/attestation", "aud": "platform_001", "agent_id": "someone-else", "acting_for": "pub_123", "iat": 1780272000, "exp": 1000000000}</code> — i.e. <strong>validly signed</strong>, expired (2001), and contradicting <code>provenance.agent.agent_id = "ai-assist-001"</code>:</p>
+<pre class="code-block"><code class="language-json">"agent": {
+  "agent_id": "ai-assist-001",
+  "acting_for": "pub_123",
+  "attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoic29tZW9uZS1lbHNlIiwiYWN0aW5nX2ZvciI6InB1Yl8xMjMiLCJpYXQiOjE3ODAyNzIwMDAsImV4cCI6MTAwMDAwMDAwMH0.2DRnJdD5R97PPnZl6JuUB4804VmohjUL4mSjN9qf8O08ELENuYXTNmJ8nlfpIAyUeNnJheFvwqhVwlXfjGuGBg"
+}</code></pre>
+<p>Today: <code>200 RECEIVED</code>. Under this proposal: step 9 fires first → <code>401 LCP-002</code>, <code>details.reason: "expired"</code> (deterministic axis order — Verification runs §4 proves the claims contradiction would <em>also</em> fail at step 11 but the procedure stops at the first failure).</p>
+<h3 id="invalid-example-d--cross-receiver-replay">Invalid example D — cross-receiver replay</h3>
+<p><code>valid-a</code>'s token re-issued with <code>"aud": "platform_002"</code> and submitted to platform_001 (<code>receiver_id: "platform_001"</code>) — a token minted for one platform replayed at another:</p>
+<pre class="code-block"><code class="language-json">"attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMiIsImFnZW50X2lkIjoiYWktYXNzaXN0LTAwMSIsImFjdGluZ19mb3IiOiJwdWJfMTIzIiwiaWF0IjoxNzgwMjcyMDAwLCJleHAiOjIwODAwMDAwMDB9.ZoMSbChBjYlDWZibe8h1r6hMu5yGpmk7F-7ubMht819Jq1luCcUdKBIrFsJOni4qjfgJuENWu916TKYEl_q2Cg"</code></pre>
+<p>Verifier step 10 → <code>401 LCP-002</code>, <code>details.reason: "audience"</code>. (The attestation itself verifies cryptographically — this is exactly why an audience binding, not signature-checking alone, is what stops cross-pair replay.)</p>
+<h3 id="invalid-example-e--claims-contradict-the-envelope">Invalid example E — claims contradict the envelope</h3>
+<p>Validly signed, unexpired, correct <code>aud</code>, but <code>agent_id</code> = <code>"someone-else"</code> against <code>provenance.agent.agent_id</code> = <code>"ai-assist-001"</code>:</p>
+<pre class="code-block"><code class="language-json">"attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoic29tZW9uZS1lbHNlIiwiYWN0aW5nX2ZvciI6InB1Yl8xMjMiLCJpYXQiOjE3ODAyNzIwMDAsImV4cCI6MjA4MDAwMDAwMH0.9XoyrxTJpiy27YcseTbyrl8pr_zN6VcdcWakQg9h7pK3RcuqEH5MokV-OPR3CUEUxyX-ccYRiYJI849uzC1mBA"</code></pre>
+<p>Step 11 → <code>401 LCP-002</code>, <code>details.reason: "claims_mismatch"</code>. Same shape for an <code>acting_for</code>/sender contradiction without the <code>act_for:</code> scope (executed: Verification runs §4, <code>valid-b-without-scope</code>).</p>
+<h3 id="invalid-example-f--alg-none-detached-signature">Invalid example F — <code>alg: none</code> detached signature</h3>
+<pre class="code-block"><code class="language-json">"attestation": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoiYWktYXNzaXN0LTAwMSIsImFjdGluZ19mb3IiOiJwdWJfMTIzIiwiaWF0IjoxNzgwMjcyMDAwLCJleHAiOjIwODAwMDAwMDB9."</code></pre>
+<p>Empty third segment → fails the §2 schema pattern (<code>400 LCP-100</code>) before any header parsing; if it somehow reached the verifier, step 3 rejects <code>none</code> (but step 1 rejects the empty segment first: <code>format</code>). Belt and braces (executed both layers — Verification runs §3/§4).</p>
+<h3 id="invalid-example-g--tampered-signature-under-a-compliant-header">Invalid example G — tampered signature under a compliant header</h3>
+<p><code>valid-a</code>'s token with the final six signature characters replaced (signature flips under an <em>allowed</em> <code>EdDSA</code> header):</p>
+<pre class="code-block"><code class="language-json">"attestation": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImF0dGVzdC1rZXktMSJ9.eyJpc3MiOiJodHRwczovL2FnZW50cy5wdWJsaXNoZXIuZXhhbXBsZS9hdHRlc3RhdGlvbiIsImF1ZCI6InBsYXRmb3JtXzAwMSIsImFnZW50X2lkIjoiYWktYXNzaXN0LTAwMSIsImFjdGluZ19mb3IiOiJwdWJfMTIzIiwiaWF0IjoxNzgwMjcyMDAwLCJleHAiOjIwODAwMDAwMDB9.ndo1szT6NLNuZwaiEmvY4-4oxfrA_UUyuoFjTV_4hFzAfk9tsP4P9kcdEyLu1WsA3Qv6iw0pTa_YFMI_AAAAAA"</code></pre>
+<p>Step 8 → <code>401 LCP-002</code>, <code>details.reason: "signature"</code> — the pure forgery case distinct from the algorithm-confusion case in example B.</p>
+<h3 id="invalid-behavior-example-h--unknown-kid-rejected-vs-unreachable-jwks-500">Invalid behavior example H — unknown <code>kid</code> (rejected) vs unreachable JWKS (500)</h3>
+<p>Same token, issuer's JWKS fetched successfully but containing no <code>attest-key-1</code>: step 7 → <code>401 LCP-002</code>, <code>key_unknown</code> — the sender's/issuer's fixable state. Issuer unreachable at all (timeout): <code>500 LCP-500</code>, <code>details.reason: "key_unavailable"</code> — the receiver's infrastructure answer, retryable, never fail-open in enforce mode. Between these two sits the revised-F4 class: a document that is <strong>successfully fetched but invalid</strong> (oversized, &gt;32 keys, non-JSON, duplicate <code>kid</code> under §4 option A) is issuer-fixable like unknown-<code>kid</code>, and routes <code>key_unknown</code>/401 — 500 is availability only. None of these are schema-expressible; all are asserted by named tests (V9/V10, plus V18/V19 post-revision).</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>PII boundary.</strong> <code>provenance.agent.*</code> sits in the provenance object that §3 defines as non-PII (<code>spec/03-payloads.md:105</code>). The proposal adds no PII and adds two MUST-NOTs: the claims set MUST NOT embed consumer identifiers or contact data (anything verifiable cross-pair via <code>aud</code>/<code>iss</code> is a correlation vector), and logs/telemetry MUST NOT retain full attestation values (a token is replayable bearer-grade material until <code>exp</code> — never the signature bytes). What audit and telemetry rows DO store is now a frozen schema (revision F8, interlock with LEP-0005, which makes <code>audit_events</code> interop-readable for the first time — unspecified metadata would become public surface): <code>{outcome, reason, iss_host, kid, tok_sha256_16}</code> — <code>outcome</code> ∈ <code>accept</code>/<code>reject</code>/<code>observe</code>, <code>reason</code> from the closed §5 vocabulary, <code>iss_host</code> the issuer URL's host component only, <code>kid</code> the header claim, and <code>tok_sha256_16</code> the first 16 hex characters of SHA-256 over the <strong>full compact token bytes</strong> (input definition normative, so two deployments can correlate incidents). No other attestation-derived field is admissible, and the token (or any segment of it) MUST NOT appear in audit metadata, metrics labels, or logs. Because <code>aud</code>/<code>iss</code> are per-deployment identifiers and <code>tok_sha256_16</code> is truncated one-way, the schema is not a correlation vector across receivers. LEP-0005's history projection keeps the same rule from the read side ("never return raw envelope bodies"), and the joint obligation is asserted in one place: <code>plat: test_history_projection_never_emits_attestation_bytes</code> (V23). The lead store already persists the block under §3's storage rules, <code>spec/01-transport.md:82-89</code> PII posture applies unchanged since the field is not PII.</p>
+<p><strong>Abuse cases engaged:</strong></p>
+<ul>
+<li><em>Forged agent provenance</em> (the #192 class): closed by verification + algorithm allowlist + asymmetric-only keys.</li>
+<li><em>Cross-pair token transplant:</em> closed by <code>aud</code> + issuer-key binding (§7) — a token cannot be shown to a receiver it was not minted for, and other senders cannot mint issuer A's tokens.</li>
+<li><em>Algorithm confusion:</em> closed by the allowlist derived from the resolved JWK (§3), not from attacker-chosen <code>alg</code> alone.</li>
+<li><em>SSRF / fetch amplification via <code>iss</code>:</em> closed by auth-before-fetch, the <strong>paired</strong> egress controls (§4 Resolution: <code>validate_webhook_url</code> HTTPS-tightened + resolve-aware <code>validate_egress_host</code> post-resolution rejection, <code>follow_redirects=False</code>, <code>trust_env=False</code> — the shipped delivery-path pattern, <code>router.py:1019-1028</code>), size/count/TTL bounds, and a 2-second bounded fetch. The pre-revision text named only <code>validate_webhook_url</code> and over-claimed: the string check accepts <code>https://2130706433</code> / <code>https://0x7f000001</code> / <code>https://127.1</code> / <code>https://localhost</code>, all of which resolve to 127.0.0.1 (executed, Revision battery); the egress leg is what rejects them. DNS-rebinding TOCTOU between policy check and connect remains a named residual (§4), with the redirect/proxy legs removing the in-process escalation paths (revision F1).</li>
+<li><em>Fail-open temptation:</em> prohibited — enforce mode MUST NOT substitute an accept when key resolution fails; the sanctioned soft path is the explicit observe phase, which logs but does not record a conformance claim.</li>
+<li><em>Log-replay of captured tokens:</em> mitigated by the log-hygiene MUST-NOT; residual risk (store contents = replayable until <code>exp</code>) is bounded by short recommended lifetimes and <code>aud</code> binding, with <code>jti</code> single-use Deferred (its trigger names the day tokens get forwarded).</li>
+</ul>
+<p><strong>Universal-core audit (§12, <code>spec/01-transport.md:165-191</code>).</strong> No new core field — tightening the form of a shipped required string is a validation change, not a namespace addition; <code>tools/check_reserved_fields.py</code> and <code>tools/check_universal_core.py</code> gates listed under Verification runs pass unchanged on this record (docs-only). The verification machinery lives at platform/deployment level; agents stay out of core (§10 "never coupled into the core", <code>spec/01-transport.md:112-115</code>). Nothing executable crosses the wire (no matching rules — decision rule honored); <code>act_for:</code> is a scope <em>string</em> in the existing credential registry, not an expression.</p>
+<p><strong>Trust-model security statement.</strong> Verification moves the fraud-resistance anchor from "the pair secret can sign anything" (envelope HMAC — true today; a compromised pair secret produces perfectly-looking traffic) to "an issuer-controlled key asserts the principal" — strictly better for agent fraud, and <em>explicitly not</em> a repudiation guarantee against the publisher itself (the publisher controls its issuer keys and could mint any claim; the binding is per-issuer). The record refuses to overclaim this in §9 text; stronger non-repudiation requires the deferred third-party trust models.</p>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Semver:</strong> MINOR (v1.1.0) — verification semantics + error-mapping text + one schema tightening; nothing additive is required of conformant senders (they already send verifiable tokens, per §9's MUST at <code>spec/01-transport.md:73-74</code>) and nothing is removed. AGENTS.md rule (protocol-taxonomy/security changes bump MINOR/MAJOR) satisfied; <code>lcp_versions</code> advertisement already carries <code>1.1.0</code> on the reference platform (<code>validation.py:23</code> <code>SUPPORTED_LCP_VERSIONS</code>, advertised at <code>router.py:1738</code>).</li>
+<li><strong>The wire-visible break, stated exactly:</strong> leads carrying free-text or unverifiable attestations that <code>200 RECEIVED</code> today will fail — at the schema layer with <code>LCP-100</code> (shape), at the verification layer with <code>LCP-002</code> (identity) or <code>LCP-500</code> (key availability) per the §8 mapping. Those submissions are <strong>already non-conformant</strong> under §9's published MUST ("Free-text attestations are non-conformant", <code>spec/01-transport.md:73-74</code>); the change enforces published behavior, which is the LEP.md boundary between "a bug that restores the published behavior" and LEP material — it stays LEP material because the <em>mechanism</em> (codes, key distribution, timing) never existed, which #192 itself ruled.</li>
+<li><strong>Closed-object rules untouched:</strong> no field is added to any closed object, so the §6 version-negotiation hazard (<code>spec/04-errors.md:14-18</code>) never arises; v1.0 senders hitting v1.1 receivers send the same bytes (their junk simply fails, per the line above). v1.1 senders hitting v1.0 receivers: unaffected (v1.0 accepts any string — a v1.0 receiver under-verifies, exactly as today, and per §7 must not claim L3).</li>
+<li><strong>SDK/schema-sync:</strong> core.json pattern changes the published schema bundle; generated SDK models are type-level (<code>string</code>) and unaffected in shape — manifests/SHA bundles regenerate per the traceability gate (LEP.md Implement items 3). No <code>schema_version</code> per-vertical change.</li>
+<li><strong>Vector compat:</strong> <code>L3-001</code> keeps its presence/shape assertion but its token is re-issued (it cannot verify under any key — decoded evidence in Problem statement); a runner-level <code>attestation_present</code> check remains meaningful, verification checks are new vectors (V8/V11).</li>
+<li><strong>Deprecation:</strong> nothing deprecated; the <code>issuer</code> claim name in the §9 table is a <em>documentation correction</em> (no shipped producer uses JWT libraries that emit it verifiably — it is not even a registered claim; the table's own recommendation posture (<code>spec/01-transport.md:62</code> "recommended format") gives no compatibility floor to preserve).</li>
+<li><strong>No silent L3 advertisement during development:</strong> Phase 0 (Rollout) makes the advertisement honest <em>before</em> the MINOR lands — flagged as the one maintainer-ratifiable decision adjacent to the wire.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Impact at implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schemas/core.json</code></td>
+<td>§2 pattern + <code>maxLength</code> on <code>attestation</code> (<code>core.json:133</code>); regenerated bundles + manifests per traceability gate.</td>
+</tr>
+<tr>
+<td>SPEC text</td>
+<td>§9 rewrite (claim table incl. <code>iss</code>/<code>aud</code>, allowlist, procedure, timing); §5 identity-axis clause (<code>spec/02-envelope.md:345-348</code>); §7/§8 advertisement-honesty sentence (§9 of this record).</td>
+</tr>
+<tr>
+<td>Reference platform</td>
+<td>new <code>attestation.py</code> verification module + resolver; <code>ingest()</code> step pinned <strong>after</strong> the dedup early-return paths (<code>router.py:297</code>: lookup, <code>router.py:304-308</code>: LCP-005 409, <code>router.py:318</code>: DUPLICATE ack) and <strong>before</strong> <code>insert_lead</code> (<code>router.py:359</code>) — §5 placement (revision F6a); paired egress controls on every JWKS fetch (<code>router.py:1019-1028</code> pattern, §4 Resolution); mode config (<code>observe</code>/<code>enforce</code>, default <code>enforce</code> at ship); Phase 0 advertisement line (<code>router.py:1769</code>).</td>
+</tr>
+<tr>
+<td>OpenAPI</td>
+<td>capabilities shape unchanged (<code>api/lcp-openapi.yaml:839</code> already documents <code>conformance_level</code>); intake error examples gain the <code>details.reason</code> variants — documentation-level.</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td><strong>zero logic</strong> — HTTP client path inherits enforcement (<code>client.py:67</code>); <code>test_gap_mcp_surface.py</code> byte-for-byte assertions still pass (the adapter never normalizes); its stub-platform fixture's <code>"L3"</code> (line 128) is test-double data, not a platform claim, but the V12 pin ensures a real-platform advertisement change lands with matching docs.</td>
+</tr>
+<tr>
+<td>SDKs (all languages, per implementations/sdk/)</td>
+<td>signer/verify helper for the §2/§6 form (builders already accept an arbitrary string — unchanged); canonical NumericDate emission mirrors LEP-0002's whole-second discipline (<code>spec/05-capabilities.md:111-124</code>); no transport change.</td>
+</tr>
+<tr>
+<td>Vectors + runner</td>
+<td><code>test-vectors/attestation/fixture-jwks.json</code> (the record's pinned Ed25519 JWK + seed derivation documented, <strong>plus the ES256 fixture keypair/JWK per §3 encoding note</strong>, <code>kid</code> <code>attest-es256-1</code>); positive <code>lcp-pos-attestation-verified-001</code> (EdDSA) and <code>lcp-pos-attestation-es256-001</code> (canonical P1363) and negatives <code>-forged-</code>, <code>-expired-</code>, <code>-audience-</code>, <code>-claims-mismatch-</code>, <code>-free-text-</code>, <code>-alg-none-</code>, <code>-string-exp-</code> (V16), <code>-padded-</code> (V21, schema-tier), <code>-es256-der-</code> (platform-tier; schema-tier negatives via existing expect-fail form with <code>error_code</code> fields, precedent <code>l1-envelope.json:93</code>); L3-001 token re-issued.</td>
+</tr>
+<tr>
+<td>Coverage matrix</td>
+<td><code>SEC-09</code> flips <code>gap → green</code> only with the verification tests shipping (V1–V10 and revision gates V13–V24); <code>CNF-03</code> note updated to name attestation verification tests, not shape-only (<code>docs/SPEC-COVERAGE.md:165</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Named implementation-phase tests (the gate list, T-style per LEP-0003):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>Obligation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>V1</td>
+<td><code>plat: test_attestation_free_text_rejected</code> — invalid A → <code>400 LCP-100</code>, field pointer.</td>
+</tr>
+<tr>
+<td>V2</td>
+<td><code>plat: test_attestation_forged_hs256_rejected</code> — invalid B → <code>401 LCP-002</code>, <code>reason=algorithm</code>.</td>
+</tr>
+<tr>
+<td>V3</td>
+<td><code>plat: test_attestation_expired_first_axis</code> — invalid C → <code>expired</code> (axis-order determinism).</td>
+</tr>
+<tr>
+<td>V4</td>
+<td><code>plat: test_attestation_cross_receiver_rejected</code> — invalid D → <code>audience</code>.</td>
+</tr>
+<tr>
+<td>V5</td>
+<td><code>plat: test_attestation_claims_mismatch_rejected</code> — invalid E both axes.</td>
+</tr>
+<tr>
+<td>V6</td>
+<td><code>plat: test_attestation_alg_none_and_detached_rejected</code> — invalid F, schema layer.</td>
+</tr>
+<tr>
+<td>V7</td>
+<td><code>plat: test_attestation_tampered_signature_rejected</code> — invalid G → <code>signature</code>; valid-a accepted end-to-end (fixture resolver).</td>
+</tr>
+<tr>
+<td>V8</td>
+<td>vectors: L3-001 re-issued verifiable under the fixture key + <code>attestation_present</code> check retained; positive/negative attestation vectors land and the runner consumes them; <strong>ES256 positive <code>lcp-pos-attestation-es256-001</code> (canonical P1363 under <code>attest-es256-1</code>) joins this family (revision F3)</strong>.</td>
+</tr>
+<tr>
+<td>V9</td>
+<td><code>plat: test_attestation_unknown_kid_rejected</code> (<code>key_unknown</code>) and <code>plat: test_act_for_scope_delegation</code> (valid-b accepted; same token + unscoped sender → <code>claims_mismatch</code>).</td>
+</tr>
+<tr>
+<td>V10</td>
+<td><code>plat: test_attestation_jwks_unavailable_fails_closed</code> — issuer <strong>availability</strong> failure (DNS/connect/timeout/5xx) → <code>500 key_unavailable</code>, <strong>zero</strong> lead rows; observe-mode logs only. Post-revision attribution: a fetched-but-invalid document is NOT this path — see V18.</td>
+</tr>
+<tr>
+<td>V11</td>
+<td><code>tool: test_lep_wire_examples</code> continues to pass on this record's <code>### Valid example</code> envelopes against the published tree (it does, today — Verification runs §5), and a <code>checks</code>-driven attestation case enters the vector lane.</td>
+</tr>
+<tr>
+<td>V12</td>
+<td><code>plat: test_capabilities_conformance_level_matches_behavior</code> — advertisement honesty pinned (§9 of this record); Phase 0 lands it first.</td>
+</tr>
+<tr>
+<td>V13</td>
+<td><code>plat: test_attestation_iss_obfuscated_loopback_rejected</code> — <code>iss</code> hosts <code>2130706433</code> / <code>0x7f000001</code> / <code>127.1</code> / <code>localhost</code> (all <code>getaddrinfo</code>→127.0.0.1) rejected by the resolve-aware egress leg at §5 step 6 → <code>issuer_policy</code>; zero fetch issued (revision F1). <strong>Amended (re-dossier R1):</strong> hosts <code>127.0.0.1</code> / <code>localhost</code> / <code>2130706433</code> / <code>::ffff:127.0.0.1</code> are ALSO rejected under a sandbox config (<code>test_mode=True</code> + <code>allow_insecure_webhooks=True</code>) — the resolve leg must not inherit the shipped class's skip; the battery re-executed the dossier's four shipped no-op <code>ACCEPT</code> rows and both revised readings reject all four.</td>
+</tr>
+<tr>
+<td>V14</td>
+<td><code>plat: test_attestation_jwks_fetch_no_redirects_no_proxy_env</code> — a 302 from a policy-valid <code>iss</code> is not followed (3xx → invalid-response path, never a second fetch of <code>Location</code>); <code>HTTPS_PROXY</code> in the environment does not reroute the JWKS fetch (<code>trust_env=False</code>) (revision F1).</td>
+</tr>
+<tr>
+<td>V15</td>
+<td><code>plat: test_attestation_decode_time_type_presence_format</code> — string/float/zero/absent <code>iat</code>/<code>exp</code>, absent <code>aud</code>/<code>agent_id</code>/<code>acting_for</code>, non-object claims, duplicate claim names: each fails at §5 step 2/4 with reason <code>format</code>, each with zero key-resolution and zero crypto work performed (revision F2). <strong>Amended (re-dossier R2/R3):</strong> two new rows — a duplicate member name at nesting depth 2 (<code>{"meta":{"tier":"gold","tier":"platinum"}}</code>) fails at step 2, and exponent-notation timestamps (<code>"iat":1e9,"exp":2e9</code>) fail at step 4 on the claims bytes, not the parsed values (the exponent negative rides V16's vector family as <code>lcp-neg-attestation-exp-form-exp-001</code>).</td>
+</tr>
+<tr>
+<td>V16</td>
+<td><code>vec: lcp-neg-attestation-string-exp-001</code> — vector-tier pin of the string-<code>exp</code> class (the L3-001 defect shape) as a decode-time <code>format</code> negative (revision F2).</td>
+</tr>
+<tr>
+<td>V17</td>
+<td><code>plat: test_attestation_es256_der_rejected</code> — validly produced ES256 signature re-encoded as DER → <code>format</code> at the step-8 width precheck; the same token's P1363 form verifies (<code>lcp-pos-attestation-es256-001</code> rides V8) (revision F3).</td>
+</tr>
+<tr>
+<td>V18</td>
+<td><code>plat: test_attestation_jwks_oversize_is_401</code> — fetched document &gt; 16 KiB / &gt; 32 keys / non-JSON → <code>401 key_unknown</code>, NOT 500; only DNS/connect/timeout/5xx keeps <code>key_unavailable</code>/500 (revision F4).</td>
+</tr>
+<tr>
+<td>V19</td>
+<td><code>plat: test_attestation_jwks_duplicate_kid_rejected</code> — same-<code>kid</code> JWKs in one document: asserts §4 option A (invalid document → <code>key_unknown</code>); becomes <code>…_first_match_pinned</code> if the maintainer selects option B at Accept (revision F5, decision-flagged).</td>
+</tr>
+<tr>
+<td>V20</td>
+<td><code>plat: test_attestation_duplicate_ack_never_refetches</code> — second submission of an accepted envelope returns the DUPLICATE ack with zero verifier work and zero JWKS fetches (revision F6a; §5 placement).</td>
+</tr>
+<tr>
+<td>V21</td>
+<td><code>vec: lcp-neg-attestation-padded-100</code> — <code>=</code>-padded signature segment fails at the schema layer (<code>LCP-100</code>), pinning §2 precedence (revision F6b).</td>
+</tr>
+<tr>
+<td>V22</td>
+<td><code>plat: test_attestation_skew_config_capped_at_30</code> — a deployment configuration with skew &gt; 30 s is refused at startup; boundary probes at <code>exp + skew == now</code> (reject), <code>exp + skew − 1</code> (accept) pin §7 equality convention (revision F7).</td>
+</tr>
+<tr>
+<td>V23</td>
+<td><code>plat: test_history_projection_never_emits_attestation_bytes</code> — asserts LEP-0005's no-raw-envelope rule and this record's frozen audit schema (<code>{outcome, reason, iss_host, kid, tok_sha256_16}</code>) in one place: no projection, audit row, metric, or log line carries token bytes (revision F8).</td>
+</tr>
+<tr>
+<td>V24</td>
+<td><code>plat: test_attestation_header_member_policy</code> — §2 receiver-side header policy (re-dossier R4): <code>typ=JWT</code> and <code>typ=at+jwt</code> variants of identical claims produce the SAME verdict; an unknown non-<code>crit</code> header member (<code>x5u</code>) is ignored AND produces <strong>zero</strong> network fetches (no dereference — the fixture records the fetch count); a <code>crit</code> header is a step-2 <code>format</code> failure.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Operational:</strong> metrics per ingest attempt <code>{verification outcome × reason}</code> plus issuer-fetch latency/error counters; audit rows reuse <code>store.insert_audit</code> (<code>router.py</code> pattern) with the frozen §Privacy schema <code>{outcome, reason, iss_host, kid, tok_sha256_16}</code> — never the token bytes; dashboards/alerts on <code>key_unavailable</code> rate (issuer outage is a <em>visible</em> failure now, which is the point of LCP-500 vs today's silent accept).</p>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p>Trust models (candidate set from #192's "key distribution undefined"):</p>
+<table>
+<thead>
+<tr>
+<th>Candidate</th>
+<th>Verdict</th>
+<th>Reasoning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. Issuer-published JWKS (DID-URL/HTTPS <code>iss</code>)</strong></td>
+<td><strong>RECOMMENDED — proposed</strong></td>
+<td>Matches §9's <code>issuer</code> claim and "JWKS or pinned public key" text; per-issuer revocation via <code>kid</code> rotation; models one agent authority across many publishers (§10 roles); zero new protocol surface (URL rules + the existing paired egress-policy class). Costs: cache/SSRF-pair/timeout machinery (bounded above), issuer-availability dependency (fail-closed + observe rollout).</td>
+</tr>
+<tr>
+<td><strong>B. Pre-registered agent public keys per sender (sender-scoped registry)</strong></td>
+<td>Rejected as canonical; kept as <strong>deployment pin fallback</strong> (§4)</td>
+<td>Would need a new registration surface (key upload/API/schema — none ships today; #192's own grep evidence), cannot express third-party agent authorities shared across publishers, and makes <code>iss</code> decorative — spec text already anchors trust to the issuer. Deterministic, no network fetch, and the right shape for closed bilateral pairs, hence the config-pin form.</td>
+</tr>
+<tr>
+<td><strong>C. Per-pair symmetric attestation (reuse pair secrets)</strong></td>
+<td><strong>Rejected</strong></td>
+<td>Indistinguishable from the envelope HMAC (which already signs the <em>whole request</em> under that same secret, §1): every verifier can mint; zero additional principal binding; MAC allowlist ban (§3) makes forgery detection trivial instead. Adds a signature nobody can repudiate.</td>
+</tr>
+<tr>
+<td><strong>D. Trusted third-party / PKI / verifiable credentials</strong></td>
+<td>Out of scope; Deferred with trigger</td>
+<td>No PKI exists in this ecosystem; chain validation dwarfs the L3 need today.</td>
+</tr>
+<tr>
+<td><strong>E. Keep advertising L3 while verification is absent</strong></td>
+<td><strong>Rejected</strong></td>
+<td>§7 says L3 <em>includes</em> attestation verification (<code>spec/04-errors.md:43-44</code>); the advertisement is a conformance claim, currently false. #192's alternative ("normative spec note that verification is a deployment-layer concern") is variant F below.</td>
+</tr>
+<tr>
+<td><strong>F. Dilute §9: "verification is a deployment-layer concern" spec note</strong></td>
+<td>Rejected</td>
+<td>Converts the protocol's only fraud-resistance requirement for agent traffic into an option and redefines §7 by footnote — decision-rule territory ("changes that make a v1 receiver fail…" is not the axis; this silently lowers the tier semantics). The <em>deployment</em> already chooses keys per §9's phone-hash precedent of keeping distribution bilateral — <em>verification</em> is what makes L3 the L3.</td>
+</tr>
+<tr>
+<td><strong>G. Mint a new §5 code (e.g. LCP-014 <code>ATTESTATION_INVALID</code>)</strong></td>
+<td>Rejected</td>
+<td>§5's identity axis covers it with one clarifying clause, on the <code>err-auth-triage</code> precedent and shipped LCP-002 intake-binding precedents (<code>router.py:277-293</code>); the taxonomy is closed and its bloat is a compatibility cost paid for nothing.</td>
+</tr>
+<tr>
+<td><strong>H. Behavior unchanged; fix only the coverage matrix</strong> (mark SEC-09 exempt)</td>
+<td>Rejected</td>
+<td>Records the gap as intended behavior — institutionalizes the L3 misadvertisement #192 filed.</td>
+</tr>
+</tbody>
+</table>
+<p>Also considered and folded in: <code>jti</code> replay cache (part of A, refused — rationale §7), <code>act_for:</code> scope machinery reuse vs new delegation wire field (scope chosen; the registry <em>interface</em> is Deferred), string-claim vocabulary compat shims (refused — unverifiable under any key today, so no producer loses anything).</p>
+<p>Keeping the whole behavior deployment-specific was weighed per the LEP.md decision rule and fails for the same reason as E/F: <code>conformance_level</code> is a protocol-level claim; a deployment MAY still choose stricter local policy on top of the floor.</p>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<p>Staged; each phase is independently shippable and observable. The phases are the answer to #192's warning that "rejection changes published behavior" — they sequence <em>who</em> is inconsistent <em>when</em>.</p>
+<p><strong>Phase 0 — advertisement honesty (bug-class PR, lands BEFORE this MINOR; the one decision in this record adjacent to wire-visible output that the maintainer must ratify early).</strong> One-line reference-implementation change: <code>conformance_level: "L3"</code> → <code>"L2"</code> at <code>router.py:1769</code>, plus V12's pin test and a <code>CNF-03</code>/<code>SEC-09</code> note update. It <strong>restores published behavior</strong> (§7 already excludes non-verifying endpoints from L3; <code>spec/04-errors.md:43-44</code>) — the LEP.md rule that bug PRs may bypass the LEP path applies to <em>this step alone</em>, and the record flags it explicitly because the maintainer, not this lane, makes that boundary call. No adopter can be harmed by a <em>more</em> honest capability string under §8's parsed-semver comparison (nothing in the spec keys behavior off L3). MCP/SDK test fixtures pinning the literal (the stub dict at <code>test_gap_mcp_surface.py:128</code>) are test-double data and stay green (verified in the battery run of the tree as-is; the adapter passes through whatever the platform returns).</p>
+<p><strong>Phase 1 — wire (this record, post-Acceptance):</strong> SPEC §5/§7/§8/§9 text; core.json form tightening; vectors + fixture JWKS; SDK helpers; implementation PRs link this LEP + registry row per the traceability gate; the tightening's CI-visible effect is confined to non-conformant fixtures (L3-001 re-issued).</p>
+<p><strong>Phase 2 — observe mode (deployable before flipping enforcement):</strong> verification runs everywhere in enforce-capable deployments with <code>mode=observe</code>: every §5 procedure outcome is recorded (<code>{outcome, reason, iss_host, kid, tok_sha256_16}</code> — frozen §Privacy schema, never the token), leads still accept, zero new rejections on the wire. This phase answers the question this Draft cannot: <em>how much accepted traffic actually carries verifiable tokens today?</em> Field counts on observe mode (and adopter reports solicited on #205) are the evidence; the unit is the ingest attempt, and the exit criterion is the reason-mix being dominated by <code>format</code>/<code>algorithm</code> (i.e. junk, not honest senders mid-migration) with the <code>expired</code>/<code>signature</code> classes at noise levels for an agreed interval (deployments set; suggested review point: 2 weeks).</p>
+<p><strong>Phase 3 — enforce:</strong> <code>mode=enforce</code> becomes the conformance-relevant default (spec-level: verification is mandatory at §9's MUST; a deployment running observe mode is <em>not</em> L3-honest and must not advertise L3 — same rule as Phase 0). Per-sender grandfather windows are deliberately <strong>not</strong> proposed: §9 already said free text is non-conformant since v1.0, and soft-per-sender exceptions are exactly the "vendor-specific defaults" LEP.md exists to prevent. A deployment that needs migration grace stays in Phase 2.</p>
+<p><strong>Observability (all phases):</strong> counters per §5-reason; issuer-fetch latency/error gauges; <code>LCP-500</code> rate alert (issuer outage), audit rows on verification failure with reason; no token bodies in any of the above (privacy audit).</p>
+<p><strong>Rollback:</strong> Phase 3→2 (mode flag) is the primary lever — accept behavior returns byte-identical to today's wire while verification continues to record. Phase 2→1: verification disabled entirely (flag), schemas keep the pattern (free-text senders still break at the schema line — the tightening and the verifier are separable but the pattern was already implied by §9; a full schema rollback is redeploying the prior bundle, no data migration exists). Phase 0 is never rolled back (an honest advertisement is not a regression). The reference <code>lcp_versions</code> advertisement is unaffected by rollback direction — nothing gates v1.1 fields on this feature, so no negotiation trap opens mid-rollout (unlike the LEP-0003 slot fields).</p>
+<p><strong>Migration (senders):</strong> conformant senders do nothing (they already mint verifiable tokens); non-conformant senders adopt an issuer key + mint per §2/§6 — the SDK helper is the on-ramp; observe-mode counters tell each publisher exactly which of their agent stacks fail which axis, before a single request starts rejecting.</p>
+<h2 id="deferred-questions">Deferred questions</h2>
+<p>Each with its revisit trigger — none blocks this proposal:</p>
+<ol>
+<li><strong>Buyer-side (agent-as-consumer) attestation.</strong> Today verification binds the <em>submission</em> direction only; a buyer's agent accepting a delivered post acts under the buyer's receiver-side credentials, and the submission attestation MUST NOT be treated as buyer-side authority (direction rule, §7). <em>Trigger:</em> any platform ships agent-consumer acceptance with delegation needs (marketplace lane, LEP-0006 surfaces) or a dispute turns on "which buyer agent accepted".</li>
+<li><strong><code>jti</code> single-use replay cache.</strong> Refused at v1 as unbounded state defending a threat already closed by <code>aud</code> + envelope HMAC + idempotency (§7). <em>Trigger:</em> evidence of captured-token replay within <code>exp</code>, or the attestation ever being forwarded beyond the receiver (then reuse becomes the security boundary).</li>
+<li><strong>Forwarding attestations downstream</strong> (platform → buyer posts with the agent provenance block): currently out of scope (provenance rides the lead where a deployment chooses); forwarding changes the replay calculus (item 2) and the log-hygiene surface. <em>Trigger:</em> a buyer requests verifiable provenance without contacting the platform.</li>
+<li><strong>DID / cross-platform trust lists / third-party issuer registries</strong> (Alternatives D): <em>Trigger:</em> agent identity portability across platforms becomes an adopter ask, or issuer-key compromise blast radius proves insufficiently local.</li>
+<li><strong><code>act_for:</code> delegation as a registered interface</strong> (discovery, multi-tenant scope hygiene, delegation chains): today an out-of-band registry string. <em>Trigger:</em> second adopter builds agent-scoped senders (evidence solicited on #205) or chains-of-agents appear.</li>
+<li><strong>RSA (<code>RS256</code>) expansion</strong> (§3 allowlist): <em>Trigger:</em> a production issuer demonstrably without Ed25519/P-256 keys.</li>
+<li><strong>Normativizing a maximum token lifetime</strong> (recommendation 900 s today): <em>Trigger:</em> Phase 2 field data on real lifetimes.</li>
+<li><strong>A §8 capability flag for enforcement mode</strong> (<code>observe</code> vs <code>enforce</code>): refused at Draft because senders gating on it would normalize soft mode; <em>Trigger:</em> interop evidence that mode-gating saves a migration — at which point the L3 advertisement rule (§9) needs re-review too.</li>
+<li><strong><code>iat</code>/<code>nbf</code> freshness enforcement</strong> (short-validity pressure on honest-but-lazy issuers): <em>Trigger:</em> Phase 2 data showing long-lived tokens dominating real traffic.</li>
+</ol>
+<h2 id="verification-runs-executed-2026-11-03">Verification runs (executed 2026-11-03)</h2>
+<p>Environment: repository venv (<code>python 3.12.12</code>), <code>jsonschema 4.26.0</code> + <code>cryptography 50.0.0</code> (both per <code>requirements-ci.txt</code>), worktree at <code>974b9ca80fc50a128c9bc24e4d5a5c950d080cd3</code>. Battery: <code>/tmp/lep0008-battery.py</code> (scratch, not committed); re-extraction run replays the exact bytes <strong>from this file</strong> back through the validators/verifier.</p>
+<p><strong>1. #192 reproduction at this SHA (published behavior — evidence, not the proposal).</strong> In-memory platform, <code>require_auth=True</code>, <code>test_mode=True</code>, sender <code>pub_123</code>, HMAC-signed <code>POST /v1/lcp/leads</code> (canonical headers, fresh uuid5 <code>message.id</code> per case), agent provenance with three attestation values (free text / #192's forged HS256 token verbatim / expired-and-mismatched):</p>
+<pre class="code-block"><code class="language-text">repro[repro-freetext]          -&gt; HTTP 200 ack=RECEIVED
+repro[repro-forged192]         -&gt; HTTP 200 ack=RECEIVED
+repro[repro-expired-mismatch]  -&gt; HTTP 200 ack=RECEIVED</code></pre>
+<p>The L3 advertisement line was confirmed at <code>router.py:1769</code>; no code was changed for this reproduction.</p>
+<p><strong>2. Fixture materialization (reproducible).</strong> <code>seed = SHA-256("lep-0008-fixture-ed25519-seed")</code> → Ed25519 keypair → JWK <code>{"kty":"OKP","crv":"Ed25519","x":"1bCirUUETlbD2Z3ZNcYH95IskGacAJdPgSxxLRswlbY","kid":"attest-key-1","alg":"EdDSA"}</code>; all record tokens are <code>JWS(seed-key, header, claims)</code> exactly as §Valid example states. Token strings appear in the record verbatim (base64url, three segments).</p>
+<p><strong>3. Schema battery — published vs §2 overlay.</strong> Overlay = copy of <code>schemas/</code> with core.json's <code>attestation</code> gaining the §2 pattern + <code>maxLength: 8192</code>; both trees run through the repository's own <code>lcp_platform.validation.SchemaValidator</code> (the T1 lane's validator). The record's two <code>### Valid example</code> envelopes and the invalid-A/F shapes:</p>
+<pre class="code-block"><code class="language-text">schema[valid-a]          published=PASS   overlay=PASS
+schema[valid-b]          published=PASS   overlay=PASS
+schema[invalid-freetext] published=PASS   overlay=REJ "'trust me, I am a real agent (free text)' does not match '^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$' at provenance/agent/attestation"
+schema[invalid-none]     published=PASS   overlay=REJ (same pattern, empty third segment)</code></pre>
+<p>The <code>invalid-*</code> <code>published=PASS</code> results <strong>are the gap</strong> (the published tree accepts free text — #192 restated at schema level); under the proposal they return <code>400 LCP-100</code> through <code>router.py:1910-1917</code>.</p>
+<p><strong>4. Reference-verifier battery (implements §5 steps 1–12 as drafted).</strong> Tokens signed with the fixture key; receiver = <code>platform_001</code>, sender scopes as named:</p>
+<pre class="code-block"><code class="language-text">verifier[valid-a (sender==acting_for)]                  PASS
+verifier[valid-b (delegated sender w/ act_for scope)]   PASS
+verifier[valid-b-without-scope]                         REJ reason=claims_mismatch
+verifier[freetext]                                      REJ reason=format
+verifier[forged-192 HS256]                              REJ reason=algorithm
+verifier[expired]                                       REJ reason=expired
+verifier[wrong-aud (cross-receiver replay)]             REJ reason=audience
+verifier[claims-mismatch (agent_id)]                    REJ reason=claims_mismatch
+verifier[unknown-kid]                                   REJ reason=key_unknown
+verifier[http-iss]                                      REJ reason=issuer_policy
+verifier[alg-none detached]                             REJ reason=format
+verifier[tampered-signature]                            REJ reason=signature
+verifier[jwks-unreachable]                              500 key_unavailable (fail-closed, no accept path)
+verifier[expired+mismatch (#192 row-3)]                 REJ reason=expired   ← first-failing-axis order proven</code></pre>
+<p>Every invalid example A–G in this record maps to exactly one executed line above (A: format×2 layers; B: algorithm; C: expired; D: audience; E: claims_mismatch; F: format; G: signature; H: key_unknown / 500).</p>
+<p><strong>5. Baseline repository gates.</strong> After this file lands on its branch: <code>tools/check_lep_registry.py</code> (numbering/links/status/sections — the new registry row and this record), <code>tools/check_doc_citations.py --strict</code> (every <code>path:line</code> cite above verified against <code>974b9ca</code>; baseline on main is <code>0 broken</code>), <code>tools/check_reserved_fields.py</code>, <code>tools/check_universal_core.py</code>, <code>test-vectors/conformance.py</code> (unchanged — no schema edit lands at Draft), and <code>tools/tests/test_lep_wire_examples.py</code> (T1 gate: both <code>### Valid example</code> envelopes validate through the <em>published</em> tree today; the re-extraction run in §3 executed exactly what the gate will re-run in CI). Results are recorded in the draft PR's CI.</p>
+<p><strong>Recording-honesty notes (self-checked):</strong> this is a Draft; nothing above proposes new §5 codes (mapping table reuses LCP-100/002/500 on shipped precedents), ships no runtime, and the two <code>### Valid example</code> envelopes are byte-identical to the executed battery's JSON — the record was written with placeholders, the exact bytes injected from the battery output, and then a second <strong>re-extraction run (2026-11-03) re-parsed this file itself</strong> and replayed every claim against the committed bytes: both Valid envelopes <code>PASS</code> the published <strong>and</strong> overlay trees; invalid A/F <code>REJ</code> the overlay (exact schema error text quoted above); the reference verifier re-run against the extracted tokens reproduced every recorded outcome line-for-line (valid-a <code>PASS</code>, valid-b <code>PASS</code>, without-scope <code>REJ claims_mismatch</code>, B <code>algorithm</code>, C <code>expired</code>, D <code>audience</code>, E <code>claims_mismatch</code>, G <code>signature</code>). Equality assertions pinned: injected tokens equal the first battery's stored bytes, and #192's forged token decodes to the claims recorded in example B. Example tokens carry no PII and no production key material (fixture seed published). The claim-table change (<code>issuer</code>→<code>iss</code>) is stated as a correction, not a silent spec edit; the only wire-adjacent item requiring an early maintainer decision is Phase 0, flagged in the rollout section.</p>
+<h2 id="revision-2026-11-03-post-dossier">Revision 2026-11-03 (post-dossier)</h2>
+<p>Record-only revision resolving the ARB L-Security (combined-lane declared) dossier on <a href="https://github.com/SpearSystems/LCP/issues/205" rel="noopener">#205</a> — comment <a href="https://github.com/SpearSystems/LCP/issues/205#issuecomment-6596818586" rel="noopener"><code>6596818586</code></a>, a SELF-AUDIT-labeled L-Security+L-Spec run reviewed at SHA <code>052970226f90cef220ea31f98946736f8fbaf563</code> (the record's own merge head, PR #207). All three majors (F1 SSRF half-guard, F2 decode-time claim validation, F3 ES256 encoding fork) and all six minors (F4–F9) are dispositioned below; every disposition was re-validated by EXECUTION at the post-revision text (reference verifier rebuilt from the revised §5, battery transcript below). <strong>Status stays Draft</strong>: no implementation is authorized; every <code>vec:</code>/<code>plat:</code> test named in this revision belongs to the implementation PR (G5 tracking checklist posted on #205), not to this record. The registry row and the coverage matrix are untouched. F8 was also filed against the LEP-0005 lane (charter rule 3); the LEP-0005 side needs no edit — this record now states its half of the interlock (frozen audit metadata schema, §Privacy).</p>
+<p><strong>Second re-dossier round (same day).</strong> The re-review of this revision — comment <a href="https://github.com/SpearSystems/LCP/issues/205#issuecomment-6597921626" rel="noopener"><code>6597921626</code></a>, also SELF-AUDIT-labeled (same controller, same model family; the standing G2 block is unchanged by it) — re-attacked the post-#209 text at head <code>e8ec36b87f12cd13a7fb63bc88bb53327a2d8b5f</code> and confirmed the three majors resolved, breaking the text only in five new <strong>minors</strong> (R1–R4 cross-receiver determinism/guard-scope gaps, R5 docs-drift). R1–R5 are folded here and in the normative sections they touch (§2, §4, §5, §8); the Re-dossier addendum below re-executes the battery against the pinned text. The verdict stands: non-blocking for decision; the human co-sign and the non-author re-review remain the open items.</p>
+<h3 id="findings--edits">Findings → edits</h3>
+<table>
+<thead>
+<tr>
+<th>Dossier item</th>
+<th>Disposition in record</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F1 (major)</strong> — §4 cited <code>validate_webhook_url</code> alone as "SSRF guard" and the abuse list claimed SSRF "closed"; the shipped string check does not resolve DNS and accepts <code>https://2130706433</code> / <code>https://0x7f000001</code> / <code>https://127.1</code> / <code>https://localhost</code> (all <code>getaddrinfo</code>→127.0.0.1)</td>
+<td>§4 <strong>Resolution row rewritten</strong> to the paired controls exactly as shipped on the delivery path (<code>router.py:1019-1028</code>): HTTPS-tightened <code>validate_webhook_url</code> (<code>security.py:16</code>, no user-info — already enforced at <code>security.py:20-21</code>), <strong>resolve-aware <code>validate_egress_host</code></strong> (<code>security.py:33</code>; post-resolution <code>is_private</code>/<code>is_loopback</code>/<code>is_link_local</code>/<code>is_multicast</code>/<code>is_reserved</code>/<code>is_unspecified</code> rejection, <code>security.py:44-54</code>, <code>66-74</code>), <code>follow_redirects=False</code>, <code>trust_env=False</code> — all four as MUSTs on <strong>every</strong> JWKS fetch; §5 step 6 names the pair; abuse bullet reworded to name the pair and to <strong>name</strong> the DNS-rebinding TOCTOU residual instead of claiming it closed; Scope bullet updated; gates V13/V14 named. Battery §3 below executes both legs live.</td>
+</tr>
+<tr>
+<td><strong>F2 (major)</strong> — §5 had no decode-time step for §6 MUST-claim presence/type/objectness/duplicate names; §6 left <code>claims_mismatch</code>/<code>format</code> undecided</td>
+<td>§5 rewritten: new <strong>step 4</strong> (all §6 MUST claims present, <code>iss</code>/<code>aud</code>/<code>agent_id</code>/<code>acting_for</code> non-empty strings, <code>iat</code>/<code>exp</code> positive integer NumericDate — string/float/zero/absent → <code>format</code>, before any key lookup or crypto work), step 2 pinned to strict parse of both segments as JSON <strong>objects</strong>, new <strong>Parser rule</strong> paragraph (RFC 8259 §5 duplicate-name rejection, no last-wins fallback — a duplicate claim name is <code>format</code> at step 2 for every conformant receiver), step 3 pinned <strong>exact, case-sensitive</strong> <code>alg</code> match <strong>before any key lookup</strong> (§3 paragraph added), §6 closing sentence now names the single reason (<code>format</code> at step 4; <code>claims_mismatch</code> reserved for post-signature envelope contradictions). Reason vocabulary unchanged (closed). Gates V15/V16 named. Battery §2 rows below execute the class.</td>
+</tr>
+<tr>
+<td><strong>F3 (major)</strong> — <code>ES256</code> MUST-supported with no signature-encoding norm; DER vs JWS fixed-width fork</td>
+<td>§3 adds a normative <strong>Signature encoding</strong> paragraph: IEEE P1363 fixed-width <code>r ‖ s</code> (ES256 = exactly 64 octets) per RFC 7518 §3.4; DER and any variable-width encoding MUST NOT be accepted — width precheck at step 8 → <code>format</code>, crypto failure → <code>signature</code>; EdDSA fixed-width (64 B) named; ES256 fixture derivation note added (seed scalar <code>d = int.from_bytes(SHA-256("lep-0008-fixture-p256-seed"), "big")</code> on P-256, pinned <code>kid</code> <code>attest-es256-1</code>, public JWK published in the battery below). Gates: V17 (<code>test_attestation_es256_der_rejected</code>) + ES256 positive folded into V8; vectors row updated. Byte evidence: Battery §6.</td>
+</tr>
+<tr>
+<td><strong>F4 (minor)</strong> — fetched-but-invalid/oversized JWKS routed to <code>LCP-500</code>, violating §8's own blame rule</td>
+<td>§4 Bounds row rewritten with the outcome split; §8 table now has <code>key_unknown</code>/401 for <strong>fetched-but-invalid</strong> documents (oversize / &gt;32 keys / non-JSON / duplicate-<code>kid</code> under option A / issuer <strong>4xx</strong>) and reserves <code>key_unavailable</code>/500 for <strong>availability only</strong> (DNS/connect/timeout/<strong>5xx</strong>); §8 rationale states the contrapositive normatively; example H paragraph extended; V10 amended; V18 named. The <code>jwks_oversize</code>-style dedicated reason was considered and <strong>rejected</strong> — the closed vocabulary already names the state (decision recorded in the Bounds row).</td>
+</tr>
+<tr>
+<td><strong>F5 (minor)</strong> — duplicate <code>kid</code> entries unspecified; first-wins vs last-wins fork opposite answers</td>
+<td>§4 Selection row states <strong>both conformant options</strong> — (A) duplicate-<code>kid</code> document is invalid → <code>key_unknown</code> per F4 split (also covering the <code>use</code>/<code>key_ops</code> confusion class); (B) selection pinned to first-match + MUST <code>duplicate_kid</code> warning log — and <strong>marks the choice for the maintainer at Accept</strong> rather than silently picking. The reference implementation and the Revision battery validate <strong>A</strong> (the stricter, determinism-preserving option); V19 carries the gate name for either outcome.</td>
+</tr>
+<tr>
+<td><strong>F6 (minor)</strong> — (a) §5 slot silent on DUPLICATE early-return/LCP-005 paths; (b) §2 padding prose vs pattern</td>
+<td>(a) §5 placement pinned: slot runs <strong>after</strong> the dedup lookup (<code>router.py:297</code>) including both early returns — LCP-005 409 (<code>router.py:304-308</code>) and DUPLICATE ack (<code>router.py:318</code>) — and before <code>insert_lead</code> (<code>router.py:359</code>); norm "a DUPLICATE ack never re-verifies and never fetches"; §7 "one verification" row rewritten to match; V20 named; impact table row updated. (b) §2 gains the precedence clause: the schema pattern excludes <code>=</code>, receivers reject padded tokens with <code>400 LCP-100</code>; the "decodable by parsers" prose is scoped to generator discipline only; V21 named.</td>
+</tr>
+<tr>
+<td><strong>F7 (minor)</strong> — <code>exp</code> equality convention unstated and asymmetric with the transport window; skew cap advisory</td>
+<td>§5 step 9 and the §7 <strong>Clock rule</strong> now state: fail <code>expired</code> when <code>now ≥ exp + skew</code> — <strong>reject at equality</strong> — with the deliberate asymmetry vs the shipped transport window (<code>auth.py:70-71</code>, accepts at equality; boundary unassigned per <code>docs/err-auth-triage.md</code> §2/#143, not silently harmonized); the ≤30 s skew cap is a configuration-time <strong>MUST</strong> (V22), with the rationale tied to NumericDate whole-second truncation (tolerance covers truncation + honest drift, ceiling = one agent-evaluation window so no accepted token can be expired longer than one transaction window).</td>
+</tr>
+<tr>
+<td><strong>F8 (minor, cross-record)</strong> — audit metadata shape (<code>iss</code>+<code>kid</code>+hash) unspecified while LEP-0005 makes <code>audit_events</code> interop-readable</td>
+<td>§Privacy rewritten: frozen schema <code>{outcome, reason, iss_host, kid, tok_sha256_16}</code> — input = full compact token bytes, SHA-256, first 16 hex characters; nothing else attestation-derived admissible; NEVER the token. Rollout Phase 2 tuple and the Operational bullet updated to the same five keys; step 13 returns the frozen metadata (executed, Battery §7). V23 (<code>test_history_projection_never_emits_attestation_bytes</code>) asserts both records' rules in one place. LEP-0005 requires no edit for this interlock (its "never return raw envelope bodies" norm is the read-side half, confirmed by the dossier).</td>
+</tr>
+<tr>
+<td><strong>F9 (minor, docs-drift)</strong> — stale "matches only vendored dependency copies" quote</td>
+<td>Problem-statement sentence rewritten: #192's quote preserved <strong>as attribution</strong>, with the re-execution at <code>0529702</code> stated (<code>grep -rn "jwks\|jwt.decode\|verify_attestation" implementations/</code> → <strong>zero</strong> matches; the current state is stronger than the quoted evidence). Two further trace items fixed in the same pass: the dangling "§10 of Verification runs" cross-reference (now "Revision battery", with the expired+mismatch outcome re-proved at the 13-step numbering), and the stale intake-range cites (<code>router.py:281-298</code> / <code>294-298</code>) replaced by the pinned <code>279-295</code>/<code>297-318</code> anchors. All step cross-references renumbered to the 13-step procedure (examples B/C/D/E/F/G/H, §6, §7, Valid examples).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="revision-battery-executed-2026-11-03-post-edit">Revision battery (executed 2026-11-03, post-edit)</h3>
+<p>Environment: repository venv (<code>python 3.12.12</code>), <code>cryptography 50.0.0</code> + <code>jsonschema 4.26.0</code> (per <code>requirements-ci.txt</code>); working tree = <code>0529702</code></p>
+<ul>
+<li>this revision's diff (docs-only; code tree byte-identical to the reviewed</li>
+</ul>
+<p>SHA). Harness: <code>/tmp/lep0008-revision-battery.py</code> (scratch, not committed — charter "harness is published" conversion belongs to the implementation PR, per the dossier's own G5 note). The verifier implements the <strong>revised</strong> §5 steps 1–13; tokens are re-extracted from this file (re-extraction checks at the end). One simulation is named: <code>getaddrinfo</code> is stubbed <strong>only</strong> for <code>*.example</code> fixture hosts (→ <code>93.184.216.34</code>, routable; TEST-NET ranges would themselves fail the egress class on modern CPython — noted honestly); the obfuscated-loopback rows resolve <strong>live</strong> through the shipped <code>validate_egress_host</code>. 61 checks, all pass; key transcript:</p>
+<pre class="code-block"><code class="language-text">== 0. #192 trio against the live in-memory platform at HEAD ==
+OK  #192 trio row1-freetext (persists pre-impl)   got=(200, 'RECEIVED') want=(200, 'RECEIVED')
+OK  #192 trio row2-forged-hs256 (persists pre-impl) got=(200, 'RECEIVED') want=(200, 'RECEIVED')
+OK  #192 trio row3-expired-mismatch (persists pre-impl) got=(200, 'RECEIVED') want=(200, 'RECEIVED')
+OK  #192 trio row4 key-absent                     got=(400, 'ERR | LCP-100') want=(400, 'ERR | LCP-100')
+OK  L3 still advertised at HEAD                   got=L3 want=L3</code></pre>
+<p>(The trio landing <code>200</code> at head is the <strong>expected</strong> state: this is a Draft record; the fix ships only at implementation/Phase 1 — the persistence proves nothing regressed and the problem statement still holds.)</p>
+<pre class="code-block"><code class="language-text">== 1. revised reference-verifier battery (the record's 14 pinned lines,
+      re-run against the 13-step procedure; every invalid produces its
+      pinned first-failing reason) ==
+OK battery[valid-a]                                    PASS
+OK battery[valid-b (delegated sender w/ act_for scope)] PASS
+OK battery[valid-b-without-scope]                      reason=claims_mismatch step=12 http=401
+OK battery[freetext]                                   reason=format step=1 http=401
+OK battery[forged-192 HS256]                           reason=algorithm step=3 http=401
+OK battery[expired]                                    reason=expired step=9 http=401
+OK battery[wrong-aud (cross-receiver replay)]          reason=audience step=10 http=401
+OK battery[claims-mismatch (agent_id)]                 reason=claims_mismatch step=11 http=401
+OK battery[unknown-kid]                                reason=key_unknown step=7 http=401
+OK battery[http-iss]                                   reason=issuer_policy step=6 http=401
+OK battery[alg-none detached]                          reason=format step=1 http=401
+OK battery[tampered-signature]                         reason=signature step=8 http=401
+OK battery[jwks-unreachable]                           ('key_unavailable', 7, 500, 'LCP-500')
+OK battery[expired+mismatch (#192 row-3)]              reason=expired step=9 http=401  ← first-failing-axis order proven
+OK fail-closed: no fetch-less accept path</code></pre>
+<p>Note the ordering proof the F2 fix depends on: <code>forged-192 HS256</code> reports <code>algorithm</code> (step 3) even though the token also <strong>lacks</strong> <code>aud</code> — a decode-time presence step placed after <code>alg</code> but before any key work keeps the record's pinned reasons intact.</p>
+<pre class="code-block"><code class="language-text">== 2/3. new revision-class rows (F2 decode-time, F1 paired egress) ==
+OK string-exp / zero-exp / missing-exp / missing-acting_for / float-iat   reason=format step=4
+OK non-object claims                                                      reason=format step=2
+OK duplicate-aud names (raw-byte payload)                                 reason=format step=2  ← parser REJECTS, no last-wins
+OK kid missing                                      reason=key_unknown step=5
+OK alg 'edDSA' case                                 reason=algorithm step=3 (BEFORE any key work; zero fetches verified)
+OK padded segment at verifier                       reason=format step=1 (schema layer separately pins 400 LCP-100, §8)
+OK iss 2130706433   string-leg ACCEPTS, getaddrinfo=['127.0.0.1']  -&gt; reason=issuer_policy step=6
+OK iss 0x7f000001   string-leg ACCEPTS, getaddrinfo=['127.0.0.1']  -&gt; reason=issuer_policy step=6
+OK iss 127.1        string-leg ACCEPTS, getaddrinfo=['127.0.0.1']  -&gt; reason=issuer_policy step=6
+OK iss localhost    string-leg ACCEPTS, getaddrinfo=['127.0.0.1', '::1'] -&gt; reason=issuer_policy step=6
+OK client kwargs on the one fetch   {'follow_redirects': False, 'trust_env': False}</code></pre>
+<p>The four loopback rows are the dossier's F1 plants re-executed: the cited string leg alone accepts every one; the resolve-aware leg is what rejects them, so the record's pairing claim is now executed, not asserted.</p>
+<pre class="code-block"><code class="language-text">== 4/5/7. F4/F5 routing, F7 boundaries, F8 metadata ==
+OK oversized/invalid doc -&gt; key_unknown step=7 http=401 (NOT 500)
+OK issuer 404            -&gt; key_unknown step=7 http=401
+OK issuer 5xx            -&gt; key_unavailable 500 (availability class preserved)
+OK duplicate-kid doc (option A) -&gt; key_unknown step=7 http=401
+OK &gt;32-keys doc / use:enc malformed keyset -&gt; key_unknown step=7 http=401
+OK exp+30 == now -&gt; reason=expired step=9 (reject AT equality)
+OK exp+30 − 1 == now -&gt; PASS (skew 30); exp−1 -&gt; PASS (skew 0)
+OK skew=31 config REFUSED at construction (§7 cap is a MUST)
+OK accept-path metadata keys = {outcome, reason, iss_host, kid, tok_sha256_16}; token absent from serialization; tok_sha256_16 = SHA-256(compact token bytes)[:16] (recomputed equal)</code></pre>
+<pre class="code-block"><code class="language-text">== 8. schema battery (published vs §2 overlay, repository SchemaValidator) ==
+schema[valid-a]          published=PASS   overlay=PASS
+schema[valid-b]          published=PASS   overlay=PASS
+schema[invalid-freetext] published=PASS   overlay=REJ "'trust me, I am a real agent (free text)' does not match '^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$' at provenance/agent/attestation"
+schema[invalid-none]     published=PASS   overlay=REJ (same pattern, empty third segment)
+schema[padded-signature] published=PASS   overlay=REJ  ← F6b precedence executed
+schema[oversize-8193]    published=PASS   overlay=REJ</code></pre>
+<h3 id="es256-p1363-byte-evidence-f3">ES256 P1363 byte evidence (F3)</h3>
+<p>Fixture public JWK (seed scalar verified in range, <code>1 ≤ d &lt; n_P-256</code>):</p>
+<pre class="code-block"><code class="language-text">{"kty": "EC", "crv": "P-256", "x": "LHhhgrv-4W6IbzTx11LUcQukfb_RwXGOV4l4HEcRBok",
+ "y": "5EEm6hx5OK4SCIDDSYrd-Bm4Mt--lsAAItTb3ZZN3fQ", "kid": "attest-es256-1", "alg": "ES256"}</code></pre>
+<p>One sample run over the <code>valid-a</code> claim set with header <code>{"alg":"ES256","typ":"JWT","kid":"attest-es256-1"}</code> (ECDSA signatures are not byte-stable across runs — the fork is a length/encoding fact, not a value fact; the implementation PR publishes the pinned vector bytes):</p>
+<pre class="code-block"><code class="language-text">DER          len=70  hex=304402205d47cfed008f6bb62636fc47b8922a2af090ba6c320ab46a499ae3f561c9fa190220286038ecf964d7ef22d11362067c2a33f1879dc6ae138ca7a72f63a6d92ab86a
+P1363 r||s   len=64  sha256=9fdd8421da34232f1964f688f7561a23f6312e10f923d6db1433f4e5fbe698ba
+             hex=5d47cfed008f6bb62636fc47b8922a2af090ba6c320ab46a499ae3f561c9fa19286038ecf964d7ef22d11362067c2a33f1879dc6ae138ca7a72f63a6d92ab86a
+bytes differ: True
+strict JWS verifier:  P1363 token -&gt; PASS (verifies under the fixture public key)
+                      DER-encoded token -&gt; reason=format step=8 (width precheck)
+naive DER verifier fed the canonical 64B bytes -&gt; rejected  ← the mutual-fork the norm resolves</code></pre>
+<p>(Dossier §12 observed a 72-byte DER for its sample; DER length varies 70–72 with the top bits of <code>r</code>/<code>s</code>. The §3 norm names the class, not one length.)</p>
+<h3 id="gates-and-re-pins">Gates and re-pins</h3>
+<p>Post-revision execution at this diff: <code>tools/check_lep_registry.py</code> PASS (8 proposals; registry row untouched — status stays <code>Draft</code>, matching this record's header); <code>tools/check_doc_citations.py --strict</code> → <strong>413 citations checked, 0 broken</strong> (369 at the dossier head + this revision's new anchors, all verified against the unchanged code tree); <code>tools/check_reserved_fields.py</code> PASS; <code>tools/check_universal_core.py</code> PASS (14 machine-checkable §12 audits); <code>test-vectors/conformance.py</code> 56 passed / 0 failed; <code>tools/tests/test_lep_wire_examples</code> OK — the two <code>### Valid example</code> envelopes still validate through the <strong>published</strong> tree, and the revision section adds no <code>json</code> fences, so the wire-example parser is unchanged by this append. The re-extraction checks confirm this file is its own evidence source: the <code>valid-a</code> literal extracted from the record verifies end-to-end (PASS row above), <code>sha256_16</code> recomputation matched, and exactly one record token carries the empty (detached) third segment.</p>
+<p>Changed line-anchors re-pinned against <code>0529702</code>: §5 placement (<code>router.py:279-295</code>, <code>297</code>, <code>304-308</code>, <code>318</code>, <code>359</code>), egress pair (<code>router.py:1019-1028</code>, <code>security.py:16</code>/<code>20-21</code>/<code>33</code>/<code>44-54</code>/<code>66-74</code>), transport-window boundary (<code>auth.py:70-71</code>), and every step number in examples A–H, §6, §7, and the Valid examples (13-step procedure). Historical transcripts under "Verification runs" are preserved verbatim (their "steps 1–12 as drafted" phrasing refers to the pre-revision procedure; the Revision battery re-proves the same outcomes at 1–13).</p>
+<h3 id="decision-flags-and-g5">Decision flags and G5</h3>
+<ol>
+<li><strong>F5 duplicate-<code>kid</code> norm</strong> (options A/B stated in §4 Selection): the maintainer picks at Accept; V19's name branches on the choice. This record does not silently choose.</li>
+<li><strong>Phase 0</strong> remains the early ratification item (unchanged from Draft).</li>
+<li><strong>G5</strong>: all eleven dossier-named CI tests are now in the record's gate table as V13–V23 (plus the F3 ES256 positive folded into V8); the majors/minors → edited-vs-deferred-to-implementation checklist is posted as the tracking reply on #205.</li>
+<li>The dossier's independence limits stand and are now also <em>executed</em> rather than inferred: the loopback plants were run through the shipped egress class live (F1); the ES256 fork was demonstrated with real signatures both ways (F3). What the revision does NOT do is implement: <code>follow_redirects</code>/<code>trust_env</code> assertions in this battery are pinned client-kwargs, not socket behavior — V14 is the implementation-tier test of that claim.</li>
+</ol>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-what-the-attestation-binds-normative-framing">1. What the attestation binds (normative framing)</a></li><li class="depth-3"><a href="#2-token-form">2. Token form</a></li><li class="depth-3"><a href="#3-algorithm-allowlist-closed">3. Algorithm allowlist (closed)</a></li><li class="depth-3"><a href="#4-key-distribution--recommended-trust-model-settles-192s-open-item">4. Key distribution — RECOMMENDED trust model (settles #192&#x27;s open item)</a></li><li class="depth-3"><a href="#5-verification-procedure-reference-algorithm--executed-in-the-battery">5. Verification procedure (reference algorithm — executed in the battery)</a></li><li class="depth-3"><a href="#6-claim-set-normative-vocabulary-settles-192s-claim-binding">6. Claim set (normative vocabulary; settles #192&#x27;s &quot;claim binding&quot;)</a></li><li class="depth-3"><a href="#7-replay-clock-and-window-rules-units-precise">7. Replay, clock, and window rules (units-precise)</a></li><li class="depth-3"><a href="#8-failure-mapping-onto-the-existing-5-taxonomy-no-new-code">8. Failure mapping onto the existing §5 taxonomy (no new code)</a></li><li class="depth-3"><a href="#9-capability-advertisement-honesty-the-l3-gate">9. Capability advertisement honesty (the L3 gate)</a></li><li class="depth-3"><a href="#valid-example--agent-submitted-lead-with-a-verified-attestation-direct-sender">Valid example — agent-submitted lead with a verified attestation (direct sender)</a></li><li class="depth-3"><a href="#valid-example--delegated-agent-sender-act_for-scope">Valid example — delegated agent sender (act_for: scope)</a></li><li class="depth-3"><a href="#invalid-example-a--free-text-attestation-the-192-row-1-forgery">Invalid example A — free-text attestation (the #192 row-1 forgery)</a></li><li class="depth-3"><a href="#invalid-example-b--forged-hs256-jwt-the-192-row-2-probe-verbatim">Invalid example B — forged HS256 JWT (the #192 row-2 probe, verbatim)</a></li><li class="depth-3"><a href="#invalid-example-c--expired-and-claims-contradicting-the-192-row-3-probe">Invalid example C — expired and claims-contradicting (the #192 row-3 probe)</a></li><li class="depth-3"><a href="#invalid-example-d--cross-receiver-replay">Invalid example D — cross-receiver replay</a></li><li class="depth-3"><a href="#invalid-example-e--claims-contradict-the-envelope">Invalid example E — claims contradict the envelope</a></li><li class="depth-3"><a href="#invalid-example-f--alg-none-detached-signature">Invalid example F — alg: none detached signature</a></li><li class="depth-3"><a href="#invalid-example-g--tampered-signature-under-a-compliant-header">Invalid example G — tampered signature under a compliant header</a></li><li class="depth-3"><a href="#invalid-behavior-example-h--unknown-kid-rejected-vs-unreachable-jwks-500">Invalid behavior example H — unknown kid (rejected) vs unreachable JWKS (500)</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li><li class="depth-2"><a href="#verification-runs-executed-2026-11-03">Verification runs (executed 2026-11-03)</a></li><li class="depth-2"><a href="#revision-2026-11-03-post-dossier">Revision 2026-11-03 (post-dossier)</a></li><li class="depth-3"><a href="#findings--edits">Findings → edits</a></li><li class="depth-3"><a href="#revision-battery-executed-2026-11-03-post-edit">Revision battery (executed 2026-11-03, post-edit)</a></li><li class="depth-3"><a href="#es256-p1363-byte-evidence-f3">ES256 P1363 byte evidence (F3)</a></li><li class="depth-3"><a href="#gates-and-re-pins">Gates and re-pins</a></li><li class="depth-3"><a href="#decision-flags-and-g5">Decision flags and G5</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0008-agent-attestation-verification.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

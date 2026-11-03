@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0010-multi-currency-pricing.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0010 — Multi-currency pricing: settlement currency, FX metadata, and auction comparability — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0010--multi-currency-pricing-settlement-currency-fx-metadata-and-auction-comparability">LEP-0010 — Multi-currency pricing: settlement currency, FX metadata, and auction comparability</h1>
+<ul>
+<li><strong>Title:</strong> Multi-currency pricing: settlement currency, FX metadata, and auction comparability</li>
+<li><strong>Author(s):</strong> LCP maintainers</li>
+<li><strong>Date:</strong> 2026-11-04</li>
+<li><strong>Status:</strong> <strong>Accepted (maintainer, 2026-11-04)</strong> — recorded under the <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md">D1 (<code>docs/DECISIONS-v1.2.md</code>)</span> trigger waiver; implementation is gated on the blocking tests in <a href="#tests">Tests</a></li>
+<li><strong>Target version:</strong> v1.2.0 (additive MINOR; optional fields on two existing closed payloads, no new message type, no new <code>LCP-*</code> error code)</li>
+<li><strong>Decision basis:</strong> <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md"><code>docs/DECISIONS-v1.2.md</code> D7</span></li>
+<li><strong>Discussion:</strong> recorded through the v1.2 decision pass (D7). No separate public <code>[LEP]</code> issue was opened for this number; this record is the durable decision record.</li>
+<li><strong>Roadmap trigger:</strong> <code>docs/V1.1-ROADMAP.md</code> §"Multi-currency auction semantics" — <strong>"buyers in different currencies must compete in the same auction"</strong> — and the v1.0 deferred row <code>spec/00-conformance.md:162</code> ("Multi-currency pricing … <code>price_cents_original</code> + <code>fx_rate</code> fields, or bilateral"). <strong>The trigger is not met</strong> (see the waiver note below).</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</h2>
+<p><strong>Accepted.</strong> Recorded by the maintainer under D7 of the v1.2 decision record. The wire shape, the comparability rule, the exclusion reason vocabulary, and the rounding rule in this document are the decision D7 describes; this LEP is where D7's one-paragraph table is made implementable (types, requiredness, arithmetic, the exclusion surface, and the tests that block a merge).</p>
+<p><strong>Waiver honesty (D1).</strong> The roadmap trigger — buyers in different currencies competing in one auction — produced <strong>no adopter evidence</strong> in this repository or its tracker at the time of this decision. D7 is built under the batch waiver of 2026-11-04, not on new adoption. Accordingly:</p>
+<ol>
+<li>the surface is additive only, advertised through <code>capabilities()</code>, and unreachable for a peer that does not read the advertisement (Compatibility below);</li>
+<li>it ships <strong>disabled</strong> in the reference platform (<code>LCP_FEATURE_FX_PRICING</code> off by default) while CI, vectors, and the conformance suite exercise it;</li>
+<li>the deterministic evidence that stands in for the missing adopter signal is enumerated in <a href="#tests">Tests</a> — executed vectors plus platform tests, not a testimonial; and</li>
+<li>the re-evaluation date is <strong>2027-05-04</strong> (registry row), at which point the waiver must be re-argued or the surface withdrawn.</li>
+</ol>
+<p>No independent ARB dossier is claimed for this decision, and no adopter, deployment, or pilot is named anywhere in this record. Where the evidence below is a measurement of this repository, it cites the file and line it was read from.</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p>Cross-border lead generation is the commercial case: a US buyer purchasing Australian mortgage leads, or an AU platform reselling to a UK call centre. LCP prices everything in <strong>integer minor units of one currency</strong> and gives the auction no way to express a second one.</p>
+<p><strong>What the protocol has today.</strong> <code>ping.floor_price_cents</code> + <code>ping.currency</code>, <code>bid.bid_price_cents</code> + <code>bid.currency</code>, and <code>post.price_cents</code> + <code>post.currency</code> (<code>spec/02-envelope.md:103-104</code> for ping, <code>:135-136</code> for bid, <code>:170-174</code> for post); <code>currency</code> is schema-required on <code>ping</code> and <code>post</code> (<code>schemas/ping.json:13-14</code>, <code>schemas/post.json:10-11</code>) and required on <code>bid</code> only when <code>decision = accept</code> (<code>schemas/bid.json:62-67</code>). There is no rate, no native-amount field, and no notion of settlement currency distinct from the quoted currency.</p>
+<p><strong>What that costs, measured.</strong> The reference platform's auction loop compares bids to the offer only when the strings are equal, and otherwise drops the candidate <strong>silently</strong>:</p>
+<pre class="code-block"><code class="language-python"># implementations/reference-platform/lcp_platform/router.py (pre-D7 shape)
+if bid["bid_price_cents"] &lt; offer["floor_price_cents"]:
+    continue
+if bid["currency"] != offer["currency"]:
+    continue            # ← a valid AUD bid against a USD offer simply vanishes</code></pre>
+<p>A cross-currency bid is therefore not "unsupported with an explanation"; it is invisible. The buyer receives <code>RECEIVED</code> (<code>router.py</code> <code>submit_bid</code>, ack status <code>RECEIVED</code>), hears nothing further — which is also what a <em>losing</em> bid hears (<code>spec/02-envelope.md:145</code>, "losers receive no further messages") — and cannot tell a currency refusal from an auction loss. A platform operator cannot count the refusals either: no audit row, no reason, no metric.</p>
+<p><strong>What the protocol already knows how to do.</strong> <code>FINAL_PRICING</code> events carry <code>winning_price_cents</code> in integer minor units plus <code>currency</code>, with a typo guard (<code>spec/02-envelope.md:266</code>) and an explicit settlement-neutrality rule that this LEP reuses verbatim for analytics: a pricing <em>report</em> must never re-price a live auction or move a payable (<code>spec/02-envelope.md:278-292</code>). Prices are already integer minor units everywhere, so the missing piece is not a unit change — it is a second currency plus the metadata that lets two of them be compared honestly.</p>
+<p><strong>Why "just convert it" is not a design.</strong> Minor units are not comparable across currencies (100 JPY and 100 USD differ by ~150×), minor units are not even comparable across the <em>same</em> pair when the ISO 4217 minor-unit exponents differ (USD has 2, JPY has 0), and a rate is a time-bounded observation from a named source, not a constant. Any of the three handled by guesswork produces a charge nobody can reconstruct.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Core protocol (additive MINOR):</strong> six optional fields inside <code>post.pricing</code> (<code>currency</code>, <code>original_price_cents</code>, <code>fx_rate</code>, <code>fx_source</code>, <code>fx_timestamp</code>, <code>fx_expires_at</code>) and the four <code>fx_*</code> fields on <code>bid</code>; one normative ranking rule in SPEC §8; one normative settlement/rounding rule; one exclusion-reason vocabulary on the routing-decision surface. <code>message.type</code> is untouched (closed enum, <code>spec/05-capabilities.md:32</code>), no new envelope shape, no new <code>LCP-*</code> code.</li>
+<li><strong>SPEC text</strong> (split documents, D10): <code>spec/03-payloads.md</code> §3, <code>spec/02-envelope.md</code> §4 (bid field table + post <code>pricing</code> table), <code>spec/04-errors.md</code> §5 (no new code; the mapping table below), <code>spec/05-capabilities.md</code> §8 (<code>features.multi_currency</code> advertisement and the comparability rule).</li>
+<li><strong>Reference implementation:</strong> <code>LCP_FX_MAX_AGE_SECONDS</code> (default 300), <code>LCP_FEATURE_FX_PRICING</code> (default off), the comparability/exclusion path in the auction, the <code>bid.non_comparable</code> audit row, and the post-side FX echo. Enumerated in <a href="#sdk-openapi-mcp-conformance-and-operational-impact">Impact</a>.</li>
+<li><strong>Not in scope:</strong> a platform-issued reference rate or any rate service; a registered list of FX providers; triangulation between more than one source in one auction; FX-aware <code>quote</code>/<code>counter</code> negotiation (LEP-0009); per-market accounting or tax rounding rules; refund/chargeback FX policy; multi-currency <em>quotas</em> or <em>monthly minimums</em> on offers.</li>
+<li><strong>Deliberately unchanged:</strong> the offer's <code>floor_price_cents</code> + <code>currency</code> stay the auction's single settlement basis (<code>schemas/offer.json</code>, required). A platform does not gain a second settlement currency per offer; it gains honest handling of bidders and buyers who price in another one.</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-effective-settlement-currency-normative-resolution-ladder">1. Effective settlement currency (normative resolution ladder)</h3>
+<p>The <strong>settlement currency</strong> is the currency the platform charges, invoices, and pays out in. It is resolved once per price, in this order:</p>
+<ol>
+<li><code>post.pricing.currency</code>, when present;</li>
+<li>otherwise <code>post.currency</code> (the payload-level field, required by <code>schemas/post.json:10-11</code> and populated from the offer by the reference platform, <code>messages.py:223</code>);</li>
+<li>otherwise <code>USD</code>.</li>
+</ol>
+<p>For a bid, the settlement currency is the ping's offer currency (<code>offer.currency</code>, required), and a platform that cannot resolve it falls back to <code>USD</code> — the reference platform's existing default (<code>router.py:1205-1208</code>: <code>str(currency or "USD").upper()</code>).</p>
+<p><strong>Reconciliation with the registry row.</strong> The registry row says "absent <code>currency</code> means USD". That is step 3 and it is the <em>terminal</em> default. It cannot be step 1: <code>post.currency</code> is required, and the shipped example posts a lead at <code>price_cents: 2200, currency: "AUD"</code> (<code>examples/post.json:18-19</code>). If an absent <code>pricing.currency</code> overrode a present <code>payload.currency</code>, every existing post would be silently re-denominated from AUD to USD the day a reader adopts this LEP. Step 2 exists so that adopting the field changes no existing document's meaning; step 3 exists so a payload carrying neither (schema-invalid today, but seen in the wild) is read rather than guessed. <strong>A v1.0/v1.1 post keeps its current settlement currency under this ladder.</strong></p>
+<p>When both <code>post.pricing.currency</code> and <code>post.currency</code> are present and differ, the payload is malformed: the receiver MUST reject it (<code>LCP-100 VALIDATION_ERROR</code>, <code>field: "pricing.currency"</code>). Two settlement currencies in one billing record is exactly the ambiguity this LEP exists to remove; picking one would be coercion.</p>
+<h3 id="2-postpricing--field-table">2. <code>post.pricing</code> — field table</h3>
+<p>All six fields are <strong>optional</strong>. A v1.0/v1.1 sender emits none of them and is unaffected (see <em>Compatibility, versioning, and deprecation impact</em>). Types below are what <code>schemas/post.json:48-129</code> must carry (<code>additionalProperties: false</code>, so anything not listed is a schema rejection).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Constraint</th>
+<th>Required when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>currency</code></td>
+<td>string</td>
+<td>ISO 4217 alpha-3, <code>^[A-Z]{3}$</code> (the existing <code>core.json#/$defs/currency</code>, <code>schemas/core.json:499-501</code>). MUST equal <code>post.currency</code> when that is present. MUST NOT be the <em>native</em> currency when a conversion occurred — this field is the settlement currency, always.</td>
+<td>Optional. Absent resolves per §1's ladder (<code>post.currency</code>, else <code>USD</code>), which keeps v1.0/v1.1 payloads at their current settlement currency. SHOULD be present whenever any <code>fx_*</code> field is present.</td>
+</tr>
+<tr>
+<td><code>original_price_cents</code></td>
+<td>integer</td>
+<td><code>minimum: 0</code>. <strong>Native</strong> minor units of the winning bid's <code>bid.currency</code> (see §3).</td>
+<td>REQUIRED when any <code>fx_*</code> field is present; MUST be absent when no conversion occurred (there is no "original" on a single-currency post).</td>
+</tr>
+<tr>
+<td><code>fx_rate</code></td>
+<td>string (decimal)</td>
+<td>Plain decimal, no sign, no exponent, no grouping, no leading-zero integer part, a mandatory fractional part of 6–12 digits, value in <code>[0.000001, 1000000]</code>. Normative pattern in 4.1. Direction: <strong>native major units per 1 settlement major unit</strong>.</td>
+<td>REQUIRED when the award converted a cross-currency bid; MUST be absent otherwise.</td>
+</tr>
+<tr>
+<td><code>fx_source</code></td>
+<td>string</td>
+<td><code>^(bilateral|[a-z0-9][a-z0-9._-]{0,63})$</code>. Named rate provider, or the literal <code>bilateral</code> for a rate the two parties agreed directly. Compared by <strong>exact byte equality</strong>; case is normalised by the pattern, never by the receiver.</td>
+<td>REQUIRED when <code>fx_rate</code> is present.</td>
+</tr>
+<tr>
+<td><code>fx_timestamp</code></td>
+<td>string (date-time)</td>
+<td>Canonical whole-second UTC: <code>YYYY-MM-DDTHH:MM:SSZ</code>, exactly one <code>Z</code>, no fractional part, no offset (the LEP-0002 canonical form, <code>spec/01-transport.md:51-59</code>). The instant the rate was observed.</td>
+<td>REQUIRED when <code>fx_rate</code> is present.</td>
+</tr>
+<tr>
+<td><code>fx_expires_at</code></td>
+<td>string (date-time)</td>
+<td>Same canonical form. MUST be strictly later than <code>fx_timestamp</code>. Absolute end of the rate's validity.</td>
+<td>REQUIRED when <code>fx_rate</code> is present.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why the native amount is not self-describing (known limitation).</strong> <code>original_price_cents</code> is denominated in the winning bid's <code>bid.currency</code>, which the receiving buyer sent and therefore holds, so the buyer can always recompute the charge. A third party reading only the post — a publisher, an auditor, a dispute reviewer — cannot decode the native currency from the post alone, because D7's field list carries no native-currency code. This LEP does not add a seventh field (the decision fixed the list); the gap is recorded as deferred question <strong>Q-1</strong> with a concrete trigger, and until then the platform MUST be able to answer it from its own bid record.</p>
+<h3 id="3-bid--field-table-the-price-side-that-feeds-the-auction">3. <code>bid</code> — field table (the price side that feeds the auction)</h3>
+<p>Four optional fields, flat on the bid payload (<code>bid</code> has no <code>pricing</code> block; the existing price fields are flat, <code>schemas/bid.json:25-31</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Constraint</th>
+<th>Required when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>currency</code> <em>(existing)</em></td>
+<td>string</td>
+<td>ISO 4217 alpha-3 (existing). <strong>Semantics refined, not changed:</strong> this is the currency the bid is <em>expressed in</em> — i.e. the native currency of <code>bid_price_cents</code>. In v1.0/v1.1 it necessarily equalled the offer's currency; from v1.2 a bid MAY differ from it.</td>
+<td>REQUIRED when <code>decision = "accept"</code> (existing condition, <code>schemas/bid.json:62-67</code>).</td>
+</tr>
+<tr>
+<td><code>bid_price_cents</code> <em>(existing)</em></td>
+<td>integer</td>
+<td><code>minimum: 0</code>. <strong>Native</strong> minor units of <code>bid.currency</code>.</td>
+<td>REQUIRED when <code>decision = "accept"</code> (existing).</td>
+</tr>
+<tr>
+<td><code>fx_rate</code></td>
+<td>string (decimal)</td>
+<td>As <code>post.pricing.fx_rate</code>, same direction and same pattern.</td>
+<td>REQUIRED when <code>bid.currency</code> differs from the offer's currency; <strong>MUST NOT</strong> be relied on otherwise.</td>
+</tr>
+<tr>
+<td><code>fx_source</code></td>
+<td>string</td>
+<td>As <code>post.pricing.fx_source</code>.</td>
+<td>REQUIRED with <code>fx_rate</code>.</td>
+</tr>
+<tr>
+<td><code>fx_timestamp</code></td>
+<td>string (date-time)</td>
+<td>As <code>post.pricing.fx_timestamp</code>.</td>
+<td>REQUIRED with <code>fx_rate</code>.</td>
+</tr>
+<tr>
+<td><code>fx_expires_at</code></td>
+<td>string (date-time)</td>
+<td>As <code>post.pricing.fx_expires_at</code>; MUST be strictly later than <code>fx_timestamp</code>.</td>
+<td>REQUIRED with <code>fx_rate</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>No <code>original_price_cents</code> on the bid.</strong> On a bid the native amount <em>is</em> <code>bid_price_cents</code>; a second copy of the same number in the same message is a divergence waiting to happen. The post echoes it once (§2, <code>original_price_cents</code>) so the delivered billing record carries both sides of the conversion.</p>
+<p><strong>A same-currency bid ignores its FX fields (normative).</strong> When <code>bid.currency</code> equals the offer's settlement currency, the bid compares directly by integer minor units and any <code>fx_*</code> metadata present is <strong>inert and MUST be ignored for comparison</strong> (it is still schema-validated). No conversion happens, so no coefficient can be wrong; rejecting the message instead would punish a buyer that sends a uniform envelope. The reference platform already behaves this way (<code>router.py:1211-1212</code> returns the amount before reading metadata).</p>
+<p>Rates and amounts are covered by the existing envelope HMAC and replay window — no new authentication surface, no new secret.</p>
+<h3 id="4-rate-semantics-and-conversion-arithmetic">4. Rate semantics and conversion arithmetic</h3>
+<h4 id="41-the-rate-is-a-plain-decimal-with-declared-precision">4.1 The rate is a plain decimal with declared precision</h4>
+<p><code>fx_rate</code> is <code>native major units per 1 settlement major unit</code>. AUD per USD is <code>1.520000</code>; USD per JPY is <code>0.00636943</code> (≈ 157 JPY per USD).</p>
+<p>Tightened normative pattern (supersedes the looser shape currently landed in <code>schemas/post.json:79-81</code> and the reference platform's <code>_FX_RATE_RE</code>, <code>router.py:167-170</code>):</p>
+<pre class="code-block"><code>^(?:[1-9][0-9]*\.[0-9]{6,12}|0\.[0-9]*[1-9][0-9]{5,11})$</code></pre>
+<p>The pattern rejects, and a receiver MUST reject with <code>LCP-100 VALIDATION_ERROR</code> / <code>field: "fx_rate"</code>: an exponent (<code>"1.52e0"</code>), a comma decimal separator (<code>"1,52"</code>), a sign, whitespace, a missing fractional part (<code>"2"</code>), zero (<code>"0"</code>), a leading-zero integer part (<code>"007.000000"</code>), fewer than six fractional digits for a value ≥ 1 (<code>"1.52"</code>), and fewer than six <em>significant</em> fractional digits for a value &lt; 1 (<code>"0.000123"</code>). Trailing zeros are permitted and are read as declared quantization, not as extra precision.</p>
+<p><strong>Measured gap in the tree as it stands.</strong> The landed schema pattern <code>^[0-9]+(\.[0-9]{6,})?$</code> accepts <code>"1"</code>, <code>"0"</code>, <code>"007.000000"</code> and <code>"0.000123"</code> (verified by validating the example payloads of this LEP against <code>schemas/post.json</code> with <code>jsonschema</code> 4.26.0 from the repository <code>.venv</code>; each of those four values <strong>passes</strong> the landed pattern). The tightening is an implementation obligation, not an optional polish: an integer-only rate and a zero rate are the two shapes a hand-rolled writer produces first.</p>
+<p>Bounds: value in <code>[0.000001, 1000000]</code> (all ISO 4217 fiat crosses fall inside it), fractional digits ≤ 12. Twelve digits plus the <code>100000000</code> minor-unit ceiling already used for typo-guarded prices (<code>spec/02-envelope.md:266</code>) keeps exact arithmetic cheap, but <strong>an implementation MUST NOT rely on 64-bit integer cross-multiplication of unscaled operands</strong> — scale deliberately or use arbitrary-precision decimal. The reference platform uses Python <code>Decimal</code> (<code>router.py:1244</code>).</p>
+<h4 id="42-minor-unit-exponents-are-load-bearing">4.2 Minor-unit exponents are load-bearing</h4>
+<p><code>original_price_cents</code> / <code>bid_price_cents</code> are <strong>minor</strong> units; <code>fx_rate</code> is a <strong>major</strong>-unit quote. Converting therefore needs the ISO 4217 minor-unit exponent of both currencies:</p>
+<pre class="code-block"><code>settlement_minor_exact = native_minor × 10^(exp_settlement − exp_native) ÷ fx_rate</code></pre>
+<p>Worked, with the exponents pinned (USD = 2, AUD = 2, JPY = 0):</p>
+<ul>
+<li><code>native_minor 50000</code> USD (USD 500.00) → settlement JPY at <code>fx_rate "0.00636943"</code>: <code>50000 × 10^(0−2) ÷ 0.00636943 = 78499.959965…</code> JPY → charge <code>78500</code> JPY (half-up, §7).</li>
+<li>The same division <strong>without</strong> the exponent factor yields <code>7849995.96</code> — a 100× overcharge. This is the failure mode the rule forbids.</li>
+</ul>
+<p>A platform MUST carry the ISO 4217 exponent table it uses, and MUST treat a currency whose exponent it cannot resolve as <code>fx_currency_malformed</code> / <code>fx_settlement_currency_malformed</code> rather than assuming 2. The reference platform has <strong>no exponent table</strong> today and divides minor units directly (<code>router.py:1244</code>); it is correct only for same-exponent pairs (AUD/USD, USD/EUR) and is wrong for USD/JPY, USD/KRW, USD/ISK and every 0- or 3-exponent currency. Blocking test <strong>T-EXPONENT</strong> covers it.</p>
+<h4 id="43-exact-comparison-never-a-rounded-or-clamped-value">4.3 Exact comparison, never a rounded or clamped value</h4>
+<p>Every comparability decision uses the exact decimal value of <code>settlement_minor_exact</code>. No float, no bank rounding, no clamping to the floor or to the guardrail. <code>Decimal("2200.5") &lt; Decimal("2200.6")</code> decides the auction; <code>2201</code> does not.</p>
+<h3 id="5-comparability-rule-normative">5. Comparability rule (normative)</h3>
+<p><strong>C1.</strong> Two prices MUST NOT be compared unless their settlement currencies are the same, <strong>or</strong> each is accompanied by an FX bundle that is present, well-formed, non-stale, non-expired, and consistently sourced.</p>
+<p><strong>C2.</strong> "Present" means all four of <code>fx_rate</code>, <code>fx_source</code>, <code>fx_timestamp</code>, <code>fx_expires_at</code> are non-empty on the candidate.</p>
+<p><strong>C3.</strong> "Non-stale" is evaluated against <strong>one</strong> <code>evaluation_time</code> shared by every candidate of one auction evaluation (a single routing sweep), not per candidate: <code>evaluation_time − fx_timestamp ≤ LCP_FX_MAX_AGE_SECONDS</code> (default <code>300</code>, <strong>inclusive</strong>, matching the replay-window convention of <code>SEC</code>/<code>ERR-016</code>) — and <code>evaluation_time &lt; fx_expires_at</code>. A <code>fx_timestamp</code> more than <code>LCP_FX_MAX_AGE_SECONDS</code> <strong>in the future</strong> relative to <code>evaluation_time</code> is also stale (clock-skew guard, same reason string). <code>fx_expires_at</code> MAY be shorter than the max-age window and MUST NOT be read as extending it.</p>
+<p><strong>C4.</strong> "Consistently sourced" means every converted candidate in one evaluation carries the same <code>fx_source</code> value, byte for byte. If the converted candidates of one evaluation carry two or more distinct values, <strong>all</strong> converted candidates in that evaluation are non-comparable (<code>fx_source_mixed</code>) and only same-currency candidates remain. The platform MUST NOT pick one source, average sources, or triangulate.</p>
+<p><strong>C5.</strong> A non-comparable offer MUST be <strong>excluded</strong> with the reason string from §6, recorded, and left otherwise untouched: no default rate, no assumed parity, no "rate of 1", no clamping to the floor, no rewriting of the bid payload. Excluding with an explanation is reversible and auditable; guessing a rate is not (D7 rationale).</p>
+<p><strong>C6.</strong> A non-comparable offer MUST NOT fail the auction. If every candidate is excluded, the existing "no candidates → expire the lead" path runs unchanged. A same-currency candidate is never affected by another candidate's FX metadata.</p>
+<p><strong>C7.</strong> Format-invalid FX values (pattern, timestamp form, source shape) are an intake fault where the platform can see them at intake (<code>LCP-100</code>, §6), and a comparison-time exclusion otherwise — because the feature flag can be enabled while bids are already stored, and stored bids are never re-validated. Both paths use the same reason strings.</p>
+<p><strong>C8.</strong> The auction's ordering key is the exact settlement value, then the existing deterministic tie-breaks (<code>estimated_contact_seconds</code>, <code>received_at</code>, <code>buyer_id</code> — <code>router.py:1359-1367</code> in the current tree). FX adds no new tie-break and changes no existing one.</p>
+<h3 id="6-exclusion-reasons-and-error-code-mapping">6. Exclusion reasons and error-code mapping</h3>
+<p>The reason strings below are the vocabulary the platform emits. They are <strong>documented known values of the open <code>rejection_reason</code> enumeration</strong> (<code>schemas/ack.json:44</code>, <code>$comment</code>: "Open enum") and, at comparison time, the <code>reason</code> of a <code>bid.non_comparable</code> audit row (<code>router.py:1246-1261</code>: <code>action="bid.non_comparable"</code>, with <code>lead_id</code>, <code>offer_id</code>, <code>buyer_id</code>, <code>currency</code>, <code>reason</code>). No new <code>LCP-*</code> code is allocated and no schema enum changes: the open-enum mechanism carries the meaning, exactly as LEP-0007's <code>ignored</code> did.</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Emitted when</th>
+<th>Intake code (where detectable at intake)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fx_rate_missing</code></td>
+<td>a cross-currency candidate carries no complete FX bundle (C2)</td>
+<td><code>LCP-100 VALIDATION_ERROR</code>, 400, <code>field: "fx_rate"</code></td>
+</tr>
+<tr>
+<td><code>fx_rate_stale</code></td>
+<td><code>evaluation_time − fx_timestamp &gt; LCP_FX_MAX_AGE_SECONDS</code>, or the timestamp is too far in the future (C3)</td>
+<td><code>LCP-100</code>, 400, <code>field: "fx_timestamp"</code></td>
+</tr>
+<tr>
+<td><code>fx_rate_expired</code></td>
+<td><code>evaluation_time ≥ fx_expires_at</code></td>
+<td><code>LCP-100</code>, 400, <code>field: "fx_expires_at"</code> — a rate already expired on arrival can never be used</td>
+</tr>
+<tr>
+<td><code>fx_rate_malformed</code></td>
+<td><code>fx_rate</code> is not a string, or fails the pattern, or is <code>≤ 0</code></td>
+<td><code>LCP-100</code>, 400, <code>field: "fx_rate"</code></td>
+</tr>
+<tr>
+<td><code>fx_amount_malformed</code></td>
+<td>the price is not an integer ≥ 0</td>
+<td><code>LCP-100</code>, 400, <code>field: "bid_price_cents"</code></td>
+</tr>
+<tr>
+<td><code>fx_currency_malformed</code></td>
+<td>the native currency is not ISO 4217 alpha-3, or its minor-unit exponent is unresolvable</td>
+<td><code>LCP-100</code>, 400, <code>field: "currency"</code></td>
+</tr>
+<tr>
+<td><code>fx_settlement_currency_malformed</code></td>
+<td>the settlement currency is not ISO 4217 alpha-3, or its exponent is unresolvable (§1)</td>
+<td><code>LCP-100</code>, 400, <code>field: "pricing.currency"</code></td>
+</tr>
+<tr>
+<td><code>fx_source_missing</code></td>
+<td><code>fx_source</code> is absent, not a string, or empty</td>
+<td><code>LCP-100</code>, 400, <code>field: "fx_source"</code></td>
+</tr>
+<tr>
+<td><code>fx_timestamp_malformed</code> / <code>fx_expires_at_malformed</code></td>
+<td>not the canonical whole-second UTC form, or unparseable</td>
+<td><code>LCP-100</code>, 400, <code>field: "fx_timestamp"</code> / <code>"fx_expires_at"</code></td>
+</tr>
+<tr>
+<td><code>fx_source_mixed</code></td>
+<td>two or more distinct <code>fx_source</code> values among the converted candidates of one evaluation (C4)</td>
+<td>— comparison time only (a mixed set is not detectable per message)</td>
+</tr>
+<tr>
+<td><code>price_below_floor</code></td>
+<td>the exact settlement value is below <code>offer.floor_price_cents</code></td>
+<td>— comparison time only</td>
+</tr>
+</tbody>
+</table>
+<p>Notes that keep the vocabulary honest:</p>
+<ul>
+<li><strong><code>price_below_floor</code> is required for converted candidates.</strong> Today the floor test is a silent <code>continue</code> for every candidate (<code>router.py:1324-1325</code>); for a converted candidate it MUST be recorded with this reason, because "your AUD bid was below a USD floor after conversion" is exactly the surprise this LEP removes. Same-currency floor exclusions MAY keep the existing silent behaviour (no regression is introduced either way).</li>
+<li><strong><code>LCP-014</code> is not allocated.</strong> <code>docs/V1.2-EXECUTION-PLAN.md:111</code> (W1-09) offers "stale rate → <code>LCP-014</code> (or documented existing code)". This record chooses the documented existing code: a stale rate is a value-validity verdict on an authenticated message, and <code>LCP-100 VALIDATION_ERROR</code> is the code the platform already uses for "validation rejection, not a store" (<code>spec/02-envelope.md:228</code>, <code>:276</code>; <code>spec/04-errors.md:24</code>). Allocating <code>LCP-014</code> for one of eleven reasons would leave the other ten mapping to nothing; the reason string, not the code, carries the diagnosis.</li>
+<li><code>LCP-001 INVALID_FORMAT</code> stays the request-framing code (bad JSON, wrong content type, oversized body — <code>service.py:79-110</code>) and is not used for a price-value verdict.</li>
+</ul>
+<h3 id="7-rounding-settlement-and-what-is-payable">7. Rounding, settlement, and what is payable</h3>
+<p><strong>One rounding event of record.</strong> The auction ranks on <code>settlement_minor_exact</code> (§4.3). When a cross-currency candidate wins, the charge is computed <strong>once</strong>, at award, as the half-up rounding of that exact value to an integer minor unit (<code>(x + 0.5).floor</code> for <code>x ≥ 0</code>; prices are non-negative by schema, so the negative-half-up ambiguity does not arise):</p>
+<table>
+<thead>
+<tr>
+<th>Exact settlement value</th>
+<th>Charge of record (half-up)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>220000</code></td>
+<td><code>220000</code></td>
+</tr>
+<tr>
+<td><code>2200.5</code></td>
+<td><code>2201</code></td>
+</tr>
+<tr>
+<td><code>78499.959965…</code></td>
+<td><code>78500</code></td>
+</tr>
+</tbody>
+</table>
+<p>That integer is <code>post.pricing.final_price_cents</code> and <code>post.price_cents</code>, it is written once, and it is <strong>immutable</strong>: a later rate, a later auction sweep, a re-ranking, or a retry MUST NOT recompute or adjust it. The reference platform already rounds exactly there, after ranking (<code>router.py:1388-1390</code>), with the comment "the rounded cents never feed back into ranking".</p>
+<p><strong>Rounding can collapse an order but must not create one.</strong> Half-up is monotone, so it can never invert a strict order — and it <em>can</em> turn one into a tie: candidates at exact <code>2200.5</code> and <code>2200.6</code> both round to <code>2201</code>, so a ranking performed on rounded values would lose the winner that the exact values distinguish. The auction therefore uses exact values (C8), and rounding is confined to the charge.</p>
+<p><strong>Rounding must not admit a sub-floor bid.</strong> Exact <code>149999.666…</code> (native <code>449999</code> AUD cents at <code>fx_rate "3.000000"</code>) is below a <code>150000</code> USD-cent floor even though half-up would present it as <code>150000</code>. The floor test uses the exact value; the bid is excluded with <code>price_below_floor</code> (§6) and no charge is created.</p>
+<p><strong>A converted amount that cannot be expressed is excluded, not rounded to zero.</strong> If <code>settlement_minor_exact &lt; 0.5</code>, the platform MUST exclude the candidate (<code>price_below_floor</code> when a floor exists, otherwise the same reason with the audit note <code>unrepresentable</code>) rather than record a <code>0</code> charge. A zero charge is a commercial fact (a free lead), never a rounding artifact.</p>
+<p><strong>What is payable.</strong> The settlement integer in <code>pricing.final_price_cents</code> / <code>price_cents</code>, governed by the existing <code>payable_definition</code>, <code>payable_status</code>, and dispute window (<code>spec/02-envelope.md:170-174</code>, <code>schemas/post.json:48-129</code>). <code>post.pricing</code> remains "the sole billing and dispute record between platform and buyer" (<code>spec/02-envelope.md:278</code>). Nothing in this LEP changes when a lead becomes payable, what a dispute window measures, or how an <code>ack</code> interacts with either.</p>
+<p><strong>What is analytics.</strong> <code>original_price_cents</code>, all four <code>fx_*</code> values, and any <code>FINAL_PRICING</code> event. They are the conversion's evidence: the buyer and the platform can both recompute <code>settlement_minor_exact</code> from them, so a charge can always be reconstructed and a dispute argued without trusting a log. They are <strong>not</strong> re-inputs: no later FX movement re-prices a settled lead, and a <code>FINAL_PRICING</code> report — which may name a different currency entirely — stays analytics and bid refinement only (<code>spec/02-envelope.md:278-292</code>). Post-award FX drift is the platform's commercial risk and MUST NOT appear as a payable adjustment without a separate, explicitly-recorded agreement.</p>
+<h3 id="8-valid-examples">8. Valid examples</h3>
+<p><em>(Validation was executed 2026-11-04 against the tree in this repository with <code>jsonschema</code> 4.26.0 from <code>.venv</code>, resolving <code>core.json#/$defs/*</code> through a <code>DRAFT202012</code> registry. The <code>pricing</code> block of Example 1 and of Example 2, embedded in the shipped <code>examples/post.json</code> payload, <strong>PASS</strong> <code>schemas/post.json</code> as landed. Example 3 <strong>FAILS</strong> <code>schemas/bid.json</code> today with <code>Additional properties are not allowed ('fx_expires_at', 'fx_rate', 'fx_source', 'fx_timestamp' were unexpected)</code> — expected, and the reason the bid-side schema change is a blocking item in <a href="#tests">Tests</a>. Example 2 is shown as a payload excerpt; it validates only in a complete post payload (<code>lead_id</code>, <code>buyer_id</code>, <code>consumer</code>, <code>location</code>, <code>attributes</code> present).)</em></p>
+<h4 id="valid-1--single-currency-no-conversion-v10v11-shape-unchanged">Valid 1 — single currency, no conversion (v1.0/v1.1 shape, unchanged)</h4>
+<p><code>pricing.currency</code> present and equal to the payload currency; no FX field (§2 requires their absence when nothing was converted).</p>
+<pre class="code-block"><code class="language-json">{
+  "price_cents": 2200,
+  "currency": "AUD",
+  "pricing": {
+    "floor_price_cents": 1500,
+    "premium_cents": 700,
+    "final_price_cents": 2200,
+    "uncapped_price_cents": 2500,
+    "max_allowed_price_cents": 3000,
+    "currency": "AUD",
+    "price_guardrails": true,
+    "is_duplicate_resub": false,
+    "payable_definition": "form_lead_valid_phone",
+    "payable_status": "payable"
+  }
+}</code></pre>
+<h4 id="valid-2--cross-currency-award-exact-conversion-usd-settlement">Valid 2 — cross-currency award, exact conversion, USD settlement</h4>
+<p>A US buyer bid <code>334400</code> AUD cents (<code>AUD 3,344.00</code>) at <code>fx_rate "1.520000"</code>. <code>334400 ÷ 1.520000 = 220000</code> exactly, so no rounding occurs and the charge equals the converted value; <code>original_price_cents</code> plus the four <code>fx_*</code> values are the evidence the buyer can recompute.</p>
+<pre class="code-block"><code class="language-json">{
+  "price_cents": 220000,
+  "currency": "USD",
+  "pricing": {
+    "floor_price_cents": 150000,
+    "premium_cents": 70000,
+    "final_price_cents": 220000,
+    "uncapped_price_cents": 250000,
+    "max_allowed_price_cents": 300000,
+    "currency": "USD",
+    "original_price_cents": 334400,
+    "fx_rate": "1.520000",
+    "fx_source": "ecb-reference",
+    "fx_timestamp": "2026-11-04T10:19:58Z",
+    "fx_expires_at": "2026-11-04T10:24:58Z",
+    "price_guardrails": true,
+    "is_duplicate_resub": false,
+    "payable_definition": "form_lead_valid_phone",
+    "payable_status": "payable"
+  }
+}</code></pre>
+<h4 id="valid-3--bid-side-cross-currency-into-a-usd-settling-offer">Valid 3 — bid side, cross-currency into a USD-settling offer</h4>
+<p><code>currency</code> is the bid's own currency (native, <code>AUD</code>); the bundle makes it comparable with USD-settling candidates. This is the message shape <code>schemas/bid.json</code> must accept for the feature to be reachable at all.</p>
+<pre class="code-block"><code class="language-json">{
+  "ping_id": "550e8400-e29b-41d4-a716-446655440000",
+  "decision": "accept",
+  "bid_price_cents": 334400,
+  "currency": "AUD",
+  "estimated_contact_seconds": 45,
+  "buyer_reference": "buyer-internal-987",
+  "fx_rate": "1.520000",
+  "fx_source": "ecb-reference",
+  "fx_timestamp": "2026-11-04T10:19:58Z",
+  "fx_expires_at": "2026-11-04T10:24:58Z"
+}</code></pre>
+<h3 id="9-invalid-examples">9. Invalid examples</h3>
+<p><em>(Example 1 is schema-valid and invalid only </em>for the auction<em> — the distinction C7 turns on. Example 3 was executed against the landed schema and is rejected; the observed message is quoted.)</em></p>
+<h4 id="invalid-1--cross-currency-bid-with-no-rate--fx_rate_missing">Invalid 1 — cross-currency bid with no rate → <code>fx_rate_missing</code></h4>
+<p><code>currency: "AUD"</code> against a USD-settling offer, no bundle. The schema accepts it (<code>bid.json</code> has no cross-document condition); the auction MUST exclude it with <code>fx_rate_missing</code>, MUST NOT treat <code>334400</code> as USD cents, and MUST NOT assume parity.</p>
+<pre class="code-block"><code class="language-json">{
+  "ping_id": "550e8400-e29b-41d4-a716-446655440000",
+  "decision": "accept",
+  "bid_price_cents": 334400,
+  "currency": "AUD"
+}</code></pre>
+<h4 id="invalid-2--stale-rate--fx_rate_stale">Invalid 2 — stale rate → <code>fx_rate_stale</code></h4>
+<p><code>fx_timestamp</code> is <code>1500 s</code> before the <code>10:20:00Z</code> evaluation, i.e. <code>5×</code> the default <code>LCP_FX_MAX_AGE_SECONDS</code> of <code>300</code>. Non-comparable; the bid is excluded, not re-priced with a newer rate the buyer never signed.</p>
+<pre class="code-block"><code class="language-json">{
+  "ping_id": "550e8400-e29b-41d4-a716-446655440000",
+  "decision": "accept",
+  "bid_price_cents": 334400,
+  "currency": "AUD",
+  "fx_rate": "1.520000",
+  "fx_source": "ecb-reference",
+  "fx_timestamp": "2026-11-04T09:55:00Z",
+  "fx_expires_at": "2026-11-04T10:25:00Z"
+}</code></pre>
+<h4 id="invalid-3--exponent-notation--schema-rejection">Invalid 3 — exponent notation → schema rejection</h4>
+<p><code>"fx_rate": "1.52e0"</code> fails the pattern. Observed against the landed <code>schemas/post.json</code>: <code>"'1.52e0' does not match '^[0-9]+(\\.[0-9]{6,})?$'"</code> — mapped to <code>LCP-100 VALIDATION_ERROR</code>, <code>field: "fx_rate"</code>. (The same payload with <code>"fx_rate": "1.52"</code> is also rejected by the landed pattern; <code>"1"</code>, <code>"0"</code> and <code>"0.000123"</code> are <strong>not</strong>, and are rejected only after the §4.1 tightening.)</p>
+<pre class="code-block"><code class="language-json">{
+  "pricing": {
+    "currency": "USD",
+    "original_price_cents": 334400,
+    "fx_rate": "1.52e0",
+    "fx_source": "ecb-reference",
+    "fx_timestamp": "2026-11-04T10:19:58Z",
+    "fx_expires_at": "2026-11-04T10:24:58Z"
+  }
+}</code></pre>
+<h4 id="invalid-4--mixed-sources--fx_source_mixed-for-every-converted-candidate">Invalid 4 — mixed sources → <code>fx_source_mixed</code> for every converted candidate</h4>
+<p>Two converted candidates in one evaluation (buyer A converted from AUD at <code>ecb-reference</code>; buyer B converted from GBP at <code>bilateral</code>) plus buyer C already bidding in USD. Rule C4: A and B are both non-comparable, each recorded with <code>fx_source_mixed</code>; C still wins on its own integer minor units. The platform does not quietly prefer one source, and it does not let A and B's incompatibility disqualify C.</p>
+<pre class="code-block"><code class="language-json">[
+  {
+    "buyer_id": "buyer_aud",
+    "bid_price_cents": 334400,
+    "currency": "AUD",
+    "fx_rate": "1.520000",
+    "fx_source": "ecb-reference",
+    "fx_timestamp": "2026-11-04T10:19:58Z",
+    "fx_expires_at": "2026-11-04T10:24:58Z"
+  },
+  {
+    "buyer_id": "buyer_gbp",
+    "bid_price_cents": 170000,
+    "currency": "GBP",
+    "fx_rate": "0.790000",
+    "fx_source": "bilateral",
+    "fx_timestamp": "2026-11-04T10:19:58Z",
+    "fx_expires_at": "2026-11-04T10:24:58Z"
+  },
+  {
+    "buyer_id": "buyer_usd",
+    "bid_price_cents": 219500,
+    "currency": "USD"
+  }
+]</code></pre>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>PII.</strong> No consumer data enters any field in this LEP. Classes follow <code>docs/PII-CLASSES.md</code> (D9): <code>pricing.currency</code> is <code>public</code> ("a code, not a commercial fact", <code>PII-CLASSES.md:680</code>), and every amount, rate, source, and timestamp is <code>internal</code> (<code>PII-CLASSES.md:681-685</code>). The bid-side <code>fx_*</code> fields are <code>internal</code> and need rows in that table when <code>schemas/bid.json</code> gains them. Nothing here is eligible for a ping: the ping allowlist is unchanged, so <code>LCP-008 PII_IN_PING</code> keeps its boundary. No consumer identifier is joined to a rate, so aggressive FX analytics cannot become a re-identification surface.</p>
+<p><strong>Money integrity.</strong> The rate is <strong>self-attested</strong>. A buyer that supplies its own rate can shape its own converted bid, and <code>bilateral</code> rates are by definition unverifiable. This LEP makes that visible rather than silent — the rate, source, and timestamp travel with the price and are recorded in the billing record — but it does not make it safe: a platform that needs rate integrity MUST pin <code>fx_source</code> (refuse <code>bilateral</code>, name one provider) and SHOULD reject a rate that deviates from its own reference beyond a tolerance it defines. Neither mechanism is normative here; both are deferred (Q-2, Q-3).</p>
+<p><strong>Griefing, stated plainly.</strong> C4's rule is mutual: a candidate cannot gain by carrying a novel <code>fx_source</code>, because it excludes itself too — but it can exclude a rival, and in a two-converted-candidate auction both vanish and a same-currency bidder wins by default. The exposure is bounded (the attacker never wins on the tricked axis) and the mitigation is the same pinning above. It is recorded, not hidden (Q-3).</p>
+<p><strong>Transport and authorization.</strong> No new endpoint, scope, secret, or key type. The bid is HMAC-signed over the payload, so rate tampering in flight is already covered by <code>LCP-012</code>; replay by <code>LCP-005</code>/idempotency. The audit row is written with the platform as actor and carries no consumer data.</p>
+<p><strong>Universal-core audit.</strong> The fields work for: an AU publisher selling to a US buyer (AUD native, USD settlement); a USD buyer into an AUD offer (the reverse, same arithmetic); a JPY-settling deployment (0-exponent minor unit, §4.2); a deployment with no FX provider at all (<code>bilateral</code>); a deployment that pins one source (C4 with a single member); and v1.0/v1.1 peers, which never see the fields. No field names a bank, a provider, a jurisdiction, a tax regime, or a payment rail. The only external dependency is ISO 4217 itself, and its minor-unit exponents are part of the standard, not a vendor.</p>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Additive MINOR.</strong> Every field is optional in both directions. A v1.2 sender addressing a v1.1 receiver and a v1.1 sender addressing a v1.2 receiver both keep working, in the second case with no FX metadata at all — which is exactly the pre-v1.2 behaviour.</li>
+<li><strong>The one real hazard is the closed <code>pricing</code> object.</strong> It is <code>additionalProperties: false</code> (<code>schemas/post.json:129</code>), so a post that newly populates <code>pricing.currency</code> toward a v1.1 receiver is a schema rejection (<code>LCP-100</code>). Senders therefore MUST gate emission on the receiver's advertisement: <code>capabilities().lcp_versions</code> containing a parsed <code>major == 1, minor &gt;= 2</code> element <strong>and</strong> <code>capabilities().features.multi_currency</code> present. This is the LEP-0003 §4 gate verbatim, and the reference platform already advertises the key (<code>router.py:2387-2389</code>: <code>"multi_currency": "1.2.0"</code>) while its <code>lcp_versions</code> constant still lists only 1.0.0/1.1.0 (<code>validation.py:23</code>) — a blocking gap, T-CAPGATE.</li>
+<li><strong>Bid side is the opposite case:</strong> <code>schemas/bid.json:71</code> is also closed, so the fields are simply not accepted today. Nothing is redefined; <code>bid.currency</code> keeps its meaning (the currency of <code>bid_price_cents</code>) and merely stops being forced to equal the offer's.</li>
+<li><strong><code>post.currency</code> semantics are unchanged.</strong> It remains the payload's price currency and, from v1.2, the settlement currency. §1's ladder guarantees no existing document changes meaning.</li>
+<li><strong>No deprecation, no removal, no N+2 window needed.</strong> Nothing in this LEP supersedes a field. The <code>spec/00-conformance.md:162</code> deferred row is resolved by this record and the roadmap row moves to implemented on ship.</li>
+<li><strong>Version string.</strong> <code>lcp.version</code> continues to identify the core schema line; the capability advertisement, not the version literal, is what a sender gates on (D3's rule, <code>DECISIONS-v1.2.md</code> D3).</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<p><strong>Where the tree already is (measured 2026-11-04, this working tree).</strong></p>
+<p><em>Line pins in this section were read from the working tree on 2026-11-04; the W1-09 implementation is landing concurrently, so the durable references are the named symbols (<code>_settlement_price</code>, <code>_record_non_comparable_bid</code>, <code>_FX_RATE_RE</code>) and the quoted code, not the numbers.</em> <code>schemas/post.json:71-94</code> and the ten SDK <code>schema-bundle.json</code> files plus <code>sdk/python/lcp_sdk/schemas/post.json</code> already carry the six pricing fields; <code>schemas/bid.json</code> does not. The reference platform already has <code>LCP_FX_MAX_AGE_SECONDS</code> (<code>config.py:52-55</code>, <code>:113-114</code>, <code>:215</code>), the comparability helper <code>_settlement_price</code> (<code>router.py:1184-1244</code>), the audit writer <code>_record_non_comparable_bid</code> (<code>router.py:1246-1261</code>), the mixed-source sweep (<code>router.py:1341-1358</code>), exact-decimal ranking (<code>router.py:1359-1367</code>), and the half-up charge (<code>router.py:1388-1390</code>). What follows is the delta to a conformant v1.2 surface.</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Obligation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schemas/post.json</code></td>
+<td>Tighten <code>fx_rate</code> to §4.1; tighten <code>fx_source</code> to the §4.1 pattern; annotate all six with <code>x-lcp-pii</code> (<code>public</code> for <code>currency</code>, <code>internal</code> otherwise).</td>
+</tr>
+<tr>
+<td><code>schemas/bid.json</code></td>
+<td>Add the four <code>fx_*</code> fields; require all four when <code>currency</code> is present (the cross-document currency comparison stays a receiver rule). Annotate <code>internal</code>.</td>
+</tr>
+<tr>
+<td>SDK bundles ×10 + <code>sdk/python/lcp_sdk/schemas/*</code></td>
+<td>Regenerate from the two schemas; SHA-256 manifests re-synced (<code>schema-sync</code> gate). Generated model types for the four bid fields.</td>
+</tr>
+<tr>
+<td>OpenAPI</td>
+<td><code>Pricing</code> (<code>api/lcp-openapi.yaml:1171-1239</code>) carries the six post fields already, with the <em>loose</em> <code>fx_rate</code>/<code>fx_source</code> shapes; it must be tightened to §4.1 and its "Absent means USD" description corrected to §1's ladder. <code>BidPayload</code> (<code>api/lcp-openapi.yaml:1352-1397</code>) still lacks the four bid-side fields and the conditional requirement.</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td><code>submit_bid</code> (<code>implementations/mcp-server/lcp_mcp_server/server.py:306-350</code>) gains <code>fx_rate</code>, <code>fx_source</code>, <code>fx_timestamp</code>, <code>fx_expires_at</code>, documented as "send only when the bid currency differs from the offer's". No post-side tool exists (the platform emits posts), so nothing else changes.</td>
+</tr>
+<tr>
+<td>Conformance vectors</td>
+<td>The eight vectors in <a href="#tests">Tests</a> under <code>test-vectors/</code>, plus a <code>sdk/schema-bundle</code> assertion that all ten bundles agree on the two schemas.</td>
+</tr>
+<tr>
+<td>Docs</td>
+<td><code>docs/FIELD-DICTIONARY.md</code> rows (<code>:245-246</code>, <code>:267-268</code>, <code>:320-321</code>), <code>spec/03-payloads.md</code> §3, <code>spec/02-envelope.md</code> §4, <code>spec/04-errors.md</code> §5, <code>spec/05-capabilities.md</code> §8, a <code>docs/SPEC-COVERAGE.md</code> row group (FX-01…FX-nn), <code>CHANGELOG.md</code> under <code>[Unreleased]</code>, <code>docs/OPERATIONS.md</code> for the exclusion metric.</td>
+</tr>
+<tr>
+<td>Reference platform</td>
+<td><code>LCP_FEATURE_FX_PRICING</code> (default off) gating intake of the four bid fields, the exclusion path, the audit row, and the post-side echo; the ISO 4217 exponent table (§4.2); <code>price_below_floor</code> for converted candidates; populate <code>pricing.currency</code>/<code>original_price_cents</code>/<code>fx_*</code> on a converted award (<code>messages.py:234-242</code> echoes none of them today); <code>lcp_versions</code> includes <code>1.2.0</code> when the feature is on.</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td>One metric (<code>fx_excluded_total{reason}</code>), one audit query (<code>bid.non_comparable</code>), and an alert threshold for a spike in <code>fx_source_mixed</code> (the griefing signal). No new infrastructure, no rate service, no cache.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ol>
+<li><strong>Leave it deployment-specific / bilateral (no fields).</strong> Cheap and zero-wire. Rejected: the auction can neither compare nor <em>explain</em>, and the delivered billing record cannot show what was converted. The current silent drop (<code>router.py</code> pre-D7 <code>continue</code>) is the status quo this LEP replaces with an auditable exclusion.</li>
+<li><strong>A new <code>fx_quote</code> message type.</strong> Rejected: <code>message.type</code> is closed (<code>spec/05-capabilities.md:32</code>), so every v1.0/v1.1 receiver rejects it with <code>LCP-006</code>, and price metadata would acquire its own lifecycle instead of travelling with the price it describes.</li>
+<li><strong>Convert at the publisher and quote buyers in their own currency.</strong> Rejected: it moves FX risk to the party with the least information, and it cannot express a multi-buyer auction — one publisher price is in one currency, while the buyers are in several.</li>
+<li><strong>Store the rate as a JSON number (float).</strong> Rejected outright: float money is the failure D7 forbids, <code>1e-7</code> style literals are already treated as a sentinel in this repository (<code>implementations/reference-platform/lcp_platform/attestation.py:201</code>), and only a string can carry declared, byte-exact precision.</li>
+<li><strong>Express the rate as minor-per-minor.</strong> Tempting: it removes §4.2's exponent factor entirely. Rejected: the number would no longer be the quote a human or provider supplies, so every rate would need an undocumented adjustment at the edge — a class of silent 100× errors traded for one explicit multiplication.</li>
+<li><strong>Have the platform publish the rate and convert everything centrally.</strong> Attractive (one source, verifiable, no self-attestation) but out of scope: it needs a rate service, an SLA, a quote surface, and a policy for who bears drift. Deferred as Q-2 with a real trigger.</li>
+<li><strong>Reject cross-currency bids outright (today's effect, made explicit).</strong> Rejected: it forbids the exact use case and converts a data problem into a hard commercial limit.</li>
+<li><strong>Provider-signed rate attestations.</strong> Reuses LEP-0008 machinery, but requires key distribution and a provider ecosystem that does not exist. Deferred (Q-3).</li>
+</ol>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<p><strong>Rollout.</strong> Ship the schema/SDK/OpenAPI/MCP surfaces and the vectors with the flag <strong>off</strong>; enable in CI. <code>capabilities().features.multi_currency</code> is advertised only when the behaviour is actually enabled in that build (the advertisement is a promise, not a plan version). Senders gate on the advertisement plus a parsed <code>minor &gt;= 2</code> (see <em>Compatibility, versioning, and deprecation impact</em>).</p>
+<p><strong>Migration.</strong> None. Stored bids have no FX metadata, so a cross-currency stored bid is non-comparable exactly as it is today; a same-currency stored bid is untouched. No backfill, no rewrite, no dual-write. Posts already delivered keep their meaning under §1's ladder. Databases need no new columns: the FX fields live in the stored envelope, and the audit row uses the existing audit table.</p>
+<p><strong>Observability.</strong> <code>fx_excluded_total{reason}</code> (one series per reason in §6), <code>fx_converted_total</code>, <code>fx_settlement_charge_minor{currency}</code> for reconciliation, and the <code>bid.non_comparable</code> audit row (<code>router.py:1246-1261</code>) for case-level forensics. Dashboards need two panels: exclusion rate by reason, and converted-award count versus same-currency awards. No PII in any of them.</p>
+<p><strong>Rollback.</strong> Turn <code>LCP_FEATURE_FX_PRICING</code> off. With the flag off the platform does not accept the bid-side fields, does not convert, does not write <code>bid.non_comparable</code>, and does not echo FX fields on posts — i.e. today's behaviour, including the silent skip for a cross-currency bid. Because the post fields are optional, already-emitted posts stay valid documents; nothing has to be un-emitted, re-computed, or back-filled. A revert of the schema files is not required for a rollback and MUST NOT be baked into one.</p>
+<h2 id="deferred-questions-and-triggers">Deferred questions and triggers</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Question</th>
+<th>Trigger to revisit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q-1</td>
+<td>Add a native-currency field (or an attested bid echo) so <code>original_price_cents</code> is self-describing on a post for a party that does not hold the winning bid</td>
+<td>The first dispute, audit, or publisher reconciliation that cannot be resolved from the platform's own bid record</td>
+</tr>
+<tr>
+<td>Q-2</td>
+<td>Platform-issued reference rate (platform converts, buyers quote in their own currency; removes self-attestation)</td>
+<td>An adopter needs settlement conversion in production and cannot accept a self-attested rate; or a rate-integrity incident is reported</td>
+</tr>
+<tr>
+<td>Q-3</td>
+<td>Rate-source policy: a registered provider list, per-auction pinned source, and/or a deviation cap against a platform reference (<code>LCP_FX_MAX_DEVIATION_BPS</code>)</td>
+<td>Measured <code>fx_source_mixed</code> exclusions above 1% of cross-currency evaluations, a reported griefing case, or an adopter that refuses <code>bilateral</code></td>
+</tr>
+<tr>
+<td>Q-4</td>
+<td>Multi-source comparison with cross-rate triangulation</td>
+<td>Two independent adopters run different pinned providers in the same market and need to trade against each other</td>
+</tr>
+<tr>
+<td>Q-5</td>
+<td><code>FINAL_PRICING</code> FX fields (<code>original_price_cents</code> + <code>fx_*</code>) so an external sale in another currency is comparable in analytics</td>
+<td>A publisher reports external sales in a currency that differs from the platform's settlement currency</td>
+</tr>
+<tr>
+<td>Q-6</td>
+<td>Refund/chargeback FX policy: which rate a reversal uses (the original rate, the refund-date rate, or the same exact-value arithmetic)</td>
+<td>The first cross-currency refund or chargeback dispute</td>
+</tr>
+<tr>
+<td>Q-7</td>
+<td>Ownership of the ISO 4217 minor-unit exponent table: pinned in the SPEC as a fixture, or advertised per currency in <code>capabilities()</code></td>
+<td>An ISO 4217 exponent change (redenomination, new currency) affects a live pair, or two conformant implementations disagree on an exponent</td>
+</tr>
+<tr>
+<td>Q-8</td>
+<td>FX-aware <code>quote</code>/<code>counter</code> (LEP-0009 currently carries integer cents + currency only)</td>
+<td>LEP-0009 is implemented <strong>and</strong> an adopter asks for cross-currency negotiation</td>
+</tr>
+<tr>
+<td>Q-9</td>
+<td>Rounding policy variation (banker's/currency-specific) where an invoice or tax rule requires it</td>
+<td>An invoice dispute caused by half-up; note that <code>docs/V1.2-EXECUTION-PLAN.md:228</code> mentions "banker's rounding" and D7 mandates half-up — <strong>D7 governs</strong>; the plan row is superseded on this point</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tests">Tests</h2>
+<p>Blocking: a merge that does not satisfy every row below is incomplete. <code>plat:</code> prefix = reference-platform test, <code>vec:</code> = <code>test-vectors/</code> entry run by the conformance runner, <code>sdk:</code> = per-SDK gate. "exists" means the test is already in the tree (line pins read 2026-11-04) and names the gap it must still close.</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Test</th>
+<th>Asserts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T-SCHEMA</td>
+<td><code>plat:test_fx_pricing_schema_accepts_and_rejects_field_shapes</code></td>
+<td>the <code>pricing</code> blocks of Examples 1–2 validate as landed, Example 3 once <code>schemas/bid.json</code> lands; <code>"1.52e0"</code>, <code>"1"</code>, <code>"0"</code>, <code>"007.000000"</code>, <code>"0.000123"</code>, <code>"1,52"</code> are rejected with <code>LCP-100</code> naming <code>fx_rate</code></td>
+</tr>
+<tr>
+<td>T-BID</td>
+<td><code>plat:test_cross_currency_bid_is_accepted_at_intake</code></td>
+<td>a bid carrying the four fields validates once <code>schemas/bid.json</code> gains them (Example 3 passes; it fails today with <code>additionalProperties</code>)</td>
+</tr>
+<tr>
+<td>T-SAME</td>
+<td><code>plat:test_fx_same_currency_compares_directly</code></td>
+<td>same currency → integer minor units, no conversion, FX metadata inert (exists: <code>test_v12_contract.py:275</code>)</td>
+</tr>
+<tr>
+<td>T-CONVERT</td>
+<td><code>plat:test_fx_cross_currency_valid_rate_converts_to_settlement_units</code></td>
+<td>exact decimal conversion (exists: <code>test_v12_contract.py:280</code>)</td>
+</tr>
+<tr>
+<td>T-EXACT</td>
+<td><code>plat:test_ranking_uses_exact_conversion_not_rounded</code></td>
+<td>candidates at exact <code>2200.5</code> and <code>2200.6</code> rank strictly (rounding both to <code>2201</code> must not tie them)</td>
+</tr>
+<tr>
+<td>T-EXPONENT</td>
+<td><code>plat:test_fx_minor_unit_exponent_conversion</code></td>
+<td><code>50000</code> USD cents at <code>0.00636943</code> → <code>78499.959965…</code> and a charge of <code>78500</code> JPY; the unadjusted division is rejected as a failure of this test</td>
+</tr>
+<tr>
+<td>T-MISSING</td>
+<td><code>plat:test_fx_missing_rate_is_non_comparable_with_reason</code></td>
+<td>excluded with <code>fx_rate_missing</code>; no charge, no post (exists: <code>test_v12_contract.py:287</code>)</td>
+</tr>
+<tr>
+<td>T-STALE</td>
+<td><code>plat:test_fx_stale_rate_is_non_comparable_with_reason</code></td>
+<td><code>age = max_age + 1</code> excluded, <code>age = max_age</code> <strong>accepted</strong> (inclusive boundary) (exists at <code>:292</code>, boundary half missing)</td>
+</tr>
+<tr>
+<td>T-EXPIRED</td>
+<td><code>plat:test_fx_expired_rate_is_non_comparable_with_reason</code></td>
+<td><code>fx_expires_at &lt;= now</code> → <code>fx_rate_expired</code> (exists: <code>test_v12_contract.py:302</code>)</td>
+</tr>
+<tr>
+<td>T-MALFORMED</td>
+<td><code>plat:test_fx_malformed_rate_is_non_comparable_with_reason</code></td>
+<td><code>"65e-2"</code> → <code>fx_rate_malformed</code> (exists: <code>:312</code>)</td>
+</tr>
+<tr>
+<td>T-MIXED</td>
+<td><code>plat:test_fx_mixed_sources_are_non_comparable_with_reason</code></td>
+<td>two sources → both converted candidates excluded, same-currency candidate still wins (unit-level exists at <code>:319</code>; auction-level and the "same-currency survives" half are missing)</td>
+</tr>
+<tr>
+<td>T-FLOOR</td>
+<td><code>plat:test_fx_sub_floor_after_conversion_is_excluded_with_reason</code></td>
+<td>exact <code>149999.666…</code> under a <code>150000</code> floor is excluded with <code>price_below_floor</code> and produces no post</td>
+</tr>
+<tr>
+<td>T-CHARGE</td>
+<td><code>plat:test_fx_settlement_charge_is_half_up_and_immutable</code></td>
+<td><code>4401</code> @ <code>2.000000</code> → <code>2201</code>; re-running the sweep and updating the rate afterwards do not change the recorded charge</td>
+</tr>
+<tr>
+<td>T-ECHO</td>
+<td><code>plat:test_post_echoes_fx_evidence_on_converted_award</code></td>
+<td>the post's <code>pricing</code> carries <code>currency</code>, <code>original_price_cents</code> and the winning bid's four <code>fx_*</code> values verbatim; a non-converted award carries none</td>
+</tr>
+<tr>
+<td>T-CURRENCYMISMATCH</td>
+<td><code>plat:test_pricing_currency_must_match_payload_currency</code></td>
+<td><code>pricing.currency != post.currency</code> → <code>LCP-100</code>, <code>field: "pricing.currency"</code></td>
+</tr>
+<tr>
+<td>T-CAPGATE</td>
+<td><code>plat:test_fx_fields_are_gated_on_v12_advertisement</code></td>
+<td>a post populating <code>pricing.fx_rate</code> toward a receiver advertising only <code>1.0.0</code>/<code>1.1.0</code> is a sender conformance failure; the v1.1 allowlist rejects it</td>
+</tr>
+<tr>
+<td>T-FLAGOFF</td>
+<td><code>plat:test_fx_feature_off_restores_v11_behaviour</code></td>
+<td>with <code>LCP_FEATURE_FX_PRICING</code> off: no FX intake, no conversion, no <code>bid.non_comparable</code> row, no post echo, cross-currency bid skipped as today</td>
+</tr>
+<tr>
+<td>T-AUDIT</td>
+<td><code>plat:test_non_comparable_bid_writes_audit_row</code></td>
+<td>one <code>bid.non_comparable</code> row per exclusion with <code>lead_id</code>, <code>offer_id</code>, <code>buyer_id</code>, <code>currency</code>, <code>reason</code>; no consumer fields</td>
+</tr>
+<tr>
+<td>vec:fx-001</td>
+<td><code>lcp-fx-single-currency-001</code></td>
+<td>Example 1 payload validates and a v1.0 auction outcome is unchanged</td>
+</tr>
+<tr>
+<td>vec:fx-002</td>
+<td><code>lcp-fx-cross-currency-exact-001</code></td>
+<td>Example 2 payload validates; conversion and charge recompute byte-exactly</td>
+</tr>
+<tr>
+<td>vec:fx-003</td>
+<td><code>lcp-fx-no-rate-excluded-001</code></td>
+<td>Invalid 1 → <code>fx_rate_missing</code></td>
+</tr>
+<tr>
+<td>vec:fx-004</td>
+<td><code>lcp-fx-stale-rate-001</code></td>
+<td>Invalid 2 → <code>fx_rate_stale</code></td>
+</tr>
+<tr>
+<td>vec:fx-005</td>
+<td><code>lcp-fx-exponent-malformed-001</code></td>
+<td>Invalid 3 → <code>LCP-100</code></td>
+</tr>
+<tr>
+<td>vec:fx-006</td>
+<td><code>lcp-fx-mixed-source-001</code></td>
+<td>Invalid 4 → two <code>fx_source_mixed</code> exclusions, one same-currency winner</td>
+</tr>
+<tr>
+<td>vec:fx-007</td>
+<td><code>lcp-fx-rounding-deterministic-001</code></td>
+<td>the §7 table reproduces exactly (<code>220000</code>, <code>2201</code>, <code>78500</code>) across all ten SDKs' decimal handling</td>
+</tr>
+<tr>
+<td>vec:fx-008</td>
+<td><code>lcp-fx-exponent-mismatch-001</code></td>
+<td>USD→JPY conversion per §4.2, including the 100× failure being rejected</td>
+</tr>
+<tr>
+<td>sdk:sync</td>
+<td><code>schema-sync</code> job</td>
+<td>all ten <code>schema-bundle.json</code> files agree with <code>schemas/post.json</code> and <code>schemas/bid.json</code>; manifests re-synced</td>
+</tr>
+</tbody>
+</table>
+<p>Deferred-trigger tests are <strong>not</strong> written here: Q-1…Q-9 stay untested until their triggers fire, and no test pretends they have.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-effective-settlement-currency-normative-resolution-ladder">1. Effective settlement currency (normative resolution ladder)</a></li><li class="depth-3"><a href="#2-postpricing--field-table">2. post.pricing — field table</a></li><li class="depth-3"><a href="#3-bid--field-table-the-price-side-that-feeds-the-auction">3. bid — field table (the price side that feeds the auction)</a></li><li class="depth-3"><a href="#4-rate-semantics-and-conversion-arithmetic">4. Rate semantics and conversion arithmetic</a></li><li class="depth-4"><a href="#41-the-rate-is-a-plain-decimal-with-declared-precision">4.1 The rate is a plain decimal with declared precision</a></li><li class="depth-4"><a href="#42-minor-unit-exponents-are-load-bearing">4.2 Minor-unit exponents are load-bearing</a></li><li class="depth-4"><a href="#43-exact-comparison-never-a-rounded-or-clamped-value">4.3 Exact comparison, never a rounded or clamped value</a></li><li class="depth-3"><a href="#5-comparability-rule-normative">5. Comparability rule (normative)</a></li><li class="depth-3"><a href="#6-exclusion-reasons-and-error-code-mapping">6. Exclusion reasons and error-code mapping</a></li><li class="depth-3"><a href="#7-rounding-settlement-and-what-is-payable">7. Rounding, settlement, and what is payable</a></li><li class="depth-3"><a href="#8-valid-examples">8. Valid examples</a></li><li class="depth-4"><a href="#valid-1--single-currency-no-conversion-v10v11-shape-unchanged">Valid 1 — single currency, no conversion (v1.0/v1.1 shape, unchanged)</a></li><li class="depth-4"><a href="#valid-2--cross-currency-award-exact-conversion-usd-settlement">Valid 2 — cross-currency award, exact conversion, USD settlement</a></li><li class="depth-4"><a href="#valid-3--bid-side-cross-currency-into-a-usd-settling-offer">Valid 3 — bid side, cross-currency into a USD-settling offer</a></li><li class="depth-3"><a href="#9-invalid-examples">9. Invalid examples</a></li><li class="depth-4"><a href="#invalid-1--cross-currency-bid-with-no-rate--fx_rate_missing">Invalid 1 — cross-currency bid with no rate → fx_rate_missing</a></li><li class="depth-4"><a href="#invalid-2--stale-rate--fx_rate_stale">Invalid 2 — stale rate → fx_rate_stale</a></li><li class="depth-4"><a href="#invalid-3--exponent-notation--schema-rejection">Invalid 3 — exponent notation → schema rejection</a></li><li class="depth-4"><a href="#invalid-4--mixed-sources--fx_source_mixed-for-every-converted-candidate">Invalid 4 — mixed sources → fx_source_mixed for every converted candidate</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions-and-triggers">Deferred questions and triggers</a></li><li class="depth-2"><a href="#tests">Tests</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0010-multi-currency-pricing.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

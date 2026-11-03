@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -170,6 +171,13 @@ func NewClient(endpoint string) *Client {
 }
 
 func (c *Client) Request(method, path string, payload any, test bool) (map[string]any, error) {
+	return c.request(method, path, payload, test, c.MaxRetries)
+}
+
+func (c *Client) request(method, path string, payload any, test bool, maxRetries int) (map[string]any, error) {
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
 	var body []byte
 	var err error
 	if payload != nil {
@@ -192,7 +200,7 @@ func (c *Client) Request(method, path string, payload any, test bool) (map[strin
 			}
 		}
 	}
-	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		req, err := http.NewRequest(method, c.Endpoint+"/"+strings.TrimLeft(path, "/"), bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -218,7 +226,7 @@ func (c *Client) Request(method, path string, payload any, test bool) (map[strin
 		}
 		response, err := c.HTTP.Do(req)
 		if err != nil {
-			if attempt == c.MaxRetries {
+			if attempt == maxRetries {
 				return nil, err
 			}
 			time.Sleep(time.Duration(1<<attempt) * time.Second)
@@ -240,7 +248,7 @@ func (c *Client) Request(method, path string, payload any, test bool) (map[strin
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
 			return result, nil
 		}
-		if !contains([]int{429, 500, 502, 503, 504}, response.StatusCode) || attempt == c.MaxRetries {
+		if !contains([]int{429, 500, 502, 503, 504}, response.StatusCode) || attempt == maxRetries {
 			return nil, &HTTPError{Status: response.StatusCode, Body: result}
 		}
 		time.Sleep(time.Duration(1<<attempt) * time.Second)
@@ -265,6 +273,61 @@ func (c *Client) SubmitCall(payload Envelope, test bool) (map[string]any, error)
 func (c *Client) SubmitBid(payload Envelope, test bool) (map[string]any, error) {
 	return c.Request(http.MethodPost, "/v1/lcp/bids", payload, test)
 }
+
+// MaxBatchItems caps one batch submission (LEP-0001 W2-01, schemas/batch.json).
+const MaxBatchItems = 100
+
+// BatchItem is one lead in a batch submission: the per-item identifiers plus
+// the full lead payload (schemas/lead.json root), never an envelope.
+type BatchItem struct {
+	ItemID         string `json:"item_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	Payload        any    `json:"payload"`
+}
+
+// SubmitLeadsBatch submits up to MaxBatchItems leads in one request and
+// returns the per-item receipts in input order. HTTP 207 partial success is a
+// successful response, per-item error objects are preserved, and the batch is
+// never retried as a whole — retrying only rejected/error receipts is the
+// caller's job.
+func (c *Client) SubmitLeadsBatch(items []BatchItem, requestID string) ([]map[string]any, error) {
+	if len(items) == 0 || len(items) > MaxBatchItems {
+		return nil, fmt.Errorf("batch supports 1..%d items, got %d", MaxBatchItems, len(items))
+	}
+	if requestID == "" {
+		requestID = newUUID()
+	}
+	response, err := c.request(http.MethodPost, "/v1/lcp/leads/batch", map[string]any{"request_id": requestID, "items": items}, false, 0)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := response["results"].([]any)
+	if !ok {
+		return nil, errors.New("batch response missing results")
+	}
+	order := make(map[string]int, len(items))
+	for index, item := range items {
+		order[item.ItemID] = index
+	}
+	results := make([]map[string]any, 0, len(raw))
+	for _, entry := range raw {
+		result, ok := entry.(map[string]any)
+		if !ok {
+			return nil, errors.New("batch response contained a non-object result")
+		}
+		results = append(results, result)
+	}
+	rank := func(result map[string]any) int {
+		itemID, _ := result["item_id"].(string)
+		if index, ok := order[itemID]; ok {
+			return index
+		}
+		return len(items)
+	}
+	sort.SliceStable(results, func(left, right int) bool { return rank(results[left]) < rank(results[right]) })
+	return results, nil
+}
+
 func (c *Client) QueryLeadStatus(id string) (map[string]any, error) {
 	return c.Request(http.MethodGet, "/v1/lcp/leads/"+url.PathEscape(id), nil, false)
 }

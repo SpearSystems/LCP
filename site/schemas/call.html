@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/call.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Call Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Call Message</h1>
+<p><code>https://lcp.dev/schemas/call.json</code> · Telephony lead message. Structurally distinct from form-based lead — carries call-specific blocks (IVR, durations, recording, disposition). Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>attachments</code></td><td>ref <code>core.json#/$defs/attachments</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>attributes</code></td><td>ref <code>core.json#/$defs/attributes</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>call</code></td><td><code>object</code></td><td><code>restricted</code></td><td>yes</td><td></td></tr>
+<tr><td><code>channel</code></td><td>const <code>"call"</code></td><td><code>internal</code></td><td>yes</td><td>Always 'call' for call messages.</td></tr>
+<tr><td><code>compliance</code></td><td>ref <code>core.json#/$defs/compliance</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>consumer</code></td><td>ref <code>core.json#/$defs/consumer</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>exclusivity</code></td><td>ref <code>core.json#/$defs/exclusivity</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>expiry</code></td><td>ref <code>core.json#/$defs/expiry</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>external_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>lead_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>location</code></td><td>ref <code>core.json#/$defs/location</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>provenance</code></td><td>ref <code>core.json#/$defs/provenance</code></td><td><code>—</code></td><td></td><td></td></tr>
+<tr><td><code>status</code></td><td>ref <code>core.json#/$defs/status</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>submitted_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>When the call was initiated (distinct from provenance.received_at).</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/call.json",
+  "title": "LCP Call Message",
+  "description": "Telephony lead message. Structurally distinct from form-based lead — carries call-specific blocks (IVR, durations, recording, disposition). Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "lead_id",
+    "status",
+    "channel",
+    "consumer",
+    "location",
+    "call"
+  ],
+  "properties": {
+    "lead_id": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "external_id": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "submitted_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "When the call was initiated (distinct from provenance.received_at)."
+    },
+    "status": {
+      "$ref": "core.json#/$defs/status"
+    },
+    "channel": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "const": "call",
+      "description": "Always 'call' for call messages."
+    },
+    "consumer": {
+      "$ref": "core.json#/$defs/consumer"
+    },
+    "location": {
+      "$ref": "core.json#/$defs/location"
+    },
+    "compliance": {
+      "$ref": "core.json#/$defs/compliance"
+    },
+    "provenance": {
+      "$ref": "core.json#/$defs/provenance"
+    },
+    "attributes": {
+      "$ref": "core.json#/$defs/attributes"
+    },
+    "expiry": {
+      "$ref": "core.json#/$defs/expiry"
+    },
+    "exclusivity": {
+      "$ref": "core.json#/$defs/exclusivity"
+    },
+    "attachments": {
+      "$ref": "core.json#/$defs/attachments"
+    },
+    "call": {
+      "x-lcp-pii": "restricted",
+      "type": "object",
+      "title": "Call Detail Block",
+      "required": [
+        "call_id",
+        "status",
+        "started_at"
+      ],
+      "properties": {
+        "call_id": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "Unique call identifier."
+        },
+        "status": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "OPEN ENUMERATION — known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
+          "$comment": "Open enumeration per SPEC.md §6."
+        },
+        "hangup_cause": {
+          "x-lcp-pii": "internal",
+          "type": "string"
+        },
+        "direction": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "inbound",
+            "outbound"
+          ]
+        },
+        "did": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "Dialed number (Direct Inward Dial) — the tracking number the consumer called."
+        },
+        "forwarded_to": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "Number the call was forwarded to (buyer's destination number). E.164."
+        },
+        "tracking_number": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164."
+        },
+        "caller_phone_hash": {
+          "x-lcp-pii": "contact",
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "started_at": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "format": "date-time"
+        },
+        "durations": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "properties": {
+            "total_seconds": {
+              "x-lcp-pii": "internal",
+              "type": "integer",
+              "minimum": 0
+            },
+            "ivr_seconds": {
+              "x-lcp-pii": "internal",
+              "type": "integer",
+              "minimum": 0
+            },
+            "hold_seconds": {
+              "x-lcp-pii": "internal",
+              "type": "integer",
+              "minimum": 0
+            },
+            "agent_seconds": {
+              "x-lcp-pii": "internal",
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "recording": {
+          "x-lcp-pii": "restricted",
+          "type": "object",
+          "properties": {
+            "url": {
+              "x-lcp-pii": "restricted",
+              "type": "string",
+              "format": "uri"
+            },
+            "transcript_url": {
+              "x-lcp-pii": "restricted",
+              "type": "string",
+              "format": "uri"
+            },
+            "storage_ref": {
+              "x-lcp-pii": "restricted",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "ivr": {
+          "x-lcp-pii": "restricted",
+          "type": "object",
+          "description": "IVR menu interaction data. Core fields are universal; platform-specific IVR data goes in extensions.",
+          "properties": {
+            "digits": {
+              "x-lcp-pii": "restricted",
+              "type": "string",
+              "description": "DTMF digits pressed during IVR."
+            },
+            "path": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "IVR menu path taken (e.g. 'sales &gt; mortgage &gt; refinance')."
+            },
+            "language": {
+              "x-lcp-pii": "internal",
+              "type": "string",
+              "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US')."
+            },
+            "abandoned": {
+              "x-lcp-pii": "internal",
+              "type": "boolean",
+              "description": "True if the caller dropped during IVR before reaching an agent."
+            },
+            "menu_options_selected": {
+              "x-lcp-pii": "internal",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ordered list of menu option labels selected."
+            }
+          },
+          "additionalProperties": true
+        },
+        "disposition": {
+          "x-lcp-pii": "internal",
+          "type": "string"
+        },
+        "transferred_from": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "description": "Present if this call was transferred from another call/queue.",
+          "properties": {
+            "original_call_id": {
+              "x-lcp-pii": "internal",
+              "type": "string"
+            },
+            "transfer_reason": {
+              "x-lcp-pii": "internal",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "queue": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "description": "Call queue that handled this call.",
+          "properties": {
+            "id": {
+              "x-lcp-pii": "internal",
+              "type": "string"
+            },
+            "name": {
+              "x-lcp-pii": "internal",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "agent": {
+          "x-lcp-pii": "contact",
+          "type": "object",
+          "properties": {
+            "id": {
+              "x-lcp-pii": "internal",
+              "type": "string"
+            },
+            "name": {
+              "x-lcp-pii": "contact",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/call.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

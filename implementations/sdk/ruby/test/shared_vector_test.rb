@@ -28,3 +28,43 @@ require_relative "negative_vector_test"
 puts "Ruby SDK negative security vectors passed (#{LcpSdk::NegativeVectorTest.run!} vectors executed)"
 require_relative "lep0003_slots_test"
 puts "Ruby SDK LEP-0003 vectors and slot round-trip passed (#{LcpSdk::Lep0003Slots.run!} contact-hash rows reproduced byte-exactly)"
+
+# LEP-0001 W2-01 batch submission: 207 is a successful response, receipts come
+# back in input order, and a batch over the cap is refused before any request.
+require "socket"
+server = TCPServer.new("127.0.0.1", 0)
+port = server.addr[1]
+captured = nil
+thread = Thread.new do
+  socket = server.accept
+  raw = +""
+  raw << socket.readpartial(4096) until raw.include?("\r\n\r\n")
+  headers, rest = raw.split("\r\n\r\n", 2)
+  length = headers[/content-length:\s*(\d+)/i, 1].to_i
+  request_body = rest.to_s
+  request_body << socket.readpartial(length - request_body.bytesize) while request_body.bytesize < length
+  captured = request_body
+  response = '{"request_id":"req-batch-1","summary":{"total":2,"accepted":1,"duplicate":0,"rejected":1,"error":0},"results":[{"item_id":"item_b","status":"accepted","lead_id":"lead_b"},{"item_id":"item_a","status":"rejected","error":{"code":"LCP-100","message":"invalid lead"}}]}'
+  socket.write("HTTP/1.1 207 Multi-Status\r\nContent-Type: application/json\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+  socket.close
+end
+client = LcpSdk::Client.new("http://127.0.0.1:#{port}", max_retries: 0)
+results = client.submit_leads_batch(
+  [
+    { "item_id" => "item_a", "idempotency_key" => "batch-a", "payload" => { "lead_id" => "lead_a" } },
+    { "item_id" => "item_b", "idempotency_key" => "batch-b", "payload" => { "lead_id" => "lead_b" } },
+  ],
+  request_id: "req-batch-1",
+)
+thread.join
+raise "unexpected batch order: #{results.map { |result| result["item_id"] }.join(",")}" unless results.map { |result| result["item_id"] } == %w[item_a item_b]
+raise "per-item error lost" unless results[0]["status"] == "rejected" && results[0]["error"]["code"] == "LCP-100"
+raise "accepted receipt lost" unless results[1]["status"] == "accepted"
+sent = JSON.parse(captured)
+raise "batch wire shape lost" unless sent["request_id"] == "req-batch-1" && sent["items"][0]["payload"]["lead_id"] == "lead_a"
+begin
+  client.submit_leads_batch(Array.new(101) { |index| { "item_id" => "item_#{index}", "idempotency_key" => "key_#{index}", "payload" => {} } })
+  raise "batch over the cap was accepted"
+rescue ArgumentError
+end
+puts "Ruby SDK batch submission passed"

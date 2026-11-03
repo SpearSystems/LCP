@@ -82,6 +82,15 @@ A publisher-provided quality signal is a declaration, not an LCP-certified
 fact. Buyers should be able to distinguish `lead_quality` and provenance
 signals from independently verified platform checks.
 
+Every field you map is also classed for privacy under the
+[PII sensitivity classes](PII-CLASSES.md): `public`, `internal`, `contact`,
+`restricted`, or `prohibited`. `ping_safe` is not the whole rule — `contact`
+values leave the platform only as the declared hash projections, `restricted`
+values (date of birth, free-form intake answers, consent-evidence values,
+recording references, filenames) never appear in a `ping`, and no vertical or
+extension can downgrade a class. Read the class before you map the field, not
+after a buyer asks why a value was refused.
+
 ## 4. Authenticate and submit
 
 For HMAC, sign the exact bytes sent on the wire:
@@ -137,6 +146,24 @@ The full examples read credentials from environment variables and are safe to
 adapt. Configure a separate `test: true` credential and endpoint for the
 sandbox. Test requests must carry both envelope `test: true` and
 `X-LCP-Test: true`; never mix test and production credentials.
+
+### Bulk submission (v1.2, off by default)
+
+If the operator advertises it, `POST /v1/lcp/leads/batch` carries up to **100
+lead envelopes** in one request of at most **1 MiB** and answers `207` with one
+per-item receipt (`accepted`, `duplicate`, `rejected`, `error`) in input order.
+It is a loop over the single-item path — each item is validated, authorised,
+throttled, and deduped exactly like `POST /v1/lcp/leads`, there is no
+cross-item transaction, and replaying an item returns its original receipt.
+Retry only the items whose receipt is `rejected` or `error`.
+
+It is **not part of the surface by default**: the switch is `LCP_FEATURE_BATCH`
+(default off), and off means no `features.batch` entry in
+`GET /v1/lcp/capabilities` and a `404` from the route. Ask the operator whether
+their deployment advertises it before writing a batching adapter, and build the
+single-item path first — the batch path adds dispatch, not different intake
+semantics. Whole-request refusal rules, throttling, and audit behaviour are in
+[operations](OPERATIONS.md#batch-submission-lep-0001--w2).
 
 ## 5. Upload evidence and submit attachments
 

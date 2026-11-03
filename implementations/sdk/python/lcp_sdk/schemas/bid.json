@@ -10,10 +10,12 @@
   ],
   "properties": {
     "ping_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "ID of the ping being responded to."
     },
     "decision": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": [
         "accept",
@@ -23,6 +25,7 @@
       "description": "accept = buyer wants the lead at bid_price_cents; reject = buyer does not want this lead; pass = buyer declines to bid (no reason)."
     },
     "bid_price_cents": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "description": "Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass."
@@ -30,41 +33,84 @@
     "currency": {
       "$ref": "core.json#/$defs/currency"
     },
+    "fx_rate": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]*\\.[0-9]{6,12}|0\\.[0-9]*[1-9][0-9]{5,11})$",
+      "description": "v1.2 (LEP-0010 \u00a73): native major units per 1 settlement (offer-currency) major unit. Same direction and pattern as post.pricing.fx_rate. REQUIRED when bid.currency differs from the offer's currency; MUST NOT be relied on otherwise \u2014 on a same-currency bid the FX fields are inert and ignored for comparison (still schema-validated)."
+    },
+    "fx_source": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "v1.2 (LEP-0010 \u00a73): named rate provider, or the literal 'bilateral' for a rate the two parties agreed directly. Compared by exact byte equality. REQUIRED with fx_rate."
+    },
+    "fx_timestamp": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "v1.2 (LEP-0010 \u00a73): canonical whole-second UTC instant the rate was observed (LEP-0002 canonical form). REQUIRED with fx_rate."
+    },
+    "fx_expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "v1.2 (LEP-0010 \u00a73): canonical whole-second UTC end of the rate's validity; MUST be strictly later than fx_timestamp. REQUIRED with fx_rate."
+    },
     "estimated_contact_seconds": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "description": "Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional."
     },
     "buyer_reference": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Buyer's internal reference for this bid (for tracking)."
     },
     "reject_reason": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional."
     },
     "capacity_remaining": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "description": "Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional."
     },
     "slots_claimed": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1,
       "maximum": 1,
       "description": "v1.1 (LEP-0003 §2): buyer slots this buyer claims if selected. The claim is a request, not a reservation — the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N > 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) — this schema enforces maximum: 1 now. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1."
+    },
+    "negotiation_binding_token": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^tok_[A-Za-z0-9_-]{32,128}$",
+      "description": "v1.2 (LEP-0009 C7): single-use token returned on a negotiation accept. It replaces bid_price_cents on this bid (the token carries the agreed price); a sender presents it only toward a receiver advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later."
     }
   },
   "allOf": [
     {
       "if": {
         "properties": {
-          "decision": { "const": "accept" }
+          "decision": { "x-lcp-pii": "internal", "const": "accept" }
         },
         "required": ["decision"]
       },
       "then": {
-        "required": ["bid_price_cents", "currency"]
+        "anyOf": [
+          {
+            "required": ["negotiation_binding_token"]
+          },
+          {
+            "required": ["bid_price_cents", "currency"]
+          }
+        ]
       }
     }
   ],

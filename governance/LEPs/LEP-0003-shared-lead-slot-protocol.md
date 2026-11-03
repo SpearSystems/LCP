@@ -92,7 +92,7 @@ events exchange `phone_hash`/`email_hash` values keyed per pair
   clarification; see Compatibility), §9 (contact-hash paragraph mirroring
   `phone_hash`).
 - **Reference implementation:** platform-enforced slot accounting — the
-  budget counts **distinct awarded buyers** (`SPEC.md:312` defines
+  budget counts **distinct awarded buyers** (`spec/03-payloads.md:236` defines
   `max_buyers` as "maximum number of **buyers** who may receive the
   lead"), delivery stays per `(lead, offer)`, and the rule is enforced
   at one write-time decision point with DB-backed uniqueness (see
@@ -124,7 +124,7 @@ Additive optional field on the existing ping allowlist (SPEC.md §4,
 
 **Units (normative).** The slot budget and `slots_available` use the
 unit SPEC already sets: `max_buyers` is the maximum number of
-**buyers** who may receive a shared lead (`SPEC.md:312`). One awarded
+**buyers** who may receive a shared lead (`spec/03-payloads.md:236`). One awarded
 buyer consumes exactly **one** slot regardless of how many matching
 offers they hold; delivery remains per `(lead, offer)`, so the number
 of delivered post **copies** for a lead is not the budget and can
@@ -235,9 +235,9 @@ Additive optional field on `post` (`schemas/post.json`):
   hashed under the receiving buyer's pair secret. Nothing is
   "canonicalized", because nothing else is implemented.
 - **Email entries are blocked until §9 norms the normalization.**
-  `normalized_email` appears only as a term — `SPEC.md:97, 375`
+  `normalized_email` appears only as a term — `spec/03-payloads.md:21, spec/02-envelope.md:82`
   use it, zero sites define it (the phone-side sibling
-  `normalized_e164` is the term at `SPEC.md:743`); the schemas echo the description
+  `normalized_e164` is the term at `spec/05-capabilities.md:30`); the schemas echo the description
   (`schemas/core.json:22`, `schemas/ping.json:41`); no published
   vector pins a preimage→digest pair (`test-vectors/sdk/hmac.json`
   covers message *signing* only); the reference platform never
@@ -698,8 +698,8 @@ one-sentence §8.
   SPEC.md §8 is one sentence listing `{ lcp_versions, … }` with no
   element format, no match rule, and no statement of who must host
   `GET /v1/lcp/capabilities` for a *ping receiver* or whether
-  discovery is obligatory below L3 (`SPEC.md:594-601`; capability
-  discovery is named only as an L3 item, `SPEC.md:594-595`); OpenAPI
+  discovery is obligatory below L3 (`spec/02-envelope.md:301-308`; capability
+  discovery is named only as an L3 item, `spec/02-envelope.md:301-302`); OpenAPI
   types `lcp_versions` as `array of string` with no pattern and does
   not require it (`api/lcp-openapi.yaml:798-804`); the only shipped
   producer advertises `["1.0.0"]` (`router.py:1310`). And the earlier
@@ -1035,7 +1035,7 @@ framing — see the closing paragraphs of this section). Dispositions:
 |---|---|
 | **F1** (major) — the ping example's `attributes` (`service_category`, `project_size_band`) exist nowhere in `verticals/home_services.json`, so the example failed the repository's own validator/runner (`LCP-008 PII_IN_PING`) **independently of the v1.1 fields** | Example fixed to `service_type: "gutters"` / `budget_band: "1000_5000"` (defined, `ping_safe: true`); note added under the example; the four invalid shapes re-tested; recurrence gate named (`tool: test_lep_wire_examples`, T1). No vertical-schema change (the scope promise holds). |
 | **F2** (major) — `MUST NOT oversell` had **no enforcement point**: per-pass slice, advisory read vs separate write, `message_id`-only constraint, unlocked re-offer sweep, `POSTED` re-entry; oversell reproduced in-process (4 posts vs 2) and cross-process on Postgres (3 vs 2) | New normative **"Slot accounting (implementation-phase requirements)"** (§5): single write-time decision point counting distinct buyers, DB-enforced uniqueness per awarded slot, leased/`FOR UPDATE SKIP LOCKED` sweeps, ping-status filtering; reproduced races cited as the problem evidence; **T2/T3** named as blocking tests; the scope bullet's `max_buyers − delivered posts` formula replaced by the buyer-unit definition. |
-| **F3** (major) — budget unit contradiction: §3 (`SPEC.md:312`) counts **buyers**; this LEP counted delivered **posts**, so one buyer with two offers consumed a two-buyer budget (measured) | "Units (normative)" under §1: a slot is a buyer award; one buyer = one slot regardless of offer count; delivery per `(lead, offer)`; copies are never the budget. Ping table, bid section, invalid C, the refund deferred item, and the T4 test all aligned. |
+| **F3** (major) — budget unit contradiction: §3 (`spec/03-payloads.md:236`) counts **buyers**; this LEP counted delivered **posts**, so one buyer with two offers consumed a two-buyer budget (measured) | "Units (normative)" under §1: a slot is a buyer award; one buyer = one slot regardless of offer count; delivery per `(lead, offer)`; copies are never the budget. Ping table, bid section, invalid C, the refund deferred item, and the T4 test all aligned. |
 | **F4** (major) — `slots_claimed > 1` has no delivery path (per-`(lead, offer)` guard; awarded count unobservable on the wire) | v1.1 scope narrowed: schema `maximum: 1`; the agency framing replaced with the measured behavior + a new **Deferred question** with its trigger and **T5** named. |
 | **F5** (major) — the reporting direction is refused today for properly scoped buyers (`CONTACTED` absent from `_BUYER_EVENT_TYPES`, measured `LCP-002`), unadvertised in `capabilities().events`, and the open `details` lets anything through | §4 gained the scoped-buyer MUST (allowlist + advertisement changes, **T6**), the wildcard-default-scope path recorded as routed observation O2 (not a conformance path), the explicit report bounds (32-entry / 64-hex ingest rule) and trust model (format+count sanity only; keyed HMAC unverifiable-by-design), and corrected replay semantics. |
 | **F6** (major) — the capability gate cited text that defines nothing (§8 one sentence; OpenAPI untyped-ish array; `["1.0.0"]` the only producer; literal `1.1` unsatisfiable, prefix wrong) | The Compatibility section rewritten honestly: what exists is quoted with line cites; the exact normative text the implementation PR must add (element format, parsed-semver match rule, hosting obligation for ping initiators, OpenAPI pattern) is specified here; rollout/rollback wording moved to full-semver elements; **T10** named; invalid D points at the corrected rule. |
@@ -1085,7 +1085,7 @@ applies all six (citations re-verified at the branch SHA):
 - **RF-3** — wildcard-scope cite `storage.py:916` → `storage.py:917`
   (the seed statement; 916 is a `tenant_id,` tuple element) — verified
   at this SHA.
-- **RF-4** — `normalized_email` was credited with `SPEC.md:97, 375, 720`;
+- **RF-4** — `normalized_email` was credited with `spec/03-payloads.md:21, spec/02-envelope.md:82, spec/05-capabilities.md:7`;
   the email term's sites are `97` and `375` only — `720` at the reviewed
   SHA (and `743` at this SHA, after SPEC drift) is the phone-side
   `normalized_e164` site. Cited accordingly.

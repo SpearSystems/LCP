@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0011-pii-sensitivity-taxonomy.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0011 — PII sensitivity taxonomy and schema-level classification — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0011--pii-sensitivity-taxonomy-and-schema-level-classification">LEP-0011 — PII sensitivity taxonomy and schema-level classification</h1>
+<ul>
+<li><strong>Title:</strong> PII sensitivity taxonomy and schema-level classification (<code>x-lcp-pii</code>)</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-04</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — Accepted 2026-11-04 (maintainer; <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md">D9 (<code>docs/DECISIONS-v1.2.md</code>)</span> of the signed v1.2 decision record, under the <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md">D1 (<code>docs/DECISIONS-v1.2.md</code>)</span> trigger waiver)</li>
+<li><strong>Target version:</strong> v1.2.0 (additive MINOR; <strong>zero wire change</strong> — schema annotations, a load-time validator, and one normative document)</li>
+<li><strong>Discussion:</strong> maintained in <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md">DECISIONS-v1.2.md</span> D9 (the maintainer signed the decision at the M0 pass; no separate <code>[LEP]</code> discussion issue was opened)</li>
+<li><strong>Roadmap / work items:</strong> <span class="unpublished" title="Not published in the specification site: docs/V1.2-EXECUTION-PLAN.md"><code>docs/V1.2-EXECUTION-PLAN.md</code></span> W0-02 (this record) and W6-04 (taxonomy, annotations, validator, per-class vectors)</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</h2>
+<p><strong>Accepted.</strong> <span class="unpublished" title="Not published in the specification site: docs/PII-CLASSES.md"><code>docs/PII-CLASSES.md</code></span> is adopted as the normative taxonomy, and every schema property is annotated with <code>x-lcp-pii</code> using one of five classes — <code>public</code>, <code>internal</code>, <code>contact</code>, <code>restricted</code>, <code>prohibited</code>.</p>
+<p>The rules D9 records, which this proposal makes operational:</p>
+<ul>
+<li><strong>Ping emission</strong> allows <code>public</code>, <code>internal</code>, and hash-only projections of <code>contact</code>. <code>restricted</code> and <code>prohibited</code> never appear in a ping.</li>
+<li><strong>No downgrade.</strong> A vertical, extension, or deployment may never assign a class lower than the core's. The validator refuses it at load time, so the failure lands on the operator's deploy and not on a consumer's data.</li>
+<li><strong><code>prohibited</code> means refused, not scrubbed.</strong> Government identifiers, full payment credentials, and biometric templates have no home in LCP; a value of that kind is a validator error naming the field.</li>
+</ul>
+<p>Basis: D9 in the signed v1.2 decision record, and the measurement in <a href="#problem-statement-and-evidence">Problem statement and evidence</a> below. Implementation authorization is scoped to <a href="#scope">Scope</a>: schema annotations, a load-time validator, a CI coverage check, and per-class vectors. This record authorizes no wire change, no new error code, and no retention policy.</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<h3 id="ad-hoc-classification">Ad-hoc classification</h3>
+<p>The protocol has exactly one machine-readable classification, and it answers one question. <code>ping_safe: true|false</code> appears on vertical attributes (108 of the 120 declared vertical properties across the six verticals at 2026-11-04; the untagged two per vertical are <code>vertical</code> and <code>schema_version</code>). It is a per-field eligibility flag, not a class: it says "may this value go in a ping", not "what is this value, and what may I do with it".</p>
+<p>Consequences, each measurable in the tree today:</p>
+<ol>
+<li><strong>The tag is trusted, not checked.</strong> The reference platform verifies only that a pinged attribute exists in the vertical and that its definition says <code>ping_safe: true</code> (<code>_ping_safe_errors</code> in <code>implementations/reference-platform/lcp_platform/validation.py</code>; the failure message reads "is not tagged ping_safe: true"). A vertical that tagged a health or credit attribute <code>ping_safe: true</code> would pass: nothing compares the tag against the field's meaning, because the protocol stores no meaning.</li>
+<li><strong>The prohibition on prohibited values is prose.</strong> <code>schemas/lead.json</code> and <code>schemas/post.json</code> carry a long <code>description</code> on <code>extensions</code> stating that question and answer text "MUST NOT carry contact values, government identifiers, payment credentials, consent tokens, or evidence values". It is the only place those four families are named, and it governs exactly one field. There is no check behind it, and no way for a reader to learn whether <code>consumer.dob</code> or <code>provenance.source_url</code> is in the same family.</li>
+<li><strong>The SPEC's message-class PII table is unenforced prose.</strong> SPEC §4 (<code>spec/02-envelope.md</code>) states <code>ping</code>: "None (hashes only)", <code>bid</code>: "None", <code>ack</code>: "None", <code>event</code>: "None". The ping column has a real allowlist behind it (<code>schemas/ping.json</code> is <code>additionalProperties: false</code>, and <code>LCP-008 PII_IN_PING</code> exists); the other three columns have nothing, so "event carries no consumer data" is a statement about curators.</li>
+<li><strong><code>docs/PRIVACY-DATA-GOVERNANCE.md</code> asks for a class per field and gets none.</strong> Its "Data lifecycle" section requires that "For every field and message type, define: … Encryption and access class". There is no enumeration of access classes to choose from, so every deployment invents its own and two conformant deployments classify the same field differently.</li>
+<li><strong>Extension authors guess.</strong> <code>governance/EXTENSION-REGISTRY.md</code> records classification decisions in prose per row ("classed <code>restricted</code> under the PII taxonomy", "no contact or restricted fields"). Those phrases reference a taxonomy that did not exist when they were written, so each row asserted consistency with a document that could not be read — and could not be checked against the field's own annotation, because the field has none.</li>
+</ol>
+<p>Measured 2026-11-04: <code>x-lcp-pii</code> appears in <strong>no</strong> file under <code>schemas/</code>, <code>verticals/</code>, or <code>implementations/</code>. The string exists only in the decision records that mandate it (<code>docs/DECISIONS-v1.2.md:138</code>, <code>docs/V1.2-EXECUTION-PLAN.md:80,166</code>), this record's registry row, and the LEP records that cite the taxonomy. The annotation pass and the validator are the implementation this record authorizes; neither exists yet.</p>
+<h3 id="why-a-class-and-not-a-bigger-boolean">Why a class and not a bigger boolean</h3>
+<p>Every failure above has the same shape: a downstream mechanism needs to know what a field <em>is</em>, and the field does not say. A boolean cannot express the difference between "no consumer data but commercially confidential" (a price), "identifies the consumer but may be pseudonymized for dedup" (a phone hash), and "sensitive attribute that may never leave the pair" (a diagnosis). Each of those needs a different rule on a different surface, and the rules are already written — in SPEC §4, §9, <code>PRIVACY-DATA-GOVERNANCE.md</code>, <code>SECURITY-ARCHITECTURE.md</code>, and the extension registry's prose. A five-value ladder is the smallest vocabulary that lets those existing rules be checked instead of remembered.</p>
+<h2 id="scope">Scope</h2>
+<p><strong>In scope.</strong></p>
+<ul>
+<li><span class="unpublished" title="Not published in the specification site: docs/PII-CLASSES.md"><code>docs/PII-CLASSES.md</code></span> — the normative taxonomy: five classes and their order, the emission matrix per class and surface, hashing rules and the projection table, the no-downgrade rule, the prohibited list with its refusal behaviour, guidance for vertical and extension authors, and the field-by-field mapping of the current core.</li>
+<li><code>x-lcp-pii</code> on <strong>every</strong> property definition in <code>schemas/*.json</code> (371 <code>properties</code> entries across eleven documents, enumerated 2026-11-04), on every vertical attribute in <code>verticals/*.json</code>, and on every field a registered extension declares.</li>
+<li>A <strong>load-time validator</strong> that refuses a class downgrade, refuses an unannotated property once rollout step 3 is reached, and refuses a schema that declares a <code>prohibited</code> property.</li>
+<li>A <strong>CI coverage check</strong> that fails on any unannotated schema property.</li>
+<li>Conformance vectors per class: one accepted and one refused case at minimum, plus the projection vectors already pinned in <code>test-vectors/sdk/contact-hash.json</code>.</li>
+</ul>
+<p><strong>Out of scope.</strong></p>
+<ul>
+<li>Any wire field, message type, event value, capability key, or error code. <code>x-lcp-pii</code> is not transmitted.</li>
+<li>Retention periods, erasure behaviour, encryption keys, or residency. This record supplies the vocabulary those policies key off; it does not set the policies (see Deferred questions).</li>
+<li>A prohibited-value detector algorithm. The record fixes the <em>refusal behaviour</em>; detection is deployment DLP.</li>
+<li>Reclassifying any field relative to today's behaviour. Every class here is consistent with an existing rule or <code>ping_safe</code> tag; where a field had no rule, the class records it, it does not change it.</li>
+<li>Generated artifacts beyond the annotation pass: SDK models, OpenAPI documents, and the schema bundle regenerate from the annotated schemas by the repository's existing checks.</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<p><strong>No wire change.</strong> This proposal adds no message type, field, enum value, error code, header, capability, or version-negotiation rule. A v1.0 or v1.1 peer that reads none of this record interoperates exactly as before, and a conforming reader that ignores the annotation validates identically.</p>
+<p>What does change is the schemas' metadata shape — annotations on property definitions — plus a load-time refusal. Both are specified below because they are the only artefacts a reviewer can check.</p>
+<h3 id="the-classification-model">The classification model</h3>
+<p>Five classes, ordered least to most protective. The order is the definition used by the no-downgrade rule; it is not a suggestion.</p>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>What it is</th>
+<th>Ping</th>
+<th>Logs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>public</code></td>
+<td>No consumer data, no commercial secret. Safe to publish.</td>
+<td>allow</td>
+<td>allow</td>
+</tr>
+<tr>
+<td><code>internal</code></td>
+<td>No consumer data, confidential to the parties or deployment.</td>
+<td>allow</td>
+<td>allow</td>
+</tr>
+<tr>
+<td><code>contact</code></td>
+<td>Identifies, locates, or reaches a natural person; includes per-pair pseudonyms derived from such values.</td>
+<td>hash projections only</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>restricted</code></td>
+<td>Describes the person or record in a sensitive, evidentiary, or capability sense.</td>
+<td>never</td>
+<td>never</td>
+</tr>
+<tr>
+<td><code>prohibited</code></td>
+<td>A value LCP will not carry at all.</td>
+<td>never</td>
+<td>never</td>
+</tr>
+</tbody>
+</table>
+<p>Three properties of the model carry most of its weight, and each is normative in <code>docs/PII-CLASSES.md</code>:</p>
+<ul>
+<li><strong>A container takes the maximum of its descendants.</strong> <code>lead.consumer</code> is <code>restricted</code> because <code>consumer.dob</code> is, even though <code>consumer.email</code> is <code>contact</code> and <code>consumer.locale</code> is <code>internal</code>. The alternative — annotating only leaves — makes the parent's class depend on a runtime walk that no reader can verify by eye.</li>
+<li><strong>An open object with no registered shape is <code>restricted</code>.</strong> This is what makes "event carries no consumer data" mechanical: <code>event.details</code> is <code>restricted</code>, and the <code>event</code> column refuses <code>restricted</code>. A known event shape (<code>CONVERTED</code>, <code>FINAL_PRICING</code>) carries <code>public</code>/<code>internal</code> values and <code>contact</code> digests, so it passes; an event carrying a name, a date of birth, or a recording URL does not.</li>
+<li><strong>A hash is <code>contact</code>, not <code>public</code>.</strong> A per-pair digest is a stable pseudonym for one person within one pair; a buyer receiving repeated pings joins on it. Treating it as anonymous would repeat the mistake SPEC §9 and §14 blocker B3 already corrected for unsalted digests.</li>
+</ul>
+<h3 id="the-annotation-mechanism">The annotation mechanism</h3>
+<p>The key is <code>x-lcp-pii</code>; the value is one of the five class names (plus <code>computed</code>, legal only on <code>envelope.payload</code>). Placement is on every property definition, at the level it is declared. <strong>Valid annotation</strong> — each of these must load:</p>
+<pre class="code-block"><code class="language-json">"$defs": {
+  "consumer": {
+    "properties": {
+      "email": { "type": "string", "format": "email", "x-lcp-pii": "contact" },
+      "dob": { "type": "string", "format": "date", "x-lcp-pii": "restricted" }
+    },
+    "x-lcp-pii": "restricted"
+  }
+}</code></pre>
+<pre class="code-block"><code class="language-json">"pricing": {
+  "type": "object",
+  "x-lcp-pii": "internal",
+  "properties": {
+    "currency": { "type": "string", "x-lcp-pii": "public" },
+    "fx_rate": { "type": "string", "x-lcp-pii": "internal" }
+  }
+}</code></pre>
+<pre class="code-block"><code class="language-json">"payload": {
+  "x-lcp-pii": "computed",
+  "description": "Class of the payload schema selected by message.type."
+}</code></pre>
+<p>Normative details:</p>
+<ul>
+<li><code>x-lcp-pii</code> appears <strong>once</strong> per property definition: on the <code>$defs</code> entry or the inline definition, never on a <code>$ref</code> site. A <code>$ref</code> inherits its definition's class, so <code>lead.consumer</code> and <code>post.consumer</code> cannot drift. If a message genuinely needs a different class for the same shape, that is a new definition, not an override.</li>
+<li>Valid values are the five class names plus <code>computed</code>, which is legal only on <code>envelope.json</code>'s <code>payload</code>.</li>
+<li>The keyword is a JSON Schema <strong>annotation</strong>: validators that do not know it ignore it, exactly as they already ignore <code>ping_safe</code> and <code>$comment</code>.</li>
+<li>Verticals and registered extension records must stay consistent with the boolean they already carry: <code>ping_safe: true</code> requires <code>public</code>/<code>internal</code>, or a declared <code>contact</code> hash projection.</li>
+</ul>
+<p><strong>Validator behaviour, load time.</strong> The validator walks every schema document it would validate against, plus each configured vertical and each registered extension it implements, and:</p>
+<ol>
+<li><strong>refuses a downgrade.</strong> A declared class lower than the core's (or the extension registry record's) for the same field is <code>LCP-100 VALIDATION_ERROR</code>, <code>field</code> naming the property path, <code>details</code> carrying <code>class_required</code> and <code>class_declared</code>. Upgrades are accepted silently — more protection never needs permission.</li>
+<li><strong>refuses <code>prohibited</code> as a property class.</strong> A field LCP will not carry may not be added; the class exists so the coverage check can tell "deliberately refused" from "not yet annotated".</li>
+<li><strong>refuses an unannotated property</strong> once rollout step 3 is reached, so a new field cannot arrive unclassified.</li>
+</ol>
+<p>The refusal is per-deploy and loud: the process does not start with a schema set it cannot classify. That is the whole point of putting the check at load rather than at message time — an operator finds out before a ping exists.</p>
+<p><strong>Validator behaviour, message time.</strong> Two existing codes cover the runtime half, and neither is new:</p>
+<ul>
+<li><code>LCP-008 PII_IN_PING</code> for a class violation on a ping (already the code for an unknown ping field).</li>
+<li><code>LCP-100 VALIDATION_ERROR</code> naming the field for a <code>contact</code>/<code>restricted</code> value on a non-PII surface (<code>bid</code>, <code>event</code>, history row) or a <code>prohibited</code> value anywhere, including inside an open container (<code>event.details.&lt;key&gt;</code>, <code>extensions.&lt;namespace&gt;.&lt;key&gt;</code>, free-form intake answers).</li>
+</ul>
+<h3 id="invalid-cases-what-the-validator-must-refuse">Invalid cases (what the validator must refuse)</h3>
+<ul>
+<li><strong>A vertical downgrades a core field.</strong> <code>verticals/mortgage.json</code> declares <code>"consumer.phone": { "x-lcp-pii": "internal" }</code>. Refused at load: <code>LCP-100</code>, <code>field: "consumer.phone"</code>, <code>details.class_required: "contact"</code>.</li>
+<li><strong>A vertical widens ping eligibility with a flag.</strong> A <code>restricted</code> attribute tagged <code>ping_safe: true</code>. Refused at load, naming the attribute: the flag is bounded by the class.</li>
+<li><strong>A ping carries plaintext contact.</strong> <code>consumer.full_name</code> in a ping payload: <code>LCP-008</code>, naming the field.</li>
+<li><strong>An event carries a restricted value.</strong> <code>details.dob</code> on an <code>event</code>: <code>LCP-100</code>, <code>field: "details.dob"</code>.</li>
+<li><strong>A prohibited value arrives in an open object.</strong> An SSN inside an answer carried by <code>extensions.lcp.intake.raw_form</code>: <code>LCP-100</code> naming the path inside that namespace, message not stored. The value is refused, never scrubbed.</li>
+<li><strong>A name is hashed into a "safe" field.</strong> A publisher emits <code>consumer.last_name</code> as an HMAC digest to reach a ping. There is no declared projection for a name; the keyspace enumerates, so the digest inverts by lookup. Refused: only declared projections may cross.</li>
+</ul>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>Does this create a new PII surface?</strong> No. Every property already exists and already travels exactly as far as it did. The change makes an existing distribution auditable and, where the tree disagrees with its own prose, refuses it.</p>
+<p><strong>Does it move a PII boundary?</strong> It narrows two, in the only direction that needs no compatibility consideration:</p>
+<ul>
+<li>a <code>restricted</code> field can no longer be ping-emitted by tagging it <code>ping_safe: true</code> — the tag alone is no longer sufficient;</li>
+<li>a prohibited value can no longer be persisted because nothing checked it.</li>
+</ul>
+<p><strong>Does it widen anything?</strong> Only in one direction that a reviewer should weigh. SPEC §4 already imposes an event class rule: <code>details</code> MUST NOT carry consumer PII, and a receiver rejects a plaintext contact value there with <code>LCP-100</code> (<code>spec/02-envelope.md</code>). Annotating <code>event.details</code> as <code>restricted</code> generalizes that rule mechanically, and the generalization reaches values the prose did not name — a date of birth, a recording URL, a filename. That is the intent, and it is the one behaviour change in this record: a sender that was putting sensitive values in <code>details</code> gets a rejection it did not get before. The implementation PR must state it in the release note rather than shipping it as a silent tightening.</p>
+<p><strong>Universal-core check.</strong> The taxonomy adds no field, no optional object, and no enum on the wire; the universal core is unchanged in shape. The simplicity budget is satisfied by addition without mechanism: one keyword, one validator walk, no per-surface special case. No vertical gains a field it did not already have, and no v1 receiver can fail on data it never received.</p>
+<p><strong>Security review note.</strong> <code>docs/PII-CLASSES.md</code> is a PII-boundary document, so <code>governance/LEP.md</code>'s security/privacy reviewer requirement applies to the implementation PR that lands annotations and the validator — the maintainer's D9 signature authorizes the work, not a substitute for that review.</p>
+<p><strong>Threat-model rows affected.</strong> PII in non-PII messages (§4 table), logging of consumer values (<code>PRIVACY-DATA-GOVERNANCE.md</code> "Required operational controls"), and the extension-smuggling path LEP-0006 Track B opened. The residual risk this record does not close: a deployment may still write a <code>contact</code> value into its own database column that has no LCP field, and no annotation can reach it.</p>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>JSON Schema validators.</strong> <code>x-lcp-pii</code> is an unknown keyword to every validator that does not implement it. Draft 2020-12 treats unknown keywords as annotations and ignores them; the tree already relies on this for <code>ping_safe</code> and <code>$comment</code> in <code>verticals/*.json</code>, which are unknown to JSON Schema and read by the platform's own code. Adding one more annotation therefore changes <strong>no validation outcome</strong>.</li>
+<li><strong>No wire change, no version negotiation.</strong> Nothing is transmitted, so a v1.0 or v1.1 peer is unaffected, and no capability advertisement is required. <code>lcp.version</code> does not move for this change; the release that contains it is v1.2.0 for other reasons.</li>
+<li><strong>Schema document versions.</strong> Adding an annotation is a PATCH-level change to a schema document in the sense that it is inert; <code>$id</code>s do not change, and <code>vertical_schemas.version</code> does not move for annotation-only edits. A class <em>change</em> (see below) is the versioned event.</li>
+<li><strong>Manifest and bundle.</strong> Annotated schemas change bytes, so the schema bundle and its SHA-256 manifest must be regenerated in the same PR — a repository-mechanical step with an existing check behind it, not a protocol change.</li>
+<li><strong>Deprecation.</strong> None. No field is deprecated; <code>ping_safe</code> is retained, not replaced. It remains the eligibility flag, and this record gives it a ceiling.</li>
+<li><strong>Class changes are governed by direction.</strong> More protective: MINOR, self-contained, can only remove emission eligibility. Less protective: requires an LEP with a security/privacy co-sign, because it widens disclosure. Adding or removing a class, or reordering them: MAJOR.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>SDKs (10).</strong> Generated models are produced from the schemas; an annotation must not become a model field, a default, or a serialized property. The per-SDK generation check is the guard: if a generated model grows an <code>x_lcp_pii</code> member, the annotation leaked into the type layer and the PR is wrong. No SDK API change is authorized by this record.</li>
+<li><strong>OpenAPI.</strong> Where documents are generated from the schemas, the keyword MAY be copied through as <code>x-lcp-pii</code>; it is inert in OpenAPI too (§4.7.24 extension keys). It MUST NOT be turned into a <code>description</code> rewrite or a schema-level <code>format</code>.</li>
+<li><strong>MCP.</strong> No new tool, no tool argument, no response field. A tool that exposes a <code>lead</code>/<code>post</code> payload exposes exactly the fields it did before; the reference platform's redaction defaults are unchanged by this record.</li>
+<li><strong>Conformance.</strong> New vectors, per class: a ping carrying each permitted class at least once (accepted) and each refused class once (rejected with the named code and field). Reuse of existing vectors is expected where a class rule already had a vector (ping PII, <code>LCP-008</code>).</li>
+<li><strong>Coverage check.</strong> A CI tool counts property definitions with and without <code>x-lcp-pii</code> and fails at any nonzero unannotated count once rollout step 3 is reached. The count is the acceptance number for this record: 371 core entries, 120 vertical properties, and every field of every registered extension.</li>
+<li><strong>Operational.</strong> One new refuse-to-start condition (a downgrade, a <code>prohibited</code> property, or — at step 3 — an unannotated property). It is the operator's own schema set, so the blast radius is a misconfigured deploy, and the error names the file and the field. Enforcement ships behind <code>LCP_FEATURE_PII_ENFORCEMENT</code> default-off in the reference platform, per the D1 rule that new gates are exercised by CI and vectors before they are on by default.</li>
+</ul>
+<h2 id="tests">Tests</h2>
+<p>The implementation PR must land these; none of them requires a wire change.</p>
+<ol>
+<li><strong>Coverage.</strong> <code>pii_coverage.json</code> (generated) reports 0 unannotated properties across <code>schemas/*.json</code> and <code>verticals/*.json</code>; the CI check fails on a nonzero count and names every offending path. Negative case: add a property with no annotation, assert the check fails naming it.</li>
+<li><strong>Downgrade refusal (load).</strong> Load a vertical overlay declaring <code>consumer.phone</code> as <code>internal</code>; assert <code>LCP-100</code> with <code>field == "consumer.phone"</code> and both classes in <code>details</code>, and assert the process refuses to start. Symmetric case: an upgrade (<code>internal</code> → <code>restricted</code>) loads cleanly.</li>
+<li><strong>Container computation.</strong> Assert <code>lead.consumer</code> resolves to <code>restricted</code> (max over <code>consumer.*</code>), and that a hypothetical consumer with only <code>contact</code> children resolves to <code>contact</code> — the rule, not a hardcoded value.</li>
+<li><strong>Ping emission.</strong> <code>plat: test_ping_rejects_contact_plaintext</code> (a ping with <code>consumer.full_name</code> → <code>LCP-008</code>), <code>test_ping_accepts_contact_hash</code> (a ping with <code>phone_hash</code> → accepted), and <code>test_ping_rejects_restricted_attribute</code> (a vertical attribute classed <code>restricted</code> tagged <code>ping_safe: true</code> → rejected at load).</li>
+<li><strong>Prohibited values.</strong> <code>plat: test_prohibited_value_refused_in_extension</code> — an SSN-shaped value under a <code>raw_form</code> answer yields <code>LCP-100</code> naming the path, the message is not persisted, and the value is not scrubbed (assert the stored envelope does not exist, not that it is empty).</li>
+<li><strong>Hash projections.</strong> The existing <code>test-vectors/sdk/contact-hash.json</code> rows recompute; the email canonical stays gated (no email-form <code>contacted_hashes</code> entry ships), and a validator attempt to declare a projection for a name or a date of birth is refused.</li>
+<li><strong>No-wire-change regression.</strong> A golden corpus of envelopes (one per message type) validates identically with and without annotations, byte for byte on the wire: annotation must not alter a validation result or a serialized payload.</li>
+</ol>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ol>
+<li><strong>Free-text guidance only — a "PII guidance" section in SPEC and the privacy doc, no annotations.</strong> Cheapest, and explicitly the status quo that produced this record: the extension policy already states its prohibition in prose on one field, and nothing checks it. A reader cannot audit 371 properties against prose, and no CI gate can be built on it. Rejected: it costs one document and buys nothing that can fail.</li>
+<li><strong>JSON Schema <code>format</code> instead of an <code>x-</code> keyword.</strong> <code>format</code> is a value-syntax vocabulary ("email", "date-time"); a confidentiality class is not syntax, and <code>format</code> applies only to strings, so object, array, boolean, and integer properties would have no slot. Assertion behaviour of <code>format</code> also varies by validator configuration, which is the opposite of what a load-time invariant needs. Rejected.</li>
+<li><strong>Promote <code>ping_safe</code> into the taxonomy.</strong> One boolean per field, already deployed. Rejected on three counts: it cannot distinguish <code>restricted</code> from <code>contact</code> (both would be <code>false</code>), it carries no order so "downgrade" is undefined, and it is an eligibility statement rather than a description of the value — the two questions diverge the moment a <code>contact</code> hash is legitimately pingable.</li>
+<li><strong>A central catalogue keyed by JSON pointer, outside the schemas.</strong> Keeps <code>schemas/*.json</code> untouched. Rejected: two artefacts describing the same property drift, and the load-time validator would compare a schema against a catalogue that a schema edit does not update. The annotation travels with the definition that it describes.</li>
+<li><strong>Deployment-side DLP only — each operator classifies its own data.</strong> Already possible and insufficient: classification that lives only in a deployment cannot be compared across adopters, cannot be validated at load, and cannot be the thing a vertical author is held to.</li>
+<li><strong>Proposed:</strong> five classes annotated in-schema, one normative document, one load-time refusal, one CI coverage number. Every existing rule that mentions a PII boundary gains a machine-checkable referent.</li>
+</ol>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>Core annotations.</strong> Annotate <code>schemas/*.json</code> (371 entries) per <code>docs/PII-CLASSES.md</code>. No behaviour change: nothing reads the keyword yet. The bundle and manifest regenerate in the same PR.</li>
+<li><strong>Verticals and extensions.</strong> Annotate the 120 vertical properties and every registered extension field. This is where a real finding can appear: an attribute that cannot be <code>ping_safe: true</code> under its new class must move to <code>ping_safe: false</code> (or become a banded derivative) in a vertical version bump, and the release note must name it.</li>
+<li><strong>Refuse unannotated in CI.</strong> Turn the coverage check blocking at zero. From here a new property without a class cannot merge.</li>
+<li><strong>Load-time enforcement.</strong> Ship the downgrade/prohibited refusals behind <code>LCP_FEATURE_PII_ENFORCEMENT</code> (default off), exercised by CI, vectors, and the conformance suite, then enable it in the reference deployment after one release with no findings. This is the D1 waiver's compensating constraint applied literally: the gate exists, runs everywhere it can be checked, and is off by default in the platform.</li>
+<li><strong>Migration.</strong> Nothing to migrate: annotations are inert and no field changes class relative to today's behaviour. The only migration is documentary — the extension registry's prose phrases ("classed <code>restricted</code> under the PII taxonomy") become links to this taxonomy, and the registry rows gain the class column.</li>
+<li><strong>Observability.</strong> Four numbers, all cheap: unannotated-property count (must be 0 after step 3), load-time refusal count by reason, runtime <code>LCP-008</code> count by field, <code>LCP-100</code> prohibited-value count by field. A rising prohibited-value count means a sender is systemically non-conformant and is the signal this record exists to surface; today it is invisible.</li>
+<li><strong>Rollback.</strong> Revert the annotation PR: the keyword is inert, so nothing changes at runtime. Revert the validator PR: the load-time refusals disappear, and runtime behaviour is unchanged because no runtime path depends on a class. No data migration and no compatibility window are involved — the published behaviour of a conformant peer never changed.</li>
+<li><strong>Re-evaluation (D1).</strong> 2027-05-04, as recorded against the waiver. The trigger that would have gated this work was not met; the waiver says so and this record keeps saying so.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Retention and erasure per class.</strong> <code>docs/PRIVACY-DATA-GOVERNANCE.md</code> asks for a retention period per field; the taxonomy does not supply one, and mapping class → period would embed legal advice in a protocol document. Trigger: the first adopter that must publish a per-class retention schedule for an audit, or the first retention decision that differs between two classes in the same deployment.</li>
+<li><strong>Finer subdivisions inside <code>restricted</code>.</strong> Health, financial, legal, and insurance data may need different consent or routing rules in one deployment, and one class cannot express that. Trigger: two independent adopter requests, or a vertical whose consent routing needs to branch on the distinction.</li>
+<li><strong>Class-directed encryption or key scoping.</strong> A <code>restricted</code> field could plausibly demand its own key or envelope. Today the class is advisory to the operator's encryption policy; the protocol names no per-class key. Trigger: the first deployment that must demonstrate per-class key separation to an auditor.</li>
+<li><strong>Automatic prohibited-value detection.</strong> This record specifies refusal, not detection. Whether the reference platform ships a PAN/SSN/biometric pattern check, and with what false-positive budget, is unanswered. Trigger: the first confirmed prohibited value arriving on production traffic, or the first adopter asking for a shared detector.</li>
+<li><strong>Mapping to legal taxonomies.</strong> GDPR special categories, CCPA sensitive personal information, and sector rules (HIPAA, GLBA) each cut across these five classes. Mapping them is a legal judgement per jurisdiction. Trigger: an adopter whose privacy notice must cite the mapping, or a jurisdiction whose regulator asks for one.</li>
+<li><strong>Class-aware log schemas.</strong> The matrix says logs never carry <code>contact</code> or <code>restricted</code>, and no log schema exists to annotate. Trigger: the first structured-log schema added to the reference platform, or the first incident review that needs the rule to be checkable rather than stated.</li>
+<li><strong><code>computed</code> as a first-class resolution step.</strong> Only <code>envelope.payload</code> and <code>attributes</code> need a class computed at runtime from another document. If a third site appears, the resolution rule deserves its own normative paragraph rather than a per-site convention. Trigger: a third <code>computed</code> site.</li>
+<li><strong>Whether <code>prohibited</code> ever annotates a property.</strong> At v1.2.0 none does: LCP carries no such value, so there is nothing to annotate. The class is kept because a refusal must be expressible. Trigger: the first proposal for a field whose only legal content would be prohibited — the annotation is then the refusal itself.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-3"><a href="#ad-hoc-classification">Ad-hoc classification</a></li><li class="depth-3"><a href="#why-a-class-and-not-a-bigger-boolean">Why a class and not a bigger boolean</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#the-classification-model">The classification model</a></li><li class="depth-3"><a href="#the-annotation-mechanism">The annotation mechanism</a></li><li class="depth-3"><a href="#invalid-cases-what-the-validator-must-refuse">Invalid cases (what the validator must refuse)</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#tests">Tests</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0011-pii-sensitivity-taxonomy.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

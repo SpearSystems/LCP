@@ -142,10 +142,10 @@ module LcpSdk
       @endpoint = endpoint.delete_suffix("/"); @sender_id = sender_id; @api_key = api_key; @hmac_secret = hmac_secret; @max_retries = max_retries
     end
 
-    def request(method, path, payload: nil, test: false)
+    def request(method, path, payload: nil, test: false, max_retries: @max_retries)
       body = payload.nil? ? "" : JSON.generate(payload)
       key = payload&.dig("lcp", "message", "idempotency_key")
-      (0..@max_retries).each do |attempt|
+      (0..max_retries).each do |attempt|
         uri = URI.join("#{@endpoint}/", path.delete_prefix("/")); request = Net::HTTP.const_get(method.capitalize).new(uri)
         request["Content-Type"] = "application/json"; request["Accept"] = "application/json"; request["X-LCP-Sender-Id"] = @sender_id if @sender_id; request["Authorization"] = "Bearer #{@api_key}" if @api_key; request["X-LCP-Idempotency-Key"] = key if key; request["X-LCP-Test"] = "true" if test
         if @hmac_secret; timestamp = Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"); request["X-LCP-Timestamp"] = timestamp; request["X-LCP-Signature"] = Signing.sign(@hmac_secret, timestamp, key, body); end
@@ -153,7 +153,7 @@ module LcpSdk
         response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
         data = response.body.nil? || response.body.empty? ? {} : JSON.parse(response.body)
         return data if response.is_a?(Net::HTTPSuccess)
-        raise "LCP HTTP #{response.code}: #{data}" unless [429, 500, 502, 503, 504].include?(response.code.to_i) && attempt < @max_retries
+        raise "LCP HTTP #{response.code}: #{data}" unless [429, 500, 502, 503, 504].include?(response.code.to_i) && attempt < max_retries
         sleep(2**attempt)
       end
       raise "LCP request failed"
@@ -162,6 +162,24 @@ module LcpSdk
     def submit_lead(envelope, test: false); LcpSdk.validate_envelope(envelope); request("POST", "/v1/lcp/leads", payload: envelope, test: test); end
     def submit_call(envelope, test: false); LcpSdk.validate_envelope(envelope); request("POST", "/v1/lcp/calls", payload: envelope, test: test); end
     def submit_bid(envelope, test: false); LcpSdk.validate_envelope(envelope); request("POST", "/v1/lcp/bids", payload: envelope, test: test); end
+
+    # Submit up to MAX_BATCH_ITEMS lead items in one request (LEP-0001 W2-01)
+    # and return the per-item receipts in input order. HTTP 207 partial success
+    # is a successful response; per-item error objects are preserved. The batch
+    # is never retried as a whole — retrying only rejected/error receipts is the
+    # caller's job.
+    MAX_BATCH_ITEMS = 100
+
+    def submit_leads_batch(items, request_id: nil)
+      unless (1..MAX_BATCH_ITEMS).cover?(items.length)
+        raise ArgumentError, "batch supports 1..#{MAX_BATCH_ITEMS} items, got #{items.length}"
+      end
+      response = request("POST", "/v1/lcp/leads/batch", payload: { "request_id" => request_id || SecureRandom.uuid, "items" => items }, max_retries: 0)
+      results = response["results"]
+      raise "batch response missing results" unless results.is_a?(Array)
+      order = items.each_with_index.to_h { |item, index| [item["item_id"], index] }
+      results.each_with_index.sort_by { |result, index| [order.fetch(result["item_id"], items.length), index] }.map(&:first)
+    end
     def query_lead_status(id); request("GET", "/v1/lcp/leads/#{URI.encode_www_form_component(id)}"); end
     def get_capabilities; request("GET", "/v1/lcp/capabilities"); end
     def list_offers(vertical = nil); request("GET", "/v1/lcp/offers#{vertical ? "?vertical=#{URI.encode_www_form_component(vertical)}" : ""}"); end

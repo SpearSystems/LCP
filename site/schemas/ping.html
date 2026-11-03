@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/ping.json">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP Ping Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Ping Message</h1>
+<p><code>https://lcp.dev/schemas/ping.json</code> · Non-PII offer to buyers. STRICT ALLOWLIST — additionalProperties: false. No PII fields are permitted. The conformance runner also validates that every field in attributes is tagged ping_safe: true in the vertical schema. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>attributes</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only — never exact values.</td></tr>
+<tr><td><code>compliance_flags</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Presence indicators only — never tokens or evidence.</td></tr>
+<tr><td><code>country_code</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>ISO 3166-1 alpha-2.</td></tr>
+<tr><td><code>currency</code></td><td>ref <code>core.json#/$defs/currency</code></td><td><code>—</code></td><td>yes</td><td></td></tr>
+<tr><td><code>dedup_window_hours</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Sender hint: how many hours to dedup against. Optional.</td></tr>
+<tr><td><code>email_hash</code></td><td><code>string</code></td><td><code>contact</code></td><td></td><td>HMAC-SHA256(shared_secret, normalized_email) — per-pair, optional. Optional, for email-based dedup.</td></tr>
+<tr><td><code>exclusivity</code></td><td>enum (<code>"exclusive"</code>, <code>"shared"</code>)</td><td><code>internal</code></td><td></td><td>Hint to buyer: is this an exclusive or shared lead?</td></tr>
+<tr><td><code>expires_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>extensions</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>v1.2: optional namespaced extension container. The receiver admits a namespace on a ping ONLY when its registration declares ping safety (governance/EXTENSION-REGISTRY.md); every other namespace is refused by name. Values are bounded objects and never carry consumer PII.</td></tr>
+<tr><td><code>floor_price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>lead_age_minutes</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII.</td></tr>
+<tr><td><code>lead_reference</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Opaque reference to the lead (not the lead_id).</td></tr>
+<tr><td><code>offer_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes.</td></tr>
+<tr><td><code>phone_hash</code></td><td><code>string</code></td><td><code>contact</code></td><td>yes</td><td>HMAC-SHA256(shared_secret, e164) — per-pair. See SPEC.md §9.</td></tr>
+<tr><td><code>ping_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Unique ping identifier.</td></tr>
+<tr><td><code>postal_code</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>publisher_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>ID of the publisher that generated the lead. Non-PII — buyers need this for quality tracking and routing.</td></tr>
+<tr><td><code>quality_flags</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Non-PII quality signals for buyer filtering. All publisher-declared.</td></tr>
+<tr><td><code>slots_available</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>v1.1 (LEP-0003): remaining buyer-award slots of this lead that can still be sold at ping time, INCLUDING the slot this ping's recipient may win. A slot counts a distinct awarded buyer, never delivered copies (SPEC.md §3 slot semantics). For exclusivity 'exclusive' this MUST be 1 — the one-slot special case (enforced by the top-level conditional in this schema). Absent = the platform does not advertise slot state (v1.0 behavior). A platform MUST NOT send slots_available: 0; zero remaining means stop pinging. Non-PII integer count carrying no consumer data: it joins the ping strict allowlist as a reviewed non-PII field, and conformance keeps rejecting every other field outside the allowlist (LCP-008 PII_IN_PING protection preserved) and every attribute not tagged ping_safe: true in the vertical schema. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1.</td></tr>
+<tr><td><code>state_region</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>vertical</code></td><td><code>string</code></td><td><code>public</code></td><td>yes</td><td>Vertical identifier.</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/ping.json",
+  "title": "LCP Ping Message",
+  "description": "Non-PII offer to buyers. STRICT ALLOWLIST — additionalProperties: false. No PII fields are permitted. The conformance runner also validates that every field in attributes is tagged ping_safe: true in the vertical schema. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "ping_id",
+    "lead_reference",
+    "phone_hash",
+    "country_code",
+    "vertical",
+    "floor_price_cents",
+    "currency"
+  ],
+  "properties": {
+    "ping_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Unique ping identifier."
+    },
+    "lead_reference": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "Opaque reference to the lead (not the lead_id)."
+    },
+    "publisher_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "ID of the publisher that generated the lead. Non-PII — buyers need this for quality tracking and routing."
+    },
+    "offer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "description": "ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes."
+    },
+    "phone_hash": {
+      "x-lcp-pii": "contact",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "HMAC-SHA256(shared_secret, e164) — per-pair. See SPEC.md §9."
+    },
+    "email_hash": {
+      "x-lcp-pii": "contact",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "HMAC-SHA256(shared_secret, normalized_email) — per-pair, optional. Optional, for email-based dedup."
+    },
+    "country_code": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2."
+    },
+    "state_region": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "postal_code": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "description": "Vertical identifier."
+    },
+    "lead_age_minutes": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII."
+    },
+    "attributes": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only — never exact values.",
+      "additionalProperties": true
+    },
+    "compliance_flags": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Presence indicators only — never tokens or evidence.",
+      "properties": {
+        "consent": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "otp_verified": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "dnc_checked": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "consent_valid": {
+          "x-lcp-pii": "internal",
+          "type": "boolean",
+          "description": "True if consent is still within its validity window (not expired)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "quality_flags": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Non-PII quality signals for buyer filtering. All publisher-declared.",
+      "properties": {
+        "verified_phone": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "verified_email": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "is_incentivized": {
+          "x-lcp-pii": "internal",
+          "type": "boolean",
+          "description": "True if consumer was offered an incentive (free consultation, gift card, etc.)."
+        },
+        "incentive_type": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum."
+        },
+        "duplicate_risk": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "spam_risk_score": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "acquisition_method": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum."
+        },
+        "dnc_status": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "DNC scrub result."
+        },
+        "litigator_status": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "Litigator scrub result."
+        },
+        "blacklist_status": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "clean",
+            "flagged",
+            "blocked",
+            "not_checked"
+          ],
+          "description": "Blacklist alliance scrub result."
+        }
+      },
+      "additionalProperties": true
+    },
+    "floor_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "exclusivity": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "exclusive",
+        "shared"
+      ],
+      "description": "Hint to buyer: is this an exclusive or shared lead?"
+    },
+    "slots_available": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "description": "v1.1 (LEP-0003): remaining buyer-award slots of this lead that can still be sold at ping time, INCLUDING the slot this ping's recipient may win. A slot counts a distinct awarded buyer, never delivered copies (SPEC.md §3 slot semantics). For exclusivity 'exclusive' this MUST be 1 — the one-slot special case (enforced by the top-level conditional in this schema). Absent = the platform does not advertise slot state (v1.0 behavior). A platform MUST NOT send slots_available: 0; zero remaining means stop pinging. Non-PII integer count carrying no consumer data: it joins the ping strict allowlist as a reviewed non-PII field, and conformance keeps rejecting every other field outside the allowlist (LCP-008 PII_IN_PING protection preserved) and every attribute not tagged ping_safe: true in the vertical schema. Capability-gated (SPEC.md §8): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor &gt;= 1."
+    },
+    "dedup_window_hours": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sender hint: how many hours to dedup against. Optional."
+    },
+    "expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time"
+    },
+    "extensions": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "v1.2: optional namespaced extension container. The receiver admits a namespace on a ping ONLY when its registration declares ping safety (governance/EXTENSION-REGISTRY.md); every other namespace is refused by name. Values are bounded objects and never carry consumer PII.",
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$",
+        "not": {
+          "pattern": "^lcp\\.core\\."
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "maxProperties": 32
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "LEP-0003 §1/F8 (invalid example B): exclusive is exactly the one-slot special case. When the exclusivity hint is present and 'exclusive', slots_available MUST be 1 — an exclusive ping advertising more is a semantic error, rejected by this conditional, not just by prose. Absent slots_available stays legal (v1.0 behavior).",
+      "if": {
+        "properties": {
+          "exclusivity": {
+            "x-lcp-pii": "internal",
+            "const": "exclusive"
+          }
+        },
+        "required": [
+          "exclusivity"
+        ]
+      },
+      "then": {
+        "properties": {
+          "slots_available": {
+            "x-lcp-pii": "internal",
+            "const": 1
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/ping.json</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

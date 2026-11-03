@@ -14,23 +14,28 @@
   ],
   "properties": {
     "offer_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1
     },
     "buyer_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1
     },
     "tenant_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "description": "Owning platform tenant. Deployment metadata; not necessarily exposed in public offer discovery."
     },
     "active": {
+      "x-lcp-pii": "internal",
       "type": "boolean",
       "default": true
     },
     "routing_mode": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": [
         "auction",
@@ -40,13 +45,16 @@
       "description": "Direct sends a post at the floor price; auction sends a ping and waits for bids."
     },
     "vertical": {
+      "x-lcp-pii": "public",
       "type": "string",
       "minLength": 1
     },
     "schema_version": {
+      "x-lcp-pii": "public",
       "type": "string"
     },
     "countries": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -56,6 +64,7 @@
       "uniqueItems": true
     },
     "state_regions": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string",
@@ -64,6 +73,7 @@
       "uniqueItems": true
     },
     "postal_codes": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string",
@@ -72,6 +82,7 @@
       "uniqueItems": true
     },
     "channels": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string",
@@ -80,6 +91,7 @@
       "uniqueItems": true
     },
     "excluded_source_types": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string"
@@ -87,6 +99,7 @@
       "uniqueItems": true
     },
     "excluded_acquisition_methods": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string"
@@ -94,9 +107,11 @@
       "uniqueItems": true
     },
     "reject_incentivized": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "excluded_incentive_types": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string"
@@ -104,17 +119,21 @@
       "uniqueItems": true
     },
     "require_verified_phone": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "require_verified_email": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "max_spam_risk_score": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "maximum": 100
     },
     "excluded_claim_language": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "type": "string"
@@ -122,18 +141,23 @@
       "uniqueItems": true
     },
     "require_consent_evidence": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "reject_dnc_flagged": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "reject_litigator_flagged": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "reject_blacklist_flagged": {
+      "x-lcp-pii": "internal",
       "type": "boolean"
     },
     "min_data_completeness": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": [
         "minimal",
@@ -142,42 +166,51 @@
       ]
     },
     "floor_price_cents": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0
     },
     "currency": {
+      "x-lcp-pii": "public",
       "type": "string",
       "pattern": "^[A-Z]{3}$"
     },
     "payable_definition": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "daily_cap": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1
     },
     "hourly_cap": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1
     },
     "allowed_publisher_ids": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true,
       "description": "Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed."
     },
     "allowed_brand_ids": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true,
       "description": "Optional publisher brand allowlist evaluated against provenance.brand_id."
     },
     "attribute_equals": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.",
       "additionalProperties": true
     },
     "attribute_in": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Safe declarative allowlists keyed by vertical attribute name.",
       "additionalProperties": {
@@ -186,66 +219,77 @@
       }
     },
     "monthly_minimum_payable": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 0,
       "description": "Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply."
     },
     "monthly_maximum_payable": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1,
       "description": "Optional hard maximum for payable outcomes in a calendar month."
     },
     "monthly_quota_timezone": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "minLength": 1,
       "description": "IANA timezone used to determine the monthly quota period."
     },
     "monthly_quota_policy": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": ["monitor", "pace", "hard_cap"],
       "default": "monitor",
       "description": "monitor reports progress, pace prioritizes under-target offers, hard_cap stops payable routing at the maximum."
     },
     "payable_rules": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Structured, explainable payable evaluation rules."
       ,"properties": {
-        "mode": { "type": "string", "enum": ["post_delivery", "call_outcome"], "default": "post_delivery" },
-        "require_call_answered": { "type": "boolean" },
-        "minimum_call_seconds": { "type": "integer", "minimum": 0 },
-        "allowed_call_dispositions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-        "exclude_duplicate_resubmissions": { "type": "boolean", "default": true }
+        "mode": { "x-lcp-pii": "internal", "type": "string", "enum": ["post_delivery", "call_outcome"], "default": "post_delivery" },
+        "require_call_answered": { "x-lcp-pii": "internal", "type": "boolean" },
+        "minimum_call_seconds": { "x-lcp-pii": "internal", "type": "integer", "minimum": 0 },
+        "allowed_call_dispositions": { "x-lcp-pii": "internal", "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "exclude_duplicate_resubmissions": { "x-lcp-pii": "internal", "type": "boolean", "default": true }
       },
       "additionalProperties": false
     },
     "call_routing_mode": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "enum": ["post_call", "realtime_transfer"],
       "default": "post_call",
       "description": "post_call delivers recorded call metadata; realtime_transfer requires a separate telephony binding for the live bridge."
     },
     "connect_timeout_seconds": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1,
       "maximum": 60,
       "description": "Maximum time allowed for a real-time call transfer decision."
     },
     "delivery_windows": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "$ref": "#/$defs/delivery_window"
       }
     },
     "ping_timeout_seconds": {
+      "x-lcp-pii": "internal",
       "type": "integer",
       "minimum": 1,
       "default": 30
     },
     "webhook_url": {
+      "x-lcp-pii": "restricted",
       "type": "string",
       "format": "uri"
     },
     "extensions": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "description": "Namespaced deployment-specific criteria. Matching implementations must not execute arbitrary values as code.",
       "additionalProperties": true
@@ -253,6 +297,7 @@
   },
   "$defs": {
     "delivery_window": {
+      "x-lcp-pii": "internal",
       "type": "object",
       "required": [
         "timezone",
@@ -262,18 +307,22 @@
       ],
       "properties": {
         "timezone": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "minLength": 1
         },
         "available_from": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
         },
         "available_to": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
         },
         "days": {
+          "x-lcp-pii": "internal",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -291,6 +340,7 @@
           "uniqueItems": true
         },
         "verticals": {
+          "x-lcp-pii": "public",
           "type": "array",
           "items": {
             "type": "string"
@@ -298,6 +348,7 @@
           "uniqueItems": true
         },
         "channels": {
+          "x-lcp-pii": "internal",
           "type": "array",
           "items": {
             "type": "string"

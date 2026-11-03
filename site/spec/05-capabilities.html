@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="spec/05-capabilities.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LCP — Lead Context Protocol Specification — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lcp--lead-context-protocol-specification">LCP — Lead Context Protocol Specification</h1>
+<blockquote>
+<p>Part of the normative LCP v1.0 specification: <strong>Capabilities and markets</strong>. Versioning and extensibility policy, capability discovery, capacity, offer restrictions, and country/market discovery. Index: <a href="../index.html">SPEC.md</a> · File map: <a href="index.html">spec/README.md</a>.</p>
+</blockquote>
+<h2 id="6-versioning--extensibility">6. Versioning &amp; extensibility</h2>
+<ul>
+<li>Protocol semver (MAJOR breaking / MINOR additive / PATCH fixes).</li>
+<li>Per-schema versions (<code>vertical_schemas.version</code>).</li>
+<li>Deprecation: N+2, 2-year grace, migration guidance.</li>
+<li>Extensions: <code>extensions</code> object, namespaced <code>{org}.{division}.{purpose}</code>, registered in <span class="unpublished" title="Not published in the specification site: governance/EXTENSION-REGISTRY.md">governance/EXTENSION-REGISTRY.md</span>.</li>
+<li>Binary evidence is out-of-band. <code>attachments[]</code> carries validated metadata and an opaque, authenticated <code>storage_ref</code>; raw file bytes MUST NOT be put in an LCP JSON envelope or ping.</li>
+<li>Unknown optional fields ignored; unknown message types → structured error. The ignore-unknown rule covers <strong>open</strong> objects (<code>event.details</code>, vertical <code>attributes</code> extensions); additions to <strong>closed</strong> objects (<code>additionalProperties: false</code> — ping, bid, post, lead, ack, core <code>$defs/exclusivity</code>) are not ignorable by a schema-validating receiver, so they rely on version negotiation: senders gate v1.1 fields on the receiver's §8 capability advertisement as specified in §4/§8.</li>
+</ul>
+<h3 id="open-vs-closed-enumerations">Open vs. closed enumerations</h3>
+<p>Over the protocol's 20+ year lifetime, new values will appear in several enum fields. The forward-compatibility policy is:</p>
+<table>
+<thead>
+<tr>
+<th>Axis</th>
+<th>Policy</th>
+<th>Unknown value behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>message.type</code></td>
+<td><strong>Closed</strong></td>
+<td>Reject with <code>LCP-006 UNKNOWN_MESSAGE_TYPE</code>. Adding a message type is a MINOR version bump.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><strong>Open</strong></td>
+<td>Store and pass through. Do not treat as a validation failure.</td>
+</tr>
+<tr>
+<td><code>channel</code></td>
+<td><strong>Open</strong></td>
+<td>Store and pass through.</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td><strong>Open</strong></td>
+<td>Store and pass through.</td>
+</tr>
+<tr>
+<td><code>call.status</code></td>
+<td><strong>Open</strong></td>
+<td>Store and pass through.</td>
+</tr>
+<tr>
+<td><code>consent_evidence.type</code></td>
+<td><strong>Open</strong></td>
+<td>Store and pass through.</td>
+</tr>
+</tbody>
+</table>
+<p>This ensures that adding a new <code>status</code> (e.g. a future <code>PARTIALLY_REFUNDED</code>) or a new <code>channel</code> (e.g. <code>video</code>, <code>iot</code>) is an additive MINOR change, not a breaking MAJOR change.</p>
+<h2 id="8-capability-discovery">8. Capability discovery</h2>
+<p><code>GET /v1/lcp/capabilities</code> → <code>{ lcp_versions, message_types, verticals[{id, schema_version}], countries, auth_methods, events, conformance_level, delivery_windows[], capacity }</code>.</p>
+<p><strong>Version-string membership (v1.1, LEP-0003 F6, normative).</strong> Every <code>lcp_versions</code> element MUST be a full <code>major.minor.patch</code> semantic version (<code>^\d+\.\d+\.\d+$</code>). A peer supports protocol extensions of minor <code>m</code> when its advertised set contains an element with <code>major == 1</code> and <code>minor &gt;= m</code>; senders MUST compare parsed versions, never string literals or prefixes (exact membership of <code>1.1</code> is unsatisfiable by the full-semver forms the same section mandates, and prefix matching on <code>1.1</code> wrongly matches <code>1.10.0</code>). Every endpoint that initiates traffic to a counterparty (ping senders included) MUST host <code>GET /v1/lcp/capabilities</code> for that counterparty. Consequences: v1.1 slot fields (<code>slots_available</code>, <code>slots_claimed</code>, <code>contacted_hashes</code>) and <code>CONTACTED</code> reports are gated on a receiver's set containing a v1.1-or-higher minor element (e.g. <code>1.1.0</code>); a sender MUST NOT send those fields to a receiver advertising v1.0 minors only, because the receiver's closed-object allowlist rejects them (§4 capability gate, §6 closed-vs-open rule).</p>
+<h3 id="capacity">capacity</h3>
+<p>Optional. Declares the endpoint's current lead acceptance capacity.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>daily_cap</code></td>
+<td>integer</td>
+<td>Max leads per calendar day (in endpoint's timezone).</td>
+</tr>
+<tr>
+<td><code>daily_remaining</code></td>
+<td>integer</td>
+<td>Leads remaining today.</td>
+</tr>
+<tr>
+<td><code>hourly_cap</code></td>
+<td>integer</td>
+<td>Max leads per hour.</td>
+</tr>
+<tr>
+<td><code>hourly_remaining</code></td>
+<td>integer</td>
+<td>Leads remaining this hour.</td>
+</tr>
+<tr>
+<td><code>concurrent_call_cap</code></td>
+<td>integer</td>
+<td>Max concurrent calls (for call buyers).</td>
+</tr>
+<tr>
+<td><code>reset_at</code></td>
+<td>string (datetime)</td>
+<td>When daily/hourly counters reset.</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>capacity</code> is absent, no caps are declared (unlimited). Caps are advisory — the platform may still route leads above cap, but the endpoint may reject them (LCP-011 RATE_LIMITED or a 200 with <code>ack.status = REJECTED</code>).</p>
+<h3 id="offer-restrictions">offer restrictions</h3>
+<p>Offers (<code>GET /v1/lcp/offers</code>) may declare restrictions — lead characteristics the buyer will not accept. The standardized discovery shape is defined in <a href="../schemas/offer.html">schemas/offer.json</a>. Offer creation, updates, credentials, and buyer administration remain deployment-specific. The <code>routing_mode</code> value is <code>auction</code> (ping/bid/post) or <code>direct</code> (the platform sends a post at the offer floor price without bidding).</p>
+<p>The platform filters against offer restrictions before pinging:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>excluded_source_types</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Source types the buyer rejects (e.g. <code>["scraped", "outbound", "marketplace"]</code>).</td>
+</tr>
+<tr>
+<td><code>excluded_acquisition_methods</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Acquisition methods the buyer rejects (e.g. <code>["cold_outbound", "scraped"]</code>).</td>
+</tr>
+<tr>
+<td><code>reject_incentivized</code></td>
+<td>boolean</td>
+<td>If true, buyer will not accept incentivized leads (<code>is_incentivized = true</code>).</td>
+</tr>
+<tr>
+<td><code>excluded_incentive_types</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Specific incentive types the buyer rejects (e.g. <code>["free_consultation"]</code>).</td>
+</tr>
+<tr>
+<td><code>require_verified_phone</code></td>
+<td>boolean</td>
+<td>If true, buyer requires <code>verified_phone = true</code>.</td>
+</tr>
+<tr>
+<td><code>require_verified_email</code></td>
+<td>boolean</td>
+<td>If true, buyer requires <code>verified_email = true</code>.</td>
+</tr>
+<tr>
+<td><code>max_spam_risk_score</code></td>
+<td>integer</td>
+<td>Buyer will not accept leads with <code>spam_risk_score</code> above this value.</td>
+</tr>
+<tr>
+<td><code>excluded_claim_language</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Landing page / ad copy language the buyer prohibits (e.g. <code>["guaranteed savings", "free consultation", "no obligation"]</code>). Publisher declares in <code>extensions</code> if their copy contains these.</td>
+</tr>
+<tr>
+<td><code>require_consent_evidence</code></td>
+<td>boolean</td>
+<td>If true, buyer requires <code>consent_evidence[]</code> to be non-empty.</td>
+</tr>
+<tr>
+<td><code>reject_dnc_flagged</code></td>
+<td>boolean</td>
+<td>If true, buyer will not accept leads with <code>dnc_status = flagged</code> or <code>blocked</code>.</td>
+</tr>
+<tr>
+<td><code>reject_litigator_flagged</code></td>
+<td>boolean</td>
+<td>If true, buyer will not accept leads with <code>litigator_status != clean</code>.</td>
+</tr>
+<tr>
+<td><code>reject_blacklist_flagged</code></td>
+<td>boolean</td>
+<td>If true, buyer will not accept leads with <code>blacklist_status != clean</code>.</td>
+</tr>
+<tr>
+<td><code>min_data_completeness</code></td>
+<td>string</td>
+<td>Buyer requires at least this completeness level (<code>minimal</code>, <code>standard</code>, <code>rich</code>).</td>
+</tr>
+<tr>
+<td><code>allowed_publisher_ids</code></td>
+<td>array&lt;string&gt;</td>
+<td>Optional publisher sender-ID allowlist.</td>
+</tr>
+<tr>
+<td><code>allowed_brand_ids</code></td>
+<td>array&lt;string&gt;</td>
+<td>Optional <code>provenance.brand_id</code> allowlist.</td>
+</tr>
+<tr>
+<td><code>attribute_equals</code> / <code>attribute_in</code></td>
+<td>object</td>
+<td>Safe declarative vertical criteria; values are data, never executable expressions.</td>
+</tr>
+<tr>
+<td><code>monthly_minimum_payable</code></td>
+<td>integer</td>
+<td>Operational monthly payable target; not a supply guarantee.</td>
+</tr>
+<tr>
+<td><code>monthly_maximum_payable</code></td>
+<td>integer</td>
+<td>Optional hard ceiling for payable outcomes.</td>
+</tr>
+<tr>
+<td><code>monthly_quota_policy</code></td>
+<td>string</td>
+<td><code>monitor</code>, <code>pace</code>, or <code>hard_cap</code>.</td>
+</tr>
+<tr>
+<td><code>payable_rules</code></td>
+<td>object</td>
+<td>Structured call answer, duration, and disposition rules.</td>
+</tr>
+<tr>
+<td><code>call_routing_mode</code></td>
+<td>string</td>
+<td><code>post_call</code> or <code>realtime_transfer</code>; live transfer remains telephony-binding work.</td>
+</tr>
+</tbody>
+</table>
+<p>These are <strong>contractual preferences</strong>, not protocol enforcement. The platform uses them to filter before pinging. A buyer receiving a lead that violates their restrictions may reject it (<code>ack.status = REJECTED</code> with <code>LCP-100 VALIDATION_ERROR</code>).</p>
+<p><code>delivery_windows</code> is an optional array of time windows when the endpoint accepts lead/call delivery. Each entry:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>timezone</code></td>
+<td>string</td>
+<td>IANA timezone for the window (e.g. <code>Australia/Sydney</code>).</td>
+</tr>
+<tr>
+<td><code>available_from</code></td>
+<td>string</td>
+<td>Local time <code>HH:MM</code> (24h).</td>
+</tr>
+<tr>
+<td><code>available_to</code></td>
+<td>string</td>
+<td>Local time <code>HH:MM</code> (24h).</td>
+</tr>
+<tr>
+<td><code>days</code></td>
+<td>array\&lt;string\&gt;</td>
+<td><code>mon</code>, <code>tue</code>, <code>wed</code>, <code>thu</code>, <code>fri</code>, <code>sat</code>, <code>sun</code>.</td>
+</tr>
+<tr>
+<td><code>verticals</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Optional — restricts window to specific verticals.</td>
+</tr>
+<tr>
+<td><code>channels</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>Optional — restricts window to specific channels (e.g. <code>["call"]</code> for call-only buyers).</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>delivery_windows</code> is absent, the endpoint accepts delivery 24/7.</p>
+<p><code>countries</code> is an array of ISO 3166-1 alpha-2 country codes the endpoint supports (e.g. <code>["AU", "NZ", "US"]</code>). This replaces the legacy <code>markets</code> field — no more <code>au_nz</code> / <code>us</code> grouping.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#6-versioning--extensibility">6. Versioning &amp; extensibility</a></li><li class="depth-3"><a href="#open-vs-closed-enumerations">Open vs. closed enumerations</a></li><li class="depth-2"><a href="#8-capability-discovery">8. Capability discovery</a></li><li class="depth-3"><a href="#capacity">capacity</a></li><li class="depth-3"><a href="#offer-restrictions">offer restrictions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>spec/05-capabilities.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

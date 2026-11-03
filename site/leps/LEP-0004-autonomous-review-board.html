@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0004-autonomous-review-board.md">
+<meta name="lcp-build" content="22244befbd24">
+<title>LEP-0004 — Autonomous Review Board for independent review — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0004--autonomous-review-board-for-independent-review">LEP-0004 — Autonomous Review Board for independent review</h1>
+<ul>
+<li><strong>Title:</strong> Autonomous Review Board for independent review</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-11-02</li>
+<li><strong>Status:</strong> <strong>Implemented</strong> — accepted 2026-11-03 (conditional); all five tightenings + F4 landed and verified in PR #156; ARB operative</li>
+<li><strong>Target version:</strong> none — governance process change; no protocol version, no wire impact</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</h2>
+<p><strong>Accepted, conditional.</strong> Recorded by the maintainer (randybeno) following the ARB sign-off model. Decision basis: the L-DocsDrift independent-review dossier (&lt;https://github.com/SpearSystems/LCP/issues/128#issuecomment-6578281988&gt;) and its tracked findings F1–F7.</p>
+<p>Conditions (all must land in the implementation PR before this process is operative; until then <code>ARB.md</code> and <code>LEP.md</code> remain un-amended and the ARB has no force):</p>
+<ul>
+<li><strong>F1 (capture):</strong> attribute authorship to the <em>controller</em>, not the lane; a fresh-context agent launched by a proposal's author to audit its own proposal is labeled <code>SELF-AUDIT</code> and cannot satisfy independent review. Add a mandatory launch-controller field to the G2 attestation.</li>
+<li><strong>F5 (self-contradiction):</strong> the Decision-rules bullet must read "satisfied by" (not "only by") an ARB dossier, preserving a future human second maintainer's ability to satisfy the requirement directly.</li>
+<li><strong>F4 (stale text):</strong> reconcile the surviving stage-4 "independent second-maintainer review … named domain review" sentence (LEP.md:60-61) that the current diff leaves outside its amended sections.</li>
+<li><strong>F2 (deterministic PII gate):</strong> the charter names no lane that produces "the ARB-Security dossier"; add the lane row or rename the gate to a lane that exists.</li>
+<li><strong>F3/F7 (dissent re-runnability):</strong> the charter's claim that "charter prompts live in this repository" is unbacked at this SHA; publish the prompts and require dossiers to record plant bytes so an adopter can reproduce a finding without transcript access.</li>
+<li><strong>Implementation:</strong> PR <a href="https://github.com/SpearSystems/LCP/pull/156" rel="noopener">#156</a>. Conditions → hunks: F1 → the charter's independence rule 2 and gate G2 in <code>governance/ARB.md</code> (authorship attaches to the run's controller; SELF-AUDIT labeling; launch-control attestation) plus the Launch control attestation line in <code>governance/ARB-DOSSIER-TEMPLATE.md</code>; F2 → the <code>L-Security</code> row in the lanes table of <code>governance/ARB.md</code> (produces the ARB-Security dossier named by the PII/auth/retention gate and by the amended Roles bullet) and the template's lane enumeration; F3 → the charter's reproducibility rule 3 and the chicken-and-egg item in <code>governance/ARB.md</code>, with the per-lane charter prompts published in the new <code>governance/ARB-PROMPTS.md</code>; F5 → the amended Decision-rules bullet in <code>governance/LEP.md</code>, which reads "satisfied either by a review from a maintainer who did not author the proposal or by an ARB Review Dossier that passes charter gates G1–G6" (the "only by" wording rejected per the Alternatives section); F7 → the charter's reproducibility rule 1 and gate G1 in <code>governance/ARB.md</code> plus the Plant bytes appendix in <code>governance/ARB-DOSSIER-TEMPLATE.md</code>. F4 → the stage-4 Decision sentence in <code>governance/LEP.md</code> reconciled in the same diff. Verification: charter/template grep sweeps, <code>tools/check_lep_registry.py</code>, and <code>tools/check_doc_citations.py</code> green at the implementation SHA (outputs in the PR body); findings tracked at <a href="https://github.com/SpearSystems/LCP/issues/151" rel="noopener">#151</a>; dossier <a href="https://github.com/SpearSystems/LCP/issues/128#issuecomment-6578281988" rel="noopener">#128</a>.</li>
+</ul>
+<p>Independent-review note: this is the single-use chicken-and-egg exception declared in this proposal (§ below). The independent control is external re-runnability of the published charter, template, and evidence commands at the recorded commit, not an ARB review of the ARB.</p>
+<p>Public discussion: &lt;https://github.com/SpearSystems/LCP/issues/128&gt;. Charter record: <span class="unpublished" title="Not published in the specification site: governance/ARB.md"><code>../ARB.md</code></span>; dossier template: <span class="unpublished" title="Not published in the specification site: governance/ARB-DOSSIER-TEMPLATE.md"><code>../ARB-DOSSIER-TEMPLATE.md</code></span>. Neither has any effect until this proposal is Accepted; this record changes nothing in <code>LEP.md</code> itself (the amendment lands post-acceptance, see Proposed LEP.md amendment below).</p>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><code>governance/LEP.md</code> (Decision stage) requires that "a material proposal requires an independent second-maintainer review; security or privacy changes also require a named domain review," and <code>AGENTS.md</code> forbids anyone to "bypass independent review on behalf of maintainers." LCP has exactly one active maintainer. Every merge on <code>origin/main</code> to date — all 68 of them — was performed by that single person (verified at draft time with <code>git log --merges --format='%an' origin/main | sort | uniq -c</code>: two commit identities, one human, one machine). The independent-review clause is therefore already, in practice, a second hat on the same head, and its cost lands entirely on the owner's time:</p>
+<ol>
+<li><code>governance/LEP-REGISTRY.md</code> shows all three numbered proposals (LEP-0001, LEP-0002, LEP-0003) blocked on "independent security/privacy review are pending" — the words appear on all three registry rows.</li>
+<li>The v1.1 program (docs/V1.1-ROADMAP.md) has produced a large volume of security- and privacy-relevant changes (signing canonicalization, slot-allocation PII flows, logging-hygiene gates, supply-chain pinning) whose review demand now exceeds the one human's throughput. The review labor, not the review authority, is the bottleneck.</li>
+<li>Owner-performed "independent" review of owner-authored changes is not independence by any reading of the clause; future external audits of the project (including the adversarial audits this proposal institutionalizes) will find the process itself non-compliant.</li>
+</ol>
+<p>The fix is to <strong>redefine how the clause is satisfied, not to bypass it</strong>: an Autonomous Review Board (ARB) — a codified, adversarial, publicly re-runnable agent audit whose Review Dossier, when it meets the charter's quality gates, satisfies the independent-reviewer requirement, while the maintainer keeps the decision and the accountability. What is removed is the manual reading labor; what is added is machine-produced falsifiable evidence. The full normative mechanics (lanes, defect budget, gates, dissent, role separation) are the charter; this record proposes the governance change only.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li>Governance process only: <code>governance/LEP.md</code> role/decision clauses, the new charter <code>governance/ARB.md</code>, and <code>governance/ARB-DOSSIER-TEMPLATE.md</code>.</li>
+<li>Not core protocol, not vertical schemas, not registered extensions, not wire behavior, not SDK/OpenAPI/MCP artifacts, not conformance vectors.</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<p>None. This proposal adds no message types, fields, errors, or version behavior; valid/invalid wire examples are not applicable. Zero impact on v1 senders or receivers. The only artifacts are process documents; the "output" of the process is a Review Dossier comment on a public issue/PR, whose format is proposed (not wire-) normative in <span class="unpublished" title="Not published in the specification site: governance/ARB-DOSSIER-TEMPLATE.md"><code>../ARB-DOSSIER-TEMPLATE.md</code></span>.</p>
+<h2 id="proposed-lepmd-amendment">Proposed LEP.md amendment</h2>
+<p>Text to be applied to <code>governance/LEP.md</code> <strong>only on acceptance of this proposal</strong> — this record is the amendment, merged into LEP.md in a separate implementation PR exactly as the LEP process demands (Draft status authorizes nothing). Diff against <code>governance/LEP.md</code> at the SHA this proposal's dossier cites:</p>
+<pre class="code-block"><code class="language-diff"> ## Roles and independence
+ 
+ Each material LEP identifies:
+ 
+ - **Author:** owns the proposal and responses to review comments.
+ - **Shepherd:** maintains the issue, registry status, deadlines, and links.
+ - **Domain reviewers:** represent affected publishers, buyers, implementers,
+   and SDK maintainers.
+-- **Security/privacy reviewer:** reviews PII, authorization, delivery,
+-  retention, replay, and abuse implications.
+-- **Independent maintainer:** reviews the decision separately from the author
+-  where possible and is required for material acceptance/rejection/deferral.
++- **Security/privacy reviewer:** reviews PII, authorization, delivery,
++  retention, replay, and abuse implications. For a proposal touching a PII
++  boundary, an authentication rule, or a retention rule, this role MUST be
++  filled by a named human domain reviewer, or by the decision maintainer's
++  explicit co-sign of the ARB-Security review dossier. Agent reviews
++  certify consistency with the specification, not legality or privacy
++  fitness.
++- **Independent maintainer:** reviews the decision separately from the author
++  and is required for material acceptance/rejection/deferral. An ARB Review
++  Dossier meeting every quality gate of [`ARB.md`](ARB.md) satisfies this
++  requirement; the dossier MUST come from a lane that did not author the
++  change under review, MUST enumerate its refutation attempts at a full
++  commit SHA, and MUST be posted publicly on the proposal or pull request.
+ - **Decision maintainers:** record the final decision and rationale publicly.
++
++ARB lanes, judges, and automation never record decision status. Only a
++maintainer writes `Accepted`, `Rejected`, or `Deferred`, and the decision
++rationale cites the dossier and the public discussion it was published on.
+ 
+ ## Decision rules
+ 
+ - Prefer a namespaced extension or reference-platform behavior over a new core
+   field when the requirement is buyer-, publisher-, market-, or
+   deployment-specific.
+ ...
+ - Separate capabilities with materially different semantics may share an
+   umbrella discussion, but each must have independently reviewable and
+   independently decidable acceptance criteria.
++- The independent-review requirement for a material decision is satisfied
++  only by an ARB Review Dossier that passes charter gates G1–G6. A valid
++  dissenting dossier re-run at the same commit blocks recording of the
++  decision until the charter's dissent protocol has adjudicated it.
++- Decisions are adopted per decision: the maintainer records
++  `Accepted`/`Rejected`/`Deferred` citing the dossier link. Silence is never
++  consent — no dossier expiry, review-window lapse, or automation may
++  produce a decision status.</code></pre>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li>No PII boundary, authentication rule, retention rule, or lifecycle state changes. This proposal cannot leak data because it moves no data: dossiers cite commands, outputs, and file:lines of the public repository.</li>
+<li>Universal-core audit (SPEC.md §12): no fields or message types are added; the audit is vacuous by scope.</li>
+<li>The security surface of this proposal is the process itself, and the charter is written against the two ways a review process dies: rubber-stamping (the adversarial defect budget and judge gate — a PASS without ≥5 enumerated refutation attempts is void) and capture (everything — charter, prompts, template, dossiers — is public, and any adopter may re-run the harness at the same commit; a valid dissent blocks the decision until adjudicated).</li>
+<li>Deliberate human anchor: proposals touching PII/auth/retention keep a named human reviewer or maintainer co-sign requirement (amendment above). For this proposal's own acceptance, the chicken-and-egg clause in <code>ARB.md</code> applies and is disclosed plainly: LEP-0004 cannot be reviewed by the machinery it creates; the sole maintainer accepts it, if at all, as a recorded process exception whose independent control is external re-runnability plus the public 14-day window. No future proposal may invoke this clause.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li>No protocol version bump: nothing in <code>SPEC.md</code>, schemas, vectors, or SDKs changes (governance-process change; AGENTS.md rule 2 untouched).</li>
+<li><code>LEP.md</code> stage vocabulary, the registry checker, and the 14-day public review window are unchanged; the amendment redefines who/what may perform the independent review, not when decisions may be made.</li>
+<li>Fully backward compatible for adopters: a decision made with a conforming ARB dossier is recorded identically to one made with a human reviewer.</li>
+<li>No deprecations. Rollback (below) restores the prior text without orphans.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li>None to SDK, OpenAPI, MCP artifacts or generated models: the LEP registry checker (<code>tools/check_lep_registry.py</code>) validates this proposal unchanged.</li>
+<li>Conformance runner and test vectors: untouched by acceptance itself. The charter's reproducibility gate (durable findings become CI tests before lane close) means ARB <em>reviews</em> will add tests over time — additive, per-decision, each landing through the normal PR pipeline.</li>
+<li>Operational impact: each material LEP decision requires one lane fan-out</p>
+<ul>
+<li>judge run (cost guard: max two runs per lane per cycle) instead of</li>
+</ul>
+<p>maintainer reading time; dossiers are posted as issue comments (no new infrastructure). Review of LEP-0002 and LEP-0003 becomes the first real ARB execution.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ol>
+<li><strong>Recruit a second human maintainer.</strong> Cleanest legitimacy. No candidate exists today, and nothing prevents the same requirement being met this way later — the amendment is "satisfied by", not "only by". Rejected for now for lack of candidates; remains always available.</li>
+<li><strong>Keep owner-only review.</strong> The status quo; does not satisfy the clause's intent (independence), does not satisfy it at scale, and blocks three proposals indefinitely.</li>
+<li><strong>Silence-is-consent.</strong> ARB-PASS + 14-day window expiry auto-Accepts unless the owner objects. Fastest, but it moves a PII protocol's legal and privacy decisions into automation-by-default and lets unreviewed decisions accrue on maintainer inattention. Explicitly rejected as the adoption model (kept as a deferred question with a trigger below).</li>
+<li><strong>Human-ARB hybrid (ARB pre-reads, human reviews everything).</strong> Removes none of the bottleneck; ARB evidence then exists only as an advisory digest. Rejected as paying the cost without the accountability win.</li>
+<li><strong>Proposed:</strong> ARB dossier satisfies the independent-review requirement under charter gates, with per-decision maintainer sign-off and the PII/auth/retention human anchor.</li>
+</ol>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>Acceptance</strong> → apply the amendment above to <code>governance/LEP.md</code> in a dedicated implementation PR linking this record and the registry row; registry checker must pass; this LEP's status transition is recorded per the chicken-and-egg clause.</li>
+<li><strong>First runs</strong> → LEP-0002 and LEP-0003 receive full lane fan-outs and judge-ratified dossiers posted to issues #121/#124 (their 14-day public windows run in parallel as before); owner signs each decision from the dossier with one reply.</li>
+<li><strong>Steady state</strong> → every material LEP decision requires a dossier at the decision SHA; dissent re-runs are open to any adopter continuously.</li>
+<li><strong>Observability</strong> → metrics recorded on the discussion issues: dossier turnaround (target &lt;48h from request), dissent count, findings converted to CI tests per lane, and maintainer overrides of ARB verdicts (a maintainer MAY override — the decision was always theirs — and the override must be stated in the decision rationale).</li>
+<li><strong>Rollback</strong> → revert the LEP.md amendment PR. Recorded decisions survive untouched (they were always maintainer decisions citing evidence), and the charter/dossier history remains as public audit trail. No migration or compatibility window is needed because nothing external consumes this process.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Silence-is-consent automation</strong> — rejected by this proposal's adoption model, kept as a deferred question. Trigger to revisit: after ≥5 complete ARB decision cycles with zero maintainer overrides of judge-ratified dossiers AND at least two independent external adopters having re-run the harness at published SHAs, the owner may reconsider auto-accept for non-PII/non-auth/non-retention proposals only.</li>
+<li><strong>Model monoculture</strong> — one model family auditing code generated by the same family shares blind spots; charter makes cross-model judge SHOULD, not MUST. Trigger to revisit: first dissent or finding class that a second model family demonstrably catches and the first missed.</li>
+<li><strong>ARB review of ARB changes</strong> — edits to the charter itself are material governance changes; who audits the auditors' manual is unresolved beyond dissent + public window. Trigger to revisit: first proposed charter amendment.</li>
+<li><strong>Third-party hosted re-runs</strong> — adopters without local harness capacity rely on maintainers publishing invocation instructions. Trigger to revisit: ≥2 adopters requesting a hosted re-run facility.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-03">Decision (maintainer, 2026-11-03)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-2"><a href="#proposed-lepmd-amendment">Proposed LEP.md amendment</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0004-autonomous-review-board.md</code> · build <code>22244befbd24</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

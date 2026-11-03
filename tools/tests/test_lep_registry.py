@@ -22,14 +22,14 @@ REQUIRED_SECTIONS = """## Problem statement and evidence
 """
 
 
-def write_fixture(root: Path, *, registry_row: str, document: str | None = None) -> None:
+def write_fixture(
+    root: Path, *, registry_row: str, document: str | None = None
+) -> None:
     (root / "governance" / "LEPs").mkdir(parents=True)
     (root / "governance" / "LEP-REGISTRY.md").write_text(
         "# Registry\n\n"
         "| LEP | Title | Status | Author(s) | Opened | Review deadline | Decision/date | Target version | Proposal | Implementation / traceability |\n"
-        "|---|---|---|---|---|---|---|---|---|---|\n"
-        + registry_row
-        + "\n",
+        "|---|---|---|---|---|---|---|---|---|---|\n" + registry_row + "\n",
         encoding="utf-8",
     )
     if document is not None:
@@ -55,10 +55,13 @@ class LepRegistryTests(unittest.TestCase):
                 registry_row="| LEP-0001 | Example | Draft | Maintainer | 2026-08-18 | — | — | v1.1.0 | [proposal](LEPs/LEP-0001-missing.md) | Not implemented. |",
             )
             problems = validate_lep_registry(root)
-        self.assertTrue(any("proposal file is missing" in problem for problem in problems))
+        self.assertTrue(
+            any("proposal file is missing" in problem for problem in problems)
+        )
 
     def test_registry_rejects_proposals_outside_the_numbered_directory(self) -> None:
-        document = """# LEP-0001 — Example
+        document = (
+            """# LEP-0001 — Example
 
 - **Title:** Example
 - **Author(s):** Maintainer
@@ -66,7 +69,9 @@ class LepRegistryTests(unittest.TestCase):
 - **Status:** **Draft** — not accepted
 - **Target version:** v1.1.0
 
-""" + REQUIRED_SECTIONS
+"""
+            + REQUIRED_SECTIONS
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "README.md").write_text(document, encoding="utf-8")
@@ -75,10 +80,13 @@ class LepRegistryTests(unittest.TestCase):
                 registry_row="| LEP-0001 | Example | Draft | Maintainer | 2026-08-18 | — | — | v1.1.0 | [proposal](../README.md) | Not implemented. |",
             )
             problems = validate_lep_registry(root)
-        self.assertTrue(any("must target governance/LEPs" in problem for problem in problems))
+        self.assertTrue(
+            any("must target governance/LEPs" in problem for problem in problems)
+        )
 
     def test_document_metadata_and_sections_are_checked(self) -> None:
-        document = """# LEP-0001 — Example
+        document = (
+            """# LEP-0001 — Example
 
 - **Title:** Example
 - **Author(s):** Maintainer
@@ -86,7 +94,9 @@ class LepRegistryTests(unittest.TestCase):
 - **Status:** **Draft** — not accepted
 - **Target version:** v1.1.0
 
-""" + REQUIRED_SECTIONS
+"""
+            + REQUIRED_SECTIONS
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_fixture(
@@ -97,7 +107,8 @@ class LepRegistryTests(unittest.TestCase):
             self.assertEqual(validate_lep_registry(root), [])
 
     def test_status_mismatch_is_reported(self) -> None:
-        document = """# LEP-0001 — Example
+        document = (
+            """# LEP-0001 — Example
 
 - **Title:** Example
 - **Author(s):** Maintainer
@@ -105,7 +116,9 @@ class LepRegistryTests(unittest.TestCase):
 - **Status:** **Review**
 - **Target version:** v1.1.0
 
-""" + REQUIRED_SECTIONS
+"""
+            + REQUIRED_SECTIONS
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_fixture(
@@ -114,7 +127,39 @@ class LepRegistryTests(unittest.TestCase):
                 document=document,
             )
             problems = validate_lep_registry(root)
-        self.assertTrue(any("does not match registry" in problem for problem in problems))
+        self.assertTrue(
+            any("does not match registry" in problem for problem in problems)
+        )
+
+    def test_target_version_mismatch_is_reported(self) -> None:
+        document = (
+            """# LEP-0001 — Example
+
+- **Title:** Example
+- **Author(s):** Maintainer
+- **Date:** 2026-08-18
+- **Status:** **Draft** — not accepted
+- **Target version:** v1.1.0 (MINOR)
+
+"""
+            + REQUIRED_SECTIONS
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_fixture(
+                root,
+                registry_row="| LEP-0001 | Example | Draft | Maintainer | 2026-08-18 | — | — | v1.2.0 | [proposal](LEPs/LEP-0001-example.md) | Not implemented. |",
+                document=document,
+            )
+            problems = validate_lep_registry(root)
+        self.assertTrue(
+            any(
+                "Target version 'v1.1.0 (MINOR)'" in problem
+                and "registry 'v1.2.0'" in problem
+                for problem in problems
+            ),
+            problems,
+        )
 
 
 if __name__ == "__main__":

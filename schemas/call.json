@@ -14,12 +14,15 @@
   ],
   "properties": {
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "external_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "submitted_at": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "date-time",
       "description": "When the call was initiated (distinct from provenance.received_at)."
@@ -28,6 +31,7 @@
       "$ref": "core.json#/$defs/status"
     },
     "channel": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "const": "call",
       "description": "Always 'call' for call messages."
@@ -57,6 +61,7 @@
       "$ref": "core.json#/$defs/attachments"
     },
     "call": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "title": "Call Detail Block",
       "required": [
@@ -66,18 +71,22 @@
       ],
       "properties": {
         "call_id": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Unique call identifier."
         },
         "status": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "OPEN ENUMERATION \u2014 known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
           "$comment": "Open enumeration per SPEC.md \u00a76."
         },
         "hangup_cause": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "direction": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "enum": [
             "inbound",
@@ -85,41 +94,51 @@
           ]
         },
         "did": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Dialed number (Direct Inward Dial) \u2014 the tracking number the consumer called."
         },
         "forwarded_to": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Number the call was forwarded to (buyer's destination number). E.164."
         },
         "tracking_number": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164."
         },
         "caller_phone_hash": {
+          "x-lcp-pii": "contact",
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
         "started_at": {
+          "x-lcp-pii": "internal",
           "type": "string",
           "format": "date-time"
         },
         "durations": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "properties": {
             "total_seconds": {
+              "x-lcp-pii": "internal",
               "type": "integer",
               "minimum": 0
             },
             "ivr_seconds": {
+              "x-lcp-pii": "internal",
               "type": "integer",
               "minimum": 0
             },
             "hold_seconds": {
+              "x-lcp-pii": "internal",
               "type": "integer",
               "minimum": 0
             },
             "agent_seconds": {
+              "x-lcp-pii": "internal",
               "type": "integer",
               "minimum": 0
             }
@@ -127,43 +146,53 @@
           "additionalProperties": false
         },
         "recording": {
+          "x-lcp-pii": "restricted",
           "type": "object",
           "properties": {
             "url": {
+              "x-lcp-pii": "restricted",
               "type": "string",
               "format": "uri"
             },
             "transcript_url": {
+              "x-lcp-pii": "restricted",
               "type": "string",
               "format": "uri"
             },
             "storage_ref": {
+              "x-lcp-pii": "restricted",
               "type": "string"
             }
           },
           "additionalProperties": false
         },
         "ivr": {
+          "x-lcp-pii": "restricted",
           "type": "object",
           "description": "IVR menu interaction data. Core fields are universal; platform-specific IVR data goes in extensions.",
           "properties": {
             "digits": {
+              "x-lcp-pii": "restricted",
               "type": "string",
               "description": "DTMF digits pressed during IVR."
             },
             "path": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "IVR menu path taken (e.g. 'sales > mortgage > refinance')."
             },
             "language": {
+              "x-lcp-pii": "internal",
               "type": "string",
               "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US')."
             },
             "abandoned": {
+              "x-lcp-pii": "internal",
               "type": "boolean",
               "description": "True if the caller dropped during IVR before reaching an agent."
             },
             "menu_options_selected": {
+              "x-lcp-pii": "internal",
               "type": "array",
               "items": {
                 "type": "string"
@@ -174,41 +203,51 @@
           "additionalProperties": true
         },
         "disposition": {
+          "x-lcp-pii": "internal",
           "type": "string"
         },
         "transferred_from": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "description": "Present if this call was transferred from another call/queue.",
           "properties": {
             "original_call_id": {
+              "x-lcp-pii": "internal",
               "type": "string"
             },
             "transfer_reason": {
+              "x-lcp-pii": "internal",
               "type": "string"
             }
           },
           "additionalProperties": false
         },
         "queue": {
+          "x-lcp-pii": "internal",
           "type": "object",
           "description": "Call queue that handled this call.",
           "properties": {
             "id": {
+              "x-lcp-pii": "internal",
               "type": "string"
             },
             "name": {
+              "x-lcp-pii": "internal",
               "type": "string"
             }
           },
           "additionalProperties": false
         },
         "agent": {
+          "x-lcp-pii": "contact",
           "type": "object",
           "properties": {
             "id": {
+              "x-lcp-pii": "internal",
               "type": "string"
             },
             "name": {
+              "x-lcp-pii": "contact",
               "type": "string"
             }
           },

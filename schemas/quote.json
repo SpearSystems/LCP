@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/quote.json",
+  "title": "LCP Quote Message",
+  "description": "Platform-opened, bounded price negotiation for a named ping (LEP-0009). Ping-class: integer minor units, ISO 4217 currency, opaque ids, timestamps, round counters, and closed/known reason values only. No consumer PII and no free text — the strict allowlist is the enforcement. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "negotiation_id",
+    "ping_id",
+    "offer_id",
+    "currency",
+    "floor_price_cents",
+    "rounds_remaining",
+    "expires_at"
+  ],
+  "properties": {
+    "negotiation_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+      "description": "Opaque platform-assigned negotiation id, unique per negotiation. The only lookup key a later message may use."
+    },
+    "ping_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "The ping this negotiation prices. Supplies the floor, currency, and the TTL ceiling."
+    },
+    "offer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "The buyer offer being priced; MUST equal the ping's offer_id (LCP-100 on mismatch)."
+    },
+    "price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "The ask in minor units of currency. MUST be at or above floor_price_cents; below floor is refused below_floor_price and never clamped."
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "floor_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Restated from the ping so the buyer can verify the floor and the monotone rule without re-reading the ping."
+    },
+    "max_rounds": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "description": "Rounds this negotiation may run. Absent = 3 (D8 default); above the hard cap of 5 is LCP-100, never a deployment knob."
+    },
+    "rounds_remaining": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "Buyer counters still available at the moment this message is sent. On the opening quote this equals the effective max_rounds (a quote consumes no round)."
+    },
+    "expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "Absolute end of the negotiation. MUST NOT be later than the ping's expires_at (or its timestamp plus TTL)."
+    },
+    "rejection_reason": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "Open enumeration. Present only on a terminal refusal message (no negotiation opened): below_floor_price, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed. When present, price_cents MUST be absent."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "rejection_reason"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "price_cents"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "price_cents"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

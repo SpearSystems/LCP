@@ -65,18 +65,18 @@ Public window waived by the maintainer's recorded decision; #205 stays open.
 
 ## Problem statement and evidence
 
-SPEC.md §9 "Agent attestation" (`SPEC.md:915-931`) states the requirement in
+SPEC.md §9 "Agent attestation" (`spec/01-transport.md:59-75`) states the requirement in
 three sentences that the shipping stack does not honor:
 
 > `provenance.agent.attestation` is a signed token proving the agent's
 > identity and authority. … The token is verifiable against a published key
 > (JWKS or pinned public key). Free-text attestations are non-conformant —
 > the token MUST be verifiable. This is a fraud-resistance requirement for
-> high-volume agent-submitted leads. (`SPEC.md:917-931`, condensed)
+> high-volume agent-submitted leads. (`spec/01-transport.md:61-75`, condensed)
 
 And SPEC.md §7 grades the tier on it: **L3 = "full + dedup fingerprints +
 capability discovery + published JSON Schemas + agent binding (attestation
-verification)"** (`SPEC.md:691-692`).
+verification)"** (`spec/04-errors.md:43-44`).
 
 **What ships.** `schemas/core.json:128-137` defines the agent block as three
 plain strings, required-presence only (`attestation` is `{"type": "string"}`,
@@ -130,19 +130,19 @@ signature segment the literal string `signature`, `iat`/`exp` string-typed,
 and the issuer claim named `issuer` instead of the JWT registered claim `iss`
 (`test-vectors/l3-advanced.json:53`). The v1.0 review log settled the
 *decision* ("`attestation` is free text → Defined as signed JWT with
-verifiable claims", `SPEC.md:1094`); what never landed is the *mechanism*:
+verifiable claims", `spec/01-transport.md:238`); what never landed is the *mechanism*:
 key distribution, claim vocabulary, verification timing, and failure mapping
 were left undefined (#192, "Why this is filed instead of fixed here").
 
 **Why the envelope's own HMAC is not the answer.** Transport authentication
-(`SPEC.md:799-830`) already signs the exact request bytes
+(`spec/05-capabilities.md:78-109`) already signs the exact request bytes
 (`<timestamp>\n<idempotency-key>\n<raw-request-body>`, HMAC-SHA256 under the
 per-pair secret) and LCP-012/LCP-002 already cover signature and identity
-failures (`SPEC.md:638-641`). That proves *which pair secret* produced *this
+failures (`spec/02-envelope.md:345-348`). That proves *which pair secret* produced *this
 request*. It cannot assert *which acting principal* — one publisher
 credential may front many agents, agents rotate, and §10's roles
-(`SPEC.md:973-978`) make "agent as transporter … requires attestation
-('acting for partner X')" (`SPEC.md:977-978`) a first-class binding the
+(`spec/01-transport.md:117-122`) make "agent as transporter … requires attestation
+('acting for partner X')" (`spec/01-transport.md:121-122`) a first-class binding the
 transport layer structurally cannot carry. The attestation is therefore an
 **assertion about the acting principal, signed by an authority the receiver
 can resolve** — not a second transport MAC. This distinction drives every
@@ -154,7 +154,7 @@ the failure-code mapping).
 grind lane proved the gap adversarially on the reference platform. External
 corroboration for the demand direction: SPEC §9 itself calls attestation
 "fraud-resistance … for high-volume agent-submitted leads"
-(`SPEC.md:930-931`) — the fraud class (forged agent provenance) is exactly
+(`spec/01-transport.md:74-75`) — the fraud class (forged agent provenance) is exactly
 what L3 exists to bind.
 
 ## Scope
@@ -169,7 +169,7 @@ what L3 exists to bind.
   size bound). **No new envelope field. No new message type. No new §5 code.
   No vertical change.**
 - **SPEC text:** §9 "Agent attestation" rewrite (exact normative sentences in
-  §5–§9 of "Proposed wire shape"); §5 scope sentences at `SPEC.md:638-641`;
+  §5–§9 of "Proposed wire shape"); §5 scope sentences at `spec/02-envelope.md:345-348`;
   §7/§8 one-sentence advertisement-honesty rule (§Proposed wire shape 9).
 - **Reference implementation:** an intake verification step in `ingest()`
   pinned after the auth/rate-limit block and the dedup early-return paths
@@ -217,7 +217,7 @@ This is why candidate trust model C (Alternatives) adds nothing.
 Compact JWS (RFC 7519 §7.1): `base64url(ASCII-header) "." base64url(ASCII-claims) "." base64url(signature)`, three non-empty segments,
 UTF-8/JSON payloads, standard base64url alphabet without padding (padded
 segments are decodable by parsers but MUST NOT be generated, mirroring the
-LEP-0002 canonical-generation discipline at `SPEC.md:832-845`). Precedence
+LEP-0002 canonical-generation discipline at `spec/05-capabilities.md:111-124`). Precedence
 is pinned: the §2 schema pattern excludes `=`, so a receiver rejects any
 padded token at the **schema layer** (`400 LCP-100`) before the verifier
 runs — "decodable by parsers" describes generator discipline and the base64
@@ -306,7 +306,7 @@ battery).
 
 ### 4. Key distribution — RECOMMENDED trust model (settles #192's open item)
 
-`SPEC.md:928-929` names "JWKS or pinned public key" but defines no surface.
+`spec/01-transport.md:72-73` names "JWKS or pinned public key" but defines no surface.
 The record settles on:
 
 **Canonical: issuer-published JWKS over HTTPS.** `iss` is an HTTPS issuer URL
@@ -317,11 +317,11 @@ Rules the implementation MUST honor:
 
 | Aspect | Normative rule |
 |---|---|
-| Resolution | Fetch over TLS 1.3 (§9 Transport, `SPEC.md:795-797`); MUST NOT fetch before the request is transport-authenticated (unauthenticated callers get LCP-012/LCP-002 first — no fetch amplification). Egress is guarded by the **paired controls exactly as shipped on the delivery path** (`router.py:1019-1028`) — the pre-resolution string check alone is NOT the guard: every JWKS fetch MUST (a) pass `validate_webhook_url` (`security.py:16`) tightened to **HTTPS-only** (the shipped class permits `http` under `allow_insecure_webhooks`; attestation resolution MUST NOT, in any mode) with no user-info in the URL (already enforced: "must not contain embedded credentials", `security.py:20-21`); (b) pass `validate_egress_host` (`security.py:33`) — the **resolve-aware** leg, **in every deployment mode**: the attestation fetch MUST NOT inherit the shipped class's `allow_insecure_webhooks` skip (`security.py:42-43` returns before `getaddrinfo`; `security.py:66-67` short-circuits the predicate block), so no insecure-webhook escape hatch applies to a JWKS fetch, `test_mode` sandbox deployments included (`config.py:86` — the flag is reachable only there; re-dossier R1): `getaddrinfo` the hostname and reject `is_private`/`is_loopback`/`is_link_local`/`is_multicast`/`is_reserved`/`is_unspecified` **post-resolution** (`security.py:44-54`, `66-74`), which is what kills the obfuscated-literal class the string check waves through (`https://2130706433`, `https://0x7f000001`, `https://127.1`, `https://localhost` all map to 127.0.0.1 at `getaddrinfo` and pass `validate_webhook_url` — executed, Revision battery); (c) `follow_redirects=False` — a 3xx from a policy-valid issuer is NOT followed (revalidation of a final URL is NOT an acceptable alternative at v1; the shipped delivery client is the precedent); and (d) `trust_env=False` — no `HTTP(S)_PROXY`/env interception of the fetch. These four are MUSTs on **every outbound fetch attempted on the verification path** — the JWKS dereference *by verifiers* included, not just "the JWKS fetch" as a service routine — including negative-cache retries (re-dossier R4: header bytes are attacker-chosen, so any egress an implementation might otherwise trigger from them, e.g. a library-side `x5u` dereference, inherits this guard; the §2 header-member rule forbids that dereference outright, so the paired controls guard the one path that legitimately exists). Residual DNS-rebinding TOCTOU (resolve at check ≠ resolve at connect) is named, not claimed closed: connection-pool reuse and re-resolve hardening are implementation-PR concerns; the no-redirect/no-proxy legs remove the two same-process escalation paths. Policy-invalid `iss` → rejection reason `issuer_policy` (a sender-fixable identity failure, §8). |
+| Resolution | Fetch over TLS 1.3 (§9 Transport, `spec/05-capabilities.md:74-76`); MUST NOT fetch before the request is transport-authenticated (unauthenticated callers get LCP-012/LCP-002 first — no fetch amplification). Egress is guarded by the **paired controls exactly as shipped on the delivery path** (`router.py:1019-1028`) — the pre-resolution string check alone is NOT the guard: every JWKS fetch MUST (a) pass `validate_webhook_url` (`security.py:16`) tightened to **HTTPS-only** (the shipped class permits `http` under `allow_insecure_webhooks`; attestation resolution MUST NOT, in any mode) with no user-info in the URL (already enforced: "must not contain embedded credentials", `security.py:20-21`); (b) pass `validate_egress_host` (`security.py:33`) — the **resolve-aware** leg, **in every deployment mode**: the attestation fetch MUST NOT inherit the shipped class's `allow_insecure_webhooks` skip (`security.py:42-43` returns before `getaddrinfo`; `security.py:66-67` short-circuits the predicate block), so no insecure-webhook escape hatch applies to a JWKS fetch, `test_mode` sandbox deployments included (`config.py:86` — the flag is reachable only there; re-dossier R1): `getaddrinfo` the hostname and reject `is_private`/`is_loopback`/`is_link_local`/`is_multicast`/`is_reserved`/`is_unspecified` **post-resolution** (`security.py:44-54`, `66-74`), which is what kills the obfuscated-literal class the string check waves through (`https://2130706433`, `https://0x7f000001`, `https://127.1`, `https://localhost` all map to 127.0.0.1 at `getaddrinfo` and pass `validate_webhook_url` — executed, Revision battery); (c) `follow_redirects=False` — a 3xx from a policy-valid issuer is NOT followed (revalidation of a final URL is NOT an acceptable alternative at v1; the shipped delivery client is the precedent); and (d) `trust_env=False` — no `HTTP(S)_PROXY`/env interception of the fetch. These four are MUSTs on **every outbound fetch attempted on the verification path** — the JWKS dereference *by verifiers* included, not just "the JWKS fetch" as a service routine — including negative-cache retries (re-dossier R4: header bytes are attacker-chosen, so any egress an implementation might otherwise trigger from them, e.g. a library-side `x5u` dereference, inherits this guard; the §2 header-member rule forbids that dereference outright, so the paired controls guard the one path that legitimately exists). Residual DNS-rebinding TOCTOU (resolve at check ≠ resolve at connect) is named, not claimed closed: connection-pool reuse and re-resolve hardening are implementation-PR concerns; the no-redirect/no-proxy legs remove the two same-process escalation paths. Policy-invalid `iss` → rejection reason `issuer_policy` (a sender-fixable identity failure, §8). |
 | Selection | `kid` (required, §2) selects the JWK; `kty`/`crv`/`alg` of the selected JWK MUST be consistent with the header `alg` (§3 allowlist). No key found for `kid` in a successfully fetched **valid** document → `key_unknown`. **Duplicate `kid` entries.** The `keys` array MAY be malformed — two JWKs carrying the same `kid` give first-wins and last-wins implementations *opposite* answers for the same token (determinism broken across conformant receivers; dossier F5). A norm is required; two conformant resolutions exist and this record refuses to silently pick: **(A)** a document containing two JWKs with the same `kid` is an **invalid document** → routed with the Bounds row: fetched-but-invalid → `LCP-002`/401 `key_unknown` — this also covers the `use`/`key_ops` confusion class (a `use:"enc"` key selected for verification is likewise an invalid-document case); **(B)** selection is **pinned to first-match** in document order and the receiver MUST log a `duplicate_kid` warning — deterministic, more forgiving of honest issuer mistakes, but keeps serving tokens under a document the issuer shipped broken. Both options carry the same named-shape gate (`plat: test_attestation_jwks_duplicate_kid_rejected` asserts A; under B it becomes `…_first_match_pinned`). **Marked for the maintainer at Accept** (design decision, not a text fix); the reference implementation and Revision battery validate **A** (the stricter, closed-vocabulary-consistent option). |
 | Bounds | JWKS document ≤ 16 KiB, ≤ 32 keys (format sanity, mirroring the LEP-0003 32-entry report bound); token ≤ 8192 bytes (§2 `maxLength`). **Outcome attribution (revision F4, §8 blame rule):** the bounds above are *format sanity*, not availability — a successfully fetched document that is oversized, key-count-exceeding, non-JSON, or otherwise invalid is a **sender/issuer-fixable** state and MUST fail the token: `LCP-002`/401 `key_unknown` (closed vocabulary preserved; a dedicated `jwks_oversize`-style reason was considered and rejected as vocabulary bloat for a state already named). `LCP-500`/500 `key_unavailable` is reserved for **availability** failure only: DNS/connect error, timeout, or a **5xx** response from the issuer (the server itself failed). A **4xx** (e.g. `404` on the `/.well-known/jwks.json` path) is the issuer's *configuration* — routed as fetched-but-invalid: `key_unknown`/401. An issuer serving garbage or pointing at a missing path must not convert its own fixable state into receiver-class 500s on every verified sender's request. |
 | Cache | Cache per `(iss, kid)`; respect HTTP `cache-control`/`max-age`, hard cap 24 h; negative cache for fetch failures ≤ 30 s. Fetch timeout ≤ 2 s, and MUST NOT block the intake worker beyond it (bounded worker, else `key_unavailable`). |
-| Rotation | Routine rotation = new `kid` alongside the old in the same JWKS; deployments MAY keep the previous key for a bounded window (mirrors §9's "During key rotation, a receiver MAY accept a previously active secret", `SPEC.md:829-830`). No protocol change needed. |
+| Rotation | Routine rotation = new `kid` alongside the old in the same JWKS; deployments MAY keep the previous key for a bounded window (mirrors §9's "During key rotation, a receiver MAY accept a previously active secret", `spec/05-capabilities.md:108-109`). No protocol change needed. |
 | Compromise | Issuer removes the `kid`; propagation = cache TTL. Blast radius is per-issuer (each issuer publishes its own keys) — never global. |
 
 **Fallback: pinned public key (deployment configuration).** A closed
@@ -334,7 +334,7 @@ protocol surface is Alternatives B (rejected as the primary, with reasons).
 Why issuer-anchored, decided against the candidates (full trade-off table in
 Alternatives considered): §9's `issuer` claim ("Authority that issued the
 token") only *means* something if the receiver can resolve it;
-agent-as-consumer/agent-as-source topologies (§10, `SPEC.md:973-981`) put a
+agent-as-consumer/agent-as-source topologies (§10, `spec/01-transport.md:117-125`) put a
 single agent authority across many publishers, which per-pair registration
 cannot model without inventing a registry; and the reference platform ships
 zero discovery surface today, so both models pay bootstrap cost — issuer
@@ -347,7 +347,7 @@ Runs **once per newly accepted lead**, at a **pinned intake slot**: after
 LCP-011 at `router.py:295`) and after the idempotency dedup lookup
 (`router.py:297`), but **before** `insert_lead` (`router.py:359`) — the same
 ordering principle as §9's "Receivers MUST reject requests outside the
-acceptable timestamp window before processing PII" (`SPEC.md:826-827`): a
+acceptable timestamp window before processing PII" (`spec/05-capabilities.md:105-106`): a
 failed verification MUST NOT persist PII. Placement relative to the two
 early-return paths in the dedup block is normative: the LCP-005 mismatch
 409 (`router.py:304-308`) and the DUPLICATE ack (`router.py:318`) both
@@ -448,14 +448,14 @@ Deferred.
 
 | Claim | Required | Type | Rule |
 |---|---|---|---|
-| `iss` | MUST | string | HTTPS issuer URL (§4). **Replaces** the v1.0 table's non-JWT `issuer` private claim — the current §9 table (`SPEC.md:920-926`) is corrected at implementation; existing tokens using `issuer` are already unverifiable, so this is a clarification, not a break. |
+| `iss` | MUST | string | HTTPS issuer URL (§4). **Replaces** the v1.0 table's non-JWT `issuer` private claim — the current §9 table (`spec/01-transport.md:64-70`) is corrected at implementation; existing tokens using `issuer` are already unverifiable, so this is a clarification, not a break. |
 | `aud` | MUST | string | Equals the envelope `lcp.message.receiver_id`; the receiver MUST additionally confirm that value is its own platform identity — already enforced today (`router.py:277-280`, receiver mismatch → `LCP-002`). Stops cross-receiver replay (§7). |
-| `agent_id` | MUST | string | Byte-equal to `provenance.agent.agent_id` (extends `SPEC.md:922` "matches" into a normative MUST). |
+| `agent_id` | MUST | string | Byte-equal to `provenance.agent.agent_id` (extends `spec/01-transport.md:66` "matches" into a normative MUST). |
 | `acting_for` | MUST | string | Equal to the authenticated `sender_id`, or carried by its `act_for:` scope (§5 step 12). |
 | `iat` | MUST | integer (NumericDate, RFC 7519 2) | Whole seconds. NOT enforced at intake in v1 (freshness = issuer policy; see Deferred). String timestamps are format-invalid — rejected at §5 step 4, decode-time, before any signature work; L3-001's string `iat`/`exp` is fixed at implementation (V8). |
 | `exp` | MUST | integer (NumericDate) | Presence/type enforced at §5 step 4 (string/float/zero/absent → `format`); expiry enforced per §5 step 9. |
 | `nbf`, `jti` | MAY | — | `nbf` SHOULD be honored if present (same skew rule); `jti` is recorded but MUST NOT be required or single-use-cached in v1 (§7 rationale; Deferred trigger). |
-| others | MAY | — | Ignored (forward-compatibility mirrors §6 "unknown optional fields ignored", `SPEC.md:660-662` — claims are open by design inside a verified signature). |
+| others | MAY | — | Ignored (forward-compatibility mirrors §6 "unknown optional fields ignored", `spec/04-errors.md:12-14` — claims are open by design inside a verified signature). |
 
 Unknown-to-this-spec *required* claims are not a concept: absence of a MUST
 claim above, or a type violation of one, is a decode-time **`format`**
@@ -475,8 +475,8 @@ reporting different `details.reason` for the same bytes).
 | one verification | per lead acceptance | exactly once per lead, at the first acceptance attempt, at the pinned §5 slot; a retry of an already-accepted envelope returns the DUPLICATE ack **without re-verification** (the original accept verified the bytes that minted the row — §5 placement; `plat: test_attestation_duplicate_ack_never_refetches`); a retry that did not previously reach acceptance verifies normally (deterministic result, cached keys). |
 | one failure | exactly one reason | first-failing step of §5 wins; no multi-reason payloads. |
 | token validity | seconds | `exp` − `iat`, issuer-chosen; the protocol bounds only the *acceptance* window (§5 step 9's skew ≤ 30 s). The RECOMMENDED maximum lifetime is 900 s (advisory; normativizing it is Deferred with data). |
-| replay window (transport) | 300 s default | unchanged §9 HMAC window (`SPEC.md:828`, `config.py:33`); the attestation rules are independent of it. |
-| agent-evaluation window | 30 s default | §9 agent-as-consumer (`SPEC.md:960-967`), pinned "exactly 30" by the #195 lane (`implementations/reference-platform/tests/test_gap_security.py:491-517`; default `ping_timeout_seconds` 30, `messages.py:140`). Chosen as the **ceiling for clock-skew allowance** so no token accepted at intake can have been expired longer than one transaction window. |
+| replay window (transport) | 300 s default | unchanged §9 HMAC window (`spec/05-capabilities.md:107`, `config.py:33`); the attestation rules are independent of it. |
+| agent-evaluation window | 30 s default | §9 agent-as-consumer (`spec/01-transport.md:104-111`), pinned "exactly 30" by the #195 lane (`implementations/reference-platform/tests/test_gap_security.py:491-517`; default `ping_timeout_seconds` 30, `messages.py:140`). Chosen as the **ceiling for clock-skew allowance** so no token accepted at intake can have been expired longer than one transaction window. |
 
 **Clock rule.** `exp` is compared against the **receiver's** wall clock in
 NumericDate seconds. Expiry boundary (revision F7): the check fails
@@ -535,7 +535,7 @@ algorithms are asymmetric). No new state required.
 
 Why LCP-002 for verification failures rather than new policy invention:
 §5's taxonomy sentence names the axes — "these are different failure modes
-(**identity** vs. replay protection)" (`SPEC.md:639-641`);
+(**identity** vs. replay protection)" (`spec/02-envelope.md:346-348`);
 `docs/err-auth-triage.md` §3 ruled that credential failures on the *identity*
 axis belong to LCP-002; the platform already stamps intake **binding**
 failures LCP-002/401 — receiver-not-this-platform (`router.py:277-280`) and
@@ -543,7 +543,7 @@ authenticated-sender-mismatch (`router.py:287-290`) — and `LCP-002` is
 `AuthenticationError`'s default code (`auth.py:28`). An unverifiable
 attestation is precisely a failing assertion of *who is acting*, on a
 message whose transport identity is fine — same axis, existing code,
-`details.reason` disambiguates. The §5 sentence at `SPEC.md:638` ("covers an
+`details.reason` disambiguates. The §5 sentence at `spec/02-envelope.md:345` ("covers an
 unrecognized `sender_id`") is extended at implementation by one clause:
 "…or a recognized sender whose agent attestation fails §9 verification."
 LCP-500 for `key_unavailable`: the receiver cannot complete verification
@@ -556,7 +556,7 @@ answering 4xx join the sender-side class as `key_unknown`/401, while
 `key_unavailable`/500 keeps exactly the availability set (transport error,
 timeout, issuer 5xx — §4 Bounds row). `key_unavailable` is retryable and
 idempotency
-(`SPEC.md:825-826` header-key equality + §4 ack semantics) keeps retries
+(`spec/05-capabilities.md:104-105` header-key equality + §4 ack semantics) keeps retries
 safe; deployments MUST NOT silently fail-open to 200 in enforce mode
 (observe-mode logging is the *only* sanctioned soft path, Rollout Phase 2).
 
@@ -569,7 +569,7 @@ Normative addition for §7/§8 (and the reason Phase 0 exists):
 > implements every other L3 leg except attestation verification advertises
 > the highest tier it fully satisfies.
 
-`SPEC.md:691-692` already makes this true *by definition* — L3 *includes*
+`spec/04-errors.md:43-44` already makes this true *by definition* — L3 *includes*
 attestation verification — the addition only names the advertisement
 consequence. For the reference platform, which today ships dedup
 fingerprints, capability discovery, and published schemas but not
@@ -857,7 +857,7 @@ Today: `200 RECEIVED` (#192; re-executed at `974b9ca` — Verification runs
 §1). Under this proposal: rejected at the **schema** layer —
 `'trust me, I am a real agent (free text)' does not match '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' at provenance/agent/attestation`
 → `400 LCP-100` (executed under the overlay — Verification runs §3). §9
-already declares free text non-conformant (`SPEC.md:929-930`); the pattern
+already declares free text non-conformant (`spec/01-transport.md:73-74`); the pattern
 only makes the schema see what the spec always said.
 
 ### Invalid example B — forged HS256 JWT (the #192 row-2 probe, verbatim)
@@ -977,7 +977,7 @@ by named tests (V9/V10, plus V18/V19 post-revision).
 ## Privacy, security, and universal-core audit
 
 **PII boundary.** `provenance.agent.*` sits in the provenance object that §3
-defines as non-PII (`SPEC.md:181`). The proposal adds no PII and adds two
+defines as non-PII (`spec/03-payloads.md:105`). The proposal adds no PII and adds two
 MUST-NOTs: the claims set MUST NOT embed consumer identifiers or contact data
 (anything verifiable cross-pair via `aud`/`iss` is a correlation vector), and
 logs/telemetry MUST NOT retain full attestation values (a token is replayable
@@ -999,7 +999,7 @@ from the read side ("never return raw envelope bodies"), and the joint
 obligation is asserted in one place: `plat:
 test_history_projection_never_emits_attestation_bytes` (V23). The lead
 store already persists the block under §3's storage rules,
-`SPEC.md:938-945` PII posture applies unchanged since the field is not PII.
+`spec/01-transport.md:82-89` PII posture applies unchanged since the field is not PII.
 
 **Abuse cases engaged:**
 
@@ -1031,13 +1031,13 @@ store already persists the block under §3's storage rules,
   short recommended lifetimes and `aud` binding, with `jti` single-use
   Deferred (its trigger names the day tokens get forwarded).
 
-**Universal-core audit (§12, `SPEC.md:1021-1047`).** No new core field —
+**Universal-core audit (§12, `spec/01-transport.md:165-191`).** No new core field —
 tightening the form of a shipped required string is a validation change, not
 a namespace addition; `tools/check_reserved_fields.py` and
 `tools/check_universal_core.py` gates listed under Verification runs pass
 unchanged on this record (docs-only). The verification machinery lives at
 platform/deployment level; agents stay out of core (§10 "never coupled into
-the core", `SPEC.md:968-971`). Nothing executable crosses the wire (no
+the core", `spec/01-transport.md:112-115`). Nothing executable crosses the wire (no
 matching rules — decision rule honored); `act_for:` is a scope *string* in
 the existing credential registry, not an expression.
 
@@ -1055,7 +1055,7 @@ models.
 
 - **Semver:** MINOR (v1.1.0) — verification semantics + error-mapping text +
   one schema tightening; nothing additive is required of conformant senders
-  (they already send verifiable tokens, per §9's MUST at `SPEC.md:929-930`)
+  (they already send verifiable tokens, per §9's MUST at `spec/01-transport.md:73-74`)
   and nothing is removed. AGENTS.md rule (protocol-taxonomy/security changes
   bump MINOR/MAJOR) satisfied; `lcp_versions` advertisement already carries
   `1.1.0` on the reference platform (`validation.py:23`
@@ -1066,12 +1066,12 @@ models.
   `LCP-002` (identity) or `LCP-500` (key availability) per the §8 mapping.
   Those submissions are **already non-conformant** under
   §9's published MUST ("Free-text attestations are non-conformant",
-  `SPEC.md:929-930`); the change enforces published behavior, which is the
+  `spec/01-transport.md:73-74`); the change enforces published behavior, which is the
   LEP.md boundary between "a bug that restores the published behavior" and
   LEP material — it stays LEP material because the *mechanism* (codes, key
   distribution, timing) never existed, which #192 itself ruled.
 - **Closed-object rules untouched:** no field is added to any closed object,
-  so the §6 version-negotiation hazard (`SPEC.md:662-666`) never arises;
+  so the §6 version-negotiation hazard (`spec/04-errors.md:14-18`) never arises;
   v1.0 senders hitting v1.1 receivers send the same bytes (their junk simply
   fails, per the line above). v1.1 senders hitting v1.0 receivers: unaffected
   (v1.0 accepts any string — a v1.0 receiver under-verifies, exactly as today,
@@ -1087,7 +1087,7 @@ models.
 - **Deprecation:** nothing deprecated; the `issuer` claim name in the §9
   table is a *documentation correction* (no shipped producer uses JWT
   libraries that emit it verifiably — it is not even a registered claim; the
-  table's own recommendation posture (`SPEC.md:918` "recommended format")
+  table's own recommendation posture (`spec/01-transport.md:62` "recommended format")
   gives no compatibility floor to preserve).
 - **No silent L3 advertisement during development:** Phase 0 (Rollout) makes
   the advertisement honest *before* the MINOR lands — flagged as the one
@@ -1098,11 +1098,11 @@ models.
 | Surface | Impact at implementation |
 |---|---|
 | `schemas/core.json` | §2 pattern + `maxLength` on `attestation` (`core.json:133`); regenerated bundles + manifests per traceability gate. |
-| SPEC text | §9 rewrite (claim table incl. `iss`/`aud`, allowlist, procedure, timing); §5 identity-axis clause (`SPEC.md:638-641`); §7/§8 advertisement-honesty sentence (§9 of this record). |
+| SPEC text | §9 rewrite (claim table incl. `iss`/`aud`, allowlist, procedure, timing); §5 identity-axis clause (`spec/02-envelope.md:345-348`); §7/§8 advertisement-honesty sentence (§9 of this record). |
 | Reference platform | new `attestation.py` verification module + resolver; `ingest()` step pinned **after** the dedup early-return paths (`router.py:297`: lookup, `router.py:304-308`: LCP-005 409, `router.py:318`: DUPLICATE ack) and **before** `insert_lead` (`router.py:359`) — §5 placement (revision F6a); paired egress controls on every JWKS fetch (`router.py:1019-1028` pattern, §4 Resolution); mode config (`observe`/`enforce`, default `enforce` at ship); Phase 0 advertisement line (`router.py:1769`). |
 | OpenAPI | capabilities shape unchanged (`api/lcp-openapi.yaml:839` already documents `conformance_level`); intake error examples gain the `details.reason` variants — documentation-level. |
 | MCP | **zero logic** — HTTP client path inherits enforcement (`client.py:67`); `test_gap_mcp_surface.py` byte-for-byte assertions still pass (the adapter never normalizes); its stub-platform fixture's `"L3"` (line 128) is test-double data, not a platform claim, but the V12 pin ensures a real-platform advertisement change lands with matching docs. |
-| SDKs (all languages, per implementations/sdk/) | signer/verify helper for the §2/§6 form (builders already accept an arbitrary string — unchanged); canonical NumericDate emission mirrors LEP-0002's whole-second discipline (`SPEC.md:832-845`); no transport change. |
+| SDKs (all languages, per implementations/sdk/) | signer/verify helper for the §2/§6 form (builders already accept an arbitrary string — unchanged); canonical NumericDate emission mirrors LEP-0002's whole-second discipline (`spec/05-capabilities.md:111-124`); no transport change. |
 | Vectors + runner | `test-vectors/attestation/fixture-jwks.json` (the record's pinned Ed25519 JWK + seed derivation documented, **plus the ES256 fixture keypair/JWK per §3 encoding note**, `kid` `attest-es256-1`); positive `lcp-pos-attestation-verified-001` (EdDSA) and `lcp-pos-attestation-es256-001` (canonical P1363) and negatives `-forged-`, `-expired-`, `-audience-`, `-claims-mismatch-`, `-free-text-`, `-alg-none-`, `-string-exp-` (V16), `-padded-` (V21, schema-tier), `-es256-der-` (platform-tier; schema-tier negatives via existing expect-fail form with `error_code` fields, precedent `l1-envelope.json:93`); L3-001 token re-issued. |
 | Coverage matrix | `SEC-09` flips `gap → green` only with the verification tests shipping (V1–V10 and revision gates V13–V24); `CNF-03` note updated to name attestation verification tests, not shape-only (`docs/SPEC-COVERAGE.md:165`). |
 
@@ -1153,7 +1153,7 @@ Trust models (candidate set from #192's "key distribution undefined"):
 | **B. Pre-registered agent public keys per sender (sender-scoped registry)** | Rejected as canonical; kept as **deployment pin fallback** (§4) | Would need a new registration surface (key upload/API/schema — none ships today; #192's own grep evidence), cannot express third-party agent authorities shared across publishers, and makes `iss` decorative — spec text already anchors trust to the issuer. Deterministic, no network fetch, and the right shape for closed bilateral pairs, hence the config-pin form. |
 | **C. Per-pair symmetric attestation (reuse pair secrets)** | **Rejected** | Indistinguishable from the envelope HMAC (which already signs the *whole request* under that same secret, §1): every verifier can mint; zero additional principal binding; MAC allowlist ban (§3) makes forgery detection trivial instead. Adds a signature nobody can repudiate. |
 | **D. Trusted third-party / PKI / verifiable credentials** | Out of scope; Deferred with trigger | No PKI exists in this ecosystem; chain validation dwarfs the L3 need today. |
-| **E. Keep advertising L3 while verification is absent** | **Rejected** | §7 says L3 *includes* attestation verification (`SPEC.md:691-692`); the advertisement is a conformance claim, currently false. #192's alternative ("normative spec note that verification is a deployment-layer concern") is variant F below. |
+| **E. Keep advertising L3 while verification is absent** | **Rejected** | §7 says L3 *includes* attestation verification (`spec/04-errors.md:43-44`); the advertisement is a conformance claim, currently false. #192's alternative ("normative spec note that verification is a deployment-layer concern") is variant F below. |
 | **F. Dilute §9: "verification is a deployment-layer concern" spec note** | Rejected | Converts the protocol's only fraud-resistance requirement for agent traffic into an option and redefines §7 by footnote — decision-rule territory ("changes that make a v1 receiver fail…" is not the axis; this silently lowers the tier semantics). The *deployment* already chooses keys per §9's phone-hash precedent of keeping distribution bilateral — *verification* is what makes L3 the L3. |
 | **G. Mint a new §5 code (e.g. LCP-014 `ATTESTATION_INVALID`)** | Rejected | §5's identity axis covers it with one clarifying clause, on the `err-auth-triage` precedent and shipped LCP-002 intake-binding precedents (`router.py:277-293`); the taxonomy is closed and its bloat is a compatibility cost paid for nothing. |
 | **H. Behavior unchanged; fix only the coverage matrix** (mark SEC-09 exempt) | Rejected | Records the gap as intended behavior — institutionalizes the L3 misadvertisement #192 filed. |
@@ -1180,7 +1180,7 @@ the one decision in this record adjacent to wire-visible output that the
 maintainer must ratify early).** One-line reference-implementation change:
 `conformance_level: "L3"` → `"L2"` at `router.py:1769`, plus V12's pin test
 and a `CNF-03`/`SEC-09` note update. It **restores published behavior**
-(§7 already excludes non-verifying endpoints from L3; `SPEC.md:691-692`) —
+(§7 already excludes non-verifying endpoints from L3; `spec/04-errors.md:43-44`) —
 the LEP.md rule that bug PRs may bypass the LEP path applies to *this step
 alone*, and the record flags it explicitly because the maintainer, not this
 lane, makes that boundary call. No adopter can be harmed by a *more* honest
