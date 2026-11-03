@@ -621,7 +621,7 @@ top-level conditional — `if properties.exclusivity == "exclusive"`
 negative vector `lcp-neg-exclusive-multislot-001` lands in
 `test-vectors/sdk/validation-corpus.json` plus
 `test-vectors/sdk/negative/` (#153 **T7**). Reality pointer: #166
-(open) ships exactly this — the conditional as
+(merged) ships exactly this — the conditional as
 `schemas/ping.json`'s top-level `allOf`, and the vector in
 `test-vectors/sdk/negative/slot-fields.json` (with accept control) plus
 the corpus. With that conditional the
