@@ -655,7 +655,11 @@ components:
         event:
           type: string
           description: 'Open enumeration - known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED,
-            ARCHIVED, CONTACTED (v1.1, LEP-0003 §4: slot holder attempted contact; details SHOULD carry contacted_hashes (per-pair 64-hex), contacted_at, via)'
+            ARCHIVED, CONTACTED (v1.1, LEP-0003 §4: slot holder attempted contact; details SHOULD carry contacted_hashes (per-pair 64-hex), contacted_at, via),
+            FINAL_PRICING (v1.1, LEP-0006 Track A: publisher-reported sale outcome of a ping, external or in-auction; details SHOULD
+            carry ping_id, sale_scope, winning_price_cents (integer minor units), currency, duration_seconds, sold_at. Settlement-neutral:
+            never a payable or lifecycle signal). Event details MUST NOT carry consumer PII - contact values travel only as per-pair
+            keyed digests; plaintext contact values are ingest rejections (LCP-100).'
         timestamp:
           type: string
           format: date-time

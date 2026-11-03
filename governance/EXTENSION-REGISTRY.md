@@ -54,7 +54,7 @@ No editorial veto. No fees. No mandatory review period.
 |---|---|---|---|
 | `lcp.platform.requirements` | LCP reference platform | Versioned, allowlisted buyer requirement predicates evaluated before routing; no executable expressions. | v1.0 |
 | `lcp.platform.service_area` | LCP reference platform | Versioned country, region, and exact-postal service-area allowlists for deployment-scoped offer matching. | v1.0 |
-| `lcp.marketplace.final_pricing` | LCP reference platform | Proposed-on-acceptance (LEP-0006 Track A): deployment-specific additions inside `FINAL_PRICING` event `details` (publisher-attested winning price/duration for a ping, incl. external sales). Not live until LEP-0006 Track A is accepted. | proposed (LEP-0006) |
+| `lcp.marketplace.final_pricing` | LCP reference platform | Deployment-specific additions inside `FINAL_PRICING` event `details` (publisher-attested winning price/duration for a ping, incl. external sales). Live in the reference platform (LEP-0006 Track A). | v1.1 |
 | `lcp.form.questions` | LCP reference platform | Proposed-on-acceptance (LEP-0006 Track B): registered `form.questions` shape — bounded array of verbatim intake question/answer pairs carried in `lead`/`post` `extensions`; post-only, never ping_safe, scrub rules apply. Not live until LEP-0006 Track B is accepted. | proposed (LEP-0006) |
 | `lcp.outbound.call_request` | LCP reference platform | Proposed-on-acceptance (LEP-0007): namespaced `event` value (open enum) requesting the platform place an outbound call or warm transfer on a delivered lead, keyed by `lead_id` only; decline rides the open `rejection_reason` value `ignored`. Not live until LEP-0007 is accepted. | proposed (LEP-0007) |
 
