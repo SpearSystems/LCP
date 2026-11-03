@@ -70,7 +70,16 @@ npm, crates.io, or RubyGems versions.
 
 3. Run the complete local compatibility matrix where the language toolchains
    are available.
-4. Push a tag whose name is exactly `v<SDK_VERSION>`:
+4. Push the release tag and, for the nested Go module, its submodule tag
+   (a module in a subdirectory is versioned by `implementations/sdk/go/vX.Y.Z`;
+   a root tag alone only yields `v0.0.0-…` pseudo-versions):
+
+   ```bash
+   git tag -a "implementations/sdk/go/v${SDK_VERSION}" -m "LCP Go SDK v${SDK_VERSION}"
+   git push origin "refs/tags/implementations/sdk/go/v${SDK_VERSION}"
+   ```
+
+5. Push a tag whose name is exactly `v<SDK_VERSION>`:
 
    ```bash
    git tag -a "v${SDK_VERSION}" -m "LCP ${SDK_VERSION}"
@@ -81,11 +90,11 @@ npm, crates.io, or RubyGems versions.
    workflow also signs the release record with a GitHub OIDC-backed Sigstore
    identity.
 
-5. Confirm that every tag workflow is green. Approve the protected package
+6. Confirm that every tag workflow is green. Approve the protected package
    publication jobs and final release-record job in the `release` environment.
    The workflow then publishes `release-manifest.json`, the release notes,
    source SBOM, and their Sigstore bundles as GitHub release assets.
-6. Record the released image digest and registry package URLs in the release
+7. Record the released image digest and registry package URLs in the release
    ticket or deployment record. Do not deploy a mutable container tag.
 
 Trusted registry configuration is an operator/maintainer prerequisite. Configure
@@ -196,7 +205,7 @@ release workflow runs on its own evidence before uploading.
 | Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | Central Portal protected credentials and DNS-verified `spear.systems` namespace |
 | crates.io | `lcp-sdk` | crates.io OIDC trusted login; the manually published bootstrap is not the v1 release |
 | RubyGems | `lcp-sdk` | Active RubyGems OIDC trusted publisher, activated by v1.0.0 |
-| Packagist | `spearsystems/lcp-sdk` | **Not registered** — the package is absent from packagist.org, so tag mirroring does not occur. Install from the signed tag as a Composer VCS repository until an operator submits the package. |
+| Packagist | `spearsystems/lcp-sdk` | `SpearSystems/lcp-sdk-php` mirrors each LCP tag (Packagist needs `composer.json` at the root); register that repository once at packagist.org. Until it is registered, install the mirror as a Composer VCS repository. |
 | Go module proxy | `github.com/SpearSystems/LCP/implementations/sdk/go` | Signed tag indexing |
 | Swift Package Manager | `https://github.com/SpearSystems/LCP.git` | Signed repository tag |
 

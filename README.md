@@ -428,7 +428,7 @@ SPEC.md          ── Canonical protocol specification
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
-- [v1.1.1 release](https://github.com/SpearSystems/LCP/releases/tag/v1.1.1) ([record](docs/RELEASE-TICKET-1.1.0.md))
+- [v1.1.1 release](https://github.com/SpearSystems/LCP/releases/tag/v1.1.1) ([record](docs/RELEASE-TICKET-1.1.1.md)) ([record](docs/RELEASE-TICKET-1.1.0.md))
 - [v1.0.2 release record](docs/RELEASE-TICKET-1.0.2.md)
 - [v1.0.1 release record](docs/RELEASE-TICKET-1.0.1.md)
 - [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
