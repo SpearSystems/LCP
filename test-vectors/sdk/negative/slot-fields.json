@@ -477,7 +477,9 @@
       },
       "sdk_exercisable": true,
       "expect": {
-        "outcome": "accept"
+        "outcome": "accept",
+        "error_code": null,
+        "error_name": null
       }
     }
   ]
