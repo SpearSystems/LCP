@@ -159,7 +159,7 @@ They demonstrate:
 The example intentionally does not include a public Ingress, cloud load
 balancer, managed-Postgres resource, object-storage bucket, KMS key, or ClamAV
 service. For production attachments, configure the S3-compatible adapter and
-private scanner described in [MVA and attachments](MVA-ATTACHMENTS.md), then
+private scanner described in [secure attachments](ATTACHMENTS.md), then
 bind the pod identity to only the bucket prefix and KMS key it needs. Add
 those resources according to the chosen cloud, network, residency, and
 organization policies. Before applying a production image, follow the

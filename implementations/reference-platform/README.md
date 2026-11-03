@@ -56,7 +56,7 @@ for the Postgres/WSGI/object-storage deployment profile. Configure
 `LCP_ALLOWED_ATTACHMENT_CONTENT_TYPES` for the reference file backend. For
 multi-node production, use `LCP_ATTACHMENT_BACKEND=s3` with an SSE-KMS key,
 explicit residency, and a private ClamAV service; see
-[the attachment deployment guide](../../docs/MVA-ATTACHMENTS.md).
+[the attachment deployment guide](../../docs/ATTACHMENTS.md).
 
 ## Validate a real Postgres deployment
 

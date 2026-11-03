@@ -151,7 +151,7 @@ TikTok Lead Gen captures leads in TikTok's UI. Map to LCP `lead`:
    OTP variation, and audit behavior.
 7. **Calls and evidence have dedicated paths.** See
    [calls and telephony](CALLS-AND-TELEPHONY.md) and
-   [MVA and attachments](MVA-ATTACHMENTS.md) for real-time transfer boundaries
+   [secure attachments](ATTACHMENTS.md) for real-time transfer boundaries
    and secure out-of-band files.
 
 ---

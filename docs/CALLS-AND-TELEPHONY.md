@@ -2,7 +2,7 @@
 
 > **Integration page · Page 2 of 6**
 >
-> **Previous:** [Publisher mapping](PUBLISHER-MAPPING.md) · **Next:** [MVA and attachments](MVA-ATTACHMENTS.md)
+> **Previous:** [Publisher mapping](PUBLISHER-MAPPING.md) · **Next:** [Secure attachments](ATTACHMENTS.md)
 
 LCP carries the interoperable call record and commercial lifecycle. It does
 not replace a carrier, telephony provider, dialler, or live call-control API.
@@ -49,11 +49,11 @@ An event payload should identify the offer without embedding consumer data:
 
 ```json
 {
-  "lead_id": "mva-call-001",
+  "lead_id": "call-001",
   "event": "CALL_OUTCOME",
   "timestamp": "2026-08-15T10:05:00Z",
   "details": {
-    "offer_id": "buyer-mva-call",
+    "offer_id": "buyer-call-outcome",
     "call_status": "answered",
     "total_seconds": 65,
     "disposition": "qualified_lead",
@@ -74,7 +74,7 @@ A call offer can declare:
 ```json
 {
   "routing_mode": "auction",
-  "vertical": "mva",
+  "vertical": "home_services",
   "channels": ["call"],
   "call_routing_mode": "realtime_transfer",
   "connect_timeout_seconds": 5,
@@ -108,7 +108,7 @@ A call `post` carries:
 - attachment metadata for any authorized documents.
 
 Binary recordings and documents are never embedded in JSON. Use the
-[attachment flow](MVA-ATTACHMENTS.md) and send only authenticated metadata in
+[attachment flow](ATTACHMENTS.md) and send only authenticated metadata in
 the post.
 
 ## Security and compliance
@@ -123,4 +123,4 @@ the post.
 - Preserve the event and call-record audit trail without logging raw recordings
   or consumer PII.
 
-**Previous:** [Publisher mapping and normalization](PUBLISHER-MAPPING.md) · **Next:** [MVA and attachments](MVA-ATTACHMENTS.md)
+**Previous:** [Publisher mapping and normalization](PUBLISHER-MAPPING.md) · **Next:** [Secure attachments](ATTACHMENTS.md)
