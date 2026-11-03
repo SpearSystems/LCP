@@ -2,14 +2,16 @@
 
 > **Release page · Page 3 of 6**
 
-> **Current release:** `v1.1.0` was published on 2026-11-03 from tag
-> `v1.1.0`, resolving to commit
-> `68a22b5f7f36ea6321a21428267fbc5ab8bdf92c`. The GitHub release and its signed
-> evidence assets are available at
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.0>, with the release
-> record at [RELEASE-TICKET-1.1.0.md](RELEASE-TICKET-1.1.0.md).
+> **Current release:** `v1.1.1` was published on 2026-11-04 from tag
+> `v1.1.1`. The GitHub release and its signed evidence assets are available at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>.
 >
-> **Previous release:** `v1.0.2` (2026-08-18), commit
+> **Previous release:** `v1.1.0` (2026-11-03), commit
+> `68a22b5f7f36ea6321a21428267fbc5ab8bdf92c` —
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.0>, record at
+> [RELEASE-TICKET-1.1.0.md](RELEASE-TICKET-1.1.0.md).
+>
+> **Earlier release:** `v1.0.2` (2026-08-18), commit
 > `7ea57f1aabd0ac583e40541360119468779940c7` —
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.0.2>.
 >

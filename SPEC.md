@@ -1096,6 +1096,16 @@ auto-transitions to `EXPIRED` and may be re-offered to the next buyer
 in the routing order. The 30-second timeout is the default; endpoints
 MAY advertise a different timeout in their capability response.
 
+**What "respond" means (HTTP binding, normative).** The window runs from the
+delivery of a `post` to the receiver's acknowledgement of that delivery. A post
+that is not acknowledged within the window MUST transition the lead to
+`EXPIRED`; a post that was acknowledged is not expired by this window, because
+the acknowledgement is what establishes the delivery (and, where the offer's
+payable rules say so, payability). Re-offer after expiry is **MAY**: when a
+platform re-offers, it MUST respect the §3 slot budget, since the expired copy
+already consumed an award. Endpoints MUST advertise the window they enforce in
+the §8 capability response.
+
 ## 10. Agent binding
 
 Agents are first-class senders via a binding layer, never coupled into

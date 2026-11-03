@@ -2297,6 +2297,28 @@ class Store:
                 (lead_id,),
             ).fetchall()
 
+    def list_unacknowledged_post_deliveries(
+        self, created_before: str
+    ) -> list[sqlite3.Row]:
+        """Posts still awaiting their first acknowledgement (SPEC §9).
+
+        Only deliveries the receiver has never acknowledged are returned: a
+        delivered (2xx) post is a responded post, and only it can be payable.
+        """
+        with self._lock:
+            return self._connection.execute(
+                """
+                SELECT d.* FROM deliveries d
+                JOIN leads l ON l.lead_id = d.lead_id
+                WHERE d.kind = 'post'
+                  AND d.status IN ('PENDING', 'RETRY')
+                  AND d.created_at <= ?
+                  AND l.status = 'POSTED'
+                ORDER BY d.created_at, d.delivery_id
+                """,
+                (created_before,),
+            ).fetchall()
+
     # ─── Delivery queue ────────────────────────────────────────────────────
 
     def has_prior_post_delivery(self, lead_id: str, buyer_id: str) -> bool:
