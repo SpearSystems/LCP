@@ -3,7 +3,7 @@
 - **Title:** Outbound call-center outreach: registered `{org}.outbound.call_request` event-value extension
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — no implementation authorized; registry row lands as *proposed-on-acceptance*
+- **Status:** **Deferred** — deferred 2026-11-03 (trigger-unmet); number and record permanent
 - **Target version:** v1.1.0 (additive MINOR; **zero schema change** — the entire surface rides open enumerations and open objects already governed by SPEC.md §6)
 - **Discussion:** [#186](https://github.com/SpearSystems/LCP/issues/186)
   (`[LEP] Outbound call-center outreach: registered {org}.outbound.call_request extension`)
@@ -11,6 +11,21 @@
   call-center outreach" (low priority; finish-read of the section,
   including its reference pattern, design constraints, and the
   "distinct declined/ignored outcome" clause)
+## Decision (maintainer, 2026-11-03)
+
+**Deferred (trigger-unmet).** Recorded by the maintainer (randybeno) after
+the independent ARB dossier on issue #186. The record's own trigger — buyers
+or platforms needing outbound-call requests as a first-class operation — has
+no adopter evidence in the repository or tracker, and the deliverable is a
+proposed-on-acceptance extension row, so deferral strands nothing (no
+implementation exists, nothing is advertised, no schema is committed).
+The design work is preserved: the extension route
+(`{org}.outbound.call_request` + `ignored` as an open `rejection_reason`
+value), the measured rollout asymmetry that rules out a new message type at
+v1.1, and the D1–D6 deferred questions with their triggers.
+
+Revival requires a new or revised record citing concrete adopter evidence
+and linking back to this number; the number and this record are permanent.
 
 ## Problem statement and evidence
 

@@ -3,16 +3,7 @@
 - **Title:** Agent attestation verification — issuer-anchored JWS verification at intake, §5 mapping, and staged L3 advertisement honesty
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — this record is a numbered Draft proposal only. It
-  authorizes **no** implementation: no schema edit, platform module, SDK
-  helper, vector, OpenAPI change, or SPEC text ships from this document until
-  an independent dossier and a maintainer `Accepted` decision are recorded in
-  `governance/LEP-REGISTRY.md`. The proposed shapes are **validated by
-  execution** (see "Verification runs") — every example envelope validates
-  through the repository's own `SchemaValidator`, the example tokens are real
-  Ed25519 signatures a reviewer can reproduce from the pinned seed, and the
-  failure battery runs against a reference verifier implementing §Proposed
-  wire shape exactly as drafted.
+- **Status:** **Accepted** — accepted 2026-11-03; kid-norm A, Phase 0 ratified ahead of implementation (see Decision)
 - **Target version:** v1.1.0 (MINOR — security/verification semantics and
   error-mapping text; **no new wire field, no new message type, no new §5
   code**; `schemas/core.json` tightens the *existing* `attestation` string's
@@ -33,6 +24,42 @@
   Decision requires a named human security/privacy reviewer or the decision
   maintainer's explicit co-sign of an ARB-Security dossier. Draft status
   names none; the role MUST be filled at Review.
+## Decision (maintainer, 2026-11-03)
+
+**Accepted.** Basis: two independent dossier rounds on issue #205 — the
+first found three majors (a half-guarded egress path, undecided decode-time
+claim validation, and an unspecified ES256 signature encoding), the second
+re-attacked the revision and found five minors (sandbox-mode egress escape,
+nested/exponent/typ parser forks, an anchor drift); all were folded in-record
+(PRs #209/#210). Decision parameters, both chosen deliberately:
+
+- **F5 duplicate-`kid` norm: option A** — a document carrying two JWKs with
+  the same `kid` is invalid, and verification fails `key_unknown` (401).
+  Fail-closed and deterministic; option B (first-wins plus a MUST-warn)
+  leaves the outcome implementation-dependent, which is the class of defect
+  the rounds were written to eliminate.
+- **Phase 0 ratified:** the reference platform MUST advertise
+  `conformance_level: "L2"` until enforce-mode verification is live and green
+  in CI, and MUST NOT advertise L3 on the strength of schema presence.
+  This is executed **ahead of implementation** as a bug-class honesty fix —
+  the current `"L3"` advertisement (`router.py:1769`) is a false claim while
+  forged and free-text attestations ingest `200` (reproduced at every audited
+  SHA).
+
+Conditions carried to implementation: the V13–V24 gates land as named tests
+(including the zero-dereference header policy and P1363-only ES256); L3 is
+re-advertised only when enforce-mode verification is green; the observe mode
+ships configurable with `enforce` the default at ship.
+
+**Independence note (recorded, not glossed):** both dossier rounds were
+maintainer-controlled SELF-AUDIT runs under the ARB charter's rule 2, which
+does not satisfy independent review on its own. The maintainer's co-sign
+recorded here is the record's independent-review anchor for this
+PII/authentication surface; the charter's dissent path stays open — an
+adopter re-run of the published harness at `6926246` that contradicts any
+claim above blocks this decision until adjudicated.
+
+Public window waived by the maintainer's recorded decision; #205 stays open.
 
 ## Problem statement and evidence
 

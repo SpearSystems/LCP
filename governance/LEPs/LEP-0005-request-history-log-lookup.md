@@ -3,19 +3,35 @@
 - **Title:** Request-history log lookup (paginated audit read surface)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — this record is a numbered Draft proposal only. It
-  authorizes **no** implementation: no route, schema file, OpenAPI edit, MCP
-  tool, SDK model, or vector ships from this document until an independent
-  dossier and a maintainer `Accepted` decision are recorded in
-  `governance/LEP-REGISTRY.md`. The wire shapes below are drafts **validated
-  by execution** (see "Verification runs") so the record is schema-honest at
-  Draft, not merely plausible.
+- **Status:** **Accepted** — accepted 2026-11-03; implementation authorized (dossier + re-review at #187; co-sign recorded)
 - **Target version:** v1.1.0 (MINOR; read-only additive surface — see
   Compatibility, versioning, and deprecation impact)
 - **Discussion:** [#187](https://github.com/SpearSystems/LCP/issues/187)
   (`[LEP] Request-history log lookup (paginated audit read surface)`)
 - **Roadmap trigger:** `docs/V1.1-ROADMAP.md`, Phase 6, "Request-history log
   lookup" (medium priority)
+
+## Decision (maintainer, 2026-11-03)
+
+**Accepted.** Recorded by the maintainer (randybeno) under the per-decision
+sign-off model, with the security/privacy co-sign recorded for this
+PII-adjacent surface. Basis: two ARB rounds — the first independent dossier
+found three majors (publisher-supplied `lead_id` smuggling contact strings
+through the redaction whitelist; tenant scoping that never bound the reader
+credential; `ack` rows the store cannot back), all revised in PR #206 and
+re-verified by the re-review dossier at `7ffbee1` (FINDINGS; two non-blocking
+minors tracked at issue #202, including the OpenAPI query-pattern
+equivalence vector).
+
+Conditions carried to implementation: the row-schema `lead_id` gate with
+legacy-id omission (never coercion), the single-decision-point tenant
+predicate (credential-sourced, no wildcard bypass), and the ack-row exclusion
+land as the named blocking tests; the `'*'` cross-tenant read demonstrated in
+round one must be closed before the surface advertises. Adopter evidence
+remains solicited on #187; a material change to scope, wire shape, or privacy
+returns this record to Review. The 14-day public window is waived by the
+maintainer's recorded decision (LEP-0002 precedent); the discussion issue
+stays open and new adopter evidence reopens the record.
 
 ## Problem statement and evidence
 
