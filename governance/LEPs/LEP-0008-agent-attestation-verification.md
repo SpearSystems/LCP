@@ -153,7 +153,7 @@ what L3 exists to bind.
   precedent mapping `SecurityPolicyError`→`LCP-100` at `router.py:243-246`),
   and the staged rollout modes (observe/enforce) plus the Phase 0
   advertisement gate (see Rollout).
-- **SDK / OpenAPI / MCP / vectors:** impact list below (test names V1–V23);
+- **SDK / OpenAPI / MCP / vectors:** impact list below (test names V1–V24);
   MCP inherits through the HTTP path — no adapter logic (`client.py:67`);
   OpenAPI's `conformance_level` documentation (`api/lcp-openapi.yaml:839`)
   already exists; only the L3-001 fixture token and its `checks` list change,
@@ -217,6 +217,20 @@ Header requirements: `alg` MUST be present and in the allowlist (§3);
 header or detached signature (`alg:none`, empty signature segment) is
 non-conformant (and the empty third segment already violates the §2 pattern).
 
+Receiver-side header policy (re-dossier R4; decided at §5 step 2, the shape
+step — generation-side `typ` stays a SHOULD, unchanged): `typ` is OPTIONAL on
+receipt and MUST NOT decide a verification outcome — its value never admits a
+token, and a non-`JWT` value (`at+jwt`, RFC 8725-style) MUST NOT reject one
+(JWT and `at+jwt` variants of identical claims verify identically). §6's
+claims analogue ("others … Ignored") is hereby mirrored to headers: receivers
+MUST ignore header members outside `alg`/`kid`/`typ`, and MUST NOT
+dereference URL-bearing members (`x5u`, `x5c`, `jku`) — §5 step 7's
+`iss → JWK[kid]` resolution (or a configured pin) is the *only* key-resolution
+path. `crit` is the one member that MUST NOT be ignored: this profile defines
+no extensions, so any `crit` header names an extension the receiver cannot
+understand — unknown crit-adjacent members are a `format` failure at step 2,
+not silence.
+
 ### 3. Algorithm allowlist (closed)
 
 | `alg` | Key type | Status |
@@ -274,7 +288,7 @@ Rules the implementation MUST honor:
 
 | Aspect | Normative rule |
 |---|---|
-| Resolution | Fetch over TLS 1.3 (§9 Transport, `SPEC.md:795-797`); MUST NOT fetch before the request is transport-authenticated (unauthenticated callers get LCP-012/LCP-002 first — no fetch amplification). Egress is guarded by the **paired controls exactly as shipped on the delivery path** (`router.py:1019-1028`) — the pre-resolution string check alone is NOT the guard: every JWKS fetch MUST (a) pass `validate_webhook_url` (`security.py:16`) tightened to **HTTPS-only** (the shipped class permits `http` under `allow_insecure_webhooks`; attestation resolution MUST NOT, in any mode) with no user-info in the URL (already enforced: "must not contain embedded credentials", `security.py:20-21`); (b) pass `validate_egress_host` (`security.py:33`) — the **resolve-aware** leg: `getaddrinfo` the hostname and reject `is_private`/`is_loopback`/`is_link_local`/`is_multicast`/`is_reserved`/`is_unspecified` **post-resolution** (`security.py:44-54`, `66-74`), which is what kills the obfuscated-literal class the string check waves through (`https://2130706433`, `https://0x7f000001`, `https://127.1`, `https://localhost` all map to 127.0.0.1 at `getaddrinfo` and pass `validate_webhook_url` — executed, Revision battery); (c) `follow_redirects=False` — a 3xx from a policy-valid issuer is NOT followed (revalidation of a final URL is NOT an acceptable alternative at v1; the shipped delivery client is the precedent); and (d) `trust_env=False` — no `HTTP(S)_PROXY`/env interception of the fetch. These four are MUSTs on **every** JWKS fetch, including negative-cache retries. Residual DNS-rebinding TOCTOU (resolve at check ≠ resolve at connect) is named, not claimed closed: connection-pool reuse and re-resolve hardening are implementation-PR concerns; the no-redirect/no-proxy legs remove the two same-process escalation paths. Policy-invalid `iss` → rejection reason `issuer_policy` (a sender-fixable identity failure, §8). |
+| Resolution | Fetch over TLS 1.3 (§9 Transport, `SPEC.md:795-797`); MUST NOT fetch before the request is transport-authenticated (unauthenticated callers get LCP-012/LCP-002 first — no fetch amplification). Egress is guarded by the **paired controls exactly as shipped on the delivery path** (`router.py:1019-1028`) — the pre-resolution string check alone is NOT the guard: every JWKS fetch MUST (a) pass `validate_webhook_url` (`security.py:16`) tightened to **HTTPS-only** (the shipped class permits `http` under `allow_insecure_webhooks`; attestation resolution MUST NOT, in any mode) with no user-info in the URL (already enforced: "must not contain embedded credentials", `security.py:20-21`); (b) pass `validate_egress_host` (`security.py:33`) — the **resolve-aware** leg, **in every deployment mode**: the attestation fetch MUST NOT inherit the shipped class's `allow_insecure_webhooks` skip (`security.py:42-43` returns before `getaddrinfo`; `security.py:66-67` short-circuits the predicate block), so no insecure-webhook escape hatch applies to a JWKS fetch, `test_mode` sandbox deployments included (`config.py:86` — the flag is reachable only there; re-dossier R1): `getaddrinfo` the hostname and reject `is_private`/`is_loopback`/`is_link_local`/`is_multicast`/`is_reserved`/`is_unspecified` **post-resolution** (`security.py:44-54`, `66-74`), which is what kills the obfuscated-literal class the string check waves through (`https://2130706433`, `https://0x7f000001`, `https://127.1`, `https://localhost` all map to 127.0.0.1 at `getaddrinfo` and pass `validate_webhook_url` — executed, Revision battery); (c) `follow_redirects=False` — a 3xx from a policy-valid issuer is NOT followed (revalidation of a final URL is NOT an acceptable alternative at v1; the shipped delivery client is the precedent); and (d) `trust_env=False` — no `HTTP(S)_PROXY`/env interception of the fetch. These four are MUSTs on **every outbound fetch attempted on the verification path** — the JWKS dereference *by verifiers* included, not just "the JWKS fetch" as a service routine — including negative-cache retries (re-dossier R4: header bytes are attacker-chosen, so any egress an implementation might otherwise trigger from them, e.g. a library-side `x5u` dereference, inherits this guard; the §2 header-member rule forbids that dereference outright, so the paired controls guard the one path that legitimately exists). Residual DNS-rebinding TOCTOU (resolve at check ≠ resolve at connect) is named, not claimed closed: connection-pool reuse and re-resolve hardening are implementation-PR concerns; the no-redirect/no-proxy legs remove the two same-process escalation paths. Policy-invalid `iss` → rejection reason `issuer_policy` (a sender-fixable identity failure, §8). |
 | Selection | `kid` (required, §2) selects the JWK; `kty`/`crv`/`alg` of the selected JWK MUST be consistent with the header `alg` (§3 allowlist). No key found for `kid` in a successfully fetched **valid** document → `key_unknown`. **Duplicate `kid` entries.** The `keys` array MAY be malformed — two JWKs carrying the same `kid` give first-wins and last-wins implementations *opposite* answers for the same token (determinism broken across conformant receivers; dossier F5). A norm is required; two conformant resolutions exist and this record refuses to silently pick: **(A)** a document containing two JWKs with the same `kid` is an **invalid document** → routed with the Bounds row: fetched-but-invalid → `LCP-002`/401 `key_unknown` — this also covers the `use`/`key_ops` confusion class (a `use:"enc"` key selected for verification is likewise an invalid-document case); **(B)** selection is **pinned to first-match** in document order and the receiver MUST log a `duplicate_kid` warning — deterministic, more forgiving of honest issuer mistakes, but keeps serving tokens under a document the issuer shipped broken. Both options carry the same named-shape gate (`plat: test_attestation_jwks_duplicate_kid_rejected` asserts A; under B it becomes `…_first_match_pinned`). **Marked for the maintainer at Accept** (design decision, not a text fix); the reference implementation and Revision battery validate **A** (the stricter, closed-vocabulary-consistent option). |
 | Bounds | JWKS document ≤ 16 KiB, ≤ 32 keys (format sanity, mirroring the LEP-0003 32-entry report bound); token ≤ 8192 bytes (§2 `maxLength`). **Outcome attribution (revision F4, §8 blame rule):** the bounds above are *format sanity*, not availability — a successfully fetched document that is oversized, key-count-exceeding, non-JSON, or otherwise invalid is a **sender/issuer-fixable** state and MUST fail the token: `LCP-002`/401 `key_unknown` (closed vocabulary preserved; a dedicated `jwks_oversize`-style reason was considered and rejected as vocabulary bloat for a state already named). `LCP-500`/500 `key_unavailable` is reserved for **availability** failure only: DNS/connect error, timeout, or a **5xx** response from the issuer (the server itself failed). A **4xx** (e.g. `404` on the `/.well-known/jwks.json` path) is the issuer's *configuration* — routed as fetched-but-invalid: `key_unknown`/401. An issuer serving garbage or pointing at a missing path must not convert its own fixable state into receiver-class 500s on every verified sender's request. |
 | Cache | Cache per `(iss, kid)`; respect HTTP `cache-control`/`max-age`, hard cap 24 h; negative cache for fetch failures ≤ 30 s. Fetch timeout ≤ 2 s, and MUST NOT block the intake worker beyond it (bounded worker, else `key_unavailable`). |
@@ -328,8 +342,11 @@ shape alone.
 1  size ≤ 8192 and exactly 3 non-empty base64url segments  else FAIL format    (schema layer normally; a
    — non-compact serializations (JWS JSON, 1/2/4 segments, padded) are format failures here or at the schema)
 2  header & claims parse as strict UTF-8 JSON objects;     else FAIL format
-   duplicate member names in either object REJECT AT PARSE
-   (parser rule below) — no last-wins fallback permitted
+   duplicate member names REJECT AT PARSE — in EVERY
+   JSON object of either serialization, at any nesting
+   depth (parser rule below) — no last-wins fallback permitted
+   §2's receiver-side header policy (`crit`/`typ`/unknown
+   members) is likewise evaluated at this step (re-dossier R4)
 3  header.alg exact-match in {EdDSA, ES256}               else FAIL algorithm
    (case-sensitive, no trimming/aliasing; checked BEFORE
    any key lookup — §4 resolution is never reached)
@@ -337,7 +354,12 @@ shape alone.
    iss/aud/agent_id/acting_for non-empty strings;
    iat/exp present, integer NumericDate, > 0 (string or
    float or zero/absent timestamps → format, with the
-   type step named; never coerced, never ignored)
+   type step named; never coerced, never ignored).
+   NumericDate is judged on the claims BYTES, not the
+   parsed value: a base-10 integer literal, no fraction
+   and no exponent part — `"exp":1e9`/`"exp":2e9` are
+   `format` here even though IEEE-double parsers read
+   `2e9` as integer-valued (re-dossier R3)
 5  header.kid present                                    else FAIL key_unknown
 6  iss policy-valid (HTTPS-only, no user-info, paired     else FAIL issuer_policy
    egress class §4 — resolve-aware, post-resolution
@@ -366,6 +388,15 @@ implementation that last-wins would accept the token at one receiver's
 `aud` and reject at another's (the divergence the dossier executed).
 Step 4 must therefore never see a duplicate, and no claim evaluation may
 define winner selection among duplicates.
+
+**Depth (re-dossier R2).** The refusal applies to **every JSON object in the
+header or claims serialization, at any nesting depth** — the `object_pairs_hook`
+example fires per object, innermost first, so a repeated member inside a nested
+claim value (`{"meta":{"tier":"gold","tier":"platinum"}}`, validly signed) is
+the same `format` failure at step 2. This is the stricter of the two readings
+the re-dossier executed (the whole-document scan of the two top-level objects
+accepts it); both are deterministic, so the record chooses and states the rule
+rather than leaving the depth to library defaults.
 
 Reason vocabulary (normative, closed): `format`, `algorithm`,
 `issuer_policy`, `key_unknown`, `key_unavailable`, `signature`, `expired`,
@@ -479,7 +510,7 @@ Why LCP-002 for verification failures rather than new policy invention:
 `docs/err-auth-triage.md` §3 ruled that credential failures on the *identity*
 axis belong to LCP-002; the platform already stamps intake **binding**
 failures LCP-002/401 — receiver-not-this-platform (`router.py:277-280`) and
-authenticated-sender-mismatch (`router.py:290-293`) — and `LCP-002` is
+authenticated-sender-mismatch (`router.py:287-290`) — and `LCP-002` is
 `AuthenticationError`'s default code (`auth.py:28`). An unverifiable
 attestation is precisely a failing assertion of *who is acting*, on a
 message whose transport identity is fine — same axis, existing code,
@@ -1044,7 +1075,7 @@ models.
 | MCP | **zero logic** — HTTP client path inherits enforcement (`client.py:67`); `test_gap_mcp_surface.py` byte-for-byte assertions still pass (the adapter never normalizes); its stub-platform fixture's `"L3"` (line 128) is test-double data, not a platform claim, but the V12 pin ensures a real-platform advertisement change lands with matching docs. |
 | SDKs (all languages, per implementations/sdk/) | signer/verify helper for the §2/§6 form (builders already accept an arbitrary string — unchanged); canonical NumericDate emission mirrors LEP-0002's whole-second discipline (`SPEC.md:832-845`); no transport change. |
 | Vectors + runner | `test-vectors/attestation/fixture-jwks.json` (the record's pinned Ed25519 JWK + seed derivation documented, **plus the ES256 fixture keypair/JWK per §3 encoding note**, `kid` `attest-es256-1`); positive `lcp-pos-attestation-verified-001` (EdDSA) and `lcp-pos-attestation-es256-001` (canonical P1363) and negatives `-forged-`, `-expired-`, `-audience-`, `-claims-mismatch-`, `-free-text-`, `-alg-none-`, `-string-exp-` (V16), `-padded-` (V21, schema-tier), `-es256-der-` (platform-tier; schema-tier negatives via existing expect-fail form with `error_code` fields, precedent `l1-envelope.json:93`); L3-001 token re-issued. |
-| Coverage matrix | `SEC-09` flips `gap → green` only with the verification tests shipping (V1–V10 and revision gates V13–V23); `CNF-03` note updated to name attestation verification tests, not shape-only (`docs/SPEC-COVERAGE.md:165`). |
+| Coverage matrix | `SEC-09` flips `gap → green` only with the verification tests shipping (V1–V10 and revision gates V13–V24); `CNF-03` note updated to name attestation verification tests, not shape-only (`docs/SPEC-COVERAGE.md:165`). |
 
 **Named implementation-phase tests (the gate list, T-style per LEP-0003):**
 
@@ -1062,9 +1093,9 @@ models.
 | V10 | `plat: test_attestation_jwks_unavailable_fails_closed` — issuer **availability** failure (DNS/connect/timeout/5xx) → `500 key_unavailable`, **zero** lead rows; observe-mode logs only. Post-revision attribution: a fetched-but-invalid document is NOT this path — see V18. |
 | V11 | `tool: test_lep_wire_examples` continues to pass on this record's `### Valid example` envelopes against the published tree (it does, today — Verification runs §5), and a `checks`-driven attestation case enters the vector lane. |
 | V12 | `plat: test_capabilities_conformance_level_matches_behavior` — advertisement honesty pinned (§9 of this record); Phase 0 lands it first. |
-| V13 | `plat: test_attestation_iss_obfuscated_loopback_rejected` — `iss` hosts `2130706433` / `0x7f000001` / `127.1` / `localhost` (all `getaddrinfo`→127.0.0.1) rejected by the resolve-aware egress leg at §5 step 6 → `issuer_policy`; zero fetch issued (revision F1). |
+| V13 | `plat: test_attestation_iss_obfuscated_loopback_rejected` — `iss` hosts `2130706433` / `0x7f000001` / `127.1` / `localhost` (all `getaddrinfo`→127.0.0.1) rejected by the resolve-aware egress leg at §5 step 6 → `issuer_policy`; zero fetch issued (revision F1). **Amended (re-dossier R1):** hosts `127.0.0.1` / `localhost` / `2130706433` / `::ffff:127.0.0.1` are ALSO rejected under a sandbox config (`test_mode=True` + `allow_insecure_webhooks=True`) — the resolve leg must not inherit the shipped class's skip; the battery re-executed the dossier's four shipped no-op `ACCEPT` rows and both revised readings reject all four. |
 | V14 | `plat: test_attestation_jwks_fetch_no_redirects_no_proxy_env` — a 302 from a policy-valid `iss` is not followed (3xx → invalid-response path, never a second fetch of `Location`); `HTTPS_PROXY` in the environment does not reroute the JWKS fetch (`trust_env=False`) (revision F1). |
-| V15 | `plat: test_attestation_decode_time_type_presence_format` — string/float/zero/absent `iat`/`exp`, absent `aud`/`agent_id`/`acting_for`, non-object claims, duplicate claim names: each fails at §5 step 2/4 with reason `format`, each with zero key-resolution and zero crypto work performed (revision F2). |
+| V15 | `plat: test_attestation_decode_time_type_presence_format` — string/float/zero/absent `iat`/`exp`, absent `aud`/`agent_id`/`acting_for`, non-object claims, duplicate claim names: each fails at §5 step 2/4 with reason `format`, each with zero key-resolution and zero crypto work performed (revision F2). **Amended (re-dossier R2/R3):** two new rows — a duplicate member name at nesting depth 2 (`{"meta":{"tier":"gold","tier":"platinum"}}`) fails at step 2, and exponent-notation timestamps (`"iat":1e9,"exp":2e9`) fail at step 4 on the claims bytes, not the parsed values (the exponent negative rides V16's vector family as `lcp-neg-attestation-exp-form-exp-001`). |
 | V16 | `vec: lcp-neg-attestation-string-exp-001` — vector-tier pin of the string-`exp` class (the L3-001 defect shape) as a decode-time `format` negative (revision F2). |
 | V17 | `plat: test_attestation_es256_der_rejected` — validly produced ES256 signature re-encoded as DER → `format` at the step-8 width precheck; the same token's P1363 form verifies (`lcp-pos-attestation-es256-001` rides V8) (revision F3). |
 | V18 | `plat: test_attestation_jwks_oversize_is_401` — fetched document > 16 KiB / > 32 keys / non-JSON → `401 key_unknown`, NOT 500; only DNS/connect/timeout/5xx keeps `key_unavailable`/500 (revision F4). |
@@ -1073,6 +1104,7 @@ models.
 | V21 | `vec: lcp-neg-attestation-padded-100` — `=`-padded signature segment fails at the schema layer (`LCP-100`), pinning §2 precedence (revision F6b). |
 | V22 | `plat: test_attestation_skew_config_capped_at_30` — a deployment configuration with skew > 30 s is refused at startup; boundary probes at `exp + skew == now` (reject), `exp + skew − 1` (accept) pin §7 equality convention (revision F7). |
 | V23 | `plat: test_history_projection_never_emits_attestation_bytes` — asserts LEP-0005's no-raw-envelope rule and this record's frozen audit schema (`{outcome, reason, iss_host, kid, tok_sha256_16}`) in one place: no projection, audit row, metric, or log line carries token bytes (revision F8). |
+| V24 | `plat: test_attestation_header_member_policy` — §2 receiver-side header policy (re-dossier R4): `typ=JWT` and `typ=at+jwt` variants of identical claims produce the SAME verdict; an unknown non-`crit` header member (`x5u`) is ignored AND produces **zero** network fetches (no dereference — the fixture records the fetch count); a `crit` header is a step-2 `format` failure. |
 
 **Operational:** metrics per ingest attempt `{verification outcome × reason}`
 plus issuer-fetch latency/error counters; audit rows reuse
@@ -1341,6 +1373,19 @@ record. The registry row and the coverage matrix are untouched. F8 was also
 filed against the LEP-0005 lane (charter rule 3); the LEP-0005 side needs no
 edit — this record now states its half of the interlock (frozen audit
 metadata schema, §Privacy).
+
+**Second re-dossier round (same day).** The re-review of this revision —
+comment
+[`6597921626`](https://github.com/SpearSystems/LCP/issues/205#issuecomment-6597921626),
+also SELF-AUDIT-labeled (same controller, same model family; the standing
+G2 block is unchanged by it) — re-attacked the post-#209 text at head
+`e8ec36b87f12cd13a7fb63bc88bb53327a2d8b5f` and confirmed the three majors
+resolved, breaking the text only in five new **minors** (R1–R4 cross-receiver
+determinism/guard-scope gaps, R5 docs-drift). R1–R5 are folded here and in
+the normative sections they touch (§2, §4, §5, §8); the Re-dossier addendum
+below re-executes the battery against the pinned text. The verdict stands:
+non-blocking for decision; the human co-sign and the non-author re-review
+remain the open items.
 
 ### Findings → edits
 
