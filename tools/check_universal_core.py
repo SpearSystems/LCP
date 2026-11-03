@@ -103,8 +103,8 @@ COUNTRY_CODE = "country_code"
 # "rate" only as the final token: verticals legitimately carry loan-rate
 # fields (desired_rate_term, existing_rate_percent) that are product data.
 METRIC_EXACT = re.compile(
-    r"^(?:speed_to_contact(?:_\w+)*|close_value(?:_\w+)*|contact_rate|close_rate"
-    r"|conversion_value(?:_\w+)*|rate)$"
+    r"^(?:rate|contact_rate|close_rate|speed_to_contact.*|close_value.*"
+    r"|conversion_value.*)$"
 )
 METRIC_WORD = re.compile(r"(?:^|_)(?:volume|metrics|quality_score)(?:_|$)")
 DEMOGRAPHIC_EXACT = re.compile(
