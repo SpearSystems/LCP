@@ -113,6 +113,12 @@
       "reject_reason": {
         "description": "Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional.",
         "type": "string"
+      },
+      "slots_claimed": {
+        "description": "v1.1 (LEP-0003 \u00a72): buyer slots this buyer claims if selected. The claim is a request, not a reservation \u2014 the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N > 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) \u2014 this schema enforces maximum: 1 now. Capability-gated (SPEC.md \u00a78): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1.",
+        "maximum": 1,
+        "minimum": 1,
+        "type": "integer"
       }
     },
     "required": [
@@ -1591,6 +1597,28 @@
     "$id": "https://lcp.dev/schemas/ping.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
+    "allOf": [
+      {
+        "$comment": "LEP-0003 \u00a71/F8 (invalid example B): exclusive is exactly the one-slot special case. When the exclusivity hint is present and 'exclusive', slots_available MUST be 1 \u2014 an exclusive ping advertising more is a semantic error, rejected by this conditional, not just by prose. Absent slots_available stays legal (v1.0 behavior).",
+        "if": {
+          "properties": {
+            "exclusivity": {
+              "const": "exclusive"
+            }
+          },
+          "required": [
+            "exclusivity"
+          ]
+        },
+        "then": {
+          "properties": {
+            "slots_available": {
+              "const": 1
+            }
+          }
+        }
+      }
+    ],
     "description": "Non-PII offer to buyers. STRICT ALLOWLIST \u2014 additionalProperties: false. No PII fields are permitted. The conformance runner also validates that every field in attributes is tagged ping_safe: true in the vertical schema. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
       "attributes": {
@@ -1749,6 +1777,11 @@
         },
         "type": "object"
       },
+      "slots_available": {
+        "description": "v1.1 (LEP-0003): remaining buyer-award slots of this lead that can still be sold at ping time, INCLUDING the slot this ping's recipient may win. A slot counts a distinct awarded buyer, never delivered copies (SPEC.md \u00a73 slot semantics). For exclusivity 'exclusive' this MUST be 1 \u2014 the one-slot special case (enforced by the top-level conditional in this schema). Absent = the platform does not advertise slot state (v1.0 behavior). A platform MUST NOT send slots_available: 0; zero remaining means stop pinging. Non-PII integer count carrying no consumer data: it joins the ping strict allowlist as a reviewed non-PII field, and conformance keeps rejecting every other field outside the allowlist (LCP-008 PII_IN_PING protection preserved) and every attribute not tagged ping_safe: true in the vertical schema. Capability-gated (SPEC.md \u00a78): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1.",
+        "minimum": 1,
+        "type": "integer"
+      },
       "state_region": {
         "type": "string"
       },
@@ -1883,6 +1916,16 @@
       },
       "consumer": {
         "$ref": "core.json#/$defs/consumer"
+      },
+      "contacted_hashes": {
+        "$comment": "No uniqueItems (LEP-0003 \u00a74): the wire array tolerates duplicates; the receiver merges by digest set per lead (at-least-once + set-union accumulation). maxItems 100: the record leaves the post-direction array bound open as a Deferred question ('a lead's contact attempts are naturally bounded'); this implementation bound is set generously above any realistic per-lead contact history so no conformant sender is clipped, while keeping the post payload bounded and rejecting bulk-suppression-sync misuse of this field (bulk sync stays out of scope; if production posts ever approach this bound, bulk routes to a dedicated mechanism). The CONTACTED event-report direction has its own tighter ingest bound (32 entries per report, SPEC.md \u00a74).",
+        "description": "v1.1 (LEP-0003 \u00a73): parties already contacted for this lead by the publisher or prior slot holders, re-keyed under THIS receiving buyer's per-pair secret. Each entry is HMAC-SHA256(pair_secret, contact-preimage) \u2014 lowercase 64-hex, the same form as phone_hash (SPEC.md \u00a79); the unsalted SHA-1-shaped digest of the reference network is explicitly NOT adopted (enumerable keyspaces invert it; \u00a714 blocker B3). The platform matches digests only against values it holds in plaintext for this pair and cannot verify reported digests without the plaintext \u2014 the trust model is format + count sanity plus authenticated-sender attestation, scoped to one lead_id. Absent = the platform has no contact reports; [] = the platform attests no prior contacts (the two are distinct). Preimage rules and the phone-only/email-gated state are normative in SPEC.md \u00a79. Capability-gated (SPEC.md \u00a78): senders MUST NOT include v1.1 fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1.",
+        "items": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "maxItems": 100,
+        "type": "array"
       },
       "currency": {
         "$ref": "core.json#/$defs/currency"

@@ -655,7 +655,7 @@ components:
         event:
           type: string
           description: 'Open enumeration - known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED,
-            ARCHIVED'
+            ARCHIVED, CONTACTED (v1.1, LEP-0003 §4: slot holder attempted contact; details SHOULD carry contacted_hashes (per-pair 64-hex), contacted_at, via)'
         timestamp:
           type: string
           format: date-time
@@ -797,11 +797,15 @@ components:
           minimum: 1
     Capabilities:
       type: object
+      required:
+      - lcp_versions
       properties:
         lcp_versions:
           type: array
           items:
             type: string
+            pattern: ^\d+\.\d+\.\d+$
+          description: 'Full major.minor.patch semantic versions served by this endpoint (SPEC.md §8 membership rule). A peer supports protocol extensions of minor m when this set contains an element with major == 1 and minor >= 1; senders MUST compare parsed versions, never string literals or prefixes. v1.1 slot fields (slots_available, slots_claimed, contacted_hashes) and CONTACTED reports may be sent only toward receivers advertising a 1.x minor >= 1 element (e.g. 1.1.0).'
         message_types:
           type: array
           items:
@@ -1030,6 +1034,11 @@ components:
         capacity_remaining:
           type: integer
           minimum: 0
+        slots_claimed:
+          type: integer
+          minimum: 1
+          maximum: 1
+          description: 'v1.1 (LEP-0003 §2): buyer slots claimed if selected — single-slot awards only at v1.1 (multi-slot agency delivery is deferred, #153 T5). A claim is a request, not a reservation; the platform awards at post time. Only meaningful with decision accept; absent = 1. Capability-gated on the receiver advertising a 1.x minor >= 1 element (SPEC.md §8).'
       allOf:
       - if:
           properties:

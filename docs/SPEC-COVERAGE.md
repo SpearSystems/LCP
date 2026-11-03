@@ -88,6 +88,7 @@ idempotency header + code/message assertions) is credited under ERR-002.
 | STA-05 | §3 lead expiry: expires_at/ttl_seconds → platform transitions to EXPIRED | schema+platform | L3-007, plat:test_expiry_uses_legal_transition_graph | green |
 | EXC-01 | §3 exclusivity exclusive or shared, default shared | schema+runner | L3-007 | green |
 | EXC-02 | §3 max_buyers bounds how many buyers receive a shared lead (no over-award) | platform | plat:test_exclusive_lead_overaward_refused_single_post_only, plat:test_direct_offer_creates_post_without_auction | green |
+| EXC-03 | §3 slot semantics (v1.1): budget counts distinct awarded buyers, delivered copies are never the budget, undeclared shared ⇒ 1, never oversell/never ping zero | schema+prose+platform | L3-013, L3-017, L3-019 | gap(buyer-unit wire semantics land with LEP-0003; concurrent shared-award enforcement ships with #153 T2/T3/T4 platform tests) |
 | MSG-01 | §4 message.type closed set of 7 (lead/call/ping/bid/post/ack/event) | schema+runner | L1-007, sdk-004 | green |
 | MSG-LEAD-01 | §4 lead payload = consumer+location+compliance+provenance+attributes+external_id+submitted_at+channel | schema+runner | L2-001, sdk-001 | green |
 | MSG-LEAD-02 | §4 lead.channel ∈ form/chat/click/api/agent/referral (open enum — see ENU-03) | schema | L1-001 | green |
@@ -98,11 +99,15 @@ idempotency header + code/message assertions) is credited under ERR-002.
 | MSG-PING-01 | §4 ping is a strict allowlist (additionalProperties:false); anything else → LCP-008 | schema+runner | L2-003, L2-007, L2-008, sdk-002 | green |
 | MSG-PING-02 | §4 ping never contains consumer/compliance/provenance blocks | conformance-runner+corpus | L2-007, L2-008, lcp-neg-pii-001 | green |
 | MSG-PING-03 | §4 compliance_flags are presence indicators only — never tokens or evidence | schema+runner | L2-017, L2-018 | green |
+| MSG-PING-04 | §4 ping slots_available (v1.1): integer min 1; exclusive⇒const 1 conditional; never advertise 0 | schema+runner+corpus | L3-008, L3-013, L3-017, L3-019, lcp-neg-exclusive-multislot-001, lcp-neg-slots-zero-001, sdk-015, sdk-022 | green |
 | MSG-BID-01 | §4 bid decision accept/reject/pass; bid_price_cents required iff accept | schema+platform | plat:test_conditional_bid_fields_accept_reject_pass_without_price | green |
 | MSG-BID-02 | §4 auction flow: platform collects bids in expiry window, posts winner, losers get no PII | platform | plat:test_ping_bid_post_and_delivery_event_flow, plat:test_indexed_offer_candidates_are_conservative_and_reindex_updates | green |
+| MSG-BID-03 | §4 bid slots_claimed (v1.1): integer, minimum 1 maximum 1 (single-slot awards; multi-slot deferred #153 T5); absent = 1 | schema+runner+corpus | L3-009, L3-018, lcp-neg-claimed-multi-001, sdk-016, sdk-023 | green |
 | MSG-POST-01 | §4 post delivers full PII to winning buyer | schema+runner | L2-004 | green |
 | MSG-POST-02 | §4 post.pricing block (floor/premium/final/uncapped/guardrails/dispute window/payable) | schema | L2-004 | green |
 | MSG-POST-03 | §4 pricing.is_duplicate_resub distinguishes accidental resubmission from exclusivity | platform | - | gap(no test asserts duplicate-resub marking) |
+| MSG-POST-04 | §4 post contacted_hashes (v1.1): array of per-pair keyed 64-lowercase-hex digests, maxItems 100, absent-vs-[] distinct | schema+runner+corpus | L3-010, L3-012, L3-014, L3-015, L3-016, lcp-neg-contacted-sha1-001, lcp-neg-contacted-63hex-001, lcp-neg-contacted-overbound-001, sdk-021 | green |
+| MSG-EVENT-04 | §4 CONTACTED report (v1.1): open-enum pass-through, 64-hex + 32/report ingest bounds, absent-vs-[] | runner+schema | L3-011, L3-021, L3-022 | green |
 | MSG-ACK-01 | §4 ack uses errors[] array — one message can fail multiple fields | schema+runner | L1-003, L3-005 | green |
 | MSG-ACK-02 | §4 ack.status ∈ RECEIVED/VALIDATED/ACCEPTED/REJECTED/DUPLICATE/ERROR | schema+runner | L2-006 | green |
 | MSG-ACK-03 | §4 rejection_reason structured open enum enables publisher automation | schema+platform | - | gap(no emitted-rejection_reason assertion found) |
@@ -138,10 +143,11 @@ idempotency header + code/message assertions) is credited under ERR-002.
 | ENU-06 | §6 consent_evidence.type open | schema+runner | L3-004 | green |
 | CNF-01 | §7 L1 tier: envelope+required+idempotency+ack+timestamps | conformance-runner | L1-001, L1-002, L1-003, L1-004, L1-005, L1-006, L1-007, L1-008 | green |
 | CNF-02 | §7 L2 tier: lifecycle + ping/post split + compliance records | conformance-runner | L2-003, L2-007, L2-009 | green |
-| CNF-03 | §7 L3 tier: dedup fingerprints + capability discovery + attestation verification | conformance-runner | - | gap(L3 vectors cover agent+transitions+hashes+consent; dedup-fingerprint and capability-discovery checks absent from runner) |
+| CNF-03 | §7 L3 tier: dedup fingerprints + capability discovery + attestation verification | conformance-runner | L3-001, L3-010, L3-014, L3-020 | green(dedup-fingerprint shape checks and the §8 capability-gate membership check are implemented in the runner as of LEP-0003; attestation via L3-001) |
 | CAP-01 | §8 GET /v1/lcp/capabilities response shape (versions, types, verticals, countries, auth, events, conformance_level) | platform+mcp | - | gap(endpoint implemented in router/service; zero test asserts its shape) |
 | CAP-02 | §8 capacity block advisory; over-cap may be rejected (LCP-011 or REJECTED ack) | platform | - | gap(no capacity test found) |
 | CAP-04 | §8 delivery_windows filter vertical+channel time windows | platform | plat:test_delivery_window_filters_vertical_and_channel | green |
+| CAP-07 | §8 lcp_versions full-semver elements; parsed minor>=m membership gates v1.1 wire fields (LEP-0003 F6) | runner+schema | L3-008, L3-011, L3-020 | green |
 | CAP-05 | §8 countries is ISO 3166-1 alpha-2 and replaces legacy markets | platform | - | gap(passthrough — no capabilities test to assert it) |
 | CAP-06 | §8 routing_mode direct posts at offer floor without auction | platform | plat:test_direct_offer_creates_post_without_auction | green |
 | OFR-01 | §8 platform filters candidate offers against declared restrictions before pinging | platform | plat:test_matching_returns_explainable_reasons, plat:test_versioned_publisher_mapping_normalizes_otp_and_audits_without_source_pii, plat:test_versioned_profiles_match_and_explain_failures | green |
@@ -160,6 +166,7 @@ idempotency header + code/message assertions) is credited under ERR-002.
 | SEC-07 | §9 key rotation: MAY accept previous secret bounded | platform | plat:test_upsert_rehashes_and_old_key_stops_working | green |
 | SEC-08 | §9 phone_hash per-pair secret: different buyers see different hashes; rainbow-table resistant | platform+sdk | - | gap(format covered by L3-003; per-pair non-correlation never exercised) |
 | SEC-09 | §9 agent attestation: signed JWT verifiable against published key; free text non-conformant | schema+platform | - | gap(L3-001 positive shape only; no verification or forged-token rejection test) |
+| SEC-14 | §9 contact-hash preimage normalization: phone verbatim wire bytes; email proposed canonical, entries gated pending T9 | runner+schema | L3-010, L3-011, L3-014, L3-015, sdk-017, sdk-019, sdk-020 | gap(pinned preimage->digest pairs land as test-vectors/sdk/contact-hash.json; email-form entries gated behind the §9 pin + #153 T9 executed vectors across all ten SDKs and the reference platform) |
 | SEC-10 | §9 rate limits per sender enforced with LCP-011 + Retry-After | platform | - | gap(same uncovered path as ERR-011) |
 | SEC-11 | §9 webhooks MUST carry the same HMAC signature; insecure webhook sinks refused | platform+sdk | plat:test_production_policy_rejects_insecure_webhook, sdk-py:test_webhook_verification_uses_raw_body_and_case_insensitive_headers | green |
 | SEC-12 | §9 agent-as-consumer 30s response timeout → auto-EXPIRED and re-offer | platform | - | gap(timeout policy not exercised) |

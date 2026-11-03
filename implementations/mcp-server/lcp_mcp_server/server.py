@@ -166,6 +166,7 @@ async def _list_tools() -> list[types.Tool]:
                     "estimated_contact_seconds": {"type": "integer", "minimum": 0, "description": "Estimated time-to-contact in seconds."},
                     "buyer_reference": {"type": "string", "description": "Buyer's internal tracking reference."},
                     "reject_reason": {"type": "string", "description": "Why rejected (optional)."},
+                    "slots_claimed": {"type": "integer", "minimum": 1, "maximum": 1, "description": "v1.1 (LEP-0003 §2): buyer slots claimed if selected — single-slot only at v1.1; send only when the platform advertises a 1.x minor >= 1 element in lcp_versions (SPEC.md §8 capability gate)."},
                 },
                 "required": ["ping_id", "decision"],
             },
@@ -250,7 +251,7 @@ async def _call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCon
             "bid_price_cents": bid_price,
             "currency": currency,
         }
-        for opt_field in ["estimated_contact_seconds", "buyer_reference", "reject_reason"]:
+        for opt_field in ["estimated_contact_seconds", "buyer_reference", "reject_reason", "slots_claimed"]:
             if opt_field in arguments:
                 payload[opt_field] = arguments[opt_field]
         receiver_id = _platform_receiver_id()  # bids go to the platform, not a buyer

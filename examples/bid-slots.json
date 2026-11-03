@@ -1,0 +1,24 @@
+{
+  "lcp": {
+    "version": "1.1.0",
+    "message": {
+      "id": "bb1e8400-0000-4000-8000-000000000102",
+      "type": "bid",
+      "timestamp": "2026-11-02T10:20:08Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": "770e8400-0000-4000-8000-000000000101",
+      "idempotency_key": "buyer-002-bid-ping_002-001",
+      "test": true
+    },
+    "payload": {
+      "ping_id": "ping_002",
+      "decision": "accept",
+      "bid_price_cents": 2900,
+      "currency": "USD",
+      "estimated_contact_seconds": 30,
+      "slots_claimed": 1,
+      "capacity_remaining": 12
+    }
+  }
+}

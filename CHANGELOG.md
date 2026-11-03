@@ -33,6 +33,77 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   by `HTTPErrorHygieneTests` in `tests/test_sdk.py`, including a live-server
   round-trip.
 
+### LEP-0003 wire surface (v1.1): shared-lead slot fields and contacted-hash dedup exchange
+
+Schemas + wire artifacts only — no platform logic (the enforcement set,
+`CONTACTED` allow-list/advertisement, and slot-accounting tests land with
+the platform lane; #153 T2/T3/T4/T6). Target release: v1.1.0 (additive
+MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
+`docs/RELEASE.md` — capability negotiation in SPEC.md §8 is the switch).
+
+- **Schemas:** `schemas/ping.json` gains optional `slots_available`
+  (integer, `minimum: 1`) on the strict allowlist (allowlist semantics
+  and `LCP-008` PII protection preserved; non-PII count) plus a
+  top-level conditional — `exclusivity: "exclusive"` present ⇒
+  `slots_available` const `1` (LEP-0003 invalid example B, dossier F8 /
+  #153 T7). `schemas/bid.json` gains `slots_claimed` (`minimum: 1,
+  maximum: 1` — multi-slot agency delivery deferred, F4/T5).
+  `schemas/post.json` gains `contacted_hashes` (array of
+  `^[a-f0-9]{64}$`, `maxItems: 100`, no `uniqueItems`; absent-vs-`[]`
+  distinct). The bound is 100 because the record leaves the post-side
+  array bound as a Deferred question; the rationale and the bulk-sync
+  trigger are recorded in the schema `$comment`. `core.json`
+  `$defs/exclusivity` unchanged.
+- **SPEC.md:** §3 slot semantics (budget counts distinct awarded buyers,
+  copies are never the budget, undeclared `shared` ⇒ 1, never oversell,
+  never ping zero); §4 ping/bid/post field rows with the capability-gate
+  rule and `CONTACTED` reporting guidance (32-entry/64-hex ingest MUST,
+  at-least-once + `message.id` dedupe, digest-set union, absent-vs-`[]`);
+  §6 closed-vs-open versioning clarification; §8 version-string
+  membership normative text (full-semver elements, parsed
+  `major == 1, minor >= m` comparison, hosting obligation — LEP-0003
+  F6); §9 contact-hash preimage normalization (phone = verbatim wire
+  bytes; email = proposed canonical, entries gated behind the pin plus
+  #153 T9; never unsalted digests).
+- **Examples:** `examples/ping-slots.json`, `examples/bid-slots.json`,
+  `examples/post-contacted.json`, `examples/event-contacted.json` — the
+  record's four valid v1.1 examples, validated by the repository's own
+  conformance runner.
+- **Test vectors:** L3-008–L3-022 — valid slot ping/bid/post/CONTACTED,
+  absent-vs-`[]`, exclusive-one-slot accept case, and the record's
+  invalid shapes (40-hex SHA-1 A, 63-hex RF-1 class, >100 bound,
+  `slots_available: 0`, `slots_claimed: 2`, exclusive-multi-slot,
+  slot-ping-to-v1.0-receiver capability-gate negative, 33-entry and `[]`
+  report negatives). `test-vectors/sdk/validation-corpus.json` gains
+  sdk-015–sdk-023 + `lcp-neg-exclusive-multislot-001`. New shared
+  negative suite `test-vectors/sdk/negative/slot-fields.json` (with an
+  accept control). New `test-vectors/sdk/contact-hash.json`: pinned
+  preimage→digest pairs (phone and email rows recomputed byte-exact from
+  `pair-secret-for-vectors-0123456789`) so SDK/platform hash builders
+  cannot drift (LEP-0003 §3 proposed the name `dedup-hash.json`; this
+  lane lands the identical fixture form under `contact-hash.json`).
+- **Conformance runner:** `test-vectors/conformance.py` now HONORS each
+  vector's `checks` array (#153 routed observation O3 — labels were
+  decorative): every named check has an implementation, unknown names
+  fail loudly, negative vectors pass only when their specific named rule
+  fires. New checks implement the §8 capability gate (parsed-semver
+  membership), slot minimum/conditional/maximum, contacted-hash shape
+  and bounds, and report-direction rules. All 36 v1.0 vectors pass
+  unchanged (headline regression proof); suite total 51.
+- **SDK artifacts:** all ten SDK schema bundles + manifests regenerated
+  (`tools/generate_sdk_models.py --write`);
+  `check_sdk_schema_sync --check` and `check_reserved_fields` green.
+- **OpenAPI:** `Capabilities.lcp_versions` required with full-semver
+  item pattern and the membership rule (F6b); `BidPayload.slots_claimed`;
+  `CONTACTED` documented on the event value list.
+- **MCP:** `submit_bid` tool gains `slots_claimed` argument and
+  pass-through; `_validated_envelope` behavior unchanged (the refreshed
+  schemas flow through it automatically).
+- **Docs:** `docs/SPEC-COVERAGE.md` gains SLOT-era rows (MSG-PING-04,
+  MSG-BID-03, MSG-POST-04, MSG-EVENT-04, CAP-07, SEC-14; CNF-03 gap→green
+  with ids); `docs/FIELD-DICTIONARY.md` gains the three field rows and
+  `CONTACTED` on the event list.
+
 ### CI and tooling
 
 - Logging-hygiene lint (`tools/check_logging_hygiene.py`, wired into the
