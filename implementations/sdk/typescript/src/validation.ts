@@ -6,6 +6,7 @@ const Ajv2020: any = (Ajv2020Module as any).default;
 const addFormats: any = (addFormatsModule as any).default;
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { slotCapabilityErrors } from "./capability.js";
 
 export type SchemaBundle = Record<string, object>;
 
@@ -66,8 +67,12 @@ export class LcpSchemaValidator {
     this.validate(`verticals/${vertical}.json`, value);
   }
 
-  validateEnvelope(envelope: unknown): void {
+  validateEnvelope(envelope: unknown, options: { receiverAdvertisedLcpVersions?: readonly string[] } = {}): void {
     this.validate("schemas/envelope.json", envelope);
+    if (options.receiverAdvertisedLcpVersions) {
+      const gateErrors = slotCapabilityErrors(envelope, options.receiverAdvertisedLcpVersions);
+      if (gateErrors.length) throw new Error(`LCP capability gate: ${gateErrors.join("; ")}`);
+    }
     const typed = envelope as { lcp: { message: { type: string }; payload: any } };
     const messageType = typed.lcp.message.type;
     this.validate(`schemas/${messageType}.json`, typed.lcp.payload);

@@ -50,8 +50,53 @@ public final class LcpSdk {
     }
 
     public static String signHmac(String secret, String timestamp, String idempotencyKey, byte[] body) {
-        try { var mac = Mac.getInstance("HmacSHA256"); mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(canonicalSigningBytes(timestamp, idempotencyKey, body))); }
+        return hmacHex(secret.getBytes(StandardCharsets.UTF_8), canonicalSigningBytes(timestamp, idempotencyKey, body));
+    }
+
+    /** The single HMAC-SHA256 → lowercase-hex construction in this SDK (SPEC.md §9). */
+    private static String hmacHex(byte[] key, byte[] data) {
+        try { var mac = Mac.getInstance("HmacSHA256"); mac.init(new SecretKeySpec(key, "HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(data)); }
         catch (Exception error) { throw new IllegalStateException(error); }
+    }
+
+    /**
+     * SPEC.md §9 pinned contact preimage. Phone: the wire value verbatim,
+     * byte-for-byte — no folding, stripping, or reformatting (the reference
+     * platform's phone_hash builder is the executed baseline). Email: the §9
+     * pinned candidate canonical — trim surrounding whitespace,
+     * ASCII-lowercase the domain, keep the local-part bytes verbatim,
+     * plus-addresses distinct. Email-form contacted_hashes ENTRIES stay
+     * emission-gated until #153 T9 executed vectors publish; this is the
+     * pinned compute rule every contact-hash vector row reproduces under.
+     */
+    public static String normalizeContact(String value, String domain) {
+        switch (domain) {
+            case "phone": return value;
+            case "email": {
+                String trimmed = value.trim();
+                int separator = trimmed.lastIndexOf('@');
+                if (separator < 0) throw new IllegalArgumentException("email contact preimage must contain '@'");
+                String local = trimmed.substring(0, separator);
+                StringBuilder host = new StringBuilder(trimmed.substring(separator + 1));
+                for (int i = 0; i < host.length(); i++) {
+                    char c = host.charAt(i);
+                    if (c >= 'A' && c <= 'Z') host.setCharAt(i, (char) (c + 32));
+                }
+                return local + "@" + host;
+            }
+            default: throw new IllegalArgumentException("unknown contact domain '" + domain + "' (expected phone or email)");
+        }
+    }
+
+    /**
+     * Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+     * HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret
+     * shared with the message's receiver. phone_hash, email_hash, and
+     * contacted_hashes entries all ride this one construction — the same
+     * digest path as signHmac, never an unsalted digest, never SHA-1.
+     */
+    public static String contactHash(String secret, String value, String domain) {
+        return hmacHex(secret.getBytes(StandardCharsets.UTF_8), normalizeContact(value, domain).getBytes(StandardCharsets.UTF_8));
     }
 
     public static void verifyHmac(String secret, String signature, String timestamp, String idempotencyKey, byte[] body, Duration maxSkew, Instant now) {

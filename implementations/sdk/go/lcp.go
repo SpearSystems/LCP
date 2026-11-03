@@ -65,9 +65,60 @@ func CanonicalSigningBytes(timestamp, idempotencyKey string, body []byte) []byte
 }
 
 func SignHMAC(secret, timestamp, idempotencyKey string, body []byte) string {
+	return hmacHex(secret, CanonicalSigningBytes(timestamp, idempotencyKey, body))
+}
+
+// hmacHex is the package's single HMAC-SHA256 → lowercase-hex construction
+// (SPEC.md §9). Signing and contact hashes share it; nothing else computes a
+// keyed digest.
+func hmacHex(secret string, data []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write(CanonicalSigningBytes(timestamp, idempotencyKey, body))
+	_, _ = mac.Write(data)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// NormalizeContact returns the SPEC.md §9 pinned contact preimage for a
+// value. Phone: the wire value verbatim, byte-for-byte — no folding,
+// stripping, or reformatting (the reference platform's phone_hash builder is
+// the executed baseline). Email: the §9 pinned candidate canonical — trim
+// surrounding whitespace, ASCII-lowercase the domain, keep the local-part
+// bytes verbatim, plus-addresses distinct. Email-form contacted_hashes
+// ENTRIES stay emission-gated until #153 T9 executed vectors publish; this is
+// the pinned compute rule, so every contact-hash vector row is reproducible.
+func NormalizeContact(value, domain string) (string, error) {
+	switch domain {
+	case "phone":
+		return value, nil
+	case "email":
+		trimmed := strings.TrimSpace(value)
+		separator := strings.LastIndex(trimmed, "@")
+		if separator < 0 {
+			return "", fmt.Errorf("email contact preimage must contain '@'")
+		}
+		local := trimmed[:separator]
+		host := strings.Map(func(r rune) rune {
+			if r >= 'A' && r <= 'Z' {
+				return r + 32
+			}
+			return r
+		}, trimmed[separator+1:])
+		return local + "@" + host, nil
+	default:
+		return "", fmt.Errorf("unknown contact domain %q (expected phone or email)", domain)
+	}
+}
+
+// ContactHash returns the per-pair contact hash (SPEC.md §9, LEP-0003 §3):
+// lowercase-hex HMAC-SHA256(pair_secret, normalized_preimage) keyed with the
+// secret shared with the message's receiver. phone_hash, email_hash, and
+// contacted_hashes entries all ride this one construction — the same digest
+// path as SignHMAC, never an unsalted digest, never SHA-1.
+func ContactHash(secret, value, domain string) (string, error) {
+	preimage, err := NormalizeContact(value, domain)
+	if err != nil {
+		return "", err
+	}
+	return hmacHex(secret, []byte(preimage)), nil
 }
 
 func VerifyHMAC(secret, signature, timestamp, idempotencyKey string, body []byte, maxSkew time.Duration, now time.Time) error {

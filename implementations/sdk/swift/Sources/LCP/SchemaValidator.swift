@@ -69,9 +69,16 @@ public final class LCPValidator {
         guard result.isValid else { throw LCPValidationError.invalid(schemaName, String(describing: result)) }
     }
 
-    public func validateEnvelope(_ envelope: String) throws {
+    public func validateEnvelope(_ envelope: String, receiverAdvertisedLcpVersions: [String]? = nil) throws {
         try validate("schemas/envelope.json", instance: envelope)
         guard let root = try JSONSerialization.jsonObject(with: Data(envelope.utf8)) as? [String: Any], let lcp = root["lcp"] as? [String: Any], let message = lcp["message"] as? [String: Any], let type = message["type"] as? String, let payload = lcp["payload"] else { throw LCPValidationError.invalid("envelope", "missing message type or payload") }
+        // Optional SPEC.md §8 capability gate: slot fields toward a receiver that
+        // does not advertise v1.1 are a conformance failure (the v1.0 closed
+        // allowlist cannot parse them).
+        if let receiverAdvertisedLcpVersions {
+            let gateErrors = LCPCapability.slotCapabilityErrors(envelope: root, advertisedLcpVersions: receiverAdvertisedLcpVersions)
+            if !gateErrors.isEmpty { throw LCPValidationError.invalid("capability", gateErrors.joined(separator: "; ")) }
+        }
         let payloadJSON = String(data: try JSONSerialization.data(withJSONObject: payload), encoding: .utf8)!
         try validate("schemas/\(type).json", instance: payloadJSON)
         try validateVerticalPolicy(type, payload: payload)

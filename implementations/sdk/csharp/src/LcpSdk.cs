@@ -50,8 +50,58 @@ public static class LcpSigning
 
     public static string SignHmac(string secret, string timestamp, string? idempotencyKey, ReadOnlySpan<byte> body)
     {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        return Convert.ToHexString(hmac.ComputeHash(CanonicalSigningBytes(timestamp, idempotencyKey, body))).ToLowerInvariant();
+        return HmacHex(Encoding.UTF8.GetBytes(secret), CanonicalSigningBytes(timestamp, idempotencyKey, body));
+    }
+
+    // HmacHex is the assembly's single HMAC-SHA256 → lowercase-hex construction
+    // (SPEC.md §9). Signing and contact hashes share it; nothing else computes
+    // a keyed digest.
+    private static string HmacHex(byte[] key, byte[] data)
+    {
+        using var hmac = new HMACSHA256(key);
+        return Convert.ToHexString(hmac.ComputeHash(data)).ToLowerInvariant();
+    }
+
+    public static string NormalizeContact(string value, string domain)
+    {
+        // SPEC.md §9 pinned preimages. Phone: the wire value verbatim,
+        // byte-for-byte — no folding, stripping, or reformatting (the reference
+        // platform's phone_hash builder is the executed baseline). Email: the
+        // §9 pinned candidate canonical — trim surrounding whitespace,
+        // ASCII-lowercase the domain, keep the local-part bytes verbatim,
+        // plus-addresses distinct. Email-form contacted_hashes ENTRIES stay
+        // emission-gated until #153 T9 executed vectors publish; this is the
+        // pinned compute rule every contact-hash vector row reproduces under.
+        switch (domain)
+        {
+            case "phone":
+                return value;
+            case "email":
+                var trimmed = value.Trim();
+                var separator = trimmed.LastIndexOf('@');
+                if (separator < 0) throw new ArgumentException("email contact preimage must contain '@'");
+                var local = trimmed.Substring(0, separator);
+                var host = trimmed.Substring(separator + 1);
+                Span<char> lower = stackalloc char[host.Length];
+                for (var i = 0; i < host.Length; i++)
+                {
+                    var c = host[i];
+                    lower[i] = c >= 'A' && c <= 'Z' ? (char)(c + 32) : c;
+                }
+                return local + "@" + new string(lower);
+            default:
+                throw new ArgumentException($"unknown contact domain '{domain}' (expected phone or email)");
+        }
+    }
+
+    public static string ContactHash(string secret, string value, string domain = "phone")
+    {
+        // Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+        // HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret
+        // shared with the message's receiver. phone_hash, email_hash, and
+        // contacted_hashes all ride this one construction — never an unsalted
+        // digest, never SHA-1.
+        return HmacHex(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(NormalizeContact(value, domain)));
     }
 
     public static void VerifyHmac(string secret, string signature, string timestamp, string? idempotencyKey, ReadOnlySpan<byte> body, TimeSpan? maxSkew = null, DateTimeOffset? now = null)

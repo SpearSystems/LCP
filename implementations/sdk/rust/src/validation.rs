@@ -55,6 +55,19 @@ impl SchemaValidator {
         validator.validate(document).map_err(|e| SchemaValidationError(format!("LCP schema validation failed for {schema_name}: {e}")))
     }
 
+    /// Validates the envelope and payload, then applies the SPEC.md §8
+    /// capability gate against the receiver's advertised LCP versions: an
+    /// envelope carrying v1.1 slot fields fails validation unless the
+    /// advertisement contains a full-semver element with major 1 and minor >= 1.
+    pub fn validate_envelope_for_receiver(&self, envelope: &Value, receiver_advertised_lcp_versions: &[&str]) -> Result<(), SchemaValidationError> {
+        self.validate_envelope(envelope)?;
+        let problems = crate::slot_capability_errors(envelope, receiver_advertised_lcp_versions);
+        if !problems.is_empty() {
+            return Err(SchemaValidationError(format!("LCP capability gate: {}", problems.join("; "))));
+        }
+        Ok(())
+    }
+
     pub fn validate_envelope(&self, envelope: &Value) -> Result<(), SchemaValidationError> {
         self.validate("schemas/envelope.json", envelope)?;
         let message_type = envelope.pointer("/lcp/message/type").and_then(Value::as_str).ok_or_else(|| SchemaValidationError("missing lcp.message.type".into()))?;

@@ -60,7 +60,83 @@ fn uuid() -> String {
 fn uuid_bytes() -> [u8; 16] { let mut value = [0u8; 16]; getrandom::fill(&mut value).expect("random UUID bytes"); value[6] = (value[6] & 0x0f) | 0x40; value[8] = (value[8] & 0x3f) | 0x80; value }
 
 pub fn canonical_signing_bytes(timestamp: &str, idempotency_key: Option<&str>, body: &[u8]) -> Vec<u8> { [format!("{}\n{}\n", timestamp, idempotency_key.unwrap_or("" )).as_bytes(), body].concat() }
-pub fn sign_hmac(secret: &str, timestamp: &str, idempotency_key: Option<&str>, body: &[u8]) -> String { let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC key"); mac.update(&canonical_signing_bytes(timestamp, idempotency_key, body)); hex::encode(mac.finalize().into_bytes()) }
+pub fn hmac_sha256_hex(key: &[u8], data: &[u8]) -> String { let mut mac = HmacSha256::new_from_slice(key).expect("HMAC key"); mac.update(data); hex::encode(mac.finalize().into_bytes()) }
+pub fn sign_hmac(secret: &str, timestamp: &str, idempotency_key: Option<&str>, body: &[u8]) -> String { hmac_sha256_hex(secret.as_bytes(), &canonical_signing_bytes(timestamp, idempotency_key, body)) }
+
+/// SPEC.md §9 pinned contact preimage. Phone: the wire value verbatim,
+/// byte-for-byte — no folding, stripping, or reformatting (the reference
+/// platform's phone_hash builder is the executed baseline). Email: the §9
+/// pinned candidate canonical — trim surrounding whitespace, ASCII-lowercase
+/// the domain, keep the local-part bytes verbatim, plus-addresses distinct.
+/// Email-form contacted_hashes ENTRIES stay emission-gated until #153 T9
+/// executed vectors publish; this is the pinned compute rule every
+/// contact-hash vector row reproduces under.
+pub fn normalize_contact(value: &str, domain: &str) -> Result<String, String> {
+    match domain {
+        "phone" => Ok(value.to_string()),
+        "email" => {
+            let trimmed = value.trim();
+            let separator = trimmed.rfind('@').ok_or_else(|| "email contact preimage must contain '@'".to_string())?;
+            let (local, host) = trimmed.split_at(separator);
+            let lowered: String = host[1..].chars().map(|c| if c.is_ascii_uppercase() { c.to_ascii_lowercase() } else { c }).collect();
+            Ok(format!("{local}@{lowered}"))
+        }
+        other => Err(format!("unknown contact domain '{other}' (expected phone or email)")),
+    }
+}
+
+/// Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+/// HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret shared
+/// with the message's receiver. phone_hash, email_hash, and contacted_hashes
+/// entries all ride this one construction — the same digest path as
+/// sign_hmac, never an unsalted digest, never SHA-1.
+pub fn contact_hash(secret: &str, value: &str, domain: &str) -> Result<String, String> {
+    Ok(hmac_sha256_hex(secret.as_bytes(), normalize_contact(value, domain)?.as_bytes()))
+}
+
+/// Payload fields introduced at v1.1 (LEP-0003) that require the receiving
+/// endpoint to advertise v1.1 support: the ping/bid/post objects are closed,
+/// so a v1.0 schema-validating receiver REJECTS the fields rather than
+/// ignoring them (SPEC.md §8 capability gate, never ignore-gated).
+pub const SLOT_FIELDS: [&str; 3] = ["slots_available", "slots_claimed", "contacted_hashes"];
+
+/// SPEC.md §8 version-string membership: the gate opens only for a parseable
+/// full major.minor.patch element with major == 1 and minor >= 1; comparison
+/// is parsed, never a string literal or prefix. Malformed or partial elements
+/// ("1.1", "v1.1.0", "1.1.0.1") never open the gate.
+pub fn receiver_advertises_slot_fields(advertised_lcp_versions: &[&str]) -> bool {
+    advertised_lcp_versions.iter().any(|element| {
+        let parts: Vec<&str> = element.split('.').collect();
+        if parts.len() != 3 || !parts.iter().all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit())) {
+            return false;
+        }
+        parts[0].parse::<u32>() == Ok(1) && parts[1].parse::<u32>().unwrap_or(0) >= 1
+    })
+}
+
+/// Errors when an envelope carries v1.1 slot fields but the receiver's
+/// advertisement does not support them (§8 gate; invalid example D). An empty
+/// vector is capability-compatibility, not a schema verdict.
+pub fn slot_capability_errors(envelope: &Value, advertised_lcp_versions: &[&str]) -> Vec<String> {
+    let payload = envelope.pointer("/lcp/payload");
+    let mut present: Vec<String> = Vec::new();
+    if let Some(object) = payload.and_then(Value::as_object) {
+        for field in SLOT_FIELDS {
+            if object.contains_key(field) {
+                present.push(field.to_string());
+            }
+        }
+        if object.get("event").and_then(Value::as_str) == Some("CONTACTED")
+            && object.get("details").and_then(Value::as_object).map(|d| d.contains_key("contacted_hashes")).unwrap_or(false)
+        {
+            present.push("details.contacted_hashes".to_string());
+        }
+    }
+    if present.is_empty() || receiver_advertises_slot_fields(advertised_lcp_versions) {
+        return Vec::new();
+    }
+    present.into_iter().map(|field| format!("{field} requires the receiver to advertise a full-semver LCP version with major 1 and minor >= 1 (SPEC.md §8 capability gate)")).collect()
+}
 pub fn verify_hmac(secret: &str, signature: &str, timestamp: &str, idempotency_key: Option<&str>, body: &[u8], max_skew: Duration, now: OffsetDateTime) -> Result<(), String> { let signed_at = OffsetDateTime::parse(timestamp, &Rfc3339).map_err(|_| "invalid timestamp".to_string())?; if (now - signed_at).whole_seconds().unsigned_abs() > max_skew.as_secs() { return Err("timestamp outside replay window".into()); } let expected = sign_hmac(secret, timestamp, idempotency_key, body); if expected.as_bytes().ct_eq(signature.to_lowercase().as_bytes()).unwrap_u8() != 1 { return Err("invalid signature".into()); } Ok(()) }
 
 pub struct Client { endpoint: String, sender_id: Option<String>, api_key: Option<String>, hmac_secret: Option<String>, http: HttpClient, max_retries: u32 }
@@ -184,6 +260,7 @@ mod tests {
             buyer_reference: None,
             reject_reason: Some("price_too_low".to_string()),
             capacity_remaining: None,
+            slots_claimed: None,
         };
         let json = serde_json::to_string(&bid).unwrap();
         assert!(!json.contains("bid_price_cents"), "optional price must be omitted: {json}");

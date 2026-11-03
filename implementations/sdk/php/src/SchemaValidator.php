@@ -61,9 +61,16 @@ final class SchemaValidator
         if (!$result->isValid()) throw new RuntimeException("LCP schema validation failed for $schemaName");
     }
 
-    public function validateEnvelope(array $envelope): void
+    public function validateEnvelope(array $envelope, ?array $receiverAdvertisedLcpVersions = null): void
     {
         $this->validate('schemas/envelope.json', $envelope);
+        // Optional SPEC.md §8 capability gate: slot fields toward a receiver
+        // that does not advertise v1.1 are a conformance failure (the v1.0
+        // closed allowlist cannot parse them).
+        if ($receiverAdvertisedLcpVersions !== null) {
+            $gateErrors = Capability::slotCapabilityErrors($envelope, $receiverAdvertisedLcpVersions);
+            if ($gateErrors) throw new RuntimeException('LCP capability gate: ' . implode('; ', $gateErrors));
+        }
         $type = $envelope['lcp']['message']['type'] ?? null;
         if (!is_string($type)) throw new RuntimeException('Missing lcp.message.type');
         $payload = $envelope['lcp']['payload'] ?? null;

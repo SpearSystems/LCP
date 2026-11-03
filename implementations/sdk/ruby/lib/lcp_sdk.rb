@@ -20,7 +20,47 @@ module LcpSdk
     end
 
     def sign(secret, timestamp, idempotency_key, body)
-      OpenSSL::HMAC.hexdigest("SHA256", secret, canonical_bytes(timestamp, idempotency_key, body))
+      hmac_hex(secret, canonical_bytes(timestamp, idempotency_key, body))
+    end
+
+    # The single HMAC-SHA256 → lowercase-hex construction in this SDK (SPEC.md §9).
+    # Signing and contact hashes share it; nothing else computes a keyed digest.
+    def hmac_hex(secret, data)
+      OpenSSL::HMAC.hexdigest("SHA256", secret, data)
+    end
+
+    CONTACT_HASH_DOMAINS = ["phone", "email"].freeze
+
+    # SPEC.md §9 pinned contact preimage. Phone: the wire value verbatim,
+    # byte-for-byte — no folding, stripping, or reformatting (the reference
+    # platform's phone_hash builder is the executed baseline). Email: the §9
+    # pinned candidate canonical — trim surrounding whitespace, ASCII-lowercase
+    # the domain, keep the local-part bytes verbatim, plus-addresses distinct.
+    # Email-form contacted_hashes ENTRIES stay emission-gated until #153 T9
+    # executed vectors publish; this is the pinned compute rule every
+    # contact-hash vector row reproduces under.
+    def normalize_contact(value, domain = "phone")
+      case domain
+      when "phone" then value
+      when "email"
+        trimmed = value.strip
+        separator = trimmed.rindex("@")
+        raise ArgumentError, "email contact preimage must contain '@'" unless separator
+        local = trimmed[0...separator]
+        host = trimmed[(separator + 1)..].chars.map { |c| c =~ /\A[A-Z]\z/ ? c.downcase : c }.join
+        "#{local}@#{host}"
+      else
+        raise ArgumentError, "unknown contact domain #{domain.inspect} (expected phone or email)"
+      end
+    end
+
+    # Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+    # HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret
+    # shared with the message's receiver. phone_hash, email_hash, and
+    # contacted_hashes entries all ride this one construction — never an
+    # unsalted digest, never SHA-1.
+    def contact_hash(secret, value, domain = "phone")
+      hmac_hex(secret, normalize_contact(value, domain))
     end
 
     def verify(secret, signature, timestamp, idempotency_key, body, max_skew_seconds: 300, now: Time.now.utc)
@@ -60,6 +100,41 @@ module LcpSdk
     %w[id type timestamp sender_id receiver_id idempotency_key].each { |key| raise ArgumentError, "missing lcp.message.#{key}" unless message[key].is_a?(String) && !message[key].empty? }
     raise ArgumentError, "missing lcp.payload" unless envelope.dig("lcp").key?("payload")
     true
+  end
+
+  # SPEC.md §8 capability gate (LEP-0003): v1.1 slot fields are
+  # capability-gated, never ignore-gated — the ping/bid/post objects are
+  # closed, so a v1.0 schema-validating receiver REJECTS the fields. Senders
+  # MUST only include them toward a receiver whose lcp_versions advertisement
+  # parses to a full major.minor.patch element with major == 1 and minor >= 1
+  # (never a string literal or prefix).
+  SLOT_FIELDS = ["slots_available", "slots_claimed", "contacted_hashes"].freeze
+
+  def receiver_advertises_slot_fields(advertised_lcp_versions)
+    Array(advertised_lcp_versions).any? do |element|
+      parts = element.to_s.split(".")
+      next false unless parts.size == 3 && parts.all? { |part| !part.empty? && part.match?(/\A\d+\z/) }
+      parts[0].to_i == 1 && parts[1].to_i >= 1
+    end
+  end
+
+  def slot_fields_present(payload)
+    return [] unless payload.is_a?(Hash)
+    present = SLOT_FIELDS.select { |field| payload.key?(field) }
+    if payload["event"] == "CONTACTED" && payload["details"].is_a?(Hash) && payload["details"].key?("contacted_hashes")
+      present = present + ["details.contacted_hashes"]
+    end
+    present
+  end
+
+  # Errors when an envelope carries v1.1 slot fields but the receiver's
+  # advertisement does not support them (§8 gate; invalid example D). An empty
+  # list is capability-compatibility, not a schema verdict.
+  def slot_capability_errors(envelope, advertised_lcp_versions)
+    payload = envelope.dig("lcp", "payload")
+    present = slot_fields_present(payload)
+    return [] if present.empty? || receiver_advertises_slot_fields(advertised_lcp_versions)
+    present.map { |field| "#{field} requires the receiver to advertise a full-semver LCP version with major 1 and minor >= 1 (SPEC.md §8 capability gate)" }
   end
 
   class Client

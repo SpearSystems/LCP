@@ -1,4 +1,5 @@
 export { LcpSchemaValidationError, LcpSchemaValidator, type SchemaBundle } from "./validation.js";
+export { SLOT_FIELDS, receiverAdvertisesSlotFields, slotCapabilityErrors, slotFieldsPresent } from "./capability.js";
 
 export interface LcpMessage {
   id: string;
@@ -69,9 +70,49 @@ function hex(bytes: ArrayBuffer): string {
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function signHmac(secret: string | Uint8Array, timestamp: string, idempotencyKey: string | undefined, body: Uint8Array): Promise<string> {
+async function hmacHex(secret: string | Uint8Array, data: Uint8Array): Promise<string> {
   const key = await globalThis.crypto.subtle.importKey("raw", asBufferSource(toBytes(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-  return hex(await globalThis.crypto.subtle.sign("HMAC", key, asBufferSource(canonicalSigningBytes(timestamp, idempotencyKey, body))));
+  return hex(await globalThis.crypto.subtle.sign("HMAC", key, asBufferSource(data)));
+}
+
+export async function signHmac(secret: string | Uint8Array, timestamp: string, idempotencyKey: string | undefined, body: Uint8Array): Promise<string> {
+  return hmacHex(secret, canonicalSigningBytes(timestamp, idempotencyKey, body));
+}
+
+export type ContactHashDomain = "phone" | "email";
+
+/**
+ * The SPEC.md §9 pinned preimage for a contact value. Phone: the wire value
+ * verbatim, byte-for-byte — no folding, stripping, or reformatting (the
+ * reference platform's phone_hash builder is the executed baseline). Email:
+ * the §9 pinned candidate canonical — trim surrounding whitespace,
+ * ASCII-lowercase the domain, keep the local-part bytes verbatim,
+ * plus-addresses distinct. Email-form contacted_hashes ENTRIES stay
+ * emission-gated until #153 T9 executed vectors publish; this is the pinned
+ * compute rule the SDK must reproduce every contact-hash vector row under.
+ */
+export function normalizeContact(value: string, domain: ContactHashDomain): string {
+  if (domain === "phone") return value;
+  if (domain === "email") {
+    const trimmed = value.trim();
+    const separator = trimmed.lastIndexOf("@");
+    if (separator < 0) throw new Error("email contact preimage must contain '@'");
+    const local = trimmed.slice(0, separator);
+    const host = trimmed.slice(separator + 1).replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    return `${local}@${host}`;
+  }
+  throw new Error(`unknown contact domain: ${String(domain)} (expected phone or email)`);
+}
+
+/**
+ * Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+ * HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret shared
+ * with the message's receiver. phone_hash, email_hash, and contacted_hashes
+ * all ride this one construction — the same digest path as signHmac, never an
+ * unsalted digest, never SHA-1.
+ */
+export async function contactHash(secret: string | Uint8Array, value: string, domain: ContactHashDomain = "phone"): Promise<string> {
+  return hmacHex(secret, toBytes(normalizeContact(value, domain)));
 }
 
 export async function verifyHmac(secret: string | Uint8Array, signature: string, timestamp: string, idempotencyKey: string | undefined, body: Uint8Array, maxSkewSeconds = 300, now = new Date()): Promise<void> {

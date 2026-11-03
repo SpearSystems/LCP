@@ -40,8 +40,15 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
         require(errors.isEmpty()) { "LCP schema validation failed for $schemaName: $errors" }
     }
 
-    fun validateEnvelope(envelope: String) {
+    fun validateEnvelope(envelope: String, receiverAdvertisedLcpVersions: List<String>? = null) {
         validate("schemas/envelope.json", envelope)
+        // Optional SPEC.md §8 capability gate: slot fields toward a receiver
+        // that does not advertise v1.1 are a conformance failure (the v1.0
+        // closed allowlist cannot parse them).
+        if (receiverAdvertisedLcpVersions != null) {
+            val gateErrors = Capability.slotCapabilityErrors(envelope, receiverAdvertisedLcpVersions)
+            require(gateErrors.isEmpty()) { "LCP capability gate: ${gateErrors.joinToString("; ")}" }
+        }
         val root = mapper.readTree(envelope)
         val type = root.path("lcp").path("message").path("type").asText(null) ?: error("Missing lcp.message.type")
         val payload = root.path("lcp").path("payload")

@@ -34,3 +34,5 @@ if ($failures) {
 }
 echo "PHP SDK HMAC and full JSON Schema vectors passed\n";
 echo "PHP SDK shared validation corpus passed\n";
+$rows = require __DIR__ . '/lep0003_slots.php';
+echo "PHP SDK LEP-0003 vectors and slot round-trip passed ($rows contact-hash rows reproduced byte-exactly)\n";

@@ -40,7 +40,41 @@ object LcpSdk {
     }
 
     fun canonicalSigningBytes(timestamp: String, idempotencyKey: String?, body: ByteArray): ByteArray = ("$timestamp\n${idempotencyKey ?: ""}\n".toByteArray() + body)
-    fun signHmac(secret: String, timestamp: String, idempotencyKey: String?, body: ByteArray): String { val mac = Mac.getInstance("HmacSHA256"); mac.init(SecretKeySpec(secret.toByteArray(), "HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(canonicalSigningBytes(timestamp, idempotencyKey, body))) }
+    fun signHmac(secret: String, timestamp: String, idempotencyKey: String?, body: ByteArray): String = hmacHex(secret.toByteArray(), canonicalSigningBytes(timestamp, idempotencyKey, body))
+
+    /** The single HMAC-SHA256 → lowercase-hex construction in this SDK (SPEC.md §9). */
+    private fun hmacHex(key: ByteArray, data: ByteArray): String { val mac = Mac.getInstance("HmacSHA256"); mac.init(SecretKeySpec(key, "HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(data)) }
+
+    /**
+     * SPEC.md §9 pinned contact preimage. Phone: the wire value verbatim,
+     * byte-for-byte — no folding, stripping, or reformatting (the reference
+     * platform's phone_hash builder is the executed baseline). Email: the §9
+     * pinned candidate canonical — trim surrounding whitespace,
+     * ASCII-lowercase the domain, keep the local-part bytes verbatim,
+     * plus-addresses distinct. Email-form contacted_hashes ENTRIES stay
+     * emission-gated until #153 T9 executed vectors publish; this is the
+     * pinned compute rule every contact-hash vector row reproduces under.
+     */
+    fun normalizeContact(value: String, domain: String): String = when (domain) {
+        "phone" -> value
+        "email" -> {
+            val trimmed = value.trim()
+            val separator = trimmed.lastIndexOf('@')
+            require(separator >= 0) { "email contact preimage must contain '@'" }
+            val local = trimmed.substring(0, separator)
+            val host = trimmed.substring(separator + 1).map { if (it in 'A'..'Z') (it.code + 32).toChar() else it }.joinToString("")
+            "$local@$host"
+        }
+        else -> error("unknown contact domain '$domain' (expected phone or email)")
+    }
+
+    /**
+     * Per-pair contact hash (SPEC.md §9, LEP-0003 §3): lowercase-hex
+     * HMAC-SHA256(pair_secret, normalized_preimage) keyed with the secret
+     * shared with the message's receiver. Same digest path as [signHmac] —
+     * never an unsalted digest, never SHA-1.
+     */
+    fun contactHash(secret: String, value: String, domain: String = "phone"): String = hmacHex(secret.toByteArray(), normalizeContact(value, domain).toByteArray())
     fun verifyHmac(secret: String, signature: String, timestamp: String, idempotencyKey: String?, body: ByteArray, maxSkew: Duration = Duration.ofMinutes(5), now: Instant = Instant.now()) { val signedAt = Instant.parse(timestamp); require(kotlin.math.abs(Duration.between(signedAt, now).seconds) <= maxSkew.seconds) { "timestamp outside replay window" }; require(MessageDigest.isEqual(signHmac(secret, timestamp, idempotencyKey, body).toByteArray(), signature.lowercase().toByteArray())) { "invalid signature" } }
 
     class Client(private val endpoint: String, private val senderId: String? = null, private val apiKey: String? = null, private val hmacSecret: String? = null, private val http: HttpClient = HttpClient.newHttpClient()) {
