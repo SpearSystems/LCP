@@ -36,6 +36,9 @@ class PlatformConfig:
     require_auth: bool = True
     replay_window_seconds: int = 300
     webhook_timeout_seconds: float = 10.0
+    # SPEC §9: the window a consumer has to acknowledge a delivered post
+    # before the lead expires. Separate from the HTTP read timeout above.
+    post_response_timeout_seconds: float = 30.0
     max_delivery_attempts: int = 5
     worker_interval_seconds: float = 1.0
     max_body_bytes: int = 2_000_000
@@ -95,6 +98,8 @@ class PlatformConfig:
     attachment_clamav_port: int = 3310
 
     def __post_init__(self) -> None:
+        if self.post_response_timeout_seconds <= 0:
+            raise ValueError("The post response timeout must be positive")
         if self.max_body_bytes <= 0 or self.max_header_bytes <= 0:
             raise ValueError("Request size limits must be positive")
         if self.max_extension_bytes <= 0:
@@ -191,6 +196,9 @@ class PlatformConfig:
             ),
             webhook_timeout_seconds=float(
                 os.environ.get("LCP_WEBHOOK_TIMEOUT_SECONDS", "10")
+            ),
+            post_response_timeout_seconds=float(
+                os.environ.get("LCP_POST_RESPONSE_TIMEOUT_SECONDS", "30")
             ),
             max_delivery_attempts=int(os.environ.get("LCP_MAX_DELIVERY_ATTEMPTS", "5")),
             worker_interval_seconds=float(

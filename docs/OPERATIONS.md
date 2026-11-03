@@ -125,10 +125,15 @@ failure):
   retry budget is exhausted, into `dead_letter_jobs` with status `OPEN` and a
   `last_error`. `GET /v1/lcp/metrics` reports `delivery.{pending,retry,failed,
   dead_letter}` and queue age.
-- The **lead** keeps its routing status (`POSTED`); nothing in the current
-  contract expires it because of a delivery failure. A buyer that never
-  receives the webhook therefore has to be reconciled from the dead-letter
-  queue, not from lead status.
+- A post whose receiver **never acknowledges** it expires the lead after the
+  post response window (`LCP_POST_RESPONSE_TIMEOUT_SECONDS`, default 30 s per
+  SPEC §9). The sweep marks the delivery `FAILED`, records a dead-letter row
+  (`Post response timeout`), writes a `lead.post_response_timeout` audit event,
+  and moves the lead to `EXPIRED`. An **acknowledged** post (2xx) is never
+  expired by this window — it is the response that establishes the delivery and
+  its payable. The platform does not re-offer an expired post (the award already
+  consumed its slot); route the lead again deliberately if the buyer may still
+  take it.
 - Operator commands (audited, `platform:admin`):
   `lcp-platform-admin dead-letter list --status OPEN`,
   `dead-letter replay --job-id <id>`, `dead-letter quarantine --job-id <id>`.

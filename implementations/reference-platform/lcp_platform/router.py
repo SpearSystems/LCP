@@ -731,6 +731,7 @@ class Platform:
         self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
+        self._expire_unacknowledged_posts()
         self._process_attachment_deletions()
         # LEP-0003 §5 item 3: the auction-close re-route claims each expired
         # ping exactly once (conditional UPDATE under the store transaction;
@@ -1288,6 +1289,53 @@ class Platform:
                 lead_id=delivery["lead_id"],
                 attempts=attempts,
                 last_error=error,
+            )
+
+    def _expire_unacknowledged_posts(self, *, now: datetime | None = None) -> None:
+        """SPEC §9: a post its consumer never acknowledges expires the lead.
+
+        The window runs from award to the receiver's acknowledgement and
+        defaults to 30 seconds. Only unacknowledged deliveries are in scope — a
+        2xx acknowledgement is the response the platform observes and the event
+        that makes a post payable, so an acknowledged post is never expired
+        here. §9 makes re-offer MAY; this platform does not re-offer because the
+        awarded copy already consumed its slot (LEP-0003), so the expiry is
+        terminal and the operator can route the lead again deliberately.
+        """
+        reference = now or datetime.now(timezone.utc)
+        created_before = (
+            reference - timedelta(seconds=self.config.post_response_timeout_seconds)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for delivery in self.store.list_unacknowledged_post_deliveries(created_before):
+            lead_id = delivery["lead_id"]
+            attempts = int(delivery["attempts"])
+            self.store.mark_delivery(
+                delivery["delivery_id"],
+                status="FAILED",
+                attempts=attempts,
+                next_attempt_at=now_iso(),
+                last_error="Post response timeout",
+            )
+            self.store.record_dead_letter(
+                queue_type="delivery",
+                resource_id=delivery["delivery_id"],
+                lead_id=lead_id,
+                attempts=attempts,
+                last_error="Post response timeout",
+            )
+            if not self.store.expire_lead(lead_id):
+                continue
+            self.store.insert_audit(
+                tenant_id=self.config.routing_tenant_id,
+                actor_id=self.config.platform_id,
+                action="lead.post_response_timeout",
+                resource_type="lead",
+                resource_id=lead_id,
+                metadata={
+                    "delivery_id": delivery["delivery_id"],
+                    "offer_id": delivery["offer_id"],
+                    "timeout_seconds": self.config.post_response_timeout_seconds,
+                },
             )
 
     def _queue_delivery_event(self, delivery: Any, post: dict[str, Any]) -> None:
@@ -2071,6 +2119,9 @@ class Platform:
                 # refinement only — never a payable or lifecycle signal.
                 "FINAL_PRICING",
             ],
+            # SPEC §9: endpoints MAY advertise a non-default response
+            # timeout; this is the value the post sweep enforces.
+            "post_response_timeout_seconds": self.config.post_response_timeout_seconds,
             "attachments": {
                 "upload": True,
                 "authenticated_download": True,

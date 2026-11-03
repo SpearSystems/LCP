@@ -6,6 +6,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-11-04
+
+Patch: the delivered-post half of the §9 response window. No wire-shape change;
+one advisory capability field is added.
+
+### Fixed
+
+- **A post nobody acknowledged no longer leaves the lead `POSTED` forever
+  (#193).** §9 required a consumer to respond within 30 seconds and the lead to
+  expire otherwise; only the bid/auction leg implemented it. The platform now
+  measures the window from post delivery to acknowledgement
+  (`LCP_POST_RESPONSE_TIMEOUT_SECONDS`, default 30 s, per-offer override
+  available through the same config), marks the delivery `FAILED`, records a
+  `Post response timeout` dead-letter row, writes a `lead.post_response_timeout`
+  audit event, and transitions the lead to `EXPIRED`. An acknowledged (2xx) post
+  is never expired by the sweep — that acknowledgement is what makes the post
+  payable, so payables cannot race the timer. Re-offer remains MAY per §9 and is
+  not performed: the expired copy already consumed its slot under LEP-0003.
+- **The window is advertised.** `GET /v1/lcp/capabilities` now returns
+  `post_response_timeout_seconds` (§9 allows a non-default value), pinned by
+  `CAP-08`; `SEC-12` covers both the bid and post legs.
+
 ## [1.1.0] — 2026-11-03
 
 Additive MINOR: canonical timestamp generation with a blocking cross-SDK
