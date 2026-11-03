@@ -209,6 +209,7 @@ def build_post(
     correlation_id: str,
     contacted_hashes: list[str] | None = None,
     extensions: dict[str, Any] | None = None,
+    duplicate_resubmission: bool = False,
 ) -> dict[str, Any]:
     lead = lead_envelope["lcp"]["payload"]
     payload: dict[str, Any] = {
@@ -236,6 +237,10 @@ def build_post(
         "price_guardrails": True,
         "payable_definition": offer.get("payable_definition", "bilateral_definition"),
         "payable_status": "pending",
+        # SPEC §4: distinguishes an accidental resubmission (this buyer has
+        # already been delivered this lead) from the exclusivity/shared-slot
+        # axis — a second buyer on a shared lead is NOT a duplicate resub.
+        "is_duplicate_resub": duplicate_resubmission,
     }
     payload["matched_preferences"] = {
         "offer_id": offer["offer_id"],

@@ -293,6 +293,14 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   excluded from the SDK validation bundles by design). Python SDK gains
   `LCPClient.request_with_headers()` (additive) so the MCP adapter can surface
   pagination values inside the tool result as the record requires.
+### Fixed
+
+- **`pricing.is_duplicate_resub` is now computed (SPEC §4, issue #177).**
+  Posts carry the flag: `true` only when this buyer has already been
+  delivered this lead (delivery-side prior-contact dedup, keyed on the
+  lead + buyer pair); a second buyer on a shared lead is explicitly not a
+  duplicate resubmission. Maintainer ruling A recorded on #177.
+
 ### Governance and verification (ARB wave 0–1.5)
 
 - Autonomous Review Board charter (`governance/ARB.md`), dossier template,

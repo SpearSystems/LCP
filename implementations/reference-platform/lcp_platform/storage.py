@@ -2299,6 +2299,19 @@ class Store:
 
     # ─── Delivery queue ────────────────────────────────────────────────────
 
+    def has_prior_post_delivery(self, lead_id: str, buyer_id: str) -> bool:
+        """True when this buyer has already been delivered this lead (SPEC §4)."""
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT 1 FROM deliveries
+                WHERE lead_id = ? AND buyer_id = ? AND kind = 'post'
+                LIMIT 1
+                """,
+                (lead_id, buyer_id),
+            ).fetchone()
+        return row is not None
+
     def insert_delivery(
         self,
         *,

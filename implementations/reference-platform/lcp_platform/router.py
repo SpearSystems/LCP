@@ -794,6 +794,9 @@ class Platform:
             extensions=self._extensions_for_delivery(
                 lead_payload, offer["buyer_id"]
             ),
+            duplicate_resubmission=self.store.has_prior_post_delivery(
+                lead_payload["lead_id"], offer["buyer_id"]
+            ),
         )
         self.validator.require_valid_envelope(post)
         # Direct awards pass the SAME single write-time decision point as
@@ -1121,6 +1124,9 @@ class Platform:
                 ),
                 extensions=self._extensions_for_delivery(
                     lead_payload, offer["buyer_id"]
+                ),
+                duplicate_resubmission=self.store.has_prior_post_delivery(
+                    lead_payload["lead_id"], offer["buyer_id"]
                 ),
             )
             self.validator.require_valid_envelope(post)
