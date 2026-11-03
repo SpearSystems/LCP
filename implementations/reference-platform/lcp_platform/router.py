@@ -20,6 +20,13 @@ from .attachments import (
     build_malware_scanner,
     validate_residency,
 )
+from .attestation import (
+    AgentAttestationVerifier,
+    AttestationFailure,
+    AttestationShapeError,
+    check_attestation_shape,
+    token_digest,
+)
 from .auth import Authenticator, header
 from .crypto import EnvelopeCipher
 from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
@@ -140,6 +147,9 @@ class Platform:
         self.store = store or create_store(config)
         self.validator = SchemaValidator(config.schema_root)
         self.auth = Authenticator(self.store, config)
+        # LEP-0008: issuer-JWKS resolver + §5 verifier. The resolver's
+        # transport is injectable (tests never touch the network).
+        self.attestation = AgentAttestationVerifier(config)
         self.attachments = build_attachment_store(
             config,
             cipher=EnvelopeCipher(config.pii_encryption_key),
@@ -322,6 +332,12 @@ class Platform:
                 lead_id=existing["lead_id"],
             )
 
+        # LEP-0008 §5 pinned intake slot: after auth/rate-limit and BOTH
+        # dedup early-return paths (the LCP-005 409 and the DUPLICATE ack
+        # never re-verify and never fetch keys — §7 "one verification"),
+        # before insert_lead: a failed verification MUST NOT persist PII.
+        self._verify_agent_attestation(envelope, message, sender_id)
+
         payload = envelope["lcp"]["payload"]
         lead_expired = is_expired(envelope_expiry(envelope))
         offers = (
@@ -415,6 +431,97 @@ class Platform:
             status="RECEIVED",
             lead_id=payload["lead_id"],
         )
+
+    def _verify_agent_attestation(
+        self,
+        envelope: dict[str, Any],
+        message: dict[str, Any],
+        sender_id: str,
+    ) -> None:
+        """LEP-0008 §5/§8: run the 13-step procedure for agent-origin leads,
+        write the frozen §Privacy audit row (``{outcome, reason, iss_host,
+        kid, tok_sha256_16}`` — never token bytes), and apply the deployment
+        mode. Enforce rejects per the §8 mapping (shape → 400 LCP-100 schema
+        class; verification failure → 401 LCP-002 with ``details.reason``;
+        availability-only failure → 500 LCP-500). Observe verifies and records
+        every outcome but still accepts — the Rollout Phase 2 soft path, and
+        not an L3-honest mode (§9)."""
+        payload = envelope["lcp"]["payload"]
+        provenance = payload.get("provenance") or {}
+        agent = (
+            provenance.get("agent")
+            if provenance.get("source_type") == "agent"
+            else None
+        )
+        if not isinstance(agent, dict):
+            # §5: the procedure does not run for non-agent leads or an
+            # absent provenance.agent block (presence semantics unchanged).
+            return
+        observe = self.config.attestation_mode == "observe"
+        token = str(agent.get("attestation", ""))
+
+        def audit(outcome: str, reason: str | None, metadata: dict[str, Any]) -> None:
+            self.store.insert_audit(
+                tenant_id=self.auth.tenant_for(sender_id)
+                or self.config.routing_tenant_id,
+                actor_id=sender_id,
+                action=f"attestation.{outcome}",
+                resource_type="lead",
+                resource_id=str(payload.get("lead_id", "")),
+                metadata={"outcome": outcome, "reason": reason, **metadata},
+            )
+
+        try:
+            check_attestation_shape(token)
+        except AttestationShapeError as exc:
+            if not observe:
+                # §8 row 2: shape is the schema layer's class — LCP-100/400
+                # with the attestation pointer (§2 pattern + bundle regen
+                # lands in the wire-lane PR; this gate reproduces the wire
+                # outcome at the pinned intake slot until it does).
+                raise RequestError(
+                    "LCP validation failed", "LCP-100", 400, details=[str(exc)]
+                ) from exc
+            # Observe: verify + audit + accept — zero new rejections on the
+            # wire (Rollout Phase 2).
+            audit(
+                "observe",
+                "format",
+                {"iss_host": None, "kid": None, "tok_sha256_16": token_digest(token)},
+            )
+            return
+        try:
+            binding = self.attestation.verify(
+                token,
+                receiver_id=str(message["receiver_id"]),
+                envelope_agent_id=str(agent.get("agent_id", "")),
+                sender_id=sender_id,
+                scopes=lambda scope: self.auth.has_scope(sender_id, scope),
+            )
+        except AttestationFailure as failure:
+            audit("observe" if observe else "reject", failure.reason, failure.metadata)
+            if observe:
+                return
+            if failure.reason == "key_unavailable":
+                # §8: the receiver's own infrastructure answer — retryable,
+                # fail-closed; enforce mode MUST NOT silently substitute an
+                # accept when key resolution fails.
+                raise RequestError(
+                    "Agent attestation verification is unavailable",
+                    "LCP-500",
+                    500,
+                    details={"reason": failure.reason},
+                ) from failure
+            # Identity axis (docs/err-auth-triage.md §3 precedent): an
+            # unverifiable attestation is a failing assertion of WHO is
+            # acting; LCP-002 with details.reason disambiguates (§8).
+            raise RequestError(
+                "Agent attestation failed verification",
+                "LCP-002",
+                401,
+                details={"reason": failure.reason},
+            ) from failure
+        audit("accept", None, binding.metadata)
 
     def submit_bid(
         self,

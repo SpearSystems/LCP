@@ -125,6 +125,9 @@ Important settings include:
 | `LCP_RATE_LIMIT_PER_MINUTE` | Set per traffic class and enforce edge quotas too. |
 | `LCP_MAX_BODY_BYTES` | Keep bounded and review against vertical payload sizes. |
 | `LCP_REPLAY_WINDOW_SECONDS` | Five minutes or shorter. The window is measured against each host's system clock; keep API, worker, and partner hosts NTP-synced (see clock sync in the [operations runbook](OPERATIONS.md)). |
+| `LCP_ATTESTATION_MODE` | `enforce` (default) performs LEP-0008 §5 verification and rejects failures; `observe` verifies and audits but still accepts — a rollout phase only, and such a deployment must not advertise L3. |
+| `LCP_ATTESTATION_CLOCK_SKEW_SECONDS` | `0`–`30`; anything above 30 is refused at startup (LEP-0008 §7 clock rule). Keep receivers NTP-synced instead of raising this. |
+| `LCP_ATTESTATION_FETCH_TIMEOUT_SECONDS` / `LCP_ATTESTATION_JWKS_MAX_BYTES` / `LCP_ATTESTATION_JWKS_CACHE_TTL_SECONDS` | Issuer-JWKS fetch bounds (max `2` s / `16384` B / 24 h cap). Resolution is HTTPS-only and resolve-aware in every mode — `LCP_ALLOW_INSECURE_WEBHOOKS` does not relax it; see the attestation rollout runbook in [OPERATIONS.md](OPERATIONS.md). |
 | `LCP_ATTACHMENT_BACKEND` | `file` for a sandbox/single node; use `s3` for the production S3-compatible object-storage adapter. |
 | `LCP_ATTACHMENT_DIRECTORY` | Used by the reference file backend only; keep it on residency-controlled encrypted storage. |
 | `LCP_MAX_ATTACHMENT_BYTES` | Bound according to malware scanning, storage, and buyer requirements. |
