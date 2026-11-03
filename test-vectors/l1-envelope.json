@@ -130,6 +130,202 @@
         }
       },
       "checks": ["envelope_schema"]
+    },
+    {
+      "id": "L1-009",
+      "name": "lead_consumer_locale_es419_accepted",
+      "expect": "pass",
+      "description": "SPEC §3: locale is a BCP-47 language tag. es-419 (Latin American Spanish — 3-digit UN M.49 region) is legal BCP-47 and must validate. The pre-#179 pattern '^[a-z]{2,3}(-[A-Z][a-zA-Z]{1,7})?$' rejected it; the widened pattern '^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$' accepts it. Paired controls: L1-011/L1-012/L1-013 differ only in the locale value and must still be rejected.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-locale-009"
+          },
+          "payload": {
+            "lead_id": "lead_locale_009",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Maria Gonzalez",
+              "phone": "+525512345678",
+              "locale": "es-419"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": ["envelope_schema", "lead_schema"]
+    },
+    {
+      "id": "L1-010",
+      "name": "lead_consumer_locale_zh_hans_cn_accepted",
+      "expect": "pass",
+      "description": "SPEC §3: locale is a BCP-47 language tag. zh-Hans-CN stacks the script subtag (Hans) under the language with a 2-letter region (RFC 5646 §2.1-2.2) and must validate; the pre-#179 pattern had no script production and rejected it. Same lead shape as L1-009; only the locale differs.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-locale-010"
+          },
+          "payload": {
+            "lead_id": "lead_locale_010",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Maria Gonzalez",
+              "phone": "+525512345678",
+              "locale": "zh-Hans-CN"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": ["envelope_schema", "lead_schema"]
+    },
+    {
+      "id": "L1-011",
+      "name": "lead_consumer_locale_empty_subtag_rejected",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "error_contains": "consumer/locale",
+      "description": "SPEC §3: 'XX-' (uppercase language, dangling empty subtag) is not a BCP-47 language tag. Widening acceptance for es-419/zh-Hans-CN (L1-009/L1-010) must not loosen this — reject control paired with the accept controls, identical lead payload.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-locale-011"
+          },
+          "payload": {
+            "lead_id": "lead_locale_011",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Maria Gonzalez",
+              "phone": "+525512345678",
+              "locale": "XX-"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema"]
+    },
+    {
+      "id": "L1-012",
+      "name": "lead_consumer_locale_empty_language_rejected",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "error_contains": "consumer/locale",
+      "description": "SPEC §3: '-en' begins with an empty language subtag — not a BCP-47 language tag. Reject control paired with the widened acceptance vectors L1-009/L1-010.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-locale-012"
+          },
+          "payload": {
+            "lead_id": "lead_locale_012",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Maria Gonzalez",
+              "phone": "+525512345678",
+              "locale": "-en"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema"]
+    },
+    {
+      "id": "L1-013",
+      "name": "lead_consumer_locale_full_language_name_rejected",
+      "expect": "fail",
+      "error_code": "LCP-003",
+      "error_contains": "consumer/locale",
+      "description": "SPEC §3: 'english' is a full language name, not a 2-3 letter BCP-47 language subtag. Reject control paired with the widened acceptance vectors L1-009/L1-010.",
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "idempotency_key": "pub-lead-locale-013"
+          },
+          "payload": {
+            "lead_id": "lead_locale_013",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "full_name": "Maria Gonzalez",
+              "phone": "+525512345678",
+              "locale": "english"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "VIC"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0"
+            }
+          }
+        }
+      },
+      "checks": ["lead_schema"]
     }
   ]
 }

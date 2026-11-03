@@ -75,7 +75,7 @@ distribution undefined); #193 delivered-post ack-deadline leg unshipped
 | CON-03 | §3 consumer.email RFC-format email | schema+corpus | sdk-007 | green |
 | CON-04 | §3 consumer.dob ISO date | schema+corpus | sdk-008 | green |
 | CON-05 | §3 full_name usable without first/last (non-Western names) | schema+runner | L2-012 | green |
-| CON-06 | §3 locale is a BCP-47 language tag | schema | - | gap(shipped pattern REJECTS valid BCP-47 (es-419, zh-Hans-CN) — widening is wire-visible, tracked #179) |
+| CON-06 | §3 locale is a BCP-47 language tag | schema | L1-009, L1-010, L1-011, L1-012, L1-013 | green |
 | CON-07 | §3 phone_hash/email_hash are HMAC-SHA256 64-hex strings | schema+runner | L3-003 | green |
 | CON-08 | §3 gender removed from core (verticals define it in attributes) | schema | tool:check_universal_core#UCA-DEMOGRAPHICS-ABSENT | green |
 | LOC-01 | §3 location.country_code REQUIRED, ISO 3166-1 alpha-2 | schema+runner | L2-001 | green |
