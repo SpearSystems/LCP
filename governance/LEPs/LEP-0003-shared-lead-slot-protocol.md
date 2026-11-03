@@ -211,8 +211,9 @@ Additive optional field on `post` (`schemas/post.json`):
   hashed under the receiving buyer's pair secret. Nothing is
   "canonicalized", because nothing else is implemented.
 - **Email entries are blocked until §9 norms the normalization.**
-  `normalized_email` appears only as a term — `SPEC.md:97, 375, 720`
-  use it, zero sites define it; the schemas echo the description
+  `normalized_email` appears only as a term — `SPEC.md:97, 375`
+  use it, zero sites define it (the phone-side sibling
+  `normalized_e164` is the term at `SPEC.md:743`); the schemas echo the description
   (`schemas/core.json:22`, `schemas/ping.json:41`); no published
   vector pins a preimage→digest pair (`test-vectors/sdk/hmac.json`
   covers message *signing* only); the reference platform never
@@ -285,7 +286,7 @@ re-keying) — per recipient pair for subsequent posts. `submitEvent`
   returns `LCP-002 Sender is not authorized for this lead event`,
   while `DELIVERED` on the same transport and scopes returns
   `RECEIVED` (dossier F5, row 20). Acceptance today rides the default
-  credential's wildcard scope (`storage.py:916` seeds `["*"]`;
+  credential's wildcard scope (`storage.py:917` seeds `["*"]`;
   `auth.py:168-170` treats `*` as satisfying every scope check —
   routed observation O2, L-Security), which is not a conformance-grade
   path. The implementation PR **must**, as part of landing `CONTACTED`:
@@ -463,10 +464,14 @@ registry and the example failed the repository's own runner with
 
 ### Valid example — post carrying per-pair contacted hashes
 
-Two earlier parties were contacted (one phone, one email) by the first
+Two earlier parties were contacted (both by phone) by the first
 slot holder; the platform re-keyed both digests under `buyer_002`'s pair
 secret before posting. No plaintext contact identifiers appear in the
-exchange.
+exchange. Phone-form only, deliberately: §3 gates any email-form
+`contacted_hashes` entry behind the SPEC §9 normalization pin plus #153
+**T9** vectors, and the reference platform hashes phone only today — an
+example shipping an email-form entry would depict what this document
+forbids shipping.
 
 ```json
 {
@@ -503,6 +508,14 @@ exchange.
 
 ### Valid example — `CONTACTED` event report
 
+*(Re-validated by execution 2026-11-03. The single entry is derivable,
+not decorative: it is §3's phone reference digest —
+`HMAC-SHA256(pair-secret-for-vectors-0123456789, "+15125550147")` — the
+delivered `consumer.phone` verbatim per §3's preimage rule, keyed with
+the example pair secret — and it satisfies §4's `^[a-f0-9]{64}$` ingest
+MUST. An earlier draft carried a 63-hex string the doc's own MUST
+rejects; corrected per re-dossier RF-1.)*
+
 ```json
 {
   "lcp": {
@@ -523,7 +536,7 @@ exchange.
       "timestamp": "2026-11-02T10:25:41Z",
       "details": {
         "contacted_hashes": [
-          "5a1c9e3b7d0f2a6c8e4b1d9f3a7c5e2b8d4f6a0c1e3b5d7f9a2c4e6b8d0f1a3"
+          "c47aff331606437528b34b7f919eb37704e87ee35eed80e52cfa36826a4a2e12"
         ],
         "contacted_at": "2026-11-02T10:25:41Z",
         "via": "phone"
@@ -806,7 +819,10 @@ traceability gate; `docs/V1.1-ROADMAP.md` change gates 1–7).
   attempt yields no post beyond the distinct-buyer budget — including
   the two-pass concurrent and two-process Postgres races
   (`plat:…`, T2/T3/T4, platform behavior vectors, L2/L3); scoped-buyer
-  `CONTACTED` acceptance + advertisement (T6); capability
+  `CONTACTED` acceptance + advertisement (T6); replay-idempotence of
+  `CONTACTED` reports under §4's `message.id`-dedupe / set-union
+  semantics (`plat: test_contacted_report_replay_is_idempotent`, T8);
+  capability
   `lcp_versions` semver match rule (T10); published `dedup-hash`
   vectors executed by the reference platform and all ten SDKs (T9);
   `CONTACTED` event accepted as open-enum value with pass-through
@@ -955,7 +971,7 @@ authorizes no implementation (Draft gates unchanged). Dispositions:
 | **F6** (major) — the capability gate cited text that defines nothing (§8 one sentence; OpenAPI untyped-ish array; `["1.0.0"]` the only producer; literal `1.1` unsatisfiable, prefix wrong) | The Compatibility section rewritten honestly: what exists is quoted with line cites; the exact normative text the implementation PR must add (element format, parsed-semver match rule, hosting obligation for ping initiators, OpenAPI pattern) is specified here; rollout/rollback wording moved to full-semver elements; **T10** named; invalid D points at the corrected rule. |
 | **F7** (major) — the hash preimage is normed nowhere; only `consumer.phone` verbatim exists; email hashing implemented nowhere; re-keying a reported digest is impossible without plaintext | §3 gained: the verbatim wire-bytes preimage rule (matching `messages.py:89-93`), the honest "no email behavior exists to inherit" statement, the gate (no email entries until T9 vectors), proposed fixture form, two locally computed reference digests (labeled conformance targets), and the plaintext-only re-key constraint (`router.py` post builder is the only source). |
 | **F8** (minor) — invalid B validated under the naive draft while vectors promised rejection | Drafted `ping.json` now carries the expressible conditional (`exclusive ⇒ slots_available const 1`), negative vector `lcp-neg-exclusive-multislot-001` (**T7**) promised, invalid B text made honest, conditional re-run recorded. |
-| **F9** (minor) — "`idempotency_key` covers replay of contact reports" factually wrong (dedupe is `event_id`); accumulation undefined; report-direction absent-vs-`[]` unstated | The privacy bullet corrected; §4 defines at-least-once + receiver-side `message.id` dedupe, set-union accumulation with digest merge, absent-vs-`[]` for reports. |
+| **F9** (minor) — "`idempotency_key` covers replay of contact reports" factually wrong (dedupe is `event_id`); accumulation undefined; report-direction absent-vs-`[]` unstated | The privacy bullet corrected; §4 defines at-least-once + receiver-side `message.id` dedupe, set-union accumulation with digest merge, absent-vs-`[]` for reports. Conversion test **T8** (`plat: test_contacted_report_replay_is_idempotent`) named in the impact list (re-dossier RF-6). |
 | **F10** (minor) — `slots_available ≤ max_buyers` unverifiable by the receiver (no `max_buyers` on the allowlist); undeclared-`shared` case left unbounded while the platform caps at 1 | §1 states the invariant platform-side only, bans receiver reliance, and norms the undeclared budget to 1 (matching the router's implicit cap). |
 | **O1/O2/O3** (routed, carried) | Implementation-phase test obligations recorded in §5/§4/impact: `EXC-02` ledger honesty (extended by T2/T4), scoped buyer credentials for T6 (the wildcard path is not a conformance path), `conformance.py` ignoring `checks` arrays (wire it or ship real tests). The dossier's cross-surface note (`ping.status` unchecked in `_route_lead`) became §5 item 4. |
 
@@ -969,14 +985,47 @@ min 1 + the invalid-B conditional; `slots_claimed` 1..1;
 `test-vectors/conformance.py::validate_message` for the vertical /
 ping-safe layer. Results (full commands and outputs recorded on the
 revision PR): the corrected ping example and the bid/post/event
-examples `PASS` under the overlay; the same four `REJ` under the
-published tree exactly as invalid D predicts (closed objects);
+examples `PASS` under the overlay; under the published tree three
+`REJ` exactly as invalid D predicts (ping/bid/post — closed objects),
+while the `CONTACTED` event example `PASS`es — that PASS is §4's
+zero-schema-cost mechanism in action (open `details`);
 invalid A `REJ` (pattern), invalid B `REJ` (conditional),
 `slots_available: 0/-1` `REJ` (minimum), `slots_claimed: 2` `REJ`
 (maximum), duplicate/`[]` report shapes behave per §4. The baseline
 repository gates (`tools/check_lep_registry.py`,
 `tools/check_doc_citations.py`, `test-vectors/conformance.py`,
 `tools/check_reserved_fields.py`) pass on this revision unchanged.
+
+**Re-review corrections (2026-11-03).** The ARB re-dossier of the
+revision (posted on #124, dispositions tracked at #160) verified F1–F10
+resolved but raised six record-level findings RF-1–RF-6; this commit
+applies all six (citations re-verified at the branch SHA):
+- **RF-1** (major) — the `CONTACTED` event example's digest was 63 hex
+  chars, failing this document's own §4 ingest MUST (the F1 copy-the-example
+  defect class, invisible to T1's open-`details` schema check). Replaced
+  with the true digest under §3's verbatim preimage rule and the example
+  pair secret — `hmac.new(b"pair-secret-for-vectors-0123456789",
+  b"+15125550147", sha256)` → `c47aff33…4a2e12`, recomputed by execution,
+  equal to the §3 phone reference digest — with the derivation stated
+  under the example; not padded.
+- **RF-2** — the post example's narrative asserted a prior **email**
+  contact in `contacted_hashes` while §3 gates email-form entries behind
+  the §9 pin + T9 (and the platform hashes phone only today); both prior
+  parties are now phone-form and the note cites the gate.
+- **RF-3** — wildcard-scope cite `storage.py:916` → `storage.py:917`
+  (the seed statement; 916 is a `tenant_id,` tuple element) — verified
+  at this SHA.
+- **RF-4** — `normalized_email` was credited with `SPEC.md:97, 375, 720`;
+  the email term's sites are `97` and `375` only — `720` at the reviewed
+  SHA (and `743` at this SHA, after SPEC drift) is the phone-side
+  `normalized_e164` site. Cited accordingly.
+- **RF-5** — the re-validation summary claimed "the same four `REJ`
+  under the published tree"; measured is three `REJ` with the event
+  example `PASS` — the summary now states that, since the event PASS is
+  precisely §4's zero-schema-cost mechanism.
+- **RF-6** — T8 (`plat: test_contacted_report_replay_is_idempotent`,
+  F9's conversion) was never named; added to the impact/conformance
+  list alongside T1–T7/T9/T10 and pointed to from F9's disposition row.
 
 **Status unchanged: Draft.** The registry row already records the
 2026-11-03 maintainer directive; the ARB charter voids the `0bbc1437`
