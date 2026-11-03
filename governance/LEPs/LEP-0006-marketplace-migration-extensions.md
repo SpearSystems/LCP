@@ -3,7 +3,7 @@
 - **Title:** Marketplace migration extensions: final-pricing feedback (`FINAL_PRICING` event) and `{org}.form.questions` (lead/post `extensions`)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Draft** — no implementation authorized; registry rows land as *proposed-on-acceptance*
+- **Status:** **Draft** — no implementation authorized; registry rows land as *proposed-on-acceptance* (ARB dossier findings #185 F1/F3 dispositioned in the "Revision 2026-11-03 (post-dossier)" section; F2 named, open for the implementation PR)
 - **Target version:** v1.1.0 (additive MINOR; Track A carries zero schema change, Track B adds one optional closed-object field to `lead`/`post`)
 - **Discussion:** [#185](https://github.com/SpearSystems/LCP/issues/185)
   (`[LEP] Marketplace migration extensions: final-pricing feedback and {org}.form.questions`)
