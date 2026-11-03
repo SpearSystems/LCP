@@ -1093,7 +1093,8 @@ applies all six (citations re-verified at the branch SHA):
 **Wire-landing pointers (2026-11-03, post-acceptance record
 maintenance).** Wire PR [#166](https://github.com/SpearSystems/LCP/pull/166)
 (`feat/lep3-wire-schemas`; **open at the time these
-pointers were written** — each names the PR, not `main`) carries the
+pointers were written, since merged to `main` at `77c5f81`
+(2026-11-03)** — each names the PR, not `main`) carries the
 schema/vector surface this record proposed. Inline pointers cite the
 PR alone — deliberately SHA-free, because the head churned during
 coordination: first verified at `7335cc4`, re-verified at `4f9f80c`
@@ -1106,9 +1107,10 @@ through the platform `SchemaValidator` against the PR's native schemas,
 and its landed `event-contacted.json` carries the byte-exact RF-1
 bytes). Two handoff-cited SHAs — `1587d8c` (never existed) and
 `c565e55` (a runner-refactor attempt the wire lane confirms never
-landed) — were **not on the remote** when checked (verified via GitHub; on
-squash-merge the PR page is the durable authority for the shipped
-bytes, and these SHA-free pointers need no maintenance either way). Where shipped bytes match a
+landed) — were **not on the remote** when checked (verified via GitHub; #166
+ultimately merged to `main` as merge commit `77c5f81`, whose PR page is
+the durable authority for the shipped bytes, and these SHA-free
+pointers needed no maintenance across the churn). Where shipped bytes match a
 proposal, the in-place "Reality pointer" notes above record it. The
 deltas a reader of this record needs: (i) the proposed vector file name
 `dedup-hash.json` ships as `contact-hash.json` with the **identical
@@ -1143,8 +1145,9 @@ the re-dossier ran (verdict FINDINGS, record-level RF-1–RF-6 applied in
 #161 exactly as prescribed), and the maintainer recorded **Acceptance**
 in the Decision section above (`2a2816d`; registry @ `958e042`). The
 record's status is **Accepted**; implementation proceeds under the
-phase-gates T1–T10 tracked at #160 — those gates remain open, and the
-wire surface (#166) is in review.
+phase-gates T1–T10 tracked at #160 — those gates remain open; the
+wire surface (#166) has since landed on `main` (merge commit
+`77c5f81`, 2026-11-03).
 
 ## Deferred questions
 
