@@ -914,21 +914,82 @@ with the secret shared with the message's receiver:
 
 ### Agent attestation
 
-`provenance.agent.attestation` is a signed token proving the agent's
-identity and authority. The recommended format is a JWT with claims:
+`provenance.agent.attestation` is a signed token proving the agent's identity
+and authority as an acting principal. Transport authentication (the request
+HMAC, above) proves *which sender* sent the bytes; the attestation proves
+*which agent* acted, and on whose behalf. Free-text attestations are
+non-conformant. The full decision record, rationale, and conformance battery
+for this section are LEP-0008.
 
-| Claim | Description |
+**Token form (normative).** A compact JWS (RFC 7519 §7.1):
+`base64url(header) "." base64url(claims) "." base64url(signature)` — three
+non-empty segments, UTF-8 JSON objects, standard base64url alphabet **without
+padding**. `schemas/core.json` enforces the shape (`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`,
+`maxLength` 8192); a padded or free-text value is rejected by schema
+validation (`LCP-100`, `field: "provenance.agent.attestation"`) before any
+verification work. Shape is not verification: the checks below are
+implementation duties, not schema constraints.
+
+**Header rules.**
+
+| Member | Rule |
 |---|---|
-| `agent_id` | Unique agent identifier (matches `provenance.agent.agent_id`). |
-| `acting_for` | Party the agent acts on behalf of (matches `provenance.agent.acting_for`). |
-| `issuer` | Authority that issued the token. |
-| `iat` | Issued-at timestamp. |
-| `exp` | Expiry timestamp. |
+| `alg` | MUST be exactly `EdDSA` (OKP/Ed25519) or `ES256` (P-256). Any MAC (`HS256`/`HS384`/`HS512`), `none`, or anything else is rejected with reason `algorithm`. Exact, case-sensitive match, before any key lookup. |
+| `kid` | MUST be present; selects the JWK. |
+| `typ` | SHOULD be `JWT`; MUST NOT decide a verification outcome (a receiver must not reject a valid `at+jwt` token for its media type). |
+| unknown members | MUST be ignored except `crit`: this profile defines no extensions, so any `crit` header names an unsupported extension and the token fails at the shape step. URL-bearing members (`jku`, `x5u`, `x5c`) MUST NOT be dereferenced — the issuer's JWKS (below) or a pinned key is the only key source. |
 
-The token is verifiable against a published key (JWKS or pinned public
-key). Free-text attestations are non-conformant — the token MUST be
-verifiable. This is a fraud-resistance requirement for high-volume
-agent-submitted leads.
+**Claim set (normative vocabulary).**
+
+| Claim | Required | Type | Rule |
+|---|---|---|---|
+| `iss` | MUST | string | HTTPS issuer URL; base of the JWKS location. |
+| `aud` | MUST | string | Equals `lcp.message.receiver_id`, and the receiver MUST confirm that value is its own platform identity. Stops cross-receiver replay. |
+| `agent_id` | MUST | string | Byte-equal to `provenance.agent.agent_id`. |
+| `acting_for` | MUST | string | Equal to the authenticated `sender_id`, or carried by that sender's `act_for:` scope. |
+| `iat` | MUST | integer (NumericDate, RFC 7519 §2) | Whole seconds, base-10 literal — no fraction, no exponent notation. |
+| `exp` | MUST | integer (NumericDate) | Same numeric form; expiry enforced as below. |
+| `nbf`, `jti` | MAY | integer / string | `nbf` SHOULD be honored under the same skew rule; `jti` is recorded, not required and not single-use-cached in v1. |
+| others | MAY | — | Ignored (claims are open inside a verified signature; unknown optional data is forward-compatible). |
+
+Absent or wrong-typed MUST claims are a decode-time `format` failure — never
+a post-signature claims mismatch, never ignorable.
+
+**Verification procedure (normative order).** A receiver MUST, in order:
+(1) require the attestation when an agent block is present; (2) parse both
+segments as JSON objects, rejecting malformed JSON, non-objects, and
+**duplicate member names at any nesting depth** (`format`); (3) exact `alg`
+allowlist match before touching keys (`algorithm`); (4) check MUST-claim
+presence and types on the claim bytes (`format`); (5) resolve the issuer's
+JWKS — `https://<iss>/.well-known/jwks.json` — over TLS only, after the
+request is transport-authenticated, through the same paired egress controls
+used for delivery webhooks (HTTPS-only with no user info, host resolved and
+rejected if private/loopback/link-local, no redirect following, no ambient
+proxy); (6) a document failing to parse or containing duplicate `kid` values
+is invalid — the token fails `key_unknown`, never “first key wins”;
+(7) select the JWK by `kid` and check its `kty`/`crv`/`alg` agree with the
+header `alg`; (8) check the signature encoding — EC signatures are P1363
+fixed-width `r ‖ s` (64 bytes for ES256), DER MUST NOT be accepted; EdDSA is
+64 bytes — then verify the signature over the exact `header.payload` bytes
+(`signature`); (9) reject when `exp` is at or before now (equality rejects);
+(10) honor `nbf` if present under the same rule; (11) require `aud` to equal
+the envelope's `receiver_id` and the receiver's own identity; (12) require
+`agent_id` to equal the envelope's, and `acting_for` to equal the
+authenticated sender or be covered by its `act_for:` scope; (13) apply the
+same time-skew rule as request replay protection (the §9 replay window;
+default five minutes, receivers MUST NOT widen it for attestations).
+Issuer unavailability (transport failure) is a server-side availability
+failure (`LCP-500`, fail closed); an invalid but successfully fetched JWKS
+is `key_unknown`. Verification failures are identity failures: `LCP-002`
+with a machine-readable `details.reason` drawn from
+`{format, algorithm, signature, key_unknown, expired, claims_mismatch}`.
+None of these steps replaces the request HMAC: a verified attestation MUST
+NOT relax the envelope signature check.
+
+**Capability advertisement honesty.** `conformance_level` in the
+capabilities document MUST describe what the receiver actually enforces: L3
+is advertised only when attestation verification is live and enforced
+(`observe` mode is not L3), otherwise L2. Shape validation alone is not L3.
 
 ### Rate limits
 
