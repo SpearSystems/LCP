@@ -84,6 +84,39 @@ tag-only publication checks as pull-request checks unless the workflow is also
 configured to run for pull requests. Reconfirm required-check names after
 renaming a workflow job; GitHub treats the check name as an API identity.
 
+### Applied state (2026-11-03)
+
+Recorded so the enforced settings and this document cannot drift. Applied by
+the repository administrator with the GitHub API; read them back with
+`gh api repos/SpearSystems/LCP/rulesets`.
+
+| Ruleset | Target | Rules |
+|---|---|---|
+| `main protection` (id 26446977) | `refs/heads/main` | pull request required, 0 required approvals, stale approvals dismissed, all review threads resolved, branch must be up to date, 33 required status checks, no deletion, no force-push |
+| `release tag protection` (id 26446978) | `refs/tags/v*` | no deletion, no force-push, no update (tag immutability; creation stays with maintainers) |
+
+Required checks (exact API identities): conformance/SDK/platform/Postgres
+integration, canonical schemas and generated models, all ten language SDK jobs,
+all ten `Interop probe` jobs, supply-chain tooling and Kyverno fixtures, CodeQL,
+dependency review, Python dependency audit, committed secrets scan, action-pin
+truth, SBOM exception expiry, Trivy, negative security vectors, SPEC-to-test
+coverage matrix, and CLA acknowledgment. `Attribution policy` and the docs
+advisory job stay informational, per the guidance above.
+
+Documented deviations, deliberate and time-bound:
+
+- **Zero required approvals.** The repository has a single maintainer, so a
+  one-approval rule would deadlock every merge. Independent *review* is
+  supplied by the ARB process (`governance/ARB.md`, LEP-0004); independent
+  *release* approval is not yet possible and remains a roadmap item.
+- **Environment self-review is permitted** (`prevent_self_review: false`) for
+  the same reason: the sole maintainer must be able to approve the deployment
+  their own tag triggers. Restore both settings when a second maintainer with
+  release duties is added.
+- **Signed commits are not required**, because the maintainer's signing-key
+  lifecycle has not been established. Do not enable it midway through a
+  release; make it the first commit of a planned migration.
+
 ## Create the protected `release` environment
 
 In **Settings → Environments**, create an environment named exactly `release`:

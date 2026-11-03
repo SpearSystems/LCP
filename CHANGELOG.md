@@ -323,6 +323,11 @@ MINOR; `SDK_VERSION` stays 1.0.2 until coordinated release prep per
   retry/dead-letter semantics are documented in the operations guide with
   the delivered-post acknowledgement deadline recorded as a v1.2 design item
   (#193).
+- **Repository protection is enforced.** `main` requires a pull request,
+  33 status checks, an up-to-date branch, and resolved threads, and rejects
+  force-push/deletion; `v*` tags are immutable. Required approvals stay at
+  zero while the project has one maintainer (ARB supplies independent
+  review); the deviation is recorded in the maintainer release setup.
 - **Forward promises match what shipped.** SPEC §10 no longer says batch
   submission and event subscriptions are "planned for v1.1" (LEP-0001 is
   Deferred, trigger-gated), and the §14 should-fix table is retitled
