@@ -1,0 +1,1156 @@
+{
+  "description": "Enum-passthrough / gap corpus for SPEC-COVERAGE rows ENU-02, ENU-03, ENU-05, PRV-01, MSG-LEAD-04, MSG-CALL-02, MSG-ACK-03, MSG-POST-03 (schema direction). SDK-agnostic: each fixture is a complete envelope with the boolean pass/fail outcome for schema validation, mirroring the validation-corpus.json contract. Executed by implementations/reference-platform/tests/test_gap_enum_message.py (runner hook into the shared conformance.py file was intentionally avoided; per-language SDK lanes adopt via the corpus path).",
+  "protocol_version": "1.0.0",
+  "fixtures": [
+    {
+      "id": "ep-001",
+      "rule": "enum-status",
+      "expect": "pass",
+      "description": "SPEC.md S6: `status` **Open** - \"Store and pass through. Do not treat as a validation failure.\" The SPEC's own future value example.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "PARTIALLY_REFUNDED",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-002",
+      "rule": "enum-channel",
+      "expect": "pass",
+      "description": "SPEC.md S6: `channel` **Open** - \"Store and pass through.\" SPEC names `video` as the example future value.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000002",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "video",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-003",
+      "rule": "enum-channel",
+      "expect": "pass",
+      "description": "SPEC.md S6: `channel` **Open** - second future value (`iot`) accepted by the schema.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000003",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "iot",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-004",
+      "rule": "enum-call-status",
+      "expect": "pass",
+      "description": "SPEC.md S6: `call.status` **Open** - \"Store and pass through.\" (schemas/call.json: \"Unknown values MUST be stored and passed through.\")",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000004",
+            "type": "call",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "publisher_mva",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "publisher-mva-call-001",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "mva-call-001",
+            "external_id": "mva-source-001",
+            "status": "NEW",
+            "channel": "call",
+            "consumer": {
+              "full_name": "Synthetic MVA Consumer",
+              "phone": "+61412345678"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000"
+            },
+            "compliance": {
+              "consent_purposes": [
+                "calls",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "synthetic-consent-001"
+                }
+              ],
+              "dnc_checked": true
+            },
+            "provenance": {
+              "source_type": "publisher",
+              "source_id": "publisher_mva",
+              "brand_id": "mva_brand_01",
+              "form_id": "mva-call-flow-v1",
+              "flow_key": "mva-call-flow-v1"
+            },
+            "attributes": {
+              "vertical": "mva",
+              "schema_version": "1.0.0",
+              "accident_type": "car_collision",
+              "accident_date_band": "last_7_days",
+              "injury_present": true,
+              "injury_severity_band": "moderate",
+              "medical_treatment": "emergency_room",
+              "police_report_available": true,
+              "fault_position": "not_at_fault",
+              "other_driver_identified": true,
+              "other_driver_insured": "yes",
+              "consumer_insured": "yes",
+              "represented_by_attorney": false,
+              "evidence_available": [
+                "signed_contract",
+                "police_report"
+              ]
+            },
+            "attachments": [
+              {
+                "attachment_id": "att_mva_contract_001",
+                "purpose": "signed_contract",
+                "filename": "synthetic-contract.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 24576,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "storage_ref": "lcp://attachments/att_mva_contract_001",
+                "created_at": "2026-08-15T10:00:00Z",
+                "encryption": "application_encrypted"
+              }
+            ],
+            "call": {
+              "call_id": "call-mva-001",
+              "status": "amd_detected",
+              "direction": "inbound",
+              "caller_phone_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "started_at": "2026-08-15T10:00:00Z",
+              "durations": {
+                "total_seconds": 65,
+                "agent_seconds": 55
+              },
+              "disposition": "qualified_lead"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-005",
+      "rule": "provenance-open-enums",
+      "expect": "pass",
+      "description": "SPEC.md S3 provenance: source_type/acquisition_method/incentive_type/platform_source are all open enums; unknowns pass through.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000005",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "connected_device",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage",
+              "acquisition_method": "podcast_sponsorship",
+              "incentive_type": "crypto_airdrop",
+              "platform_source": "mastodon"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-006",
+      "rule": "contact-window",
+      "expect": "pass",
+      "description": "SPEC.md S4 lead: optional `contact_window` (timezone, available_from/to, days - publisher hint).",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000006",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            },
+            "contact_window": {
+              "timezone": "Australia/Sydney",
+              "available_from": "09:00",
+              "available_to": "17:00",
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-007",
+      "rule": "contact-window",
+      "expect": "fail",
+      "description": "Negative control: contact_window.days is a CLOSED sub-enum (mon..sun); \"monday\" must fail validation.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000007",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            },
+            "contact_window": {
+              "timezone": "Australia/Sydney",
+              "days": [
+                "monday"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-008",
+      "rule": "contact-window",
+      "expect": "fail",
+      "description": "Negative control: contact_window is closed (additionalProperties false); unknown keys must fail.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000008",
+            "type": "lead",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "pub_123",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub-lead-20260815-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "external_id": "pub-internal-456",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true,
+              "scrubs": [
+                {
+                  "type": "dnc_national",
+                  "provider": "au_dncregister",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:48Z"
+                },
+                {
+                  "type": "litigator",
+                  "provider": "litigator_list",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                },
+                {
+                  "type": "blacklist",
+                  "provider": "internal",
+                  "result": "clean",
+                  "checked_at": "2026-08-15T10:19:49Z"
+                }
+              ]
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "ip_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+              "user_agent_hash": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            },
+            "expiry": {
+              "expires_at": "2026-08-15T10:50:00Z"
+            },
+            "contact_window": {
+              "timezone": "Australia/Sydney",
+              "priority": "high"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-009",
+      "rule": "call-lifecycle-details",
+      "expect": "pass",
+      "description": "SPEC.md S4: \"For call lifecycle events such as `CALL_OFFERED`, `CALL_CONNECTED`, `CALL_ENDED`, and `CALL_OUTCOME`, `details` SHOULD include `offer_id`, `call_status`, `total_seconds`, `disposition`, and `transfer_status` where available.\"",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000009",
+            "type": "event",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+            "idempotency_key": "buyer-event-lead_abc123-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "mva-lead-002",
+            "event": "CALL_OUTCOME",
+            "timestamp": "2026-08-15T10:05:00Z",
+            "details": {
+              "offer_id": "mva-auction-offer",
+              "call_status": "answered",
+              "total_seconds": 212,
+              "disposition": "qualified_lead",
+              "transfer_status": "transferred_to_agent"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-010",
+      "rule": "ack-rejection-reason",
+      "expect": "pass",
+      "description": "SPEC.md S4 ack: rejection_reason \"Structured rejection reason (open enum ...). Enables publisher automation.\"",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000010",
+            "type": "ack",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "880e8400-e29b-41d4-a716-446655440003",
+            "idempotency_key": "buyer-ack-lead_abc123-001",
+            "test": false
+          },
+          "payload": {
+            "original_message_id": "880e8400-e29b-41d4-a716-446655440003",
+            "status": "REJECTED",
+            "lead_id": "lead_abc123",
+            "rejection_reason": "out_of_geography"
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-011",
+      "rule": "ack-rejection-reason",
+      "expect": "pass",
+      "description": "SPEC.md S4 ack rejection_reason is an open enum: unknown future value must validate.",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "type": "ack",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "buyer_001",
+            "receiver_id": "platform_001",
+            "correlation_id": "880e8400-e29b-41d4-a716-446655440003",
+            "idempotency_key": "buyer-ack-lead_abc123-001",
+            "test": false
+          },
+          "payload": {
+            "original_message_id": "880e8400-e29b-41d4-a716-446655440003",
+            "status": "REJECTED",
+            "lead_id": "lead_abc123",
+            "rejection_reason": "carrier_unreachable"
+          }
+        }
+      }
+    },
+    {
+      "id": "ep-012",
+      "rule": "post-duplicate-resub",
+      "expect": "pass",
+      "description": "SPEC.md S4 post pricing: is_duplicate_resub distinguishes accidental resubmission (SPEC S4 exclusivity).",
+      "envelope": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "00000000-0000-4000-8000-000000000012",
+            "type": "post",
+            "timestamp": "2026-08-15T10:20:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_001",
+            "correlation_id": "550e8400-e29b-41d4-a716-446655440000",
+            "idempotency_key": "platform-001-post-lead_abc123-001",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_abc123",
+            "delivered_at": "2026-08-15T10:20:10Z",
+            "submitted_at": "2026-08-15T10:19:50Z",
+            "price_cents": 2200,
+            "currency": "AUD",
+            "buyer_id": "buyer_001",
+            "buyer_reference": "buyer-internal-987",
+            "pricing": {
+              "floor_price_cents": 1500,
+              "premium_cents": 700,
+              "final_price_cents": 2200,
+              "uncapped_price_cents": 2500,
+              "max_allowed_price_cents": 3000,
+              "price_guardrails": true,
+              "is_duplicate_resub": true,
+              "payable_definition": "form_lead_valid_phone",
+              "payable_status": "payable"
+            },
+            "matched_preferences": {
+              "states": [
+                "NSW"
+              ],
+              "loan_types": [
+                "refinance",
+                "cash_out_refinance"
+              ],
+              "credit_bands": [
+                "excellent",
+                "good"
+              ]
+            },
+            "consumer": {
+              "first_name": "Jane",
+              "last_name": "Smith",
+              "email": "jane.smith@example.com",
+              "phone": "+61412345678",
+              "locale": "en-AU"
+            },
+            "location": {
+              "country_code": "AU",
+              "state_region": "NSW",
+              "postal_code": "2000",
+              "city": "Sydney",
+              "timezone": "Australia/Sydney"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-08-15T10:19:45Z",
+              "consent_source_url": "https://publisher.example.com/landing/mortgage",
+              "consent_text_version": "v2.1",
+              "consent_purposes": [
+                "calls",
+                "sms",
+                "email",
+                "share_with_partners"
+              ],
+              "consent_evidence": [
+                {
+                  "type": "verified_consent",
+                  "provider": "internal",
+                  "token_or_url": "evd_abc123def456"
+                }
+              ],
+              "otp_verified": true,
+              "dnc_checked": true
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 65000000,
+              "loan_amount_band": "500k_750k",
+              "property_type": "single_family",
+              "property_value_cents": 88000000,
+              "property_value_band": "800k_1m",
+              "credit_rating_band": "excellent",
+              "employment_status": "employed",
+              "annual_income_cents": 12000000,
+              "annual_income_band": "100k_150k",
+              "ltv_ratio_band": "70_80",
+              "is_first_home_buyer": false,
+              "has_existing_mortgage": true
+            },
+            "provenance": {
+              "received_at": "2026-08-15T10:20:01Z",
+              "source_type": "publisher",
+              "source_id": "pub_123",
+              "source_url": "https://publisher.example.com/landing/mortgage",
+              "campaign_id": "camp_mortgage_nsw_2026",
+              "creative_id": "cre_001",
+              "landing_page_url": "https://publisher.example.com/landing/mortgage"
+            },
+            "exclusivity": {
+              "exclusivity": "shared",
+              "max_buyers": 3
+            }
+          }
+        }
+      }
+    }
+  ]
+}
