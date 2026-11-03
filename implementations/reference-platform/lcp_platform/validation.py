@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,38 @@ from referencing.jsonschema import DRAFT202012
 
 
 MESSAGE_TYPES = ("lead", "call", "ping", "post", "ack", "event", "bid")
+
+# §6/§8: the LCP protocol versions this platform supports and advertises.
+# ONE source for the §8 capabilities advertisement and the intake version
+# negotiation (§5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422, issue #181) so
+# what the wire endpoint accepts can never drift from what it advertises.
+# Every element is a full major.minor.patch semver (§8).
+SUPPORTED_LCP_VERSIONS = ("1.0.0", "1.1.0")
+
+# §3 "phone | string | E.164 format." — mirrors the published
+# schemas/core.json $defs/consumer pattern (^\+[1-9]\d{1,14}$) so the
+# intake-side §5 re-code (LCP-009 INVALID_PHONE ↔ 400, issue #176) checks
+# the same value axis the schema pins structurally.
+E164_PATTERN = re.compile(r"\+[1-9]\d{1,14}")
+
+# ISO 3166-1 alpha-2 officially assigned code elements (249; retrieved
+# 2026-11-03 from the ISO 3166-1 alpha-2 code list). User-assigned
+# elements (XK, EU, XX, ...) are deliberately excluded — §3 requires an
+# "ISO 3166-1 alpha-2" country code. Backs the §5 LCP-010 INVALID_TERRITORY
+# ↔ 422 intake check for pattern-valid-but-unassigned codes (issue #182).
+_ISO_3166_1_ALPHA2_TEXT = """
+AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL
+BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV
+CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD
+GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM
+IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK
+LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW
+MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR
+PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS
+ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY
+UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
+"""
+ISO_3166_1_ALPHA2 = frozenset(_ISO_3166_1_ALPHA2_TEXT.split())
 
 
 def default_schema_root() -> Path:
@@ -34,9 +67,11 @@ class SchemaValidator:
         self.vertical_root = self.schema_root.parent / "verticals"
         core = self._load("core")
         resource = Resource(contents=core, specification=DRAFT202012)
-        registry = Registry().with_resource(
-            uri="https://lcp.dev/schemas/core.json", resource=resource
-        ).with_resource(uri="core.json", resource=resource)
+        registry = (
+            Registry()
+            .with_resource(uri="https://lcp.dev/schemas/core.json", resource=resource)
+            .with_resource(uri="core.json", resource=resource)
+        )
         format_checker = FormatChecker()
         self._validators = {
             name: Draft202012Validator(
@@ -73,7 +108,9 @@ class SchemaValidator:
         message = envelope["lcp"]["message"]
         errors.extend(
             self._format(error)
-            for error in self._validators[message["type"]].iter_errors(envelope["lcp"]["payload"])
+            for error in self._validators[message["type"]].iter_errors(
+                envelope["lcp"]["payload"]
+            )
         )
         if message["type"] in {"lead", "call", "post", "ping"}:
             errors.extend(
@@ -116,13 +153,14 @@ class SchemaValidator:
         vertical_attributes = dict(attributes)
         if message_type == "ping":
             vertical_attributes.setdefault("vertical", vertical)
-            version_schema = validator.schema.get("properties", {}).get("schema_version", {})
+            version_schema = validator.schema.get("properties", {}).get(
+                "schema_version", {}
+            )
             vertical_attributes.setdefault(
                 "schema_version", version_schema.get("const", "1.0.0")
             )
         errors = [
-            self._format(error)
-            for error in validator.iter_errors(vertical_attributes)
+            self._format(error) for error in validator.iter_errors(vertical_attributes)
         ]
         if message_type == "ping":
             errors.extend(self._ping_safe_errors(payload, validator.schema))
@@ -140,7 +178,9 @@ class SchemaValidator:
         if schema is None:
             validator = self._vertical_validators.get(vertical)
             if validator is None:
-                return [f"vertical schema '{vertical}' not found for ping-safe validation"]
+                return [
+                    f"vertical schema '{vertical}' not found for ping-safe validation"
+                ]
             schema = validator.schema
 
         errors: list[str] = []
@@ -150,11 +190,17 @@ class SchemaValidator:
                 return
             properties = definition.get("properties", {})
             for field_name, field_value in value.items():
-                if path == "attributes" and field_name in {"vertical", "schema_version"}:
+                if path == "attributes" and field_name in {
+                    "vertical",
+                    "schema_version",
+                }:
                     continue
                 field_definition = properties.get(field_name)
                 field_path = f"{path}.{field_name}"
-                if not isinstance(field_definition, dict) or field_definition.get("ping_safe") is not True:
+                if (
+                    not isinstance(field_definition, dict)
+                    or field_definition.get("ping_safe") is not True
+                ):
                     errors.append(
                         f"{field_path} is not tagged ping_safe: true in vertical '{vertical}'"
                     )
