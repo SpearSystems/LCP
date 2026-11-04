@@ -132,11 +132,13 @@ public sealed record LcpBatchItem(string ItemId, string IdempotencyKey, object P
 
 public sealed class LcpClient(HttpClient httpClient, string endpoint, string? senderId = null, string? apiKey = null, string? hmacSecret = null, int maxRetries = 2)
 {
+    private readonly int defaultMaxRetries = maxRetries;
+
     public async Task<JsonElement> RequestAsync(string method, string path, object? payload = null, bool test = false, CancellationToken cancellationToken = default, int? maxRetries = null)
     {
         var body = payload is null ? Array.Empty<byte>() : JsonSerializer.SerializeToUtf8Bytes(payload);
         var idempotencyKey = payload is null ? null : ExtractIdempotencyKey(payload);
-        var retryLimit = Math.Max(maxRetries ?? this.maxRetries, 0);
+        var retryLimit = Math.Max(maxRetries ?? this.defaultMaxRetries, 0);
         for (var attempt = 0; attempt <= retryLimit; attempt++)
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), $"{endpoint.TrimEnd('/')}/{path.TrimStart('/')}");

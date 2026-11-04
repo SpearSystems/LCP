@@ -13,7 +13,9 @@ __pycache__/
 
 # Local platform/runtime state
 .venv/
-data/
+data/*
+!data/service-areas/
+!data/service-areas/*.json
 *.sqlite3
 
 # SDK build artifacts (Maven/Gradle) — never published
