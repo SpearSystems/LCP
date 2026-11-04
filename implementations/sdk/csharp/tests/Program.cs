@@ -84,9 +84,9 @@ var historyQueries = new List<string>();
 using (var http = new HttpClient(new StubHistoryHandler(historyQueries)))
 {
     var client = new LcpClient(http, "http://stub.invalid");
-    var body = await client.RequestHistoryAsync(limit: 2, cursor: "", status: "OPEN", to: "2026-11-01T00:00:00Z");
-    if (body.GetProperty("requests")[0].GetProperty("request_id").GetString() != "req-hist-1") throw new Exception("History row lost");
-    if (body.GetProperty("requests")[0].GetProperty("status").GetString() != "OPEN") throw new Exception("History status lost");
+    var historyBody = await client.RequestHistoryAsync(limit: 2, cursor: "", status: "OPEN", to: "2026-11-01T00:00:00Z");
+    if (historyBody.GetProperty("requests")[0].GetProperty("request_id").GetString() != "req-hist-1") throw new Exception("History row lost");
+    if (historyBody.GetProperty("requests")[0].GetProperty("status").GetString() != "OPEN") throw new Exception("History status lost");
     if (historyQueries.Single() != "/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z")
         throw new Exception($"Unexpected history query: {historyQueries.Single()}");
 }
