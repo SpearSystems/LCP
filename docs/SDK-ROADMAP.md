@@ -130,6 +130,12 @@ The phrase “official SDK” means that the implementation follows this
 contract and is tested in this repository. It does not imply that LCP operates
 or certifies a hosted service.
 
+Surface parity is machine-checked: `tools/check_sdk_surface.py --fail-on-gap`
+compares every SDK against the same nine-operation manifest (submit lead, call,
+bid, batch, lead status, capabilities, schema fetch, offers, request history)
+and runs in `sdk.yml`. A helper that lands in nine languages now fails the
+build instead of shipping silently.
+
 ## Release gates
 
 Before promoting an SDK from reference to maintained status:

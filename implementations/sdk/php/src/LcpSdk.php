@@ -169,4 +169,15 @@ final class Client
         }
         return $this->request('GET', '/v1/lcp/history/requests' . ($query === [] ? '' : '?' . implode('&', $query)));
     }
+
+    /**
+     * Fetch one protocol schema by name (`GET /v1/lcp/schemas/{name}`) and
+     * return the decoded body unchanged. Slash namespaces such as
+     * `verticals/mortgage` are legitimate, so each segment is encoded
+     * separately and the separators are kept.
+     */
+    public function getSchema(string $name): array
+    {
+        return $this->request('GET', '/v1/lcp/schemas/' . implode('/', array_map('rawurlencode', explode('/', $name))));
+    }
 }

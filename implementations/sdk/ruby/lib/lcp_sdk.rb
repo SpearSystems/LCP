@@ -199,5 +199,14 @@ module LcpSdk
       end
       request("GET", "/v1/lcp/history/requests#{query.empty? ? "" : "?#{query.join("&")}"}")
     end
+
+    # Fetch one protocol schema by name (GET /v1/lcp/schemas/{name}) and return
+    # the decoded body unchanged. Slash namespaces such as "verticals/mortgage"
+    # are legitimate, so each segment is encoded separately and the separators
+    # are kept.
+    def get_schema(name)
+      encoded = name.to_s.split("/", -1).map { |segment| URI.encode_www_form_component(segment) }.join("/")
+      request("GET", "/v1/lcp/schemas/#{encoded}")
+    end
   end
 end

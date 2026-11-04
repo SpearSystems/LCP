@@ -122,4 +122,32 @@ final class BatchSubmissionTest {
             server.stop(0);
         }
     }
+
+    /**
+     * {@code GET /v1/lcp/schemas/{name}}: the name is percent-encoded into the
+     * path (a raw {@code ?} would truncate it into a query string) and the raw
+     * schema body comes back unchanged.
+     */
+    @Test
+    void schemaReadEncodesNameAndReturnsBody() throws Exception {
+        var receivedPath = new AtomicReference<String>();
+        var body = "{\"$id\":\"https://lcp.dev/schemas/lead.json\",\"title\":\"Lead\"}";
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/lcp/schemas", exchange -> {
+            receivedPath.set(exchange.getRequestURI().getRawPath());
+            var bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var client = new LcpSdk.Client("http://127.0.0.1:" + server.getAddress().getPort(), null, null, null);
+            assertEquals(body, client.getSchema("lead?x=1"));
+            assertEquals("/v1/lcp/schemas/lead%3Fx=1", receivedPath.get());
+        } finally {
+            server.stop(0);
+        }
+    }
 }

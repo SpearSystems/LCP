@@ -211,14 +211,12 @@ nothing about behaviour, and this record treats it that way.
 7. **Independent release approval does not exist.** There is one human with
    release duties; `CODEOWNERS` and the ruleset change are prepared, not
    claimed as applied (D12).
-8. **SDK surface coverage is measured, not complete.** `tools/check_sdk_surface.py`
-   records 90 declared cells (9 operations × 10 SDKs) and reports 23 as gaps.
-   The release closes the LEP-0005 gap by adding the history read method to all
-   ten clients; the remaining gaps are honest and named in the manifest —
-   mostly `get_schema` in languages whose validators read bundled schemas from
-   disk, plus a larger Swift hole (signing and batch only). The checker exits
-   nonzero only on a declared-but-absent member; `--fail-on-gap` is the switch
-   for the day the gaps are closed.
+8. **SDK surface coverage is complete and gated.** `tools/check_sdk_surface.py
+   --fail-on-gap` reports 90 of 90 cells present across nine operations and ten
+   SDKs. The LEP-0005 history read and the schema fetch are now exposed by every
+   client, Kotlin gained lead-status, and Swift gained the seven operations it
+   was missing. The checker is blocking in `sdk.yml`, so the next operation
+   cannot land in nine languages and ship.
 
 ## 8. Approval and publication state
 

@@ -111,3 +111,23 @@ rescue RuntimeError => history_error
 end
 history_thread.join
 puts "Ruby SDK history read passed"
+
+# Schema fetch: a slash-namespaced name keeps its separators, every other
+# character is encoded, and the decoded body comes back unchanged.
+schema_server = TCPServer.new("127.0.0.1", 0)
+schema_port = schema_server.addr[1]
+schema_target = nil
+schema_thread = Thread.new do
+  socket = schema_server.accept
+  raw = +""
+  raw << socket.readpartial(4096) until raw.include?("\r\n\r\n")
+  schema_target = raw.lines.first.split(" ")[1]
+  response = '{"title":"Lead","type":"object"}'
+  socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+  socket.close
+end
+schema_body = LcpSdk::Client.new("http://127.0.0.1:#{schema_port}", max_retries: 0).get_schema("verticals/mortgage?x=1")
+schema_thread.join
+raise "schema body lost" unless schema_body["title"] == "Lead" && schema_body["type"] == "object"
+raise "schema path: #{schema_target}" unless schema_target == "/v1/lcp/schemas/verticals/mortgage%3Fx%3D1"
+puts "Ruby SDK schema fetch passed"

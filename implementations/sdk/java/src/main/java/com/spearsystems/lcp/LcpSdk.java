@@ -3,6 +3,7 @@ package com.spearsystems.lcp;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -161,8 +162,15 @@ public final class LcpSdk {
             return ordered;
         }
 
-        public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + URI.create("https://lcp.invalid/" + id).getRawPath(), null, null, false); }
+        public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + pathEncode(id), null, null, false); }
         public String getCapabilities() throws Exception { return request("GET", "/v1/lcp/capabilities", null, null, false); }
+
+        /**
+         * Fetch one protocol schema body ({@code GET /v1/lcp/schemas/{name}}) and
+         * return it unchanged. The name may be multi-segment
+         * ({@code verticals/mortgage}); see {@link #pathEncode(String)}.
+         */
+        public String getSchema(String name) throws Exception { return request("GET", "/v1/lcp/schemas/" + pathEncode(name), null, null, false); }
         public String listOffers(String vertical) throws Exception { return request("GET", "/v1/lcp/offers" + (vertical == null ? "" : "?vertical=" + URI.create("https://lcp.invalid/?v=" + vertical).getRawQuery().substring(2)), null, null, false); }
 
         /**
@@ -206,6 +214,22 @@ public final class LcpSdk {
 
         private static String historyEncode(String value) {
             return URI.create("https://lcp.invalid/?v=" + value).getRawQuery().substring(2);
+        }
+
+        /**
+         * Percent-encode a request path the way {@code quote(value, safe='/')}
+         * does in the sibling SDKs: illegal and delimiter characters
+         * ({@code ?}, {@code #}, space, {@code %}, non-ASCII) are escaped so a
+         * caller-supplied name cannot break out of the path, while {@code /}
+         * stays literal because schema names are multi-segment
+         * ({@code verticals/mortgage}).
+         */
+        private static String pathEncode(String value) {
+            try {
+                return new URI(null, null, value, null).getRawPath();
+            } catch (URISyntaxException error) {
+                throw new IllegalArgumentException("invalid request path: " + value, error);
+            }
         }
     }
 }

@@ -194,9 +194,10 @@ ten SDKs.
   an Apps Script poster under `examples/integrations/no-code/`. The docs state
   plainly where a genuine one-click template cannot be exported.
 - **SDK surface guard.** `tools/check_sdk_surface.py` compares a manifest of
-  required SDK operations against the ten implementations and prints a
-  presence matrix, so a helper that lands in nine languages fails visibly
-  instead of silently.
+  nine required operations against the ten implementations and prints a
+  presence matrix. This release closes the gaps it found — the request-history
+  read, schema fetch, Kotlin lead-status, and seven missing Swift operations —
+  so the manifest is 90/90 and the check now runs blocking in `sdk.yml`.
 
 ### Changed
 

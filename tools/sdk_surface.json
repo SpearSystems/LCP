@@ -23,11 +23,7 @@
         "python": { "file": "lcp_sdk/client.py", "name": "submit_lead" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_lead" },
         "rust": { "file": "src/lib.rs", "name": "submit_lead" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no single-envelope submit helpers."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitLead" },
         "typescript": { "file": "src/index.ts", "name": "submitLead" }
       }
     },
@@ -44,11 +40,7 @@
         "python": { "file": "lcp_sdk/client.py", "name": "submit_call" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_call" },
         "rust": { "file": "src/lib.rs", "name": "submit_call" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no single-envelope submit helpers."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitCall" },
         "typescript": { "file": "src/index.ts", "name": "submitCall" }
       }
     },
@@ -65,11 +57,7 @@
         "python": { "file": "lcp_sdk/client.py", "name": "submit_bid" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_bid" },
         "rust": { "file": "src/lib.rs", "name": "submit_bid" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no single-envelope submit helpers."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitBid" },
         "typescript": { "file": "src/index.ts", "name": "submitBid" }
       }
     },
@@ -98,20 +86,12 @@
         "csharp": { "file": "src/LcpSdk.cs", "name": "QueryLeadStatusAsync" },
         "go": { "file": "lcp.go", "name": "QueryLeadStatus" },
         "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "queryLeadStatus" },
-        "kotlin": {
-          "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt",
-          "name": null,
-          "note": "Kotlin client exposes capabilities/offers/batch but no lead-status read."
-        },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "queryLeadStatus" },
         "php": { "file": "src/LcpSdk.php", "name": "queryLeadStatus" },
         "python": { "file": "lcp_sdk/client.py", "name": "query_lead_status" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "query_lead_status" },
         "rust": { "file": "src/lib.rs", "name": "query_lead_status" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no read helpers."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "queryLeadStatus" },
         "typescript": { "file": "src/index.ts", "name": "queryLeadStatus" }
       }
     },
@@ -122,37 +102,13 @@
       "members": {
         "csharp": { "file": "src/LcpSdk.cs", "name": "GetSchemaAsync" },
         "go": { "file": "lcp.go", "name": "GetSchema" },
-        "java": {
-          "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java",
-          "name": null,
-          "note": "Java client has no schema fetch; validators read schemas from disk."
-        },
-        "kotlin": {
-          "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt",
-          "name": null,
-          "note": "Kotlin client has no schema fetch; validators read schemas from disk."
-        },
-        "php": {
-          "file": "src/LcpSdk.php",
-          "name": null,
-          "note": "PHP client has no schema fetch; SchemaValidator reads schemas from disk."
-        },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "getSchema" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "getSchema" },
+        "php": { "file": "src/LcpSdk.php", "name": "getSchema" },
         "python": { "file": "lcp_sdk/client.py", "name": "get_schema" },
-        "ruby": {
-          "file": "lib/lcp_sdk.rb",
-          "name": null,
-          "note": "Ruby client has no schema fetch; SchemaValidator reads schemas from disk."
-        },
-        "rust": {
-          "file": "src/lib.rs",
-          "name": null,
-          "note": "Rust client has no schema fetch; validators read schemas from disk."
-        },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift client has no schema fetch; SchemaValidator reads schemas from disk."
-        },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "get_schema" },
+        "rust": { "file": "src/lib.rs", "name": "get_schema" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "getSchema" },
         "typescript": { "file": "src/index.ts", "name": "getSchema" }
       }
     },
@@ -169,11 +125,7 @@
         "python": { "file": "lcp_sdk/client.py", "name": "get_capabilities" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "get_capabilities" },
         "rust": { "file": "src/lib.rs", "name": "get_capabilities" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no capability read."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "getCapabilities" },
         "typescript": { "file": "src/index.ts", "name": "getCapabilities" }
       }
     },
@@ -190,11 +142,7 @@
         "python": { "file": "lcp_sdk/client.py", "name": "list_offers" },
         "ruby": { "file": "lib/lcp_sdk.rb", "name": "list_offers" },
         "rust": { "file": "src/lib.rs", "name": "list_offers" },
-        "swift": {
-          "file": "Sources/LCP/Lcp.swift",
-          "name": null,
-          "note": "Swift ships signing + batch only; no offer read."
-        },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "listOffers" },
         "typescript": { "file": "src/index.ts", "name": "listOffers" }
       }
     },

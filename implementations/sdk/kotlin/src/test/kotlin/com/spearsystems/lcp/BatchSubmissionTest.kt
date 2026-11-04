@@ -115,4 +115,56 @@ class BatchSubmissionTest {
             server.stop(0)
         }
     }
+
+    /**
+     * `GET /v1/lcp/schemas/{name}`: the name is percent-encoded into the path
+     * (a raw `?` would truncate it into a query string) and the raw schema body
+     * comes back unchanged.
+     */
+    @Test
+    fun schemaReadEncodesNameAndReturnsBody() {
+        val receivedPath = AtomicReference<String>()
+        val body = "{\"\$id\":\"https://lcp.dev/schemas/lead.json\",\"title\":\"Lead\"}"
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/v1/lcp/schemas") { exchange ->
+            receivedPath.set(exchange.requestURI.rawPath)
+            val bytes = body.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        try {
+            val client = LcpSdk.Client("http://127.0.0.1:${server.address.port}")
+            assertEquals(body, client.getSchema("lead?x=1"))
+            assertEquals("/v1/lcp/schemas/lead%3Fx=1", receivedPath.get())
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    /** `GET /v1/lcp/leads/{leadId}`: the id is percent-encoded and the body is returned unchanged. */
+    @Test
+    fun leadStatusReadEncodesLeadIdAndReturnsBody() {
+        val receivedPath = AtomicReference<String>()
+        val body = "{\"lead_id\":\"lead_1\",\"status\":\"ACCEPTED\"}"
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/v1/lcp/leads") { exchange ->
+            receivedPath.set(exchange.requestURI.rawPath)
+            val bytes = body.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        try {
+            val client = LcpSdk.Client("http://127.0.0.1:${server.address.port}")
+            assertEquals(body, client.queryLeadStatus("lead_1?verbose=1"))
+            assertEquals("/v1/lcp/leads/lead_1%3Fverbose=1", receivedPath.get())
+        } finally {
+            server.stop(0)
+        }
+    }
 }

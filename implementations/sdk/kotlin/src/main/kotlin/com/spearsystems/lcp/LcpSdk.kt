@@ -120,6 +120,16 @@ object LcpSdk {
         fun getCapabilities() = request("GET", "/v1/lcp/capabilities")
         fun listOffers(vertical: String? = null) = request("GET", "/v1/lcp/offers${if (vertical == null) "" else "?vertical=$vertical"}")
 
+        /** Fetch the current status of one submitted lead (`GET /v1/lcp/leads/{leadId}`). */
+        fun queryLeadStatus(leadId: String): String = request("GET", "/v1/lcp/leads/${pathEncode(leadId)}")
+
+        /**
+         * Fetch one protocol schema body (`GET /v1/lcp/schemas/{name}`) and return
+         * it unchanged. The name may be multi-segment (`verticals/mortgage`); see
+         * [pathEncode].
+         */
+        fun getSchema(name: String): String = request("GET", "/v1/lcp/schemas/${pathEncode(name)}")
+
         /**
          * LEP-0005 `GET /v1/lcp/history/requests` filters — `history:read`.
          * Every field is optional: a null or empty value is left out of the
@@ -149,5 +159,14 @@ object LcpSdk {
             ).mapNotNull { (name, value) -> if (value.isNullOrEmpty()) null else "$name=${URLEncoder.encode(value, "UTF-8")}" }
             return request("GET", "/v1/lcp/history/requests" + if (query.isEmpty()) "" else "?" + query.joinToString("&"))
         }
+
+        /**
+         * Percent-encode a request path like `quote(value, safe='/')` in the
+         * sibling SDKs: illegal and delimiter characters (`?`, `#`, space, `%`,
+         * non-ASCII) are escaped so a caller-supplied name cannot break out of
+         * the path, while `/` stays literal because schema names are
+         * multi-segment (`verticals/mortgage`).
+         */
+        private fun pathEncode(value: String): String = URI(null, null, value, null).rawPath
     }
 }

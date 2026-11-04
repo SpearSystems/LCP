@@ -235,6 +235,15 @@ impl Client {
         };
         self.request(reqwest::Method::GET, &path, None, false)
     }
+
+    /// Fetch one protocol schema by name (`GET /v1/lcp/schemas/{name}`) and
+    /// return the decoded body unchanged. Slash namespaces such as
+    /// `verticals/mortgage` are legitimate, so each segment is percent-encoded
+    /// on its own and the separators are kept.
+    pub fn get_schema(&self, name: &str) -> Result<Value, Box<dyn std::error::Error>> {
+        let encoded: Vec<String> = name.split('/').map(|segment| urlencoding::encode(segment).into_owned()).collect();
+        self.request(reqwest::Method::GET, &format!("/v1/lcp/schemas/{}", encoded.join("/")), None, false)
+    }
 }
 
 trait ConstantTimeEq { fn ct_eq(&self, other: &[u8]) -> subtle::Choice; }
@@ -474,5 +483,35 @@ mod tests {
             .unwrap_err();
         server.join().unwrap();
         assert!(error.to_string().contains("LCP HTTP 400"), "{error}");
+    }
+
+    #[test]
+    fn schema_fetch_encodes_name_segments_and_returns_the_body() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                buffer.extend_from_slice(&chunk[..read]);
+                if read == 0 || buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let text = String::from_utf8_lossy(&buffer).to_string();
+            let target = text.lines().next().unwrap_or_default().split(' ').nth(1).unwrap_or_default().to_string();
+            let response = r#"{"title":"Lead","type":"object"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+            target
+        });
+        let body = Client::new(format!("http://{}", address)).get_schema("verticals/mortgage?x=1").unwrap();
+        let target = server.join().unwrap();
+        assert_eq!(body["title"], "Lead");
+        assert_eq!(body["type"], "object");
+        // Slash namespaces keep their separators; every other character is encoded.
+        assert_eq!(target, "/v1/lcp/schemas/verticals/mortgage%3Fx%3D1");
     }
 }

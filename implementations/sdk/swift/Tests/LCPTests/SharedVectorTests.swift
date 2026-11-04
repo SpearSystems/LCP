@@ -180,3 +180,137 @@ final class HistoryReadTests: XCTestCase {
         }
     }
 }
+
+/// The single-message surface: one test per protocol operation, each asserting
+/// the request line against the reference platform's route and that the
+/// response body comes back decoded and unreshaped.
+final class SingleOperationTests: XCTestCase {
+    private func session(returning body: String, assertRequest: @escaping (URLRequest) throws -> Void) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BatchURLProtocol.self]
+        BatchURLProtocol.requests = []
+        BatchURLProtocol.handler = { request in
+            try assertRequest(request)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, Data(body.utf8))
+        }
+        return URLSession(configuration: configuration)
+    }
+
+    private func decoded(_ json: String) throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+    }
+
+    /// A minimal envelope carrying the type and its idempotency key, so the
+    /// derived `X-LCP-Idempotency-Key` can be asserted too.
+    private func envelope(type: String) -> JSONValue {
+        .object(["lcp": .object([
+            "version": .string("1.0.0"),
+            "message": .object([
+                "id": .string("msg-1"),
+                "type": .string(type),
+                "idempotency_key": .string("idem-\(type)"),
+            ]),
+            "payload": .object(["lead_id": .string("lead_1")]),
+        ])])
+    }
+
+    private func assertNoQuery(_ request: URLRequest) throws {
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertNil(components.queryItems)
+    }
+
+    func testSubmitLeadPostsEnvelopeAndReturnsBody() async throws {
+        let body = #"{"lcp":{"message":{"id":"msg-1"},"payload":{"lead_id":"lead_1","status":"accepted"}}}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/leads")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-LCP-Idempotency-Key"), "idem-lead")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.submitLead(envelope(type: "lead"))
+        XCTAssertEqual(value, try decoded(body), "submitLead body was reshaped: \(value)")
+    }
+
+    func testSubmitCallPostsEnvelopeAndReturnsBody() async throws {
+        let body = #"{"lcp":{"message":{"id":"msg-1"},"payload":{"lead_id":"lead_1","status":"accepted"}}}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/calls")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-LCP-Idempotency-Key"), "idem-call")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.submitCall(envelope(type: "call"))
+        XCTAssertEqual(value, try decoded(body), "submitCall body was reshaped: \(value)")
+    }
+
+    func testSubmitBidPostsEnvelopeAndReturnsBody() async throws {
+        let body = #"{"lcp":{"message":{"id":"msg-1"},"payload":{"ping_id":"ping_1","decision":"bid"}}}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/bids")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-LCP-Idempotency-Key"), "idem-bid")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.submitBid(envelope(type: "bid"))
+        XCTAssertEqual(value, try decoded(body), "submitBid body was reshaped: \(value)")
+    }
+
+    func testQueryLeadStatusReadsOneLeadAndReturnsBody() async throws {
+        let body = #"{"lead_id":"lead_42","status":"DELIVERED"}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/leads/lead_42")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.queryLeadStatus("lead_42")
+        XCTAssertEqual(value, try decoded(body), "queryLeadStatus body was reshaped: \(value)")
+    }
+
+    func testGetCapabilitiesReadsCapabilityDocument() async throws {
+        let body = #"{"verticals":["personal_loans"],"version":"1.0.0"}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/capabilities")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.getCapabilities()
+        XCTAssertEqual(value, try decoded(body), "getCapabilities body was reshaped: \(value)")
+    }
+
+    func testListOffersSendsVerticalFilterAndReturnsBody() async throws {
+        let body = #"{"offers":[{"offer_id":"offer_1","vertical":"personal_loans"}]}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/offers")
+            let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+            XCTAssertEqual(components.queryItems, [URLQueryItem(name: "vertical", value: "personal_loans")])
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.listOffers(vertical: "personal_loans")
+        XCTAssertEqual(value, try decoded(body), "listOffers body was reshaped: \(value)")
+    }
+
+    func testGetSchemaKeepsNestedNameAndReturnsBody() async throws {
+        let body = #"{"type":"object","title":"personal_loans"}"#
+        let session = self.session(returning: body) { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/lcp/schemas/verticals/personal_loans")
+            try self.assertNoQuery(request)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let value = try await client.getSchema("verticals/personal_loans")
+        XCTAssertEqual(value, try decoded(body), "getSchema body was reshaped: \(value)")
+    }
+}

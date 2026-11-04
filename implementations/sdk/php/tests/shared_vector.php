@@ -135,3 +135,25 @@ try {
 }
 pcntl_waitpid($historyPid, $historyStatus);
 echo "PHP SDK history read passed\n";
+
+// Schema fetch: a slash-namespaced name keeps its separators, every other
+// character is percent-encoded, and the decoded body comes back unchanged.
+$schemaServer = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+if ($schemaServer === false) throw new RuntimeException("schema server: $errstr");
+$schemaPort = (int) substr(strrchr(stream_socket_get_name($schemaServer, false), ':'), 1);
+$schemaCapture = tempnam(sys_get_temp_dir(), 'lcp-schema-');
+$schemaPid = pcntl_fork();
+if ($schemaPid === -1) throw new RuntimeException('fork failed');
+if ($schemaPid === 0) {
+    $target = $serveOnce($schemaServer, 200, '{"title":"Lead","type":"object"}');
+    file_put_contents($schemaCapture, $target);
+    exit(0);
+}
+$schemaClient = new Lcp\Client("http://127.0.0.1:$schemaPort", 'publisher_001', 'api-key', null, 0);
+$schemaBody = $schemaClient->getSchema('verticals/mortgage?x=1');
+pcntl_waitpid($schemaPid, $schemaStatus);
+$schemaTarget = file_get_contents($schemaCapture);
+unlink($schemaCapture);
+if ($schemaBody['title'] !== 'Lead' || $schemaBody['type'] !== 'object') throw new RuntimeException('schema body lost');
+if ($schemaTarget !== '/v1/lcp/schemas/verticals/mortgage%3Fx%3D1') throw new RuntimeException('schema path: ' . $schemaTarget);
+echo "PHP SDK schema fetch passed\n";

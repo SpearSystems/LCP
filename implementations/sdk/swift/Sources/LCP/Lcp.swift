@@ -103,10 +103,17 @@ public final class LCPClient {
     private let endpoint: URL; private let senderId: String?; private let apiKey: String?; private let hmacSecret: String?; private let session: URLSession
     public init(endpoint: URL, senderId: String? = nil, apiKey: String? = nil, hmacSecret: String? = nil, session: URLSession = .shared) { self.endpoint = endpoint; self.senderId = senderId; self.apiKey = apiKey; self.hmacSecret = hmacSecret; self.session = session }
     public func request(path: String, method: String, body: Data? = nil, idempotencyKey: String? = nil, test: Bool = false, query: [URLQueryItem] = []) async throws -> Data {
-        let base = endpoint.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
-        if !query.isEmpty { components?.queryItems = query }
-        guard let url = components?.url else {
+        // Resolve rather than append: a caller-supplied identifier is escaped
+        // before it reaches here, and appending would re-encode the escapes
+        // (`%2F` -> `%252F`). The trailing slash keeps any endpoint base path.
+        let relative = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let base = URL(string: relative, relativeTo: endpoint.appendingPathComponent("")),
+              var components = URLComponents(url: base.absoluteURL, resolvingAgainstBaseURL: false)
+        else {
+            throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "invalid LCP request URL"])
+        }
+        if !query.isEmpty { components.queryItems = query }
+        guard let url = components.url else {
             throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "invalid LCP request URL"])
         }
         var request = URLRequest(url: url)
@@ -128,6 +135,82 @@ public final class LCPClient {
             throw NSError(domain: "LCP", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: String(data: data, encoding: .utf8) ?? "LCP HTTP error"])
         }
         return data
+    }
+
+    /// Submit one message envelope and return the decoded response body
+    /// unchanged: leads (`POST /v1/lcp/leads`), calls (`POST /v1/lcp/calls`),
+    /// bids (`POST /v1/lcp/bids`). The envelope's
+    /// `lcp.message.idempotency_key` — when present — is the key that is sent
+    /// and signed, so a signed submit labels the key its payload carries. A
+    /// non-2xx throws the client's normal `NSError` with the HTTP status code.
+    public func submitLead(_ envelope: JSONValue, test: Bool = false) async throws -> JSONValue {
+        try await submitEnvelope(envelope, path: "/v1/lcp/leads", test: test)
+    }
+
+    public func submitCall(_ envelope: JSONValue, test: Bool = false) async throws -> JSONValue {
+        try await submitEnvelope(envelope, path: "/v1/lcp/calls", test: test)
+    }
+
+    public func submitBid(_ envelope: JSONValue, test: Bool = false) async throws -> JSONValue {
+        try await submitEnvelope(envelope, path: "/v1/lcp/bids", test: test)
+    }
+
+    /// Read one lead's status (`GET /v1/lcp/leads/{lead_id}`) and return the
+    /// decoded body unchanged.
+    public func queryLeadStatus(_ leadId: String) async throws -> JSONValue {
+        try await getJSON(path: "/v1/lcp/leads/\(Self.pathSegment(leadId))")
+    }
+
+    /// Read the receiver's capability document (`GET /v1/lcp/capabilities`).
+    public func getCapabilities() async throws -> JSONValue {
+        try await getJSON(path: "/v1/lcp/capabilities")
+    }
+
+    /// List offers (`GET /v1/lcp/offers`), optionally filtered to one vertical.
+    public func listOffers(vertical: String? = nil) async throws -> JSONValue {
+        let query = vertical.map { [URLQueryItem(name: "vertical", value: $0)] } ?? []
+        return try await getJSON(path: "/v1/lcp/offers", query: query)
+    }
+
+    /// Fetch one published schema (`GET /v1/lcp/schemas/{name}`). A nested name
+    /// keeps its separators, matching the other SDKs.
+    public func getSchema(_ name: String) async throws -> JSONValue {
+        try await getJSON(path: "/v1/lcp/schemas/\(Self.pathSegment(name, allowingSlash: true))")
+    }
+
+    private func submitEnvelope(_ envelope: JSONValue, path: String, test: Bool) async throws -> JSONValue {
+        let body = try JSONEncoder().encode(envelope)
+        let data = try await request(
+            path: path,
+            method: "POST",
+            body: body,
+            idempotencyKey: Self.envelopeIdempotencyKey(envelope),
+            test: test
+        )
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
+
+    private func getJSON(path: String, query: [URLQueryItem] = []) async throws -> JSONValue {
+        let data = try await request(path: path, method: "GET", query: query)
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
+
+    /// `lcp.message.idempotency_key`, when the envelope carries a string one.
+    private static func envelopeIdempotencyKey(_ envelope: JSONValue) -> String? {
+        guard case .object(let root) = envelope,
+              case .object(let lcp)? = root["lcp"],
+              case .object(let message)? = lcp["message"],
+              case .string(let key)? = message["idempotency_key"]
+        else { return nil }
+        return key
+    }
+
+    /// Percent-encode one path segment. `/` is escaped unless the segment is a
+    /// schema name, whose nested form keeps its separators like the other SDKs.
+    private static func pathSegment(_ value: String, allowingSlash: Bool = false) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        if !allowingSlash { allowed.remove(charactersIn: "/") }
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     /// Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
