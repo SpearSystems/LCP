@@ -12,7 +12,9 @@ public struct LCPAckPayload: Codable { public let originalMessageId: String; pub
 public struct LCPEventPayload: Codable { public let leadId: String; public let event: String; public let timestamp: String; public let details: [String: JSONValue]?; public let externalReference: String? }
 public struct LCPOfferModel: Codable { public let offerId: String; public let buyerId: String; public let vertical: String; public let countries: [String]; public let floorPriceCents: Int; public let currency: String; public let tenantId: String?; public let active: Bool; public let routingMode: String?; public let schemaVersion: String?; public let extensions: [String: JSONValue]? }
 
-public enum JSONValue: Codable { case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null
+/// Structural equality over the decoded JSON tree (numbers compare as Doubles,
+/// never via their string description) so tests can assert on parsed values.
+public enum JSONValue: Codable, Equatable { case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null
     public init(from decoder: Decoder) throws { let container = try decoder.singleValueContainer(); if container.decodeNil() { self = .null } else if let value = try? container.decode(Bool.self) { self = .bool(value) } else if let value = try? container.decode(Double.self) { self = .number(value) } else if let value = try? container.decode(String.self) { self = .string(value) } else if let value = try? container.decode([String: JSONValue].self) { self = .object(value) } else { self = .array(try container.decode([JSONValue].self)) } }
     public func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); switch self { case .string(let value): try container.encode(value); case .number(let value): try container.encode(value); case .bool(let value): try container.encode(value); case .object(let value): try container.encode(value); case .array(let value): try container.encode(value); case .null: try container.encodeNil() } }
 }
