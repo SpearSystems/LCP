@@ -344,3 +344,53 @@ func (c *Client) ListOffers(vertical string) (map[string]any, error) {
 	}
 	return c.Request(http.MethodGet, path, nil, false)
 }
+
+// HistoryParams filters a LEP-0005 request-history read
+// (GET /v1/lcp/history/requests, history:read). A zero Limit and empty strings
+// are omitted from the query rather than sent blank — a blank filter would
+// widen the page instead of narrowing it. Rows are scoped server-side to the
+// credential's tenant, so there is no tenant field.
+type HistoryParams struct {
+	Limit           int
+	Cursor          string
+	RequestID       string
+	Status          string
+	Vertical        string
+	CallerPhoneHash string
+	From            string
+	To              string
+}
+
+// query renders the supplied filters as a query string. url.Values.Encode
+// sorts by name, so the result is stable for a given filter set.
+func (p HistoryParams) query() string {
+	values := url.Values{}
+	if p.Limit > 0 {
+		values.Set("limit", fmt.Sprintf("%d", p.Limit))
+	}
+	for name, value := range map[string]string{
+		"cursor":            p.Cursor,
+		"request_id":        p.RequestID,
+		"status":            p.Status,
+		"vertical":          p.Vertical,
+		"caller_phone_hash": p.CallerPhoneHash,
+		"from":              p.From,
+		"to":                p.To,
+	} {
+		if value != "" {
+			values.Set(name, value)
+		}
+	}
+	return values.Encode()
+}
+
+// RequestHistory pages the LEP-0005 request-history audit log and returns the
+// decoded response body unchanged ({"requests": [...]}). A 4xx surfaces as
+// *HTTPError through the shared request path.
+func (c *Client) RequestHistory(params HistoryParams) (map[string]any, error) {
+	path := "/v1/lcp/history/requests"
+	if query := params.query(); query != "" {
+		path += "?" + query
+	}
+	return c.Request(http.MethodGet, path, nil, false)
+}

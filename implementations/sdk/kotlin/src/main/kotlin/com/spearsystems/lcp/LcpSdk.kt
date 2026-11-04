@@ -1,6 +1,7 @@
 package com.spearsystems.lcp
 
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -118,5 +119,35 @@ object LcpSdk {
 
         fun getCapabilities() = request("GET", "/v1/lcp/capabilities")
         fun listOffers(vertical: String? = null) = request("GET", "/v1/lcp/offers${if (vertical == null) "" else "?vertical=$vertical"}")
+
+        /**
+         * LEP-0005 `GET /v1/lcp/history/requests` filters — `history:read`.
+         * Every field is optional: a null or empty value is left out of the
+         * query rather than sent blank, because a blank filter widens the page
+         * instead of narrowing it. Rows are scoped server-side to the
+         * credential's tenant, so there is no tenant field here.
+         */
+        fun requestHistory(
+            limit: Int? = null,
+            cursor: String? = null,
+            requestId: String? = null,
+            status: String? = null,
+            vertical: String? = null,
+            callerPhoneHash: String? = null,
+            from: String? = null,
+            to: String? = null,
+        ): String {
+            val query = listOf(
+                "limit" to limit?.toString(),
+                "cursor" to cursor,
+                "request_id" to requestId,
+                "status" to status,
+                "vertical" to vertical,
+                "caller_phone_hash" to callerPhoneHash,
+                "from" to from,
+                "to" to to,
+            ).mapNotNull { (name, value) -> if (value.isNullOrEmpty()) null else "$name=${URLEncoder.encode(value, "UTF-8")}" }
+            return request("GET", "/v1/lcp/history/requests" + if (query.isEmpty()) "" else "?" + query.joinToString("&"))
+        }
     }
 }

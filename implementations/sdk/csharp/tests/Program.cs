@@ -78,6 +78,36 @@ using (var http = new HttpClient(new StubBatchHandler(batchRequests)))
 }
 Console.WriteLine("C# SDK batch submission passed");
 
+// LEP-0005 history read: only supplied, non-empty filters reach the query, the
+// parsed body comes back unchanged, and a 4xx surfaces as LcpHttpException.
+var historyQueries = new List<string>();
+using (var http = new HttpClient(new StubHistoryHandler(historyQueries)))
+{
+    var client = new LcpClient(http, "http://stub.invalid");
+    var body = await client.RequestHistoryAsync(limit: 2, cursor: "", status: "OPEN", to: "2026-11-01T00:00:00Z");
+    if (body.GetProperty("requests")[0].GetProperty("request_id").GetString() != "req-hist-1") throw new Exception("History row lost");
+    if (body.GetProperty("requests")[0].GetProperty("status").GetString() != "OPEN") throw new Exception("History status lost");
+    if (historyQueries.Single() != "/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z")
+        throw new Exception($"Unexpected history query: {historyQueries.Single()}");
+}
+Console.WriteLine("C# SDK history read passed");
+
+var errorQueries = new List<string>();
+using (var http = new HttpClient(new StubHistoryHandler(errorQueries, 400)))
+{
+    var client = new LcpClient(http, "http://stub.invalid");
+    try
+    {
+        await client.RequestHistoryAsync(limit: 500);
+        throw new Exception("History 4xx was accepted");
+    }
+    catch (LcpHttpException error)
+    {
+        if (error.StatusCode != 400) throw new Exception($"Unexpected history status {error.StatusCode}");
+    }
+}
+Console.WriteLine("C# SDK history error path passed");
+
 sealed class StubBatchHandler(List<string> requests) : HttpMessageHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -92,5 +122,20 @@ sealed class StubBatchHandler(List<string> requests) : HttpMessageHandler
                 Encoding.UTF8,
                 "application/json"),
         };
+    }
+}
+
+sealed class StubHistoryHandler(List<string> queries, int status = 200) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        queries.Add(request.RequestUri!.PathAndQuery);
+        var body = status == 200
+            ? "{\"requests\":[{\"request_id\":\"req-hist-1\",\"message_type\":\"lead\",\"direction\":\"inbound\",\"status\":\"OPEN\",\"created_at\":\"2026-11-01T00:00:00Z\"}]}"
+            : "{\"errors\":[{\"code\":\"LCP-001\",\"message\":\"limit out of range\"}]}";
+        return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        });
     }
 }

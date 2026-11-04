@@ -176,6 +176,28 @@ ten SDKs.
   `api/lcp-openapi.yaml` and the JSON Schema agree, so the two artifacts
   cannot drift apart silently.
 
+### Adoption tooling
+
+- **`lcp-doctor`.** One command checks a deployment end to end — capabilities
+  reachability, TLS, advertised versions and features, authentication, and a
+  synthetic `test: true` lead — then prints PASS/FAIL per stage and a
+  translated fix for any `LCP-0xx` failure. `--explain CODE` works without an
+  endpoint; `--json` for machines. Every code, its common causes, and the
+  field-level fix are in [docs/ERROR-GUIDE.md](docs/ERROR-GUIDE.md).
+- **Buyer webhook kit.** Runnable receivers (Python stdlib and Node, plus a
+  container) that verify both signed delivery surfaces, return the protocol
+  ack, and de-duplicate replays. `selftest.py` proves valid/tampered/replay
+  behaviour against the real signature inputs.
+- **No-code recipes.** [docs/RECIPES.md](docs/RECIPES.md) walks
+  Lovable/Supabase, GoHighLevel, Make, Zapier, and Google Sheets from field
+  map to test run, with a Deno edge function, a Make module configuration, and
+  an Apps Script poster under `examples/integrations/no-code/`. The docs state
+  plainly where a genuine one-click template cannot be exported.
+- **SDK surface guard.** `tools/check_sdk_surface.py` compares a manifest of
+  required SDK operations against the ten implementations and prints a
+  presence matrix, so a helper that lands in nine languages fails visibly
+  instead of silently.
+
 ### Changed
 
 - **`SPEC.md` is now an index.** Normative text moved to

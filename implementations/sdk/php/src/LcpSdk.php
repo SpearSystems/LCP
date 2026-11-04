@@ -151,4 +151,22 @@ final class Client
     public function queryLeadStatus(string $id): array { return $this->request('GET', '/v1/lcp/leads/' . rawurlencode($id)); }
     public function getCapabilities(): array { return $this->request('GET', '/v1/lcp/capabilities'); }
     public function listOffers(?string $vertical = null): array { return $this->request('GET', '/v1/lcp/offers' . ($vertical === null ? '' : '?vertical=' . rawurlencode($vertical))); }
+
+    /**
+     * LEP-0005 request-history read (`GET /v1/lcp/history/requests`,
+     * `history:read`). Only supplied, non-empty filters reach the query string:
+     * a blank filter would widen the page instead of narrowing it. Rows are
+     * scoped server-side to the credential's tenant, so there is no tenant
+     * argument here. The decoded body comes back unchanged (`requests`).
+     */
+    public function requestHistory(array $params = []): array
+    {
+        $query = [];
+        foreach (['limit', 'cursor', 'request_id', 'status', 'vertical', 'caller_phone_hash', 'from', 'to'] as $name) {
+            $value = $params[$name] ?? null;
+            if ($value === null || $value === '') continue;
+            $query[] = $name . '=' . rawurlencode((string) $value);
+        }
+        return $this->request('GET', '/v1/lcp/history/requests' . ($query === [] ? '' : '?' . implode('&', $query)));
+    }
 }

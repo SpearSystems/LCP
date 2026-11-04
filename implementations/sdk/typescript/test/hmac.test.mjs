@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { LcpClient, LcpSchemaValidator, signHmac, verifyHmac } from "../dist/index.js";
+import { LcpClient, LcpHttpError, LcpSchemaValidator, signHmac, verifyHmac } from "../dist/index.js";
 
 const vector = JSON.parse(await readFile(new URL("../../../../test-vectors/sdk/hmac.json", import.meta.url), "utf8"));
 const body = new TextEncoder().encode(vector.body_utf8);
@@ -61,3 +61,42 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 console.log("TypeScript SDK batch submission passed");
+
+// LEP-0005 history read: only supplied, non-empty filters reach the query, the
+// parsed body comes back unchanged, and a 4xx throws the normal LcpHttpError.
+let historyMode = "ok";
+const historyUrls = [];
+const historyServer = createServer((request, response) => {
+  historyUrls.push(request.url);
+  if (historyMode === "reject") {
+    response.writeHead(400, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ errors: [{ code: "LCP-001", message: "limit out of range" }] }));
+    return;
+  }
+  response.writeHead(200, { "Content-Type": "application/json", "X-LCP-Result-Count": "1", "X-LCP-Total-Results": "1" });
+  response.end(JSON.stringify({ requests: [{ request_id: "req-hist-1", message_type: "lead", direction: "inbound", status: "OPEN", created_at: "2026-11-01T00:00:00Z" }] }));
+});
+await new Promise((resolve) => historyServer.listen(0, "127.0.0.1", resolve));
+try {
+  const client = new LcpClient(`http://127.0.0.1:${historyServer.address().port}`, { maxRetries: 0 });
+  const body = await client.requestHistory({ limit: 2, status: "OPEN", to: "2026-11-01T00:00:00Z" });
+  assert.deepEqual(body.requests.map((row) => row.request_id), ["req-hist-1"]);
+  assert.equal(body.requests[0].status, "OPEN");
+  const sent = new URL(historyUrls[0], "http://stub.invalid");
+  assert.equal(sent.pathname, "/v1/lcp/history/requests");
+  assert.deepEqual([...sent.searchParams.keys()], ["limit", "status", "to"]);
+  assert.deepEqual(Object.fromEntries(sent.searchParams), { limit: "2", status: "OPEN", to: "2026-11-01T00:00:00Z" });
+
+  // An empty string is absent: no blank filter may widen the page.
+  await client.requestHistory({ status: "", vertical: "" });
+  assert.equal(historyUrls[1], "/v1/lcp/history/requests");
+
+  historyMode = "reject";
+  await assert.rejects(
+    () => client.requestHistory({ limit: 500 }),
+    (error) => error instanceof LcpHttpError && error.status === 400 && error.body.errors[0].code === "LCP-001",
+  );
+} finally {
+  await new Promise((resolve) => historyServer.close(resolve));
+}
+console.log("TypeScript SDK history read passed");

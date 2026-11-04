@@ -74,6 +74,7 @@ class LoggingHygieneTests(unittest.TestCase):
         problems = self.scan(
             {
                 "implementations/reference-platform/lcp_platform/admin.py": "import json\nprint(json.dumps(rows))\n",
+                "implementations/reference-platform/lcp_platform/doctor.py": "import json\nprint(json.dumps(report))\n",
                 "implementations/sdk/python/tests/test_client.py": "print('runner status')\n",
                 "tools/check_commit_attribution.py": "print('cli output')\n",
                 "test-vectors/conformance.py": "print('PASS')\n",

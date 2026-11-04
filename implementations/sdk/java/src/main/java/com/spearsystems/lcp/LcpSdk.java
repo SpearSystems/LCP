@@ -164,5 +164,48 @@ public final class LcpSdk {
         public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + URI.create("https://lcp.invalid/" + id).getRawPath(), null, null, false); }
         public String getCapabilities() throws Exception { return request("GET", "/v1/lcp/capabilities", null, null, false); }
         public String listOffers(String vertical) throws Exception { return request("GET", "/v1/lcp/offers" + (vertical == null ? "" : "?vertical=" + URI.create("https://lcp.invalid/?v=" + vertical).getRawQuery().substring(2)), null, null, false); }
+
+        /**
+         * LEP-0005 {@code GET /v1/lcp/history/requests} filters. Every field is
+         * optional: a null or empty value is left out of the query rather than
+         * sent blank, because a blank filter widens the page instead of
+         * narrowing it. Rows are scoped server-side to the credential's tenant,
+         * so there is no tenant field here.
+         */
+        public record HistoryParams(
+                Integer limit,
+                String cursor,
+                String requestId,
+                String status,
+                String vertical,
+                String callerPhoneHash,
+                String from,
+                String to) {}
+
+        /**
+         * Page the LEP-0005 request-history audit log ({@code history:read}) and
+         * return the response body unchanged ({@code {"requests": [...]}}). A 4xx
+         * throws {@link IllegalStateException} through the shared request path.
+         */
+        public String requestHistory(HistoryParams params) throws Exception {
+            var query = new ArrayList<String>();
+            if (params.limit() != null) query.add("limit=" + params.limit());
+            addHistoryFilter(query, "cursor", params.cursor());
+            addHistoryFilter(query, "request_id", params.requestId());
+            addHistoryFilter(query, "status", params.status());
+            addHistoryFilter(query, "vertical", params.vertical());
+            addHistoryFilter(query, "caller_phone_hash", params.callerPhoneHash());
+            addHistoryFilter(query, "from", params.from());
+            addHistoryFilter(query, "to", params.to());
+            return request("GET", "/v1/lcp/history/requests" + (query.isEmpty() ? "" : "?" + String.join("&", query)), null, null, false);
+        }
+
+        private static void addHistoryFilter(ArrayList<String> query, String name, String value) {
+            if (value != null && !value.isEmpty()) query.add(name + "=" + historyEncode(value));
+        }
+
+        private static String historyEncode(String value) {
+            return URI.create("https://lcp.invalid/?v=" + value).getRawQuery().substring(2);
+        }
     }
 }

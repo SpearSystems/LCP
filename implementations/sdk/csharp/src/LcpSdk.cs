@@ -198,6 +198,35 @@ public sealed class LcpClient(HttpClient httpClient, string endpoint, string? se
     public Task<JsonElement> GetCapabilitiesAsync(CancellationToken cancellationToken = default) => RequestAsync("GET", "/v1/lcp/capabilities", cancellationToken: cancellationToken);
     public Task<JsonElement> ListOffersAsync(string? vertical = null, CancellationToken cancellationToken = default) => RequestAsync("GET", "/v1/lcp/offers" + (vertical is null ? "" : $"?vertical={Uri.EscapeDataString(vertical)}"), cancellationToken: cancellationToken);
 
+    /// <summary>
+    /// LEP-0005 request-history read (<c>GET /v1/lcp/history/requests</c>,
+    /// <c>history:read</c>). Only supplied, non-empty filters reach the query
+    /// string: a blank filter would widen the page instead of narrowing it.
+    /// Rows are scoped server-side to the credential's tenant, so there is no
+    /// tenant argument. Returns the parsed body unchanged (<c>requests</c>).
+    /// </summary>
+    public Task<JsonElement> RequestHistoryAsync(int? limit = null, string? cursor = null, string? requestId = null, string? status = null, string? vertical = null, string? callerPhoneHash = null, string? from = null, string? to = null, CancellationToken cancellationToken = default)
+        => RequestAsync("GET", "/v1/lcp/history/requests" + HistoryQuery(limit, cursor, requestId, status, vertical, callerPhoneHash, from, to), cancellationToken: cancellationToken);
+
+    private static string HistoryQuery(int? limit, string? cursor, string? requestId, string? status, string? vertical, string? callerPhoneHash, string? from, string? to)
+    {
+        var parts = new List<string>();
+        if (limit is not null) parts.Add($"limit={limit.Value}");
+        Add("cursor", cursor);
+        Add("request_id", requestId);
+        Add("status", status);
+        Add("vertical", vertical);
+        Add("caller_phone_hash", callerPhoneHash);
+        Add("from", from);
+        Add("to", to);
+        return parts.Count == 0 ? string.Empty : "?" + string.Join("&", parts);
+
+        void Add(string name, string? value)
+        {
+            if (!string.IsNullOrEmpty(value)) parts.Add($"{name}={Uri.EscapeDataString(value)}");
+        }
+    }
+
     private static string? ExtractIdempotencyKey(object payload)
     {
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));

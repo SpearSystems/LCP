@@ -10,9 +10,11 @@ Rule scope is by directory pattern, not a blanket ban on ``print``:
 
 - ``tools/``, ``test-vectors/``, and ``.github/`` are maintainer/operator
   CLIs where stdout output is the product. They are never scanned here.
-- ``implementations/reference-platform/lcp_platform/admin.py`` is the
-  operator CLI (``lcp-platform`` entry point); its table/JSON output to
-  stdout is by design and is documented in the operator docs.
+- ``implementations/reference-platform/lcp_platform/admin.py`` and
+  ``doctor.py`` are operator/integrator CLIs (``lcp-platform-admin`` and
+  ``lcp-doctor`` entry points); their table/JSON output to stdout is by
+  design and documented in the operator docs. ``doctor.py`` prints its own
+  verdict and capabilities advertisement, never a lead envelope.
 - Test harnesses (path segments ``test``/``tests``, and Go ``_test.go``
   files, which sit beside their package instead of in a tests directory) may
   print runner status.
@@ -123,7 +125,10 @@ def _is_rule12_scope(relative: Path) -> bool:
         return False
     if any(part in {"test", "tests", "examples"} for part in parts[1:]):
         return False
-    if relative == Path("implementations/reference-platform/lcp_platform/admin.py"):
+    if relative in {
+        Path("implementations/reference-platform/lcp_platform/admin.py"),
+        Path("implementations/reference-platform/lcp_platform/doctor.py"),
+    }:
         return False
     return True
 

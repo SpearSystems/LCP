@@ -167,6 +167,26 @@ export interface LcpBatchResult {
   error?: unknown;
 }
 
+/**
+ * LEP-0005 `GET /v1/lcp/history/requests` filters. Every field is optional: an
+ * absent or empty value is left out of the query entirely, because a blank
+ * filter would silently widen the page instead of narrowing it. Rows are
+ * scoped server-side to the credential's tenant, so there is no tenant
+ * argument here.
+ */
+export interface LcpHistoryParams {
+  limit?: number;
+  cursor?: string;
+  request_id?: string;
+  status?: string;
+  vertical?: string;
+  caller_phone_hash?: string;
+  /** Inclusive lower bound, whole-second UTC (`YYYY-MM-DDTHH:MM:SSZ`). */
+  from?: string;
+  /** Inclusive upper bound, whole-second UTC (`YYYY-MM-DDTHH:MM:SSZ`). */
+  to?: string;
+}
+
 export class LcpClient {
   private readonly endpoint: string;
   private readonly options: Required<Pick<LcpClientOptions, "timeoutMs" | "maxRetries">> & LcpClientOptions;
@@ -238,6 +258,31 @@ export class LcpClient {
   getSchema<T = Record<string, unknown>>(name: string): Promise<T> { return this.request("GET", `/v1/lcp/schemas/${name.split("/").map(encodeURIComponent).join("/")}`); }
   getCapabilities<T = Record<string, unknown>>(): Promise<T> { return this.request("GET", "/v1/lcp/capabilities"); }
   listOffers<T = Record<string, unknown>>(vertical?: string): Promise<T> { return this.request("GET", "/v1/lcp/offers" + (vertical ? `?vertical=${encodeURIComponent(vertical)}` : "")); }
+
+  /**
+   * Page the LEP-0005 request-history audit log (`history:read`).
+   *
+   * Only supplied, non-empty filters reach the query string: an omitted filter
+   * is absent rather than blank, because a blank filter widens the page
+   * instead of narrowing it. Returns the parsed response body unchanged
+   * (`{ requests: [...] }`).
+   */
+  requestHistory<T = Record<string, unknown>>(params: LcpHistoryParams = {}): Promise<T> {
+    const query = new URLSearchParams();
+    const add = (name: string, value: string | number | undefined): void => {
+      if (value !== undefined && value !== "") query.set(name, String(value));
+    };
+    add("limit", params.limit);
+    add("cursor", params.cursor);
+    add("request_id", params.request_id);
+    add("status", params.status);
+    add("vertical", params.vertical);
+    add("caller_phone_hash", params.caller_phone_hash);
+    add("from", params.from);
+    add("to", params.to);
+    const rendered = query.toString();
+    return this.request("GET", "/v1/lcp/history/requests" + (rendered ? `?${rendered}` : ""));
+  }
 }
 
 export async function verifyHttpRequest(secret: string | Uint8Array, headers: Headers | Record<string, string>, body: Uint8Array, maxSkewSeconds = 300): Promise<void> {

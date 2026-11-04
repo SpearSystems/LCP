@@ -2,6 +2,7 @@ package com.spearsystems.lcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -65,5 +66,60 @@ final class BatchSubmissionTest {
                 .mapToObj(index -> new LcpSdk.Client.BatchItem("item_" + index, "key_" + index, "{}"))
                 .toList();
         assertThrows(IllegalArgumentException.class, () -> client.submitLeadsBatch(items, "req-batch-1"));
+    }
+
+    /**
+     * LEP-0005: the history read sends exactly the supplied, non-empty filters
+     * (a blank filter would widen the page), returns the decoded body, and
+     * surfaces a 4xx through the client's normal exception path.
+     */
+    @Test
+    void historyReadSendsOnlySuppliedFiltersAndReturnsBody() throws Exception {
+        var receivedQuery = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/lcp/history/requests", exchange -> {
+            receivedQuery.set(exchange.getRequestURI().getRawQuery());
+            var body = ("{\"requests\":[{\"request_id\":\"req-hist-1\",\"message_type\":\"lead\","
+                    + "\"direction\":\"inbound\",\"status\":\"OPEN\",\"created_at\":\"2026-11-01T00:00:00Z\"}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var client = new LcpSdk.Client("http://127.0.0.1:" + server.getAddress().getPort(), null, null, null);
+            var body = MAPPER.readTree(client.requestHistory(new LcpSdk.Client.HistoryParams(
+                    2, "", null, "OPEN", null, null, null, "2026-11-01T00:00:00Z")));
+            assertEquals("req-hist-1", body.path("requests").get(0).path("request_id").asText());
+            assertEquals("OPEN", body.path("requests").get(0).path("status").asText());
+            assertEquals("limit=2&status=OPEN&to=2026-11-01T00:00:00Z", receivedQuery.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void historyReadSurfacesHTTPErrors() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/lcp/history/requests", exchange -> {
+            var body = "{\"errors\":[{\"code\":\"LCP-001\",\"message\":\"limit out of range\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(400, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var client = new LcpSdk.Client("http://127.0.0.1:" + server.getAddress().getPort(), null, null, null);
+            var error = assertThrows(IllegalStateException.class, () -> client.requestHistory(
+                    new LcpSdk.Client.HistoryParams(500, null, null, null, null, null, null, null)));
+            assertTrue(error.getMessage().startsWith("LCP HTTP 400"), error.getMessage());
+            assertTrue(error.getMessage().contains("LCP-001"), error.getMessage());
+        } finally {
+            server.stop(0);
+        }
     }
 }

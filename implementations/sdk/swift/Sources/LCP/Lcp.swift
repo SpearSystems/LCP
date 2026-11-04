@@ -102,7 +102,33 @@ private struct LCPBatchResponse: Decodable { let results: [LCPBatchResult] }
 public final class LCPClient {
     private let endpoint: URL; private let senderId: String?; private let apiKey: String?; private let hmacSecret: String?; private let session: URLSession
     public init(endpoint: URL, senderId: String? = nil, apiKey: String? = nil, hmacSecret: String? = nil, session: URLSession = .shared) { self.endpoint = endpoint; self.senderId = senderId; self.apiKey = apiKey; self.hmacSecret = hmacSecret; self.session = session }
-    public func request(path: String, method: String, body: Data? = nil, idempotencyKey: String? = nil, test: Bool = false) async throws -> Data { var request = URLRequest(url: endpoint.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))); request.httpMethod = method; request.httpBody = body; request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("application/json", forHTTPHeaderField: "Accept"); if let senderId { request.setValue(senderId, forHTTPHeaderField: "X-LCP-Sender-Id") }; if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }; if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "X-LCP-Idempotency-Key") }; if test { request.setValue("true", forHTTPHeaderField: "X-LCP-Test") }; if let hmacSecret { let timestamp = ISO8601DateFormatter().string(from: Date()); request.setValue(timestamp, forHTTPHeaderField: "X-LCP-Timestamp"); request.setValue(LCPSigning.sign(secret: hmacSecret, timestamp: timestamp, idempotencyKey: idempotencyKey, body: body ?? Data()), forHTTPHeaderField: "X-LCP-Signature") }; let (data, response) = try await session.data(for: request); guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NSError(domain: "LCP", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: String(data: data, encoding: .utf8) ?? "LCP HTTP error"]) }; return data }
+    public func request(path: String, method: String, body: Data? = nil, idempotencyKey: String? = nil, test: Bool = false, query: [URLQueryItem] = []) async throws -> Data {
+        let base = endpoint.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        if !query.isEmpty { components?.queryItems = query }
+        guard let url = components?.url else {
+            throw NSError(domain: "LCP", code: 400, userInfo: [NSLocalizedDescriptionKey: "invalid LCP request URL"])
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let senderId { request.setValue(senderId, forHTTPHeaderField: "X-LCP-Sender-Id") }
+        if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "X-LCP-Idempotency-Key") }
+        if test { request.setValue("true", forHTTPHeaderField: "X-LCP-Test") }
+        if let hmacSecret {
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            request.setValue(timestamp, forHTTPHeaderField: "X-LCP-Timestamp")
+            request.setValue(LCPSigning.sign(secret: hmacSecret, timestamp: timestamp, idempotencyKey: idempotencyKey, body: body ?? Data()), forHTTPHeaderField: "X-LCP-Signature")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "LCP", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: String(data: data, encoding: .utf8) ?? "LCP HTTP error"])
+        }
+        return data
+    }
 
     /// Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
     /// the per-item receipts in input order. HTTP 207 partial success is a
@@ -122,5 +148,66 @@ public final class LCPClient {
             let rightRank = order[right.element.itemId] ?? items.count
             return leftRank == rightRank ? left.offset < right.offset : leftRank < rightRank
         }.map(\.element)
+    }
+
+    /// Page the LEP-0005 request-history audit log (`history:read`) and return
+    /// the decoded body unchanged (`requests`). A 4xx throws the client's
+    /// normal `NSError` with the HTTP status as its code.
+    public func requestHistory(_ params: LCPHistoryParams = LCPHistoryParams()) async throws -> JSONValue {
+        let data = try await request(path: "/v1/lcp/history/requests", method: "GET", query: params.queryItems)
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
+}
+
+/// LEP-0005 `GET /v1/lcp/history/requests` filters (`history:read`). Every
+/// field is optional: `nil` and empty strings are omitted from the query
+/// rather than sent blank, because a blank filter widens the page instead of
+/// narrowing it. Rows are scoped server-side to the credential's tenant, so
+/// there is no tenant field here.
+public struct LCPHistoryParams {
+    public var limit: Int?
+    public var cursor: String?
+    public var requestId: String?
+    public var status: String?
+    public var vertical: String?
+    public var callerPhoneHash: String?
+    public var from: String?
+    public var to: String?
+
+    public init(
+        limit: Int? = nil,
+        cursor: String? = nil,
+        requestId: String? = nil,
+        status: String? = nil,
+        vertical: String? = nil,
+        callerPhoneHash: String? = nil,
+        from: String? = nil,
+        to: String? = nil
+    ) {
+        self.limit = limit
+        self.cursor = cursor
+        self.requestId = requestId
+        self.status = status
+        self.vertical = vertical
+        self.callerPhoneHash = callerPhoneHash
+        self.from = from
+        self.to = to
+    }
+
+    var queryItems: [URLQueryItem] {
+        var items: [URLQueryItem] = []
+        if let limit { items.append(URLQueryItem(name: "limit", value: String(limit))) }
+        for (name, value) in [
+            ("cursor", cursor),
+            ("request_id", requestId),
+            ("status", status),
+            ("vertical", vertical),
+            ("caller_phone_hash", callerPhoneHash),
+            ("from", from),
+            ("to", to),
+        ] {
+            if let value, !value.isEmpty { items.append(URLQueryItem(name: name, value: value)) }
+        }
+        return items
     }
 }

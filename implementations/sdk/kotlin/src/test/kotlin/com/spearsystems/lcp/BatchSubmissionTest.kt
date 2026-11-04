@@ -61,4 +61,58 @@ class BatchSubmissionTest {
         val items = (0 until 101).map { BatchItem("item_$it", "key_$it", "{}") }
         assertFailsWith<IllegalArgumentException> { client.submitLeadsBatch(items, "req-batch-1") }
     }
+
+    /**
+     * LEP-0005: the history read sends exactly the supplied, non-empty filters
+     * (a blank filter would widen the page), returns the decoded body, and
+     * surfaces a 4xx through the client's normal exception path.
+     */
+    @Test
+    fun historyReadSendsOnlySuppliedFiltersAndReturnsBody() {
+        val receivedQuery = AtomicReference<String>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/v1/lcp/history/requests") { exchange ->
+            receivedQuery.set(exchange.requestURI.rawQuery)
+            val body = "{\"requests\":[{\"request_id\":\"req-hist-1\",\"message_type\":\"lead\"," +
+                "\"direction\":\"inbound\",\"status\":\"OPEN\",\"created_at\":\"2026-11-01T00:00:00Z\"}]}"
+            val bytes = body.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        try {
+            val client = LcpSdk.Client("http://127.0.0.1:${server.address.port}")
+            val body = mapper.readTree(
+                client.requestHistory(limit = 2, cursor = "", status = "OPEN", to = "2026-11-01T00:00:00Z"),
+            )
+            assertEquals("req-hist-1", body.path("requests").get(0).path("request_id").asText())
+            assertEquals("OPEN", body.path("requests").get(0).path("status").asText())
+            assertEquals("limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z", receivedQuery.get())
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun historyReadSurfacesHTTPErrors() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/v1/lcp/history/requests") { exchange ->
+            val body = "{\"errors\":[{\"code\":\"LCP-001\",\"message\":\"limit out of range\"}]}"
+            val bytes = body.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(400, bytes.size.toLong())
+            exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        try {
+            val client = LcpSdk.Client("http://127.0.0.1:${server.address.port}")
+            val error = assertFailsWith<IllegalArgumentException> { client.requestHistory(limit = 500) }
+            assertEquals(true, error.message?.startsWith("LCP HTTP 400"))
+        } finally {
+            server.stop(0)
+        }
+    }
 }

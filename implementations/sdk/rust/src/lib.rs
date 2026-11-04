@@ -143,6 +143,23 @@ pub fn verify_hmac(secret: &str, signature: &str, timestamp: &str, idempotency_k
 /// LEP-0001 W2-01 caps one batch at 100 items (schemas/batch.json).
 pub const MAX_BATCH_ITEMS: usize = 100;
 
+/// LEP-0005 `GET /v1/lcp/history/requests` filters (`history:read`). Every
+/// field is optional: `None` and empty strings are omitted from the query
+/// instead of being sent blank, because a blank filter widens the page rather
+/// than narrowing it. Rows are scoped server-side to the credential's tenant,
+/// so there is no tenant field here.
+#[derive(Debug, Default, Clone)]
+pub struct HistoryParams<'a> {
+    pub limit: Option<u32>,
+    pub cursor: Option<&'a str>,
+    pub request_id: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub vertical: Option<&'a str>,
+    pub caller_phone_hash: Option<&'a str>,
+    pub from: Option<&'a str>,
+    pub to: Option<&'a str>,
+}
+
 pub struct Client { endpoint: String, sender_id: Option<String>, api_key: Option<String>, hmac_secret: Option<String>, http: HttpClient, max_retries: u32 }
 impl Client {
     pub fn new(endpoint: impl Into<String>) -> Self { Self { endpoint: endpoint.into().trim_end_matches('/').to_string(), sender_id: None, api_key: None, hmac_secret: None, http: HttpClient::builder().timeout(Duration::from_secs(30)).build().expect("HTTP client"), max_retries: 2 } }
@@ -187,6 +204,37 @@ impl Client {
     pub fn query_lead_status(&self, id: &str) -> Result<Value, Box<dyn std::error::Error>> { self.request(reqwest::Method::GET, &format!("/v1/lcp/leads/{}", urlencoding::encode(id)), None, false) }
     pub fn get_capabilities(&self) -> Result<Value, Box<dyn std::error::Error>> { self.request(reqwest::Method::GET, "/v1/lcp/capabilities", None, false) }
     pub fn list_offers(&self, vertical: Option<&str>) -> Result<Value, Box<dyn std::error::Error>> { let path = vertical.map(|value| format!("/v1/lcp/offers?vertical={}", urlencoding::encode(value))).unwrap_or_else(|| "/v1/lcp/offers".to_string()); self.request(reqwest::Method::GET, &path, None, false) }
+
+    /// Page the LEP-0005 request-history audit log and return the decoded body
+    /// unchanged (`{"requests": [...]}`); a 4xx surfaces as the shared request
+    /// error, like every other read.
+    pub fn request_history(&self, params: &HistoryParams) -> Result<Value, Box<dyn std::error::Error>> {
+        let mut query: Vec<String> = Vec::new();
+        if let Some(limit) = params.limit {
+            query.push(format!("limit={limit}"));
+        }
+        for (name, value) in [
+            ("cursor", params.cursor),
+            ("request_id", params.request_id),
+            ("status", params.status),
+            ("vertical", params.vertical),
+            ("caller_phone_hash", params.caller_phone_hash),
+            ("from", params.from),
+            ("to", params.to),
+        ] {
+            if let Some(value) = value {
+                if !value.is_empty() {
+                    query.push(format!("{name}={}", urlencoding::encode(value)));
+                }
+            }
+        }
+        let path = if query.is_empty() {
+            "/v1/lcp/history/requests".to_string()
+        } else {
+            format!("/v1/lcp/history/requests?{}", query.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None, false)
+    }
 }
 
 trait ConstantTimeEq { fn ct_eq(&self, other: &[u8]) -> subtle::Choice; }
@@ -367,5 +415,64 @@ mod tests {
             .map(|index| json!({"item_id": format!("item_{index}"), "idempotency_key": format!("key_{index}"), "payload": {}}))
             .collect();
         assert!(client.submit_leads_batch(&over_cap, None).is_err());
+    }
+
+    #[test]
+    fn history_read_sends_only_supplied_filters_and_surfaces_errors() {
+        use std::io::{Read, Write};
+
+        fn serve(status_line: &'static str, body: &'static str) -> (String, std::thread::JoinHandle<String>) {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let handle = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let read = stream.read(&mut chunk).unwrap();
+                    buffer.extend_from_slice(&chunk[..read]);
+                    if read == 0 || buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let text = String::from_utf8_lossy(&buffer).to_string();
+                let target = text.lines().next().unwrap_or_default().split(' ').nth(1).unwrap_or_default().to_string();
+                write!(stream, "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                target
+            });
+            (format!("http://{address}"), handle)
+        }
+
+        let (endpoint, server) = serve(
+            "HTTP/1.1 200 OK",
+            r#"{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}"#,
+        );
+        let body = Client::new(endpoint)
+            .request_history(&HistoryParams {
+                limit: Some(2),
+                cursor: Some(""),
+                status: Some("OPEN"),
+                to: Some("2026-11-01T00:00:00Z"),
+                ..Default::default()
+            })
+            .unwrap();
+        let target = server.join().unwrap();
+        assert_eq!(body["requests"][0]["request_id"], "req-hist-1");
+        assert_eq!(body["requests"][0]["status"], "OPEN");
+        // Supplied filters only, in declaration order; the empty cursor is absent.
+        assert_eq!(
+            target,
+            "/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z"
+        );
+
+        let (endpoint, server) = serve(
+            "HTTP/1.1 400 Bad Request",
+            r#"{"errors":[{"code":"LCP-001","message":"limit out of range"}]}"#,
+        );
+        let error = Client::new(endpoint)
+            .request_history(&HistoryParams { limit: Some(500), ..Default::default() })
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(error.to_string().contains("LCP HTTP 400"), "{error}");
     }
 }

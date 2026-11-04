@@ -68,3 +68,46 @@ begin
 rescue ArgumentError
 end
 puts "Ruby SDK batch submission passed"
+
+# LEP-0005 history read: only supplied, non-empty filters reach the query, the
+# decoded body comes back unchanged, and a 4xx raises through the normal path.
+history_server = TCPServer.new("127.0.0.1", 0)
+history_port = history_server.addr[1]
+history_target = nil
+history_thread = Thread.new do
+  socket = history_server.accept
+  raw = +""
+  raw << socket.readpartial(4096) until raw.include?("\r\n\r\n")
+  history_target = raw[/\AGET (\S+) HTTP/, 1]
+  response = '{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}'
+  socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+  socket.close
+end
+history_client = LcpSdk::Client.new("http://127.0.0.1:#{history_port}", max_retries: 0)
+history_body = history_client.request_history(limit: 2, cursor: "", status: "OPEN", to: "2026-11-01T00:00:00Z")
+history_thread.join
+unless history_body["requests"][0]["request_id"] == "req-hist-1" && history_body["requests"][0]["status"] == "OPEN"
+  raise "history row lost"
+end
+unless history_target == "/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z"
+  raise "history query: #{history_target}"
+end
+
+history_server = TCPServer.new("127.0.0.1", 0)
+history_port = history_server.addr[1]
+history_thread = Thread.new do
+  socket = history_server.accept
+  raw = +""
+  raw << socket.readpartial(4096) until raw.include?("\r\n\r\n")
+  response = '{"errors":[{"code":"LCP-001","message":"limit out of range"}]}'
+  socket.write("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+  socket.close
+end
+begin
+  LcpSdk::Client.new("http://127.0.0.1:#{history_port}", max_retries: 0).request_history(limit: 500)
+  raise "history 4xx was accepted"
+rescue RuntimeError => history_error
+  raise history_error unless history_error.message.start_with?("LCP HTTP 400")
+end
+history_thread.join
+puts "Ruby SDK history read passed"

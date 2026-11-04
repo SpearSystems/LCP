@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import threading
 import unittest
+from urllib.parse import parse_qs, urlparse
 
 from lcp_sdk import (
     LCPClient,
@@ -315,6 +316,107 @@ class BatchSubmissionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self._client(server).submit_leads_batch(items)
             self.assertEqual(_BatchHandler.received, [])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class _HistoryHandler(BaseHTTPRequestHandler):
+    """Serves one request-history page, or a 400 when ``status`` says so."""
+
+    status = 200
+    received: list[str] = []
+
+    def do_GET(self) -> None:
+        type(self).received.append(self.path)
+        if type(self).status == 200:
+            payload = json.dumps(
+                {
+                    "requests": [
+                        {
+                            "request_id": "req-hist-1",
+                            "message_type": "lead",
+                            "direction": "inbound",
+                            "status": "OPEN",
+                            "created_at": "2026-11-01T00:00:00Z",
+                        }
+                    ]
+                }
+            ).encode()
+        else:
+            payload = json.dumps(
+                {"errors": [{"code": "LCP-001", "message": "limit out of range"}]}
+            ).encode()
+        self.send_response(type(self).status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-LCP-Result-Count", "1")
+        self.send_header("X-LCP-Total-Results", "1")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:  # keep output clean
+        pass
+
+
+class HistoryReadTests(unittest.TestCase):
+    """LEP-0005: ``request_history`` pages the audit log with an exact query."""
+
+    def _serve(self, status: int = 200) -> tuple[ThreadingHTTPServer, LCPClient]:
+        _HistoryHandler.status = status
+        _HistoryHandler.received = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _HistoryHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        client = LCPClient(
+            f"http://127.0.0.1:{server.server_address[1]}",
+            api_key="any-key",
+            max_retries=0,
+        )
+        return server, client
+
+    def test_query_sends_only_supplied_params_and_returns_body(self) -> None:
+        server, client = self._serve()
+        try:
+            body = client.request_history(
+                limit=2, status="OPEN", to="2026-11-01T00:00:00Z"
+            )
+            self.assertEqual(
+                list(body["requests"]),
+                [
+                    {
+                        "request_id": "req-hist-1",
+                        "message_type": "lead",
+                        "direction": "inbound",
+                        "status": "OPEN",
+                        "created_at": "2026-11-01T00:00:00Z",
+                    }
+                ],
+            )
+            path = _HistoryHandler.received[0]
+            self.assertEqual(urlparse(path).path, "/v1/lcp/history/requests")
+            self.assertEqual(
+                parse_qs(urlparse(path).query),
+                {
+                    "limit": ["2"],
+                    "status": ["OPEN"],
+                    "to": ["2026-11-01T00:00:00Z"],
+                },
+            )
+
+            # An empty string is "absent": no blank filter may widen the page.
+            client.request_history(status="", vertical="", cursor="")
+            self.assertEqual(_HistoryHandler.received[1], "/v1/lcp/history/requests")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_history_4xx_surfaces_as_lcp_http_error(self) -> None:
+        server, client = self._serve(status=400)
+        try:
+            with self.assertRaises(LCPHTTPError) as caught:
+                client.request_history(limit=500)
+            self.assertEqual(caught.exception.status_code, 400)
+            self.assertEqual(caught.exception.body["errors"][0]["code"], "LCP-001")
         finally:
             server.shutdown()
             server.server_close()

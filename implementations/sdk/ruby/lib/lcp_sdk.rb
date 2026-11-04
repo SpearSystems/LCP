@@ -183,5 +183,21 @@ module LcpSdk
     def query_lead_status(id); request("GET", "/v1/lcp/leads/#{URI.encode_www_form_component(id)}"); end
     def get_capabilities; request("GET", "/v1/lcp/capabilities"); end
     def list_offers(vertical = nil); request("GET", "/v1/lcp/offers#{vertical ? "?vertical=#{URI.encode_www_form_component(vertical)}" : ""}"); end
+
+    # LEP-0005 history read (GET /v1/lcp/history/requests, history:read). Only
+    # supplied, non-empty filters reach the query string — a blank filter would
+    # widen the page instead of narrowing it. Rows are scoped server-side to the
+    # credential's tenant, so there is no tenant argument. Returns the decoded
+    # body unchanged.
+    HISTORY_PARAMS = %w[limit cursor request_id status vertical caller_phone_hash from to].freeze
+
+    def request_history(**params)
+      query = HISTORY_PARAMS.filter_map do |name|
+        value = params[name.to_sym]
+        next if value.nil? || value.to_s.empty?
+        "#{name}=#{URI.encode_www_form_component(value.to_s)}"
+      end
+      request("GET", "/v1/lcp/history/requests#{query.empty? ? "" : "?#{query.join("&")}"}")
+    end
   end
 end

@@ -118,3 +118,65 @@ final class BatchURLProtocol: URLProtocol {
 
     override func stopLoading() {}
 }
+
+/// LEP-0005: the history read sends exactly the supplied, non-empty filters
+/// (a blank filter would widen the page), returns the decoded body, and
+/// surfaces a 4xx as the client's normal error.
+final class HistoryReadTests: XCTestCase {
+    private func session() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BatchURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    func testHistoryReadSendsOnlySuppliedFiltersAndReturnsBody() async throws {
+        let session = self.session()
+        defer { session.invalidateAndCancel() }
+        BatchURLProtocol.requests = []
+        BatchURLProtocol.handler = { request in
+            let body = #"{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, Data(body.utf8))
+        }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        let body = try await client.requestHistory(
+            LCPHistoryParams(limit: 2, cursor: "", status: "OPEN", to: "2026-11-01T00:00:00Z")
+        )
+        guard case .object(let root) = body,
+              case .array(let rows)? = root["requests"],
+              rows.count == 1,
+              case .object(let row) = rows[0]
+        else {
+            return XCTFail("history body was reshaped: \(body)")
+        }
+        XCTAssertEqual(row["request_id"], .string("req-hist-1"))
+        XCTAssertEqual(row["status"], .string("OPEN"))
+        let url = try XCTUnwrap(BatchURLProtocol.requests.first?.url)
+        XCTAssertEqual(url.path, "/v1/lcp/history/requests")
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.queryItems, [
+            URLQueryItem(name: "limit", value: "2"),
+            URLQueryItem(name: "status", value: "OPEN"),
+            URLQueryItem(name: "to", value: "2026-11-01T00:00:00Z"),
+        ])
+    }
+
+    func testHistoryReadSurfacesHTTPErrors() async throws {
+        let session = self.session()
+        defer { session.invalidateAndCancel() }
+        BatchURLProtocol.requests = []
+        BatchURLProtocol.handler = { request in
+            let body = #"{"errors":[{"code":"LCP-001","message":"limit out of range"}]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, Data(body.utf8))
+        }
+        let client = LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session)
+        do {
+            _ = try await client.requestHistory(LCPHistoryParams(limit: 500))
+            XCTFail("history 4xx was accepted")
+        } catch {
+            let error = error as NSError
+            XCTAssertEqual(error.domain, "LCP")
+            XCTAssertEqual(error.code, 400)
+            XCTAssertTrue((error.userInfo[NSLocalizedDescriptionKey] as? String)?.contains("LCP-001") == true)
+        }
+    }
+}

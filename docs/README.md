@@ -43,6 +43,14 @@
 - [Capability map](CAPABILITIES.md) — six diagrams for intake, auction and
   shared slots, negotiation, event subscriptions, matching/extension
   admission, and the data lifecycle; the system map is the README hero.
+- [Error guide](ERROR-GUIDE.md) — every `LCP-0xx` code in plain English, with
+  common causes and the exact field-level fix; `lcp-doctor --explain CODE`.
+- [No-code recipes](RECIPES.md) — Lovable/Supabase, GoHighLevel, Make, Zapier,
+  and Google Sheets, from field map to first successful test lead.
+- [Buyer webhook kit](../examples/integrations/buyer-webhook/) — runnable
+  receivers that verify both signed delivery surfaces and return the ack.
+- [No-code templates](../examples/integrations/no-code/) — Deno edge function,
+  Make module configuration, and Apps Script poster.
 - [Publisher onboarding](PUBLISHER-ONBOARDING.md) — publisher setup,
   source mapping, authentication, retries, sandbox testing, and go-live checks.
 - [Publisher mapping](PUBLISHER-MAPPING.md) — versioned multi-brand form

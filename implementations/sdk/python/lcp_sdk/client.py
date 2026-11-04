@@ -291,6 +291,45 @@ class LCPClient:
         params = {"vertical": vertical} if vertical else None
         return self.request("GET", "/v1/lcp/offers", params=params)
 
+    def request_history(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        request_id: str | None = None,
+        status: str | None = None,
+        vertical: str | None = None,
+        caller_phone_hash: str | None = None,
+        from_: str | None = None,
+        to: str | None = None,
+    ) -> dict[str, Any]:
+        """Page the LEP-0005 request-history audit log (``history:read``).
+
+        Every filter is optional; an omitted or empty value is left out of the
+        query entirely, never sent as an empty string (an ignored blank filter
+        silently broadens the result set). Rows are scoped server-side to the
+        credential's tenant, so no tenant argument exists here. ``from_`` maps
+        to the wire parameter ``from``; values are whole-second UTC
+        (``YYYY-MM-DDTHH:MM:SSZ``). Returns the response body unchanged:
+        ``{"requests": [...]}``.
+        """
+        params = {
+            "limit": limit,
+            "cursor": cursor,
+            "request_id": request_id,
+            "status": status,
+            "vertical": vertical,
+            "caller_phone_hash": caller_phone_hash,
+            "from": from_,
+            "to": to,
+        }
+        supplied = {
+            name: value
+            for name, value in params.items()
+            if value is not None and value != ""
+        }
+        return self.request("GET", "/v1/lcp/history/requests", params=supplied or None)
+
     def _validate(self, envelope: dict[str, Any]) -> None:
         if self.validator:
             self.validator.require_valid_envelope(envelope)

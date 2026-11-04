@@ -203,3 +203,62 @@ func TestSubmitLeadsBatchRejectsOverCapBeforeSending(t *testing.T) {
 		t.Fatalf("requests = %d, want 0", requests)
 	}
 }
+
+func TestRequestHistorySendsOnlySuppliedParams(t *testing.T) {
+	var receivedQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedQuery = request.URL.RawQuery
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(`{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.MaxRetries = 0
+	body, err := client.RequestHistory(HistoryParams{Limit: 2, Status: "OPEN", To: "2026-11-01T00:00:00Z", Cursor: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, ok := body["requests"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("requests = %#v", body["requests"])
+	}
+	row := rows[0].(map[string]any)
+	if row["request_id"] != "req-hist-1" || row["status"] != "OPEN" {
+		t.Fatalf("row = %#v", row)
+	}
+	// Only the supplied filters are on the wire, sorted by name, with the
+	// timestamp's colons escaped exactly once.
+	if want := "limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z"; receivedQuery != want {
+		t.Fatalf("query = %q, want %q", receivedQuery, want)
+	}
+
+	// An empty string is absent: no blank filter may widen the page.
+	if _, err := client.RequestHistory(HistoryParams{Status: "", Vertical: ""}); err != nil {
+		t.Fatal(err)
+	}
+	if receivedQuery != "" {
+		t.Fatalf("empty filters were sent: %q", receivedQuery)
+	}
+}
+
+func TestRequestHistorySurfacesHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusBadRequest)
+		_, _ = writer.Write([]byte(`{"errors":[{"code":"LCP-001","message":"limit out of range"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.MaxRetries = 0
+	_, err := client.RequestHistory(HistoryParams{Limit: 500})
+	if err == nil {
+		t.Fatal("expected a 400 error")
+	}
+	httpError, ok := err.(*HTTPError)
+	if !ok || httpError.Status != http.StatusBadRequest {
+		t.Fatalf("err = %#v", err)
+	}
+}

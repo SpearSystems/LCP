@@ -82,3 +82,56 @@ try {
     throw new RuntimeException('batch over the cap was accepted');
 } catch (InvalidArgumentException) { }
 echo "PHP SDK batch submission passed\n";
+
+// LEP-0005 history read: only supplied, non-empty filters reach the query, the
+// decoded body comes back unchanged, and a 4xx throws the client's exception.
+$serveOnce = static function ($server, int $status, string $responseBody): string {
+    $connection = stream_socket_accept($server, 10);
+    $raw = '';
+    while (strpos($raw, "\r\n\r\n") === false) $raw .= fread($connection, 8192);
+    [$headers] = explode("\r\n\r\n", $raw, 2);
+    $target = preg_match('#^GET\s+(\S+)\s+HTTP/#', $headers, $match) === 1 ? $match[1] : '';
+    $reason = $status === 200 ? 'OK' : 'Bad Request';
+    fwrite($connection, "HTTP/1.1 $status $reason\r\nContent-Type: application/json\r\nContent-Length: " . strlen($responseBody) . "\r\nConnection: close\r\n\r\n" . $responseBody);
+    fclose($connection);
+    fclose($server);
+    return $target;
+};
+
+$historyServer = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+if ($historyServer === false) throw new RuntimeException("history server: $errstr");
+$historyPort = (int) substr(strrchr(stream_socket_get_name($historyServer, false), ':'), 1);
+$historyCapture = tempnam(sys_get_temp_dir(), 'lcp-history-');
+$historyPid = pcntl_fork();
+if ($historyPid === -1) throw new RuntimeException('fork failed');
+if ($historyPid === 0) {
+    $target = $serveOnce($historyServer, 200, '{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}');
+    file_put_contents($historyCapture, $target);
+    exit(0);
+}
+$historyClient = new Lcp\Client("http://127.0.0.1:$historyPort", 'publisher_001', 'api-key', null, 0);
+$historyBody = $historyClient->requestHistory(['limit' => 2, 'cursor' => '', 'status' => 'OPEN', 'to' => '2026-11-01T00:00:00Z']);
+pcntl_waitpid($historyPid, $historyStatus);
+$historyTarget = file_get_contents($historyCapture);
+unlink($historyCapture);
+if ($historyBody['requests'][0]['request_id'] !== 'req-hist-1' || $historyBody['requests'][0]['status'] !== 'OPEN') throw new RuntimeException('history row lost');
+if ($historyTarget !== '/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z') throw new RuntimeException('history query: ' . $historyTarget);
+
+$historyServer = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+if ($historyServer === false) throw new RuntimeException("history server: $errstr");
+$historyPort = (int) substr(strrchr(stream_socket_get_name($historyServer, false), ':'), 1);
+$historyPid = pcntl_fork();
+if ($historyPid === -1) throw new RuntimeException('fork failed');
+if ($historyPid === 0) {
+    $serveOnce($historyServer, 400, '{"errors":[{"code":"LCP-001","message":"limit out of range"}]}');
+    exit(0);
+}
+$historyClient = new Lcp\Client("http://127.0.0.1:$historyPort", 'publisher_001', 'api-key', null, 0);
+try {
+    $historyClient->requestHistory(['limit' => 500]);
+    throw new RuntimeException('history 4xx was accepted');
+} catch (RuntimeException $historyError) {
+    if (!str_starts_with($historyError->getMessage(), 'LCP HTTP 400')) throw $historyError;
+}
+pcntl_waitpid($historyPid, $historyStatus);
+echo "PHP SDK history read passed\n";
