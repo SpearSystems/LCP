@@ -55,7 +55,7 @@ sequenceDiagram
     Plt->>BB: post + contacted_hashes[]
     BA-->>Plt: ack ACCEPTED → PROCESSED (CRM sync, terminal success)
     BA-->>Plt: event CONTACTED (hashes of parties already contacted)
-    Note over Plt: slots_claimed never exceeds slots_available;<br/>exclusive is the one-slot case
+    Note over Plt: slots_claimed never exceeds slots_available<br/>exclusive is the one-slot case
 ```
 
 Gate: slots are part of the 1.1 baseline. Cross-currency ranking needs
@@ -86,7 +86,7 @@ sequenceDiagram
         Plt-->>Agt: REFUSED negotiation_expired
     end
     Agt->>Plt: bid (negotiation_binding_token)
-    Plt-->>Agt: REDEEMED (single use; replay returns the original outcome)
+    Plt-->>Agt: REDEEMED (single use · replay returns the original outcome)
 ```
 
 Gate: `features.negotiation` (`LCP_FEATURE_NEGOTIATION`, off by default).
