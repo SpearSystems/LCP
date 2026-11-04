@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "175610f7cedd",
+  "build_hash": "1f47d086a297",
   "pages": [
     {
       "path": "assets/site.css",

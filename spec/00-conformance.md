@@ -142,38 +142,39 @@ Findings from the deep-research review
 | No exclusivity model | Added `exclusivity` + `max_buyers` | §3 |
 | Settlement/billing scope ambiguous | Added scope statement to §1 | §1 |
 
-### Should-fix — open (trigger-gated, unscheduled)
+### Should-fix — delivered in v1.2.0 (records kept)
 
 v1.1.0 delivered the LEP-driven set (canonical timestamps and cross-SDK
 interop, shared-lead slots, request history, extensions and
-`FINAL_PRICING`, attestation verification). The findings below remain open
-opportunities gated on the trigger in each row; none is a commitment to
-v1.1 or v1.2.
+`FINAL_PRICING`, attestation verification). Every row below was then delivered
+in v1.2.0 under the [D1 trigger waiver](../docs/DECISIONS-v1.2.md) — the
+triggers were **not** met; the waiver records that choice and its 2027-05-04
+re-evaluation. The trigger column is kept as the original reason.
 
-| Finding | Trigger | Planned resolution |
+| Finding | Original trigger | Resolved as |
 |---|---|---|
-| Batch submission (`submit_leads_batch`) | Agent submission volume grows | Add as MCP tool + REST endpoint |
-| Push delivery (webhook/event subscription) | Polling at volume becomes costly | Add `subscribe_to_events` MCP tool + `POST /v1/lcp/events/subscribe` |
-| Platform quality score in ping/post | Platforms want to share independent scoring | Extensions namespace `{org}.platform.assessment` |
-| Delivery receipt (`PROCESSED` ack status) | Buyer CRM sync failures need detection | Add `PROCESSED` to ack status enum |
-| Vertical-specific buyer criteria in offers | Complex matching rules per vertical | Extensions namespace `{org}.buyer.criteria` |
-| Raw IP address in post (full PII context) | Fraud detection + geo-validation | Add `ip_address` to provenance (post only, not ping) |
-| Raw form submission data | Dispute evidence — what consumer actually entered | Extensions namespace `{org}.intake.raw_form` |
-| Multi-currency pricing | Cross-border lead-gen (US buyer purchasing AU leads) | `price_cents_original` + `fx_rate` fields, or bilateral |
-| Core schema version in envelope | Schema-level breaking change detection | `core_schema_version` in message block, or document that protocol version = core schema version |
-| Address fields in core (`street_address`) | Multiple verticals need consumer residential address | Add to `location` or document as vertical-specific |
-| Spec site (LEX-style) | Adoption grows beyond GitHub | Static site render of SPEC.md |
+| Batch submission (`submit_leads_batch`) | Agent submission volume grows | `POST /v1/lcp/leads/batch` + MCP `submit_leads_batch` (LEP-0001) |
+| Push delivery (webhook/event subscription) | Polling at volume becomes costly | `subscription` message type + registration/delivery/replay routes (LEP-0001) |
+| Platform quality score in ping/post | Platforms want to share independent scoring | Registered `lcp.platform.assessment`; post always, ping only as a ping-safe registration |
+| Delivery receipt (`PROCESSED` ack status) | Buyer CRM sync failures need detection | `PROCESSED` in `ack.status`, post-delivery terminal success only (D2) |
+| Vertical-specific buyer criteria in offers | Complex matching rules per vertical | Registered `lcp.buyer.criteria` over the allowlisted predicate operators |
+| Raw IP address in post (full PII context) | Fraud detection + geo-validation | `provenance.ip_address`, post-only; `ip_hash` stays the ping-safe projection (D5) |
+| Raw form submission data | Dispute evidence — what consumer actually entered | Registered `lcp.intake.raw_form`, post-only, classed `restricted` (D6) |
+| Multi-currency pricing | Cross-border lead-gen (US buyer purchasing AU leads) | `post.pricing` FX fields + comparability rule with ISO 4217 exponents (LEP-0010) |
+| Core schema version in envelope | Schema-level breaking change detection | Documented that `lcp.version` *is* the core schema version, plus `capabilities().core_schema_version` (D3) |
+| Address fields in core (`street_address`) | Multiple verticals need consumer residential address | `location.street_address`, optional, post-only (D4) |
+| Spec site (LEX-style) | Adoption grows beyond GitHub | `tools/build_spec_site.py` → committed `site/` with a staleness gate |
 
-### Deferred to v1.1+ (with trigger)
+### Deferred items — status after v1.2.0
 
-| Finding | Trigger |
-|---|---|
-| Agent-to-agent price negotiation | Agent bidding volume large enough that static floor pricing is suboptimal |
-| Formal sensitivity taxonomy for PII | A market regulates a category not covered (e.g. biometric) |
-| Multi-maintainer governance | External contributors adopt LCP |
-| LEP (LCP Enhancement Proposal) process | Community growth requires structured proposal workflow |
-| Hosted conformance sandbox | Self-hosted conformance runner is insufficient for certification |
-| Split SPEC.md into focused documents | Spec exceeds ~1000 lines or gets second major section |
+| Finding | Original trigger | Status |
+|---|---|---|
+| Agent-to-agent price negotiation | Agent bidding volume large enough that static floor pricing is suboptimal | Delivered as LEP-0009 (`quote`/`counter`), capability-gated and off by default |
+| Formal sensitivity taxonomy for PII | A market regulates a category not covered (e.g. biometric) | Delivered as LEP-0011 + `docs/PII-CLASSES.md` with `x-lcp-pii` on every property |
+| Multi-maintainer governance | External contributors adopt LCP | **Open — human blocker.** `CODEOWNERS` and the exact ruleset delta are prepared; independent release approval is not claimed (D12) |
+| LEP (LCP Enhancement Proposal) process | Community growth requires structured proposal workflow | Delivered (LEP-0004, operative with the ARB charter) |
+| Hosted conformance sandbox | Self-hosted conformance runner is insufficient for certification | Self-hostable runner delivered (`tools/conformance_runner.py`, D11); no certification claim until a second operator runs it |
+| Split SPEC.md into focused documents | Spec exceeds ~1000 lines or gets second major section | Delivered: `SPEC.md` is the index over `spec/00-conformance.md` … `spec/05-capabilities.md` (D10) |
 
 ### Naming
 
