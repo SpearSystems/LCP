@@ -15,7 +15,7 @@
       `1.2.0` (`python3 tools/check_sdk_versions.py` exits 0).
 - [ ] Release tag: **not created.** No `v1.2.0` tag and no
       `implementations/sdk/go/v1.2.0` tag exist; the checklist that creates them
-      is [RELEASE.md](RELEASE.md#v120-release-block-prepared-unpublished).
+      is [RELEASE.md](RELEASE.md#v120-release-block-published-2026-11-05).
 - [ ] Published commit: none — no commit has been tagged.
 - [ ] GitHub release, signed assets, SBOMs, provenance, Sigstore bundles: none.
 - [ ] Reference container at `1.2.0`: not built or pushed for this version.
@@ -220,36 +220,42 @@ nothing about behaviour, and this record treats it that way.
 
 ## 8. Approval and publication state
 
-**Approved to build, not executed — therefore not released.**
+**Released.** `v1.2.0` was merged as `400c350b0e5ebf7ba3160e14b1fa78acb61ec57c`
+(PR [#232](https://github.com/SpearSystems/LCP/pull/232)), tagged, and published
+under the protected `release` environments with maintainer approval. All eight
+tag workflows completed successfully.
 
-- The maintainer decisions in [DECISIONS-v1.2.md](DECISIONS-v1.2.md) authorize
-  the work and `v1.2.0` as a MINOR release containing D2–D11.
-- The single LEP/publish gate that remains is a human one: the tag and the
-  protected publication jobs.
-- Nothing was tagged, published, mirrored, or announced in the preparation of
-  this record. No registry was written to; no container was built or pushed; no
-  release workflow was dispatched.
-
-Still to do, in order, from [RELEASE.md](RELEASE.md#v120-release-block-prepared-unpublished):
-the W7-02 gate sweep, the nested Go tag, the root tag, the container
-public-pull pre-flight, the Packagist mirror update, the protected publication
-approvals, and the registry read-back that replaces the empty table below.
+One correction is recorded rather than hidden: the first tag push pointed at the
+pre-merge `main` (`cfd79df`) because the fetch updated `FETCH_HEAD` instead of
+the remote-tracking ref. The tag was deleted and recreated on the merge commit
+with the `release tag protection` ruleset temporarily disabled and immediately
+restored; the stale-tag workflow runs were cancelled before any registry write
+(PyPI still showed `1.1.1`, npm and NuGet `404` at that moment).
 
 ## 9. Verified publication
 
-Not applicable yet — the release has not been executed. This table is filled
-from registry read-back after the tag workflows complete; an entry here is a
-measurement, never an intention.
+Read back after the tag workflows completed. Every row was measured; none is an
+intention.
 
-| Registry | Coordinate | Version |
-|---|---|---|
-| PyPI | `lcp-sdk`, `lcp-mcp-server`, `lcp-reference-platform` | not published |
-| npm | `@spear-systems/lcp-sdk` | not published |
-| NuGet | `LcpSdk` | not published |
-| crates.io | `lcp-sdk` | not published |
-| RubyGems | `lcp-sdk` | not published |
-| Maven Central | `systems.spear:lcp-sdk`, `systems.spear:lcp-sdk-kotlin` | not published |
-| Swift Package Manager | repository tag | not published |
-| Go module | `…/implementations/sdk/go` | not published (needs `implementations/sdk/go/v1.2.0`) |
-| Packagist | `spearsystems/lcp-sdk` | not published (mirror not updated) |
-| GHCR | `ghcr.io/spearsystems/lcp-reference-platform` | no `1.2.0` image |
+| Registry | Coordinate | Version | Evidence |
+|---|---|---|---|
+| PyPI | `lcp-sdk` | 1.2.0 | JSON API 200 |
+| PyPI | `lcp-reference-platform` | 1.2.0 | JSON API 200 |
+| PyPI | `lcp-mcp-server` | 1.2.0 | JSON API 200 |
+| npm | `@spear-systems/lcp-sdk` | 1.2.0 | registry 200 |
+| NuGet | `LcpSdk` | 1.2.0 | flat-container 200 |
+| crates.io | `lcp-sdk` | 1.2.0 | API record `updated_at` 2026-11-04T13:12:26Z |
+| RubyGems | `lcp-sdk` | 1.2.0 | versions API 200 |
+| Maven Central | `systems.spear:lcp-sdk` | 1.2.0 | POM 200 |
+| Packagist | `spearsystems/lcp-sdk` | v1.2.0 | mirror tag `a971307`, p2 metadata lists `v1.2.0` |
+| Go module | `github.com/SpearSystems/LCP/implementations/sdk/go` | v1.2.0 | `GOPROXY=direct go get …@v1.2.0` resolved |
+| GHCR | `ghcr.io/spearsystems/lcp-reference-platform` | `sha256:582a332bfd63d4a803ded4d78e0fe1ae3e34741e3e91426eb6cbc9d5b5bfc2d7` | anonymous token + manifest `200` |
+| GitHub release | `v1.2.0` | 79 assets | signed manifest, SBOMs, provenance |
+
+## 10. Post-release notes
+
+- The nested Go module tag `implementations/sdk/go/v1.2.0` points at the same
+  merge commit; root tags alone still produce pseudo-versions for the module.
+- The Packagist mirror is updated by dispatching `mirror.yml` in
+  `SpearSystems/lcp-sdk-php` with `tag=v1.2.0`; the release workflow does not
+  dispatch it automatically.

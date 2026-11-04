@@ -1,26 +1,19 @@
-# LCP tagged releases and artifact verification
-
 > **Release page · Page 3 of 6**
 
-> **Prepared release:** `v1.2.0`, awaiting maintainer approval to publish. `SDK_VERSION` and every
-> package manifest are `1.2.0`, and the release record is
-> [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md). No `v1.2.0` tag exists,
-> no package is published at `1.2.0`, and no release workflow has run:
-> version preparation is not a release. The checklist for cutting it is
-> [§ v1.2.0 release block](#v120-release-block-prepared-unpublished) below.
+> **Current release:** `v1.2.0` was published on 2026-11-05 from tag `v1.2.0`
+> (merge commit `400c350b0e5ebf7ba3160e14b1fa78acb61ec57c`). The GitHub release
+> and its signed evidence assets are at
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.2.0>; the record is
+> [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md).
 >
-> **Current release:** `v1.1.1` was published on 2026-11-04 from tag
-> `v1.1.1`. The GitHub release and its signed evidence assets are available at
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>.
+> **Previous release:** `v1.1.1` (2026-11-04), tag `fa290ab` —
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>, record at
+> [RELEASE-TICKET-1.1.1.md](RELEASE-TICKET-1.1.1.md).
 >
-> **Previous release:** `v1.1.0` (2026-11-03), commit
+> **Earlier release:** `v1.1.0` (2026-11-03), commit
 > `68a22b5f7f36ea6321a21428267fbc5ab8bdf92c` —
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.1.0>, record at
 > [RELEASE-TICKET-1.1.0.md](RELEASE-TICKET-1.1.0.md).
->
-> **Earlier release:** `v1.0.2` (2026-08-18), commit
-> `7ea57f1aabd0ac583e40541360119468779940c7` —
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.0.2>.
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -112,9 +105,9 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
-## v1.2.0 release block (prepared, unpublished)
+## v1.2.0 release block (published 2026-11-05)
 
-**State: prepared, not released.** The version files carry `1.2.0`; the tag,
+**State: released 2026-11-05.** The version files carry `1.2.0`; the tag,
 the registry publications, the container, and the GitHub release do not exist
 yet. Nothing in this section has been executed for `v1.2.0`, and an approved
 checklist is not a release — only a pushed tag and read-back registry
