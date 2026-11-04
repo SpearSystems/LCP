@@ -14,6 +14,35 @@
 
 [![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
 
+## How the pieces talk
+
+```mermaid
+flowchart LR
+    P["Publisher<br/>(consent + lead)"]
+    PL["Platform"]
+    B1["Buyer A"]
+    B2["Buyer B"]
+    AG["Agent / assistant"]
+    ISS["Attestation issuer<br/>(JWKS)"]
+
+    P -->|"lead · call"| PL
+    AG -->|"lead · call"| PL
+    PL -->|"ping · quote"| B1
+    PL -->|"ping · quote"| B2
+    B1 -->|"bid · counter · ack"| PL
+    B2 -->|"bid · counter · ack"| PL
+    PL -->|"post (contact hashes)"| B1
+    PL -->|"post (contact hashes)"| B2
+    B1 -.->|"event · CONTACTED"| PL
+    B2 -.->|"event · CONTACTED"| PL
+    AG -.->|"provenance.agent.attestation"| ISS
+```
+
+Dashed edges are optional, capability-gated surfaces. The full
+[capability map](docs/CAPABILITIES.md) draws six more: intake, auction and
+shared slots, negotiation, event subscriptions, matching and extension
+admission, and the data lifecycle.
+
 ## Read this repository like a documentation site
 
 > **Home · Page 1 of 6** — Choose a path, follow the numbered pages, and use

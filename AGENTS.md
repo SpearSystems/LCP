@@ -27,6 +27,10 @@ docs/              Integration guides, implementation decisions, and research
 site/              Generated spec site (tools/build_spec_site.py) — never hand-edit
 ```
 
+Capability diagrams: the README hero map plus six flows in
+[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) — read them before changing
+intake, auction/slots, negotiation, event delivery, matching, or retention.
+
 ## Version control and remotes
 
 Push and inspect with `gh`, not a local SSH identity: SSH key auth is not

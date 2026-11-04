@@ -40,6 +40,9 @@
 
 ### Page 2 · Integrate
 
+- [Capability map](CAPABILITIES.md) — six diagrams for intake, auction and
+  shared slots, negotiation, event subscriptions, matching/extension
+  admission, and the data lifecycle; the system map is the README hero.
 - [Publisher onboarding](PUBLISHER-ONBOARDING.md) — publisher setup,
   source mapping, authentication, retries, sandbox testing, and go-live checks.
 - [Publisher mapping](PUBLISHER-MAPPING.md) — versioned multi-brand form
