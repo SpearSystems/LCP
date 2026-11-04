@@ -110,7 +110,7 @@ reference-platform suite alone and say so in place.
 | CON-08 | §3 gender removed from core (verticals define it in attributes) | schema | tool:check_universal_core#UCA-DEMOGRAPHICS-ABSENT | green |
 | LOC-01 | §3 location.country_code REQUIRED, ISO 3166-1 alpha-2 | schema+runner | L2-001 | green |
 | LOC-02 | §3 location requires state_region OR postal_code | schema+runner | L2-013, L2-014 | green |
-| LOC-03 | §3 location.timezone is IANA | schema | - | exempt(published contract accepts any string; validation is a breaking-class tightening deferred to a v1.2 plan — #180 closed not-planned with the release-note obligation) |
+| LOC-03 | §3 location.timezone is IANA | schema | - | exempt(published contract accepts any string; #180 is closed not-planned, so the IANA tightening stays out of scope and would need a MAJOR change or an accepted LEP with a release-note obligation) |
 | LOC-04 | §3 location.street_address (v1.2 D4): optional core string, ping_safe:false; a ping carrying it is refused (LCP-008) | schema+runner | L2-028, L2-029 | green |
 | CMP-01 | §3 compliance block carries consent evidence fields | schema+runner | L2-001, L3-004 | green |
 | CMP-02 | §3 consent_purposes captures consent scope ("capture it") | schema | - | exempt(advisory guidance; field defined in schemas/core.json) |
