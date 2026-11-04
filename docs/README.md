@@ -81,8 +81,8 @@
   generated models, package release gates, and registry publishing.
 - [SDK validator capabilities](SDK-VALIDATION-CAPABILITIES.md) — the shared
   language-neutral validation contract and its corpus.
-- [v1.2.0 release record](RELEASE-TICKET-1.2.0.md) — prepared 2026-11-04;
-  the tag is cut after merge approval.
+- [v1.2.0 release record](RELEASE-TICKET-1.2.0.md) — published 2026-11-05;
+  coordinates, digests, and registry read-back.
 - [Field dictionary](FIELD-DICTIONARY.md) — human-readable paths, types,
   requiredness, privacy boundaries, and schema references.
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
