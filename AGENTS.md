@@ -15,15 +15,38 @@ details in anything that could be published.
 
 ```
 LICENSE            Apache 2.0
-SPEC.md            The canonical specification
+SPEC.md            The canonical specification (index over spec/)
+spec/              Normative sections 00-conformance … 05-capabilities
 schemas/           JSON Schema for the envelope, core, message, and offer types
 verticals/         Per-vertical attribute schemas
 examples/          Sample payloads (lead, call, ping, post, ack, event, sandbox)
-test-vectors/      Conformance fixtures (L1/L2/L3)
+test-vectors/      Conformance fixtures (L1/L2/L3/NEG)
 governance/        CONTRIBUTING, CLA, LEP process/registry, extension registry
 implementations/   Multi-language SDKs, reference platform/router, and MCP adapter
 docs/              Integration guides, implementation decisions, and research
+site/              Generated spec site (tools/build_spec_site.py) — never hand-edit
 ```
+
+## Version control and remotes
+
+Push and inspect with `gh`, not a local SSH identity: SSH key auth is not
+reliable from this environment, and a rejected push leaves the pull-request
+head stale.
+
+```bash
+gh auth setup-git                                   # once per machine
+git push https://github.com/SpearSystems/LCP.git <branch>
+gh pr create --base main --head <branch>            # body from the PR template
+gh pr checks <number> --json name,state             # required contexts only
+gh api -X DELETE repos/SpearSystems/LCP/git/refs/heads/<branch>   # merged branches only
+```
+
+- Never force-push `main`; `v*` tags are immutable by ruleset.
+- If a push returns `Internal Server Error`, retry, then confirm the PR head
+  actually moved (`gh pr view <n> --json headRefOid`). An empty commit
+  (`git commit --allow-empty`) refreshes a stale head.
+- Delete a remote branch only after verifying it is merged
+  (`git merge-base --is-ancestor origin/<branch> origin/main`).
 
 ## Spec authoring rules
 
