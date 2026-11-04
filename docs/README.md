@@ -40,6 +40,17 @@
 
 ### Page 2 · Integrate
 
+- [Capability map](CAPABILITIES.md) — six diagrams for intake, auction and
+  shared slots, negotiation, event subscriptions, matching/extension
+  admission, and the data lifecycle; the system map is the README hero.
+- [Error guide](ERROR-GUIDE.md) — every `LCP-0xx` code in plain English, with
+  common causes and the exact field-level fix; `lcp-doctor --explain CODE`.
+- [No-code recipes](RECIPES.md) — Lovable/Supabase, GoHighLevel, Make, Zapier,
+  and Google Sheets, from field map to first successful test lead.
+- [Buyer webhook kit](../examples/integrations/buyer-webhook/) — runnable
+  receivers that verify both signed delivery surfaces and return the ack.
+- [No-code templates](../examples/integrations/no-code/) — Deno edge function,
+  Make module configuration, and Apps Script poster.
 - [Publisher onboarding](PUBLISHER-ONBOARDING.md) — publisher setup,
   source mapping, authentication, retries, sandbox testing, and go-live checks.
 - [Publisher mapping](PUBLISHER-MAPPING.md) — versioned multi-brand form
@@ -68,6 +79,10 @@
 - [SDK index](../implementations/sdk/) — language matrix and quickstarts.
 - [SDK program](SDK-ROADMAP.md) — tiers, compatibility contract, validation,
   generated models, package release gates, and registry publishing.
+- [SDK validator capabilities](SDK-VALIDATION-CAPABILITIES.md) — the shared
+  language-neutral validation contract and its corpus.
+- [v1.2.0 release record](RELEASE-TICKET-1.2.0.md) — prepared 2026-11-04;
+  the tag is cut after merge approval.
 - [Field dictionary](FIELD-DICTIONARY.md) — human-readable paths, types,
   requiredness, privacy boundaries, and schema references.
 - [Tagged releases and artifact verification](RELEASE.md) — coordinated tag
@@ -77,6 +92,7 @@
 - [v1.1.0 release record](RELEASE-TICKET-1.1.0.md) — published minor, registry coordinates, container digest, and carried follow-ups
 - [v1.0.2 release record](RELEASE-TICKET-1.0.2.md) — published patch and evidence
 - [v1.0.1 release record](RELEASE-TICKET-1.0.1.md) — published patch and evidence
+- [v1.0.0 release record](RELEASE-TICKET.md) — initial published release
 - [Implementation decisions](IMPLEMENTATION-DECISIONS.md) — approved
   production reference profile and rationale.
 - [Canonical specification](../SPEC.md) — wire contract and governance.
@@ -127,6 +143,12 @@
 - [Dependency update decisions](DEPENDENCY-DECISIONS.md) — record of applied
   and deferred Dependabot updates, including the completed networknt Jackson 3
   migration and the SDK-wide osv-scanner security gate.
+- [PII classes](PII-CLASSES.md) — the five-class taxonomy, per-field mapping,
+  emission matrix, hashing rules, and the no-downgrade rule.
+- [SPEC-to-test coverage matrix](SPEC-COVERAGE.md) — every normative clause
+  mapped to the tests that prove it, with dated exemptions.
+- [ERR-002/ERR-012 triage](err-auth-triage.md) — ARB wave 1.5 error-code
+  resolution behind the normative §5 auth family.
 
 ### Page 6 · Contribute
 
@@ -139,11 +161,16 @@
   deprecation workflow.
 - [LEP process adoption plan](../governance/LEP-PROCESS-PLAN.md) — draft storage,
   review, registry, and pilot workflow.
-- [LEP-0001 batch/subscription draft](../governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
-  — review-ready, not-yet-accepted adoption-scale proposal.
+- [LEP-0001 batch and event subscriptions](../governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
+  — accepted 2026-11-04 under the D1 trigger waiver; implementation shipped in
+  the v1.2.0 release branch.
+- [v1.2 decision record](DECISIONS-v1.2.md) — D1–D12 maintainer decisions that
+  authorize the release, including the trigger waiver and its re-evaluation date.
 - [Adoption readiness](ADOPTION-READINESS.md) — post-release signals,
   feedback funnel, and scale triggers.
 - [v1.1 roadmap](V1.1-ROADMAP.md) — implemented foundations and deferred work.
+- [v1.2 execution plan](V1.2-EXECUTION-PLAN.md) — the backlog-clearing plan:
+  waves, decisions, gates, and tracking for every remaining item.
 - [Trademark and conformance claims](../governance/TRADEMARK.md) — how to
   describe implementations accurately.
 

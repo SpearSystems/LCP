@@ -90,6 +90,28 @@ A reference-platform operator can validate and store it with:
 lcp-platform-admin offer upsert --file offer-auction.json
 ```
 
+### Multi-currency pricing (v1.2)
+
+`post.pricing` and the bid fields that feed it carry the settlement
+`currency` (ISO 4217; absent means `USD` for compatibility), the buyer's
+native `original_price_cents`, and an FX block: `fx_rate`, `fx_source`,
+`fx_timestamp`, and `fx_expires_at`. Two prices may be compared only when
+their settlement currency matches, or when both carry a rate that is present,
+well-formed, fresh (default maximum age 300 seconds,
+`LCP_FX_MAX_AGE_SECONDS`), and sourced consistently. A missing, stale,
+malformed, or mixed-source rate makes the offer **non-comparable**: it is
+excluded from the auction with an explainable reason, never coerced into a
+number. Rounding is half-up at presentation only and never feeds the ranking.
+
+If you bid in a currency other than the offer's, send the four FX fields with
+the bid — `fx_rate`, `fx_source`, `fx_timestamp`, `fx_expires_at` — because
+`fx_rate` is required in that case; on a same-currency bid they are inert for
+comparison but still schema-validated, so send them consistently or not at
+all. Declare the floor in the currency you will actually be invoiced in, and
+state the payable definition next to it. See
+[D7](DECISIONS-v1.2.md), [`schemas/post.json`](../schemas/post.json), and
+[`schemas/bid.json`](../schemas/bid.json).
+
 Keep webhook URLs on HTTPS in production. The reference platform blocks
 private, loopback, link-local, and other unsafe egress destinations unless an
 explicit test-only policy is enabled.
@@ -193,6 +215,54 @@ For call offers, send a signed `CALL_OUTCOME` event with the offer ID, answer
 state, duration, disposition, and transfer status. The platform evaluates the
 offer's `payable_rules` and updates the monthly quota. See [calls and
 telephony](CALLS-AND-TELEPHONY.md) and [monthly quotas](MONTHLY-QUOTAS.md).
+
+### `PROCESSED` acknowledgement (v1.2)
+
+A transport-level `2xx` proves your webhook accepted the bytes, not that the
+lead reached your CRM. On v1.2 a buyer that received a `post` may send an `ack`
+message carrying the post's `original_message_id`, its `lead_id`, and
+`status: "PROCESSED"`; the platform records the terminal-success transition
+`ACCEPTED → PROCESSED`. The rules are narrow on purpose:
+
+- valid only for a `post` this buyer received, and only after the delivery is
+  `DELIVERED`;
+- idempotent — repeating it returns the original acknowledgement;
+- it never re-opens a payable, never rewrites `pricing`, and is never a
+  precondition for `SOLD`;
+- after `REJECTED`, `EXPIRED`, or `SOLD` it is a transition error (`LCP-004`).
+
+It is advertised as `features.processed_ack` in `GET /v1/lcp/capabilities`, and
+`PROCESSED` is a legal `ack.status` in
+[`schemas/ack.json`](../schemas/ack.json). The bundled reference platform
+implements the state change in its ack handler; ask the operator which
+transport carries buyer acks in their deployment.
+
+### Event subscriptions (v1.2, off by default)
+
+Reporting direction is already available: buyers submit signed `event`
+messages (`DELIVERED`, `CALL_OUTCOME`, `CONTACTED`, and the rest of the
+advertised `events` list) to `POST /v1/lcp/events`.
+
+Push delivery from the platform is the accepted second track of
+[LEP-0001](../governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md):
+a tenant-scoped registration with an explicit event-type allowlist (no
+wildcard), a per-subscription signing secret, signed at-least-once delivery
+with a stable `event_id`, and a cursor replay. Registration is
+`POST /v1/lcp/events/subscribe`, listings and deactivation are
+`GET /v1/lcp/events/subscriptions` and
+`DELETE /v1/lcp/events/subscriptions/{id}`, and replay reads
+`GET /v1/lcp/events?cursor=` (the event-report route above is the inbound
+direction, not this one). It ships **off by default** behind
+`LCP_FEATURE_EVENTS`; when the switch is off, `GET /v1/lcp/capabilities`
+carries no `features.event_subscriptions` entry and those routes answer `404`
+like endpoints that do not exist. Filters are a closed key set —
+`event_type`, `message_type`, `vertical`, `status`, `lead_id` — so a
+subscription can never be narrowed by a consumer field. Check the
+advertisement before building a receiver, and until the operator enables it,
+read status with `GET /v1/lcp/leads/{lead_id}` (`lead:read`) or the paginated
+`GET /v1/lcp/history/requests` surface (`history:read`). Keep your webhook
+idempotent for repeated deliveries either way: the accepted semantics are
+at-least-once and duplicates are allowed.
 
 ## 7. Test before production
 

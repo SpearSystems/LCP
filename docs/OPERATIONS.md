@@ -69,7 +69,9 @@ The reference platform exposes only aggregate metrics. Example response shape:
   "routing": {"pending": 0, "processing": 0, "dead_letter": 0, "lease_expired": 0},
   "delivery": {"pending": 0, "retry": 0, "failed": 0, "dead_letter": 0},
   "attachments": {"scanner_backlog": 0, "deletion_pending": 0, "deletion_failed": 0},
-  "dead_letters": {"open": 0, "quarantined": 0}
+  "dead_letters": {"open": 0, "quarantined": 0},
+  "history": {"queued": 0, "capacity": 1024, "oldest_queued_age_seconds": null,
+              "enqueued": 0, "flushed": 0, "drop_risk": 0, "dropped": 0, "failed": 0}
 }
 ```
 
@@ -110,6 +112,59 @@ storage layer.
   earlier reports for that pair can no longer be re-keyed or matched
   (deployment concern mirroring SPEC §9). Rotate between leads, or accept
   that the affected lead's dedup history restarts.
+
+### LEP-0003 follow-ups (W6-07): email-form entry emission and the multi-slot cap
+
+Two follow-ups closed by decision, not by new wire surface.
+
+**Email/form-relay entry emission (SPEC §9-gated).** A publisher whose entry
+surface is an email/form relay hands the consumer over with no JavaScript
+capture, so nothing on the wire proves how the entry was observed. The
+platform therefore records the entry itself, under the declared open-enum
+`provenance.source_type: "email_form"`, with an `acquisition_method` that
+agrees with the consent recorded on the lead (`warm_transfer` for a recorded
+consented handover; `unknown` when no consent is recorded at all, because a
+deployment MUST NOT claim an acquisition path it has no evidence for). No
+client-observed field is ever added: `provenance.ip_address`, `ip_hash`, and
+`user_agent_hash` stay absent, and a publisher's own `source_type` (anything
+other than the normalizer's `publisher` default) is never rewritten.
+
+- **The gate is two deployment switches, both required.**
+  `LCP_FEATURE_EMAIL_FORM_ENTRY` (default off) and
+  `LCP_EMAIL_FORM_PUBLISHER_IDS` (a comma-separated sender-id allowlist, empty
+  by default) — the declared entry surface. `features.email_form_entry` is
+  advertised only when both are set, so an absent key never means "supported".
+  Rollback = clear the flag or the list; intake is then bit-for-bit unchanged.
+- **Gate off is a refusal, not a mislabel.** A captureless lead from a
+  declared relay sender arriving while the flag is off is refused with
+  `LCP-100 VALIDATION_ERROR` (400; `details` names `provenance.source_type`
+  and `features.email_form_entry`) before anything is stored. Recording it as
+  `publisher` would declare a surface nobody observed, which §9 forbids.
+- **Evidence.** Decisions are replay-stable (the derivation runs before the
+  LCP-005 idempotency comparison, so a replay compares the same derived
+  bytes), and an offer's `excluded_source_types` sees the declared value
+  because the derivation precedes matching. Covered by
+  `plat:test_entry_emitted_when_gate_is_on`,
+  `plat:test_entry_refused_when_gate_is_off`,
+  `plat:test_gate_on_still_requires_a_declared_relay_publisher`, and
+  `plat:test_entry_never_invents_client_capture`
+  (`implementations/reference-platform/tests/test_entry_emission.py`), plus
+  vectors **L2-041** (emitted shape) and **L2-042** (gate-off refusal,
+  `email_form_entry_shape`).
+
+**Multi-slot claims — the deferred decision (schema cap stays 1).** The v1.1
+slot surface keeps `slots_claimed` at `minimum: 1, maximum: 1`: one buyer
+award consumes exactly one slot, and a claim never spans several. This is a
+recorded decision, not an unnoticed limitation. Running more than one slot per
+claim would require a documented LEP revision, with adopter evidence that the
+partial-claim accounting can be made correct: a multi-slot claim is an
+all-or-nothing reservation of N buyer-awards recorded before delivery, so a
+crash, timeout, or partial fulfilment between the claim and the N-th award
+leaves the budget and the delivered copies disagreeing — the exact oversell
+class the single write-time decision point and the `(lead_id, offer_id)` award
+index exist to prevent. Until such a revision lands (and the schema cap moves
+with it), a receiver seeing `slots_claimed > 1` is entitled to treat the bid as
+malformed.
 
 ## Delivery retry and dead-letter behaviour
 
@@ -155,6 +210,34 @@ failure):
 6. Deploy workers.
 7. Monitor queue age and error rate.
 8. Roll back application code without rolling back accepted lead data.
+
+## Specification site
+
+`site/` is the static specification site. It is generated from the normative
+sources — `SPEC.md`, `spec/*.md`, `schemas/*.json`, `verticals/*.json`, and
+`governance/LEPs/*.md` — and is never hand-edited. Every page carries its
+source path and the build hash of the whole source set.
+
+1. Edit the normative source, not the HTML under `site/`.
+2. Regenerate: `python3 tools/build_spec_site.py`.
+3. Check the committed output is current:
+   `python3 tools/build_spec_site.py --check`. It exits non-zero when a page is
+   stale, missing, or not generated by the tool, and when an internal link or
+   heading anchor does not resolve in the generated output.
+4. Commit `site/` together with the source change; `tools/tests` fails on a
+   stale tree.
+5. Publishing: the `Specification site` workflow runs on a `v*` tag or a manual
+   dispatch, rebuilds the site, and uploads `site/` as the `lcp-spec-site`
+   artifact. That workflow holds no deploy credentials — serving the artifact
+   is a separate, reviewed act.
+
+Rendering is dependency-free, so the converter covers the Markdown subset the
+specification uses: ATX headings, paragraphs, nested ordered/unordered lists,
+blockquotes, tables, fenced code, inline code, bold/italic, and links. There is
+no setext-heading, footnote, raw-HTML, or four-space indented code support.
+Links to repository files outside the published source set are rendered as text
+with their repository path, because the site publishes the normative documents
+only.
 
 ## Incident procedure
 
@@ -258,6 +341,324 @@ default at ship is `enforce`; a deployment migrating live traffic starts in
 - **Advertisement.** Until this PR's verification is proven green on `main`,
   the platform keeps advertising `conformance_level: "L2"` (Phase 0); the
   L3 flip is a separate, deliberate change (V12 pin test).
+
+## Batch submission (LEP-0001 / W2)
+
+`POST /v1/lcp/leads/batch` accepts up to **100 lead envelopes** in one
+request of at most **1 MiB**, and answers `207` with one per-item receipt
+(`accepted`, `duplicate`, `rejected`, `error`) for every item, in input
+order. It is a loop over the single-item intake path: each item is
+validated, authorized, throttled, and deduped exactly like a `POST
+/v1/lcp/leads`, there is no cross-item transaction, and a rejected item never
+rolls back its siblings. Replaying an item key returns that item's original
+receipt.
+
+- **Flag.** `LCP_FEATURE_BATCH` (default **off**). Off means no
+  `features.batch` entry in `GET /v1/lcp/capabilities` and a `404` from the
+  route — the surface is invisible rather than half-enforced. Enabling it is
+  an operator decision, made with the adoption note in
+  [DECISIONS-v1.2.md](DECISIONS-v1.2.md) in hand.
+- **Whole-request refusals.** Authentication, a malformed wrapper, more than
+  100 items, or a body above 1 MiB fail the request (`413` for either cap) and
+  nothing is persisted. Everything else is per item.
+- **Throttling.** Every item consumes one sender token, so a batch cannot
+  outrun `LCP_RATE_LIMIT_PER_MINUTE`; a throttled item is a `rejected` receipt
+  (`LCP-011`) and the rest of the batch still runs.
+- **Audit.** One `lead.*` audit row per processed item (`lead.routed`,
+  `lead.duplicate`, `lead.rejected`) sharing the request id, so a batch is
+  reconstructible from the trail without storing the batch body.
+- **Clients.** Retry only the items whose receipt is `rejected`/`error`;
+  re-sending the whole batch is safe (idempotent per item) but does needless
+  work.
+
+## Event subscriptions (LEP-0001 / W3)
+
+`POST /v1/lcp/events/subscribe`, `GET /v1/lcp/events/subscriptions`,
+`DELETE /v1/lcp/events/subscriptions/{id}`, and `GET /v1/lcp/events?cursor=`
+add tenant-scoped push delivery and cursor replay. The surface ships off and
+is an operator decision like batch.
+
+- **Flag.** `LCP_FEATURE_EVENTS` (default **off**). Off means no
+  `features.event_subscriptions` entry, no `subscription` message type in
+  `GET /v1/lcp/capabilities`, and a `404` on all four routes — the surface is
+  invisible rather than half-enforced.
+- **Registration.** The request is an ordinary authenticated `subscription`
+  envelope (`POST .../events/subscribe`). `event_types` is an explicit
+  allowlist drawn from `capabilities().events`; an unadvertised name is
+  refused (`400`, `details.reason: unadvertised_event_type`), and `*` is not
+  a value. `callback_url` passes the conformance runner's SSRF rule
+  (`tools/conformance_runner.py`): http/https only, no embedded credentials,
+  a valid port, and only public resolved addresses — `http` and private
+  addresses need `LCP_ALLOW_INSECURE_WEBHOOKS` (sandbox only). The response is
+  `201` with the subscription view plus `secret`; that per-subscription HMAC
+  secret is returned **once** and never appears in list/read responses.
+- **Tenant isolation.** A subscription is bound to the authenticated
+  sender's tenant. Listing filters by tenant; disabling another tenant's
+  subscription is `403`; fan-out and every delivery re-check that the
+  subscription's tenant matches the event's tenant.
+- **Filters.** Closed key set: `event_type`, `message_type`, `vertical`,
+  `status`, `lead_id`. `consumer.*`, `provenance.*`, `attributes.*`,
+  `details.*`, `contact.*`, `security.*`, and any other key are refused with
+  `400` and `details.field` naming the offending path
+  (`details.reason: filter_field_pii` for a consumer/PII path).
+- **Delivery.** A background worker (`process_once`) fans a subscription's
+  new stream events out to its delivery queue and POSTs them; nothing is sent
+  inline with the request that produced the event. Bodies are the stored
+  `event` envelope bytes. Headers are `X-LCP-Signature`, `X-LCP-Timestamp`,
+  `X-LCP-Idempotency-Key`, `X-LCP-Event-Id`, `X-LCP-Subscription-Id`, and
+  `X-LCP-Sender-Id`. The signature is lowercase hex HMAC-SHA256 over:
+  `<X-LCP-Timestamp>\n<X-LCP-Event-Id>\n<exact request body bytes>` — the
+  LEP-0002 canonical input with the stable `event_id` as the idempotency
+  term. Verify the digest over the received bytes, never a reformatted body.
+- **Retry/backoff and DLQ.** `LCP_MAX_DELIVERY_ATTEMPTS` (default **5**) is
+  the budget. Failed attempts are `RETRY` with `next_attempt_at` set from the
+  shipped ladder `1, 5, 30, 120, 600` seconds (the last step repeats); an
+  attempt that exhausts the budget is `FAILED` and writes a
+  `dead_letter_jobs` row with `queue_type = event_subscription`,
+  `resource_id = <delivery_id>`, and a bounded `last_error` (subscriber
+  response bodies are never stored). Inspect with
+  `lcp-platform-admin dead-letter list --status OPEN`; replay/quarantine with
+  `dead-letter replay|quarantine --job-id <id>` (the replay path moves the
+  `event_deliveries` row back to `RETRY`).
+- **Duplicates are legal.** Delivery is at-least-once; a worker restart or a
+  replay can deliver the same `X-LCP-Event-Id` twice. Consumers MUST dedupe on
+  that header (or `lcp.message.id`) and must not rely on ordering.
+- **Cursor and retention.** `GET /v1/lcp/events?cursor=<opaque>&limit=<1-500>`
+  returns `{events, next_cursor, has_more}` for the caller's tenant. Cursors
+  are the tenant's monotonic stream sequence, so a replay from the same cursor
+  reproduces the same event set and no same-second insertion can fall behind
+  an advanced cursor. `replay_from` on registration seeds a subscription at a
+  cursor. `LCP_EVENT_CURSOR_TTL_SECONDS` (default **86400**, 24 h) bounds both
+  the stream and cursors: the worker purges older stream rows, and an older
+  cursor returns `400` with `details.reason: cursor_expired`. A cursor from
+  another tenant names no event in the caller's stream and is refused as
+  expired/unknown — sequences are per tenant, so no cross-tenant event can be
+  read. Replaying deeper than retention is not possible by design — export or
+  reconcile before the TTL when a subscriber has been down for longer than a
+  day.
+- **Scope.** Registration/read/disable need `event:subscribe`; cursor reads
+  need `event:read`. `platform:admin` satisfies both.
+
+## Conformance runner (D11)
+
+`tools/conformance_runner.py` is the self-hostable conformance runner from
+[DECISIONS-v1.2.md](DECISIONS-v1.2.md) D11: a WSGI service, standard library
+only, that a publisher or buyer can run against its own deployment (or point
+at a peer) and get a portable, digest-verified report.
+
+- **Run it.** `python3 tools/conformance_runner.py --port 8099`. It binds
+  loopback by default; add `--host 0.0.0.0` only behind an authenticated,
+  TLS-terminating edge you control. `--timeout` bounds each target request,
+  and `--no-schema-checks` skips the repository vector suite.
+- **Endpoints.** `GET /healthz` answers `{"status": "ok", "service":
+  "lcp-conformance-runner"}`. `POST /run` takes
+  `{"base_url": ..., "auth_method": "bearer"|"hmac"|"none", "api_key": ...,
+  "sender_id": ...}` and returns the report. `sender_id` is optional; it is
+  required only for the `hmac` probe, which needs a caller identity.
+- **What a run checks.** `transport.*` entries probe the live peer: the
+  `GET /v1/lcp/capabilities` advertisement (§8) including `lcp_versions`,
+  `conformance_level` and `auth_methods`; that an unauthenticated read of
+  `/v1/lcp/history/requests` is rejected; and that the supplied credential is
+  accepted on a read-only `GET /v1/lcp/offers`. `vector.*` entries are the
+  repository's own suite (`test-vectors/conformance.py`) executed in a child
+  process, so schema-level conformance is measured against the vectors rather
+  than a reimplementation. The child needs `jsonschema` + `referencing`;
+  set `LCP_CONFORMANCE_PYTHON` to choose its interpreter, otherwise
+  `.venv/bin/python` is preferred and a missing dependency is reported as a
+  `skipped` check, never as a pass.
+- **Report.** `{report_id, generated_at, target, lcp_versions, checks,
+  summary, digest}`. `digest` is the SHA-256 of the canonical body (the
+  report minus `digest`, sorted keys, no whitespace), so a recipient can
+  re-hash the body and detect any edit. Keep the report file; it is the
+  evidence, and the runner is stateless.
+- **Security model.** Only `http`/`https` targets are accepted and
+  credentials embedded in the URL are refused. Loopback, link-local
+  (including `169.254.169.254`), private, unspecified, multicast and reserved
+  addresses are refused — including when a public-looking name resolves to
+  one — unless the operator passes `--allow-private`, which exists for the
+  local self-test. The hostname is resolved exactly once, every answer is
+  policy-checked, and the socket is pinned to that address, so a second DNS
+  answer (rebind) cannot redirect the request; TLS still verifies the
+  advertised hostname. Responses are capped at 1 MiB and by wall clock,
+  redirects are not followed, the request body is capped at 8 KiB, and the
+  API key is used in a header only — it never reaches the report, the logs,
+  or the in-memory report index, which stores just `{digest, summary}` with
+  no target URL. Check details are redacted before publication.
+- **Self-test.** `python3 tools/conformance_runner.py --self-test` serves a
+  local stub peer, runs the full report against it (including the vector
+  suite), prints it, and exits non-zero only if the runner's own transport
+  probes fail — it proves the service, not the repository's vectors.
+- **No certification claim.** A report says "this target answered these
+  checks on this date". It is not a certification, an endorsement, or a
+  trademark licence, and a hosted instance may not be advertised as one.
+  D11 records the condition for revisiting that: a second independent
+  operator running the same runner and publishing a matching report.
+
+## Retention, archive, and restore (W4-05/W4-06)
+
+Two retention windows are configuration, both enforced by the worker's
+`process_once` sweep (`Store.sweep_retention`). Both are validated positive at
+startup; changing either is a deployment change, not a hot reload.
+
+| Setting | Default | What it bounds |
+|---|---|---|
+| `LCP_ENVELOPE_RETENTION_DAYS` | **90** | Ciphertext of stored envelopes (leads, pings, bids, lifecycle events, event-stream rows, terminal deliveries). Past the window the payload is rewritten through the same redaction as an erasure: ids, statuses, timestamps, payables, and audit rows stay, the consumer data does not. |
+| `LCP_HISTORY_RETENTION_DAYS` | **365** | `match_decisions`, `match_audits`, and `audit_events`. Past the window a row is **unreadable** (`list_audit_events`, `list_match_decisions`, `list_match_audits`) before the sweep physically deletes it, so a lagging sweep cannot serve expired history. |
+| `LCP_HISTORY_QUEUE_CAPACITY` | **1024** | Depth of the deferred history/decision/audit queue (below). |
+
+- **Reads fail closed.** Decreasing a window makes rows immediately
+  unreachable; it does not wait for the sweep. There is no reader path that
+  bypasses the cutoff — a dispute that needs older evidence must archive
+  before the window closes, not after.
+- **The sweep is batched and interval-gated.** Each pass redacts at most 200
+  envelope rows per table and runs at most once a minute, so a large database
+  never takes a long deletion stall inside the worker loop; run it more
+  aggressively only with the batch size and interval under change control.
+- **No partitioning yet — deliberately.** The windows are enforced by the
+  batched sweep plus the read-time cutoff, not by monthly Postgres partitions
+  or segmented SQLite files. Partitioning needs a data migration on a live
+  table; until an operator needs it for measured scan cost, the batched sweep
+  is the smaller system. If you add it, the read-time cutoff stays: it is the
+  guarantee, the storage layout is an optimisation.
+- **Deletion is not erasure.** A retention-deleted decision/audit row is a
+  scheduled loss, not a legal erasure; keep the erasure trail (`lead.erased`)
+  and the archive ledger separate from retention accounting.
+- **A rotated encryption key shows up as `unreadable`.** Envelope rows that no
+  longer decrypt under the current `LCP_PII_ENCRYPTION_KEY` cannot be rewritten
+  into a redacted envelope, so the sweep counts them
+  (`sweep_retention()["unreadable"]`) and leaves them in place rather than
+  storing a shape readers cannot parse. A nonzero count after a key rotation
+  means those rows still hold ciphertext the current key cannot open — re-key
+  and re-run, or destroy the rows under erasure rules.
+
+### Deferred history writes (W4-05)
+
+Intake no longer writes the audit trail or the match decision/audit rows
+inline: both are queued in the process-local bounded queue
+(`LCP_HISTORY_QUEUE_CAPACITY`) and flushed by the worker. Policy, in order:
+
+1. The write is appended without blocking. The lead row, pings, deliveries,
+   and payables are already committed — the queue is bookkeeping only.
+2. On a full queue the producing thread drains the backlog inline once
+   (bounded work) and retries.
+3. If a concurrent producer refills the queue first, the drop risk is
+   recorded: one `history.write_drop_risk` audit row plus the `drop_risk`
+   counter, then one more drain-and-retry.
+4. Only a third saturation drops the write (`dropped` counter increments, and
+   the request still returns success). A queue write that raises is counted as
+   `failed`, recorded as `history.write_failed`, and never stops the worker.
+
+What this means operationally:
+
+- **Never lost: the lead.** A dropped history row never rolls back, blocks, or
+  fails an intake. Intake latency cannot be extended by a slow audit store.
+- **Reads still see their own writes.** `list_audit_events`,
+  `list_match_decisions`, and `list_match_audits` flush the queue before
+  reading, so an operator never sees a trail that is merely late. `close()`
+  flushes too; the queue is process-local, so a crash **can** lose queued rows.
+- **Alert on the counters.** `GET /v1/lcp/metrics` reports
+  `history.{queued, capacity, oldest_queued_age_seconds, enqueued, flushed,
+  drop_risk, dropped, failed}`. A nonzero `dropped` or `failed`, or a rising
+  `oldest_queued_age_seconds`, means the worker is not keeping up (or history
+  writes are failing) and history depth is degrading — the lead pipeline is
+  still correct, the evidence is not. Page on `dropped > 0`; investigate
+  `oldest_queued_age_seconds` above a few seconds. Raise the capacity only
+  with a matching worker-capacity review: a deeper queue delays evidence
+  rather than making the worker faster.
+
+### Archive and restore
+
+`tools/archive_store.py` (standard library only, safe on a backup host)
+exports retention-bounded rows to deterministic JSONL plus a SHA-256 manifest,
+and restores them into a scratch database for dispute or recovery.
+
+```bash
+# Export a window (repeat --table for several; open the DB read-only)
+python3 tools/archive_store.py export \
+  --database ./data/lcp.sqlite3 \
+  --table leads --table audit_events --table match_decisions \
+  --before 2026-01-01 --out /srv/lcp-archive/2026-Q1.jsonl
+
+# Verify digest and row counts without touching a database
+python3 tools/archive_store.py verify --file /srv/lcp-archive/2026-Q1.jsonl
+
+# Restore into a scratch database (never into production)
+python3 tools/archive_store.py import \
+  --file /srv/lcp-archive/2026-Q1.jsonl --database /srv/scratch/restore.sqlite3
+```
+
+- **Determinism.** Rows are sorted by primary key and serialized canonically,
+  so re-exporting the same database state produces byte-identical output and
+  the same digest. The manifest records that digest, the per-table row counts,
+  and the table DDL needed for a self-contained restore.
+- **Refusal, never a partial restore.** A digest mismatch, a missing
+  terminating newline, a malformed line, or a row-count disagreement with the
+  manifest refuses the import with a non-zero exit and writes nothing. Never
+  hand-edit an archive; re-export instead.
+- **Archives are your retention evidence.** The export appends its digest to a
+  ledger (`<out>.ledger.jsonl` by default, `--ledger` to relocate). The ledger
+  is how you answer "which archives cover which window" during a dispute; keep
+  it with the archives, and treat both as production data.
+
+### Erasure across archives
+
+An erasure must reach archived exports too, so it is enforced in two places:
+
+1. **Before an erasure lands, exports refuse erased subjects.** The exporter
+   reads the erasure set from the source database
+   (`leads.status = 'ERASED'` plus `lead.erased` audit rows) and refuses to
+   write any row whose `lead_id` is in it; `--erasure-set FILE` adds ids that
+   must not appear (one per line, `#` for comments). Emit that file from your
+   erasure queue and the subject is absent from the next fresh export — there
+   is no code path that archives it.
+2. **After an erasure lands, the operator must destroy older archives that
+   cover the subject.** An archive written before the erasure still contains
+   the row, because rewriting an archive is not something a retention tool may
+   do silently. The procedure is:
+
+   1. Read the ledger (`<archive>.ledger.jsonl`) and list every archive whose
+      `before` window is later than the subject's first row.
+   2. Delete those archive files, their manifests, and their ledger entries
+      under the same change control you use for erasure itself; record the
+      archive digests and the deletion in the erasure ticket.
+   3. Re-export from the live database with `--erasure-set` naming the erased
+      subject if you still need the surrounding history under retention.
+   4. Confirm with `archive_store.py verify` on every surviving archive and a
+      fresh `export` that no line names the subject.
+
+Never respond to an erasure by editing an archive in place: the digest no
+longer matches, `import` refuses the file, and the archive can no longer be
+proven intact for any other subject it holds.
+
+### CI capacity thresholds (W4-07)
+
+`.github/workflows/performance.yml` runs the Postgres benchmark against the
+same `postgres:18.4` service profile and publishes the JSON/LOG reports as a
+build artifact. The `--min-*` flags are the threshold table; each one is a
+**regression detector, not a capacity guarantee**:
+
+- They exist to catch a change that makes the platform materially slower (for
+  example an index removed, a lock widened, or write amplification added).
+- They are not a throughput commitment, a sizing input, or an SLA. A green run
+  means "no measured regression on the CI runner profile", not "this
+  deployment handles N records per second".
+- Runner hardware, Postgres version, and dataset shape all move the numbers;
+  re-measure on the target profile before quoting any figure to a customer,
+  and update the thresholds only from a measured run (record the profile in
+  the PR that changes them).
+
+The baseline table below records both the enforced floor and the local
+measurement it was checked against, kept here so a threshold change is a
+visible, reviewed edit rather than a silent one. The measured column is the
+local service profile (macOS arm64, PostgreSQL 16.4, loopback socket, 4
+workers, W4-05/W4-06 code, 2026-11-04); the CI runner is slower, so the
+enforced floors stay below it rather than being raised to it.
+
+| Benchmark | Records | Concurrency | Enforced floor | Measured baseline | Other gates |
+|---|---|---|---|---|---|
+| Candidate index | 2 000 | batch 500 | 100 records/s | 2 029.0 records/s | ≥ 90 % candidate reduction (measured 95.8 %) |
+| Postgres intake | 4 000 | 4 workers | 35 records/s | 291.2 records/s | — |
+| Postgres delivery | 500 | 4 workers, 2 delivery workers, 20 ms webhook latency | 10 records/s, 10 deliveries/s, 5 end-to-end records/s | 437.4 records/s, 47.3 deliveries/s, 36.7 end-to-end records/s | — |
 
 ## Backup and restore
 

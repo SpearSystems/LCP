@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP enhancement proposals — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="index">LCP enhancement proposals</h1>
+<p>Enhancement proposals published from <code>governance/LEPs/</code>. Open proposals are non-normative; accepted ones are recorded in the registry.</p>
+<table>
+<thead>
+<tr><th>Document</th><th>Source</th><th>Summary</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="../leps/LEP-0001-batch-submission-and-event-subscriptions.html">LEP-0001 — Bounded batch submission and event subscriptions</a></td><td><code>governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md</code></td><td>Accepted — both tracks. Recorded by the maintainer (randybeno) under the per-decision sign-off model. Basis: docs/DECISIONS-v1.2.md D1 (trigger waiver, 2026-11-04) and the work items W2 (bounded batch su…</td></tr>
+<tr><td><a href="../leps/LEP-0002-canonical-timestamp-and-signing-interop.html">LEP-0002 — Canonical timestamp generation and cross-SDK signature interop</a></td><td><code>governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md</code></td><td>Accepted. Recorded by the maintainer (randybeno) under the per-decision sign-off model. Decision basis: the independent ARB L-Spec review dossier (&lt;https://github.com/SpearSystems/LCP/issues/121#issuecomment-65783…</td></tr>
+<tr><td><a href="../leps/LEP-0003-shared-lead-slot-protocol.html">LEP-0003 — Shared-lead slot allocation and contacted-party dedup exchange</a></td><td><code>governance/LEPs/LEP-0003-shared-lead-slot-protocol.md</code></td><td>Accepted. Recorded by the maintainer (randybeno) under the ARB sign-off model. Basis: independent re-review of the revised record (&lt;https://github.com/SpearSystems/LCP/issues/124#issuecomment-6591860350&gt;) — all te…</td></tr>
+<tr><td><a href="../leps/LEP-0004-autonomous-review-board.html">LEP-0004 — Autonomous Review Board for independent review</a></td><td><code>governance/LEPs/LEP-0004-autonomous-review-board.md</code></td><td>Accepted, conditional. Recorded by the maintainer (randybeno) following the ARB sign-off model. Decision basis: the L-DocsDrift independent-review dossier (&lt;https://github.com/SpearSystems/LCP/issues/128#issuecomm…</td></tr>
+<tr><td><a href="../leps/LEP-0005-request-history-log-lookup.html">LEP-0005 — Request-history log lookup (paginated audit read surface)</a></td><td><code>governance/LEPs/LEP-0005-request-history-log-lookup.md</code></td><td>Implementation: PR #214 (GET /v1/lcp/history/requests + MCP tool, single tenant decision point, identifier pins, erasure interlock, row schema excluded from SDK bundles).</td></tr>
+<tr><td><a href="../leps/LEP-0006-marketplace-migration-extensions.html">LEP-0006 — Marketplace migration extensions: final-pricing feedback and the form.questions surface</a></td><td><code>governance/LEPs/LEP-0006-marketplace-migration-extensions.md</code></td><td>Implementation: Track A PR #216 (FINAL_PRICING event, publisher authorization, settlement neutrality, bounds enforcement) and Track B PR #217 (lead/post extensions, {org}.form.questions, shared PII detector, capab…</td></tr>
+<tr><td><a href="../leps/LEP-0007-outbound-call-center-outreach.html">LEP-0007 — Outbound call-center outreach: the registered {org}.outbound.call_request extension</a></td><td><code>governance/LEPs/LEP-0007-outbound-call-center-outreach.md</code></td><td>Accepted. Recorded by the maintainer (randybeno) under waiver D1 in docs/DECISIONS-v1.2.md, signed 2026-11-04. The 2026-11-03 deferral is superseded by maintainer decision,…</td></tr>
+<tr><td><a href="../leps/LEP-0008-agent-attestation-verification.html">LEP-0008 — Agent attestation verification: making §9&#x27;s L3 real (closes #192)</a></td><td><code>governance/LEPs/LEP-0008-agent-attestation-verification.md</code></td><td>Implementation: PR #213 (13-step §5 verifier, issuer-JWKS resolver, kid-norm A, observe/enforce) and PR #215 (SPEC §9 normative text, schemas/core.json token form, corpus sdk-024–028, conformance_level follows enf…</td></tr>
+<tr><td><a href="../leps/LEP-0009-agent-to-agent-negotiation.html">LEP-0009 — Agent-to-agent negotiation: the quote and counter message types</a></td><td><code>governance/LEPs/LEP-0009-agent-to-agent-negotiation.md</code></td><td>Accepted as a MINOR, additive, capability-gated surface, on the terms of D8:</td></tr>
+<tr><td><a href="../leps/LEP-0010-multi-currency-pricing.html">LEP-0010 — Multi-currency pricing: settlement currency, FX metadata, and auction comparability</a></td><td><code>governance/LEPs/LEP-0010-multi-currency-pricing.md</code></td><td>Accepted. Recorded by the maintainer under D7 of the v1.2 decision record. The wire shape, the comparability rule, the exclusion reason vocabulary, and the rounding rule in this document are the decision D7 descri…</td></tr>
+<tr><td><a href="../leps/LEP-0011-pii-sensitivity-taxonomy.html">LEP-0011 — PII sensitivity taxonomy and schema-level classification</a></td><td><code>governance/LEPs/LEP-0011-pii-sensitivity-taxonomy.md</code></td><td>Accepted. docs/PII-CLASSES.md is adopted as the normative taxonomy, and every schema property is annotated with x-lcp-pii using one of five classes — public, internal, contact…</td></tr>
+</tbody>
+</table>
+</article>
+</main>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

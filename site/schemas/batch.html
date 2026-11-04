@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/batch.json">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP Batch Message — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Batch Message</h1>
+<p><code>https://lcp.dev/schemas/batch.json</code> · v1.2 (LEP-0001 W2-01): bounded batch submission. The batch is a loop over the single-item intake path — each item's payload is a lead payload validated by schemas/lead.json, authenticated, deduped, and persisted exactly as a single lead would be. The batch schema therefore fixes the per-item metadata (item_id, idempotency_key) and the item payload's container, never the lead's own field rules: an item whose lead payload is invalid is a per-item `rejected` receipt, not a whole-request schema failure. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>items</code></td><td><code>array</code></td><td><code>restricted</code></td><td>yes</td><td>LEP-0001 W2-01 caps a batch at 100 items; exceeding the cap is a whole-request 413 LCP-001, never a per-item rejection.</td></tr>
+<tr><td><code>request_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Caller-supplied request identifier, echoed in the per-item response so a client can correlate the receipt list with its own submission record.</td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/batch.json",
+  "title": "LCP Batch Message",
+  "description": "v1.2 (LEP-0001 W2-01): bounded batch submission. The batch is a loop over the single-item intake path — each item's payload is a lead payload validated by schemas/lead.json, authenticated, deduped, and persisted exactly as a single lead would be. The batch schema therefore fixes the per-item metadata (item_id, idempotency_key) and the item payload's container, never the lead's own field rules: an item whose lead payload is invalid is a per-item `rejected` receipt, not a whole-request schema failure. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "items"
+  ],
+  "properties": {
+    "request_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Caller-supplied request identifier, echoed in the per-item response so a client can correlate the receipt list with its own submission record."
+    },
+    "items": {
+      "x-lcp-pii": "restricted",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "LEP-0001 W2-01 caps a batch at 100 items; exceeding the cap is a whole-request 413 LCP-001, never a per-item rejection.",
+      "items": {
+        "x-lcp-pii": "restricted",
+        "type": "object",
+        "required": [
+          "item_id",
+          "idempotency_key",
+          "payload"
+        ],
+        "properties": {
+          "item_id": {
+            "x-lcp-pii": "internal",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Stable per-item identifier, echoed in that item's receipt. It also seeds the synthesized lead envelope's deterministic message id, so a replay of the same item reuses the same message."
+          },
+          "idempotency_key": {
+            "x-lcp-pii": "internal",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Per-item idempotency key (LEP-0001: per-item idempotency). A replay returns the item's original result as a `duplicate` receipt (existing DUPLICATE/LCP-005 semantics at item granularity)."
+          },
+          "payload": {
+            "x-lcp-pii": "restricted",
+            "type": "object",
+            "description": "A full-PII lead payload — the root object of schemas/lead.json, never an envelope and never a ping payload. It is validated per item against schemas/lead.json and the lifecycle intake rules; an invalid payload rejects that item only."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/batch.json</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

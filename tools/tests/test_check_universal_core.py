@@ -3,7 +3,7 @@
 Every test docstring quotes the governing clause verbatim (SPEC.md @
 5d6000dbc0d70bccb0ed8ea62472c350d29755b0, §12 "Universal audit" and §3
 "Canonical core"). The sandbox seeds a copy of the real schemas/,
-verticals/, SPEC.md and reference-platform storage.py so each planted
+verticals/, spec/ and reference-platform storage.py so each planted
 violation mutates exactly one machine-checkable §12 member.
 """
 
@@ -37,7 +37,7 @@ class Sandbox(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         shutil.copytree(REPO / "schemas", self.tmp / "schemas")
         shutil.copytree(REPO / "verticals", self.tmp / "verticals")
-        shutil.copyfile(REPO / "SPEC.md", self.tmp / "SPEC.md")
+        shutil.copytree(REPO / "spec", self.tmp / "spec")
         shutil.copyfile(STORAGE, self.tmp / "storage.py")
 
     def tearDown(self) -> None:
@@ -47,7 +47,7 @@ class Sandbox(unittest.TestCase):
         return find_violations(
             self.tmp / "schemas",
             self.tmp / "verticals",
-            self.tmp / "SPEC.md",
+            self.tmp / "spec",
             self.tmp / "storage.py",
         )
 
@@ -61,10 +61,12 @@ class Sandbox(unittest.TestCase):
         path.write_text(json.dumps(doc), encoding="utf-8")
 
     def mutate_spec(self, old: str, new: str) -> None:
-        path = self.tmp / "SPEC.md"
-        text = path.read_text(encoding="utf-8")
-        assert old in text, f"fixture drift: {old!r} no longer in SPEC.md"
-        path.write_text(text.replace(old, new), encoding="utf-8")
+        for path in sorted((self.tmp / "spec").glob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            if old in text:
+                path.write_text(text.replace(old, new), encoding="utf-8")
+                return
+        raise AssertionError(f"fixture drift: {old!r} no longer in spec/")
 
     def mutate_storage(self, old: str, new: str) -> None:
         path = self.tmp / "storage.py"
@@ -80,7 +82,7 @@ class TestCleanBaseline(Sandbox):
 
     def test_real_repo_passes_clean(self) -> None:
         self.assertEqual(
-            find_violations(REPO / "schemas", REPO / "verticals", REPO / "SPEC.md"),
+            find_violations(REPO / "schemas", REPO / "verticals", REPO / "spec"),
             [],
         )
 
@@ -473,7 +475,7 @@ class TestCli(Sandbox):
                     "--verticals-dir",
                     str(self.tmp / "verticals"),
                     "--spec",
-                    str(self.tmp / "SPEC.md"),
+                    str(self.tmp / "spec"),
                     "--platform-storage",
                     str(self.tmp / "storage.py"),
                 ]

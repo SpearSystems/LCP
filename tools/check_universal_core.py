@@ -64,7 +64,7 @@ every commit instead of "manually before core changes":
   as a property name (§8: "legacy ``markets`` field — no more ``au_nz`` /
   ``us`` grouping").
 * ``UCA-TRANSITION-TABLE`` — "[ ] Status transition table is published and
-  matches §3." Machine subset: the §3 table is present in SPEC.md, its
+  matches §3." Machine subset: the §3 table is present in spec/, its
   published status set / terminal-state list / notable resolution edges
   equal the reference platform's ``LEGAL_LEAD_TRANSITIONS`` graph
   (extracted by AST, not import).
@@ -166,7 +166,7 @@ def find_violations(
     """Run every machine-checkable §12 line; return violation messages."""
     errors: list[str] = []
 
-    spec_text = spec_path.read_text(encoding="utf-8")
+    spec_text = check_reserved_fields.load_spec_text(spec_path)
 
     core_doc, error = _load_json(schemas_dir / "core.json")
     if error or not isinstance(core_doc, dict):
@@ -217,7 +217,7 @@ def find_violations(
     compliance_table = _spec_table_fields(_spec_section(spec_text, "### compliance"))
     if not compliance_table:
         errors.append(
-            "UCA-CORE-COMPLIANCE-GENERIC: SPEC.md §3 compliance field table not "
+            "UCA-CORE-COMPLIANCE-GENERIC: spec/ §3 compliance field table not "
             "found — update this checker together with the prose"
         )
     else:
@@ -374,7 +374,7 @@ def find_violations(
     if not statuses or not terminal_match:
         errors.append(
             "UCA-TRANSITION-TABLE: §3 status list or published status "
-            "transition table not found in SPEC.md (SPEC §12)"
+            "transition table not found in spec/ (SPEC §12)"
         )
     try:
         table = _extract_transitions(storage_path)
@@ -444,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--schemas-dir", type=Path, default=ROOT / "schemas")
     parser.add_argument("--verticals-dir", type=Path, default=ROOT / "verticals")
-    parser.add_argument("--spec", type=Path, default=ROOT / "SPEC.md")
+    parser.add_argument("--spec", type=Path, default=ROOT / "spec")
     parser.add_argument("--platform-storage", type=Path, default=PLATFORM_STORAGE)
     args = parser.parse_args(argv)
 

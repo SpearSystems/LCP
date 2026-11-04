@@ -1,0 +1,239 @@
+{
+  "generator": "tools/build_spec_site.py",
+  "build_hash": "1f47d086a297",
+  "pages": [
+    {
+      "path": "assets/site.css",
+      "source": "assets/site.css",
+      "title": "Site stylesheet"
+    },
+    {
+      "path": "index.html",
+      "source": "SPEC.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "leps/LEP-0001-batch-submission-and-event-subscriptions.html",
+      "source": "governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md",
+      "title": "LEP-0001 — Bounded batch submission and event subscriptions"
+    },
+    {
+      "path": "leps/LEP-0002-canonical-timestamp-and-signing-interop.html",
+      "source": "governance/LEPs/LEP-0002-canonical-timestamp-and-signing-interop.md",
+      "title": "LEP-0002 — Canonical timestamp generation and cross-SDK signature interop"
+    },
+    {
+      "path": "leps/LEP-0003-shared-lead-slot-protocol.html",
+      "source": "governance/LEPs/LEP-0003-shared-lead-slot-protocol.md",
+      "title": "LEP-0003 — Shared-lead slot allocation and contacted-party dedup exchange"
+    },
+    {
+      "path": "leps/LEP-0004-autonomous-review-board.html",
+      "source": "governance/LEPs/LEP-0004-autonomous-review-board.md",
+      "title": "LEP-0004 — Autonomous Review Board for independent review"
+    },
+    {
+      "path": "leps/LEP-0005-request-history-log-lookup.html",
+      "source": "governance/LEPs/LEP-0005-request-history-log-lookup.md",
+      "title": "LEP-0005 — Request-history log lookup (paginated audit read surface)"
+    },
+    {
+      "path": "leps/LEP-0006-marketplace-migration-extensions.html",
+      "source": "governance/LEPs/LEP-0006-marketplace-migration-extensions.md",
+      "title": "LEP-0006 — Marketplace migration extensions: final-pricing feedback and the form.questions surface"
+    },
+    {
+      "path": "leps/LEP-0007-outbound-call-center-outreach.html",
+      "source": "governance/LEPs/LEP-0007-outbound-call-center-outreach.md",
+      "title": "LEP-0007 — Outbound call-center outreach: the registered {org}.outbound.call_request extension"
+    },
+    {
+      "path": "leps/LEP-0008-agent-attestation-verification.html",
+      "source": "governance/LEPs/LEP-0008-agent-attestation-verification.md",
+      "title": "LEP-0008 — Agent attestation verification: making §9's L3 real (closes #192)"
+    },
+    {
+      "path": "leps/LEP-0009-agent-to-agent-negotiation.html",
+      "source": "governance/LEPs/LEP-0009-agent-to-agent-negotiation.md",
+      "title": "LEP-0009 — Agent-to-agent negotiation: the quote and counter message types"
+    },
+    {
+      "path": "leps/LEP-0010-multi-currency-pricing.html",
+      "source": "governance/LEPs/LEP-0010-multi-currency-pricing.md",
+      "title": "LEP-0010 — Multi-currency pricing: settlement currency, FX metadata, and auction comparability"
+    },
+    {
+      "path": "leps/LEP-0011-pii-sensitivity-taxonomy.html",
+      "source": "governance/LEPs/LEP-0011-pii-sensitivity-taxonomy.md",
+      "title": "LEP-0011 — PII sensitivity taxonomy and schema-level classification"
+    },
+    {
+      "path": "leps/index.html",
+      "source": "governance/LEPs/",
+      "title": "LCP enhancement proposals"
+    },
+    {
+      "path": "schemas/ack.html",
+      "source": "schemas/ack.json",
+      "title": "LCP Ack Message"
+    },
+    {
+      "path": "schemas/batch.html",
+      "source": "schemas/batch.json",
+      "title": "LCP Batch Message"
+    },
+    {
+      "path": "schemas/bid.html",
+      "source": "schemas/bid.json",
+      "title": "LCP Bid Message"
+    },
+    {
+      "path": "schemas/call.html",
+      "source": "schemas/call.json",
+      "title": "LCP Call Message"
+    },
+    {
+      "path": "schemas/core.html",
+      "source": "schemas/core.json",
+      "title": "LCP Core Definitions"
+    },
+    {
+      "path": "schemas/counter.html",
+      "source": "schemas/counter.json",
+      "title": "LCP Counter Message"
+    },
+    {
+      "path": "schemas/envelope.html",
+      "source": "schemas/envelope.json",
+      "title": "LCP Envelope"
+    },
+    {
+      "path": "schemas/event.html",
+      "source": "schemas/event.json",
+      "title": "LCP Event Message"
+    },
+    {
+      "path": "schemas/history-request-row.html",
+      "source": "schemas/history-request-row.json",
+      "title": "LCP History Request Row (LEP-0005 draft overlay)"
+    },
+    {
+      "path": "schemas/index.html",
+      "source": "schemas/",
+      "title": "LCP Schemas"
+    },
+    {
+      "path": "schemas/lead.html",
+      "source": "schemas/lead.json",
+      "title": "LCP Lead Message"
+    },
+    {
+      "path": "schemas/offer.html",
+      "source": "schemas/offer.json",
+      "title": "LCP Buyer Offer"
+    },
+    {
+      "path": "schemas/ping.html",
+      "source": "schemas/ping.json",
+      "title": "LCP Ping Message"
+    },
+    {
+      "path": "schemas/post.html",
+      "source": "schemas/post.json",
+      "title": "LCP Post Message"
+    },
+    {
+      "path": "schemas/quote.html",
+      "source": "schemas/quote.json",
+      "title": "LCP Quote Message"
+    },
+    {
+      "path": "schemas/subscription.html",
+      "source": "schemas/subscription.json",
+      "title": "LCP Subscription Message"
+    },
+    {
+      "path": "spec/00-conformance.html",
+      "source": "spec/00-conformance.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/01-transport.html",
+      "source": "spec/01-transport.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/02-envelope.html",
+      "source": "spec/02-envelope.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/03-payloads.html",
+      "source": "spec/03-payloads.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/04-errors.html",
+      "source": "spec/04-errors.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/05-capabilities.html",
+      "source": "spec/05-capabilities.md",
+      "title": "LCP — Lead Context Protocol Specification"
+    },
+    {
+      "path": "spec/index.html",
+      "source": "spec/README.md",
+      "title": "LCP specification — file map"
+    },
+    {
+      "path": "verticals/home_services.html",
+      "source": "verticals/home_services.json",
+      "title": "LCP Home Services Vertical Schema"
+    },
+    {
+      "path": "verticals/index.html",
+      "source": "verticals/",
+      "title": "LCP Verticals"
+    },
+    {
+      "path": "verticals/insurance.html",
+      "source": "verticals/insurance.json",
+      "title": "LCP Insurance Vertical Schema"
+    },
+    {
+      "path": "verticals/legal.html",
+      "source": "verticals/legal.json",
+      "title": "LCP Legal Vertical Schema"
+    },
+    {
+      "path": "verticals/mortgage.html",
+      "source": "verticals/mortgage.json",
+      "title": "LCP Mortgage Vertical Schema"
+    },
+    {
+      "path": "verticals/mva.html",
+      "source": "verticals/mva.json",
+      "title": "LCP Motor Vehicle Accident Vertical Schema"
+    },
+    {
+      "path": "verticals/solar.html",
+      "source": "verticals/solar.json",
+      "title": "LCP Solar Vertical Schema"
+    }
+  ],
+  "out_of_scope_links": [
+    "LICENSE",
+    "docs/DECISIONS-v1.2.md",
+    "docs/PII-CLASSES.md",
+    "docs/RELEASE.md",
+    "docs/V1.2-EXECUTION-PLAN.md",
+    "governance",
+    "governance/ARB-DOSSIER-TEMPLATE.md",
+    "governance/ARB.md",
+    "governance/EXTENSION-REGISTRY.md",
+    "governance/LEP-REGISTRY.md",
+    "implementations/mcp-server"
+  ]
+}

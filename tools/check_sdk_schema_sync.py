@@ -73,7 +73,7 @@ def main() -> int:
     # never catch it (issue #134). Fail here, then compare manifests.
     from check_reserved_fields import find_violations
 
-    violations = find_violations(ROOT / "schemas", ROOT / "verticals", ROOT / "SPEC.md")
+    violations = find_violations(ROOT / "schemas", ROOT / "verticals", ROOT / "spec")
     if violations:
         print("SDK schema synchronization failed:")
         for violation in violations:

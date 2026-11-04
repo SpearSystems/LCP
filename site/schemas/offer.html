@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/offer.json">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP Buyer Offer — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Buyer Offer</h1>
+<p><code>https://lcp.dev/schemas/offer.json</code> · A buyer's published acceptance profile for lead routing. Offer administration is deployment-specific; this document is the interoperable discovery shape.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>active</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>allowed_brand_ids</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td>Optional publisher brand allowlist evaluated against provenance.brand_id.</td></tr>
+<tr><td><code>allowed_publisher_ids</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td>Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed.</td></tr>
+<tr><td><code>attribute_equals</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.</td></tr>
+<tr><td><code>attribute_in</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Safe declarative allowlists keyed by vertical attribute name.</td></tr>
+<tr><td><code>buyer_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>call_routing_mode</code></td><td>enum (<code>"post_call"</code>, <code>"realtime_transfer"</code>)</td><td><code>internal</code></td><td></td><td>post_call delivers recorded call metadata; realtime_transfer requires a separate telephony binding for the live bridge.</td></tr>
+<tr><td><code>channels</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>connect_timeout_seconds</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Maximum time allowed for a real-time call transfer decision.</td></tr>
+<tr><td><code>countries</code></td><td><code>array</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>currency</code></td><td><code>string</code></td><td><code>public</code></td><td>yes</td><td></td></tr>
+<tr><td><code>daily_cap</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>delivery_windows</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>excluded_acquisition_methods</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>excluded_claim_language</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>excluded_incentive_types</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>excluded_source_types</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>extensions</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Namespaced deployment-specific criteria. Matching implementations must not execute arbitrary values as code.</td></tr>
+<tr><td><code>floor_price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>hourly_cap</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>max_spam_risk_score</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>min_data_completeness</code></td><td>enum (<code>"minimal"</code>, <code>"standard"</code>, <code>"rich"</code>)</td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>monthly_maximum_payable</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Optional hard maximum for payable outcomes in a calendar month.</td></tr>
+<tr><td><code>monthly_minimum_payable</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply.</td></tr>
+<tr><td><code>monthly_quota_policy</code></td><td>enum (<code>"monitor"</code>, <code>"pace"</code>, <code>"hard_cap"</code>)</td><td><code>internal</code></td><td></td><td>monitor reports progress, pace prioritizes under-target offers, hard_cap stops payable routing at the maximum.</td></tr>
+<tr><td><code>monthly_quota_timezone</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>IANA timezone used to determine the monthly quota period.</td></tr>
+<tr><td><code>offer_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>payable_definition</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>payable_rules</code></td><td><code>object</code></td><td><code>internal</code></td><td></td><td>Structured, explainable payable evaluation rules.</td></tr>
+<tr><td><code>ping_timeout_seconds</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>postal_codes</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>reject_blacklist_flagged</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>reject_dnc_flagged</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>reject_incentivized</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>reject_litigator_flagged</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>require_consent_evidence</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>require_verified_email</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>require_verified_phone</code></td><td><code>boolean</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>routing_mode</code></td><td>enum (<code>"auction"</code>, <code>"direct"</code>)</td><td><code>internal</code></td><td></td><td>Direct sends a post at the floor price; auction sends a ping and waits for bids.</td></tr>
+<tr><td><code>schema_version</code></td><td><code>string</code></td><td><code>public</code></td><td></td><td></td></tr>
+<tr><td><code>state_regions</code></td><td><code>array</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>tenant_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Owning platform tenant. Deployment metadata; not necessarily exposed in public offer discovery.</td></tr>
+<tr><td><code>vertical</code></td><td><code>string</code></td><td><code>public</code></td><td>yes</td><td></td></tr>
+<tr><td><code>webhook_url</code></td><td><code>string</code></td><td><code>restricted</code></td><td></td><td></td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/offer.json",
+  "title": "LCP Buyer Offer",
+  "description": "A buyer's published acceptance profile for lead routing. Offer administration is deployment-specific; this document is the interoperable discovery shape.",
+  "type": "object",
+  "required": [
+    "offer_id",
+    "buyer_id",
+    "vertical",
+    "countries",
+    "floor_price_cents",
+    "currency"
+  ],
+  "properties": {
+    "offer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1
+    },
+    "buyer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1
+    },
+    "tenant_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "Owning platform tenant. Deployment metadata; not necessarily exposed in public offer discovery."
+    },
+    "active": {
+      "x-lcp-pii": "internal",
+      "type": "boolean",
+      "default": true
+    },
+    "routing_mode": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "auction",
+        "direct"
+      ],
+      "default": "auction",
+      "description": "Direct sends a post at the floor price; auction sends a ping and waits for bids."
+    },
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "x-lcp-pii": "public",
+      "type": "string"
+    },
+    "countries": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "uniqueItems": true
+    },
+    "state_regions": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "postal_codes": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "channels": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "excluded_source_types": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "excluded_acquisition_methods": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "reject_incentivized": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "excluded_incentive_types": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "require_verified_phone": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "require_verified_email": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "max_spam_risk_score": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "excluded_claim_language": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "require_consent_evidence": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "reject_dnc_flagged": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "reject_litigator_flagged": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "reject_blacklist_flagged": {
+      "x-lcp-pii": "internal",
+      "type": "boolean"
+    },
+    "min_data_completeness": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "minimal",
+        "standard",
+        "rich"
+      ]
+    },
+    "floor_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "payable_definition": {
+      "x-lcp-pii": "internal",
+      "type": "string"
+    },
+    "daily_cap": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1
+    },
+    "hourly_cap": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1
+    },
+    "allowed_publisher_ids": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed."
+    },
+    "allowed_brand_ids": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "Optional publisher brand allowlist evaluated against provenance.brand_id."
+    },
+    "attribute_equals": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.",
+      "additionalProperties": true
+    },
+    "attribute_in": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Safe declarative allowlists keyed by vertical attribute name.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1
+      }
+    },
+    "monthly_minimum_payable": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply."
+    },
+    "monthly_maximum_payable": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional hard maximum for payable outcomes in a calendar month."
+    },
+    "monthly_quota_timezone": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "IANA timezone used to determine the monthly quota period."
+    },
+    "monthly_quota_policy": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "monitor",
+        "pace",
+        "hard_cap"
+      ],
+      "default": "monitor",
+      "description": "monitor reports progress, pace prioritizes under-target offers, hard_cap stops payable routing at the maximum."
+    },
+    "payable_rules": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Structured, explainable payable evaluation rules.",
+      "properties": {
+        "mode": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "post_delivery",
+            "call_outcome"
+          ],
+          "default": "post_delivery"
+        },
+        "require_call_answered": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "minimum_call_seconds": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowed_call_dispositions": {
+          "x-lcp-pii": "internal",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "exclude_duplicate_resubmissions": {
+          "x-lcp-pii": "internal",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "call_routing_mode": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "post_call",
+        "realtime_transfer"
+      ],
+      "default": "post_call",
+      "description": "post_call delivers recorded call metadata; realtime_transfer requires a separate telephony binding for the live bridge."
+    },
+    "connect_timeout_seconds": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Maximum time allowed for a real-time call transfer decision."
+    },
+    "delivery_windows": {
+      "x-lcp-pii": "internal",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/delivery_window"
+      }
+    },
+    "ping_timeout_seconds": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 1,
+      "default": 30
+    },
+    "webhook_url": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "format": "uri"
+    },
+    "extensions": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "Namespaced deployment-specific criteria. Matching implementations must not execute arbitrary values as code.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "delivery_window": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "required": [
+        "timezone",
+        "available_from",
+        "available_to",
+        "days"
+      ],
+      "properties": {
+        "timezone": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "minLength": 1
+        },
+        "available_from": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "available_to": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "days": {
+          "x-lcp-pii": "internal",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "verticals": {
+          "x-lcp-pii": "public",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "channels": {
+          "x-lcp-pii": "internal",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/offer.json</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

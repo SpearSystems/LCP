@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 from pathlib import Path
 import threading
 import unittest
+from urllib.parse import parse_qs, urlparse
 
 from lcp_sdk import (
     LCPClient,
@@ -54,7 +56,9 @@ class SDKTests(unittest.TestCase):
             now=datetime(2026, 8, 15, 10, 20, 1, tzinfo=timezone.utc),
         )
 
-    def test_webhook_verification_uses_raw_body_and_case_insensitive_headers(self) -> None:
+    def test_webhook_verification_uses_raw_body_and_case_insensitive_headers(
+        self,
+    ) -> None:
         body = b'{"hello":"world"}'
         timestamp = "2026-08-15T10:20:00Z"
         key = "sdk-vector-001"
@@ -113,7 +117,9 @@ class SDKTests(unittest.TestCase):
         errors = validator.validate_envelope(envelope)
         self.assertEqual(
             errors,
-            ["vertical schema '../../../../etc/passwd' not found for ping-safe validation"],
+            [
+                "vertical schema '../../../../etc/passwd' not found for ping-safe validation"
+            ],
         )
 
     def test_ping_vertical_resolves_preloaded_schema(self) -> None:
@@ -203,6 +209,214 @@ class HTTPErrorHygieneTests(unittest.TestCase):
             self.assertNotIn("DO-NOT-LOG", repr(error))
             # Structured access is intact for callers that need the details.
             self.assertEqual(error.body["errors"][0]["code"], "LCP-002")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class _BatchHandler(BaseHTTPRequestHandler):
+    """Answers a batch request with 207 and receipts in reverse input order."""
+
+    received: list[dict] = []
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        type(self).received.append(json.loads(self.rfile.read(length)))
+        payload = json.dumps(
+            {
+                "request_id": "req-batch-1",
+                "summary": {
+                    "total": 2,
+                    "accepted": 1,
+                    "duplicate": 0,
+                    "rejected": 1,
+                    "error": 0,
+                },
+                "results": [
+                    {"item_id": "item_b", "status": "accepted", "lead_id": "lead_b"},
+                    {
+                        "item_id": "item_a",
+                        "status": "rejected",
+                        "error": {"code": "LCP-100", "message": "invalid lead"},
+                    },
+                ],
+            }
+        ).encode()
+        self.send_response(207)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:  # keep output clean
+        pass
+
+
+class BatchSubmissionTests(unittest.TestCase):
+    def _client(self, server: ThreadingHTTPServer) -> LCPClient:
+        return LCPClient(
+            f"http://127.0.0.1:{server.server_address[1]}",
+            api_key="any-key",
+            max_retries=0,
+        )
+
+    def test_batch_treats_207_as_success_and_orders_receipts(self) -> None:
+        _BatchHandler.received = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _BatchHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            items = [
+                {
+                    "item_id": "item_a",
+                    "idempotency_key": "batch-a",
+                    "payload": {"lead_id": "lead_a"},
+                },
+                {
+                    "item_id": "item_b",
+                    "idempotency_key": "batch-b",
+                    "payload": {"lead_id": "lead_b"},
+                },
+            ]
+            results = self._client(server).submit_leads_batch(
+                items, request_id="req-batch-1"
+            )
+            # 207 is a successful response, and receipts come back in input
+            # order even when the server answers out of order.
+            self.assertEqual(
+                [result["item_id"] for result in results], ["item_a", "item_b"]
+            )
+            self.assertEqual(results[0]["status"], "rejected")
+            self.assertEqual(results[0]["error"]["code"], "LCP-100")
+            self.assertEqual(results[1]["status"], "accepted")
+            sent = _BatchHandler.received[0]
+            self.assertEqual(sent["request_id"], "req-batch-1")
+            self.assertEqual(
+                [item["item_id"] for item in sent["items"]], ["item_a", "item_b"]
+            )
+            self.assertEqual(sent["items"][0]["payload"]["lead_id"], "lead_a")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_batch_rejects_more_than_the_cap_before_sending(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _BatchHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            _BatchHandler.received = []
+            items = [
+                {
+                    "item_id": f"item_{index}",
+                    "idempotency_key": f"key_{index}",
+                    "payload": {},
+                }
+                for index in range(101)
+            ]
+            with self.assertRaises(ValueError):
+                self._client(server).submit_leads_batch(items)
+            self.assertEqual(_BatchHandler.received, [])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class _HistoryHandler(BaseHTTPRequestHandler):
+    """Serves one request-history page, or a 400 when ``status`` says so."""
+
+    status = 200
+    received: list[str] = []
+
+    def do_GET(self) -> None:
+        type(self).received.append(self.path)
+        if type(self).status == 200:
+            payload = json.dumps(
+                {
+                    "requests": [
+                        {
+                            "request_id": "req-hist-1",
+                            "message_type": "lead",
+                            "direction": "inbound",
+                            "status": "OPEN",
+                            "created_at": "2026-11-01T00:00:00Z",
+                        }
+                    ]
+                }
+            ).encode()
+        else:
+            payload = json.dumps(
+                {"errors": [{"code": "LCP-001", "message": "limit out of range"}]}
+            ).encode()
+        self.send_response(type(self).status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-LCP-Result-Count", "1")
+        self.send_header("X-LCP-Total-Results", "1")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:  # keep output clean
+        pass
+
+
+class HistoryReadTests(unittest.TestCase):
+    """LEP-0005: ``request_history`` pages the audit log with an exact query."""
+
+    def _serve(self, status: int = 200) -> tuple[ThreadingHTTPServer, LCPClient]:
+        _HistoryHandler.status = status
+        _HistoryHandler.received = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _HistoryHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        client = LCPClient(
+            f"http://127.0.0.1:{server.server_address[1]}",
+            api_key="any-key",
+            max_retries=0,
+        )
+        return server, client
+
+    def test_query_sends_only_supplied_params_and_returns_body(self) -> None:
+        server, client = self._serve()
+        try:
+            body = client.request_history(
+                limit=2, status="OPEN", to="2026-11-01T00:00:00Z"
+            )
+            self.assertEqual(
+                list(body["requests"]),
+                [
+                    {
+                        "request_id": "req-hist-1",
+                        "message_type": "lead",
+                        "direction": "inbound",
+                        "status": "OPEN",
+                        "created_at": "2026-11-01T00:00:00Z",
+                    }
+                ],
+            )
+            path = _HistoryHandler.received[0]
+            self.assertEqual(urlparse(path).path, "/v1/lcp/history/requests")
+            self.assertEqual(
+                parse_qs(urlparse(path).query),
+                {
+                    "limit": ["2"],
+                    "status": ["OPEN"],
+                    "to": ["2026-11-01T00:00:00Z"],
+                },
+            )
+
+            # An empty string is "absent": no blank filter may widen the page.
+            client.request_history(status="", vertical="", cursor="")
+            self.assertEqual(_HistoryHandler.received[1], "/v1/lcp/history/requests")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_history_4xx_surfaces_as_lcp_http_error(self) -> None:
+        server, client = self._serve(status=400)
+        try:
+            with self.assertRaises(LCPHTTPError) as caught:
+                client.request_history(limit=500)
+            self.assertEqual(caught.exception.status_code, 400)
+            self.assertEqual(caught.exception.body["errors"][0]["code"], "LCP-001")
         finally:
             server.shutdown()
             server.server_close()

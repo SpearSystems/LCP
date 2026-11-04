@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from secrets import token_urlsafe
 from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlsplit
-from uuid import uuid4
+from typing import Any, NoReturn
+from urllib.parse import parse_qs, urlsplit
+from uuid import NAMESPACE_URL, uuid4, uuid5
 import hashlib
 import re
 import httpx
@@ -27,27 +29,39 @@ from .attestation import (
     check_attestation_shape,
     token_digest,
 )
-from .auth import Authenticator, header
+from .auth import Authenticator, header, signature_for
 from .crypto import EnvelopeCipher
 from .extensions import extension_problems, redact_extension_pii
 from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
 from .config import PlatformConfig
 from .database import create_store
-from .matching import MatchResult, match_offer
+from .matching import (
+    MatchResult,
+    ProfileValidationError,
+    ServiceAreaCatalog,
+    match_offer,
+)
 from .messages import (
+    BID_FX_FIELDS,
+    bid_fx_evidence,
     build_ack,
     build_event,
     build_ping,
     build_post,
+    hash_negotiation_token,
+    new_negotiation_token,
     pair_phone_hash,
     webhook_headers,
 )
 from .pii import has_plaintext_contact
 from .security import SecurityPolicyError, validate_egress_host, validate_webhook_url
 from .storage import (
+    EventCursorError,
     EventIdempotencyConflict,
     InvalidStatusTransition,
     Store,
+    decode_event_cursor,
+    encode_event_cursor,
     envelope_expiry,
     format_iso_datetime,
     is_expired,
@@ -58,9 +72,15 @@ from .validation import (
     E164_PATTERN,
     ISO_3166_1_ALPHA2,
     MESSAGE_TYPES,
+    NEGOTIATION_MESSAGE_TYPES,
     SUPPORTED_LCP_VERSIONS,
+    SubscriptionValidationError,
     ValidationError,
     SchemaValidator,
+    email_form_entry_provenance,
+    event_matches_filters,
+    negotiation_payload_pii_errors,
+    validate_subscription_envelope,
 )
 
 
@@ -79,6 +99,30 @@ class RequestError(ValueError):
         self.details = details
         super().__init__(message)
 
+
+# LEP-0001 (accepted 2026-11-04, W2-01) fixes both batch caps at acceptance:
+# 100 items and a 1 MiB body per request. Exceeding either is a whole-request
+# refusal, never a per-item rejection — the request is not a batch this
+# platform agreed to process. Raising a cap needs the W2-05 benchmark and a
+# revised record, so these are protocol constants, not deployment settings.
+BATCH_MAX_ITEMS = 100
+BATCH_MAX_BODY_BYTES = 1024 * 1024
+
+# LEP-0009 (D8): bounded negotiation. The default and the hard cap are
+# protocol constants, not deployment knobs — raising the cap is deferred
+# question Q7 and needs measured evidence.
+NEGOTIATION_DEFAULT_MAX_ROUNDS = 3
+NEGOTIATION_HARD_MAX_ROUNDS = 5
+# The LEP's audit-event names, keyed by the state the message left behind.
+_NEGOTIATION_AUDIT_ACTIONS = {
+    "OPEN": "negotiation.opened",
+    "COUNTERED": "negotiation.countered",
+    "ACCEPTED": "negotiation.accepted",
+    "REFUSED": "negotiation.refused",
+    "EXPIRED": "negotiation.expired",
+    "REDEEMED": "negotiation.redeemed",
+}
+_FULL_SEMVER_RE = re.compile(r"\A(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\Z")
 
 _EVENT_STATUS_TARGETS = {
     "ACCEPTED": "ACCEPTED",
@@ -158,6 +202,65 @@ _FINAL_PRICING_MAX_PRICE_CENTS = 100_000_000
 _FINAL_PRICING_MAX_DURATION_SECONDS = 86_400
 _CURRENCY_RE = re.compile(r"\A[A-Z]{3}\Z")
 
+# D3/v1.2: capabilities() states the core schema version it validates against
+# by reading the repository's SDK_VERSION (the package version the schemas and
+# SDKs are built from). Never a wire field — the advertisement is the signal.
+_SDK_VERSION_PATH = Path(__file__).resolve().parents[3] / "SDK_VERSION"
+
+# D7/v1.2: an FX rate is a plain decimal — no sign, exponent, grouping or
+# leading-zero integer part — with a mandatory fractional part of 6-12 digits,
+# at least six *significant* digits below 1, and a value in [0.000001,
+# 1000000] (LEP-0010 §4.1). `schemas/post.json` and `schemas/bid.json` pin the
+# same normative pattern. Comparison uses exact decimal arithmetic; only final
+# presentation rounds half-up.
+_FX_RATE_RE = re.compile(r"\A(?:[1-9][0-9]*\.[0-9]{6,12}|0\.[0-9]*[1-9][0-9]{5,11})\Z")
+_FX_RATE_MAX = Decimal(1_000_000)
+_FX_METADATA_FIELDS = BID_FX_FIELDS
+
+# LEP-0010 §4.2: ISO 4217 minor-unit exponents are load-bearing —
+# settlement_minor = native_minor × 10^(exp_settlement − exp_native) ÷ rate.
+# Only the currencies that differ from the ISO 4217 default of two are
+# enumerated; every other alpha-3 code resolves to two. Dividing minor units
+# without the exponent factor is the 100× USD→JPY overcharge the LEP forbids.
+_FX_MINOR_UNIT_EXPONENTS = {
+    **dict.fromkeys(
+        (
+            "BIF",
+            "CLP",
+            "DJF",
+            "GNF",
+            "ISK",
+            "JPY",
+            "KMF",
+            "KRW",
+            "PYG",
+            "RWF",
+            "UGX",
+            "UYI",
+            "VND",
+            "VUV",
+            "XAF",
+            "XOF",
+            "XPF",
+        ),
+        0,
+    ),
+    **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
+}
+_FX_DEFAULT_MINOR_UNIT_EXPONENT = 2
+
+
+def _minor_unit_exponent(currency: str) -> int:
+    """ISO 4217 minor-unit exponent for a validated alpha-3 code."""
+    return _FX_MINOR_UNIT_EXPONENTS.get(currency, _FX_DEFAULT_MINOR_UNIT_EXPONENT)
+
+
+def _read_sdk_version() -> str:
+    try:
+        return _SDK_VERSION_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
 
 def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
@@ -171,6 +274,9 @@ class Platform:
         self.store = store or create_store(config)
         self.validator = SchemaValidator(config.schema_root)
         self.auth = Authenticator(self.store, config)
+        # W4-03: versioned service-area datasets are loaded lazily and cached
+        # until a file changes; an absent directory is an empty catalog.
+        self.service_areas = ServiceAreaCatalog(config.service_area_directory)
         # LEP-0008: issuer-JWKS resolver + §5 verifier. The resolver's
         # transport is injectable (tests never touch the network).
         self.attestation = AgentAttestationVerifier(config)
@@ -295,6 +401,123 @@ class Platform:
             },
         )
 
+    def delete_offer(self, offer_id: str) -> None:
+        if not self.store.delete_offer(offer_id):
+            raise RequestError("Offer not found", "LCP-003", 404)
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="offer.delete",
+            resource_type="offer",
+            resource_id=offer_id,
+            metadata={},
+        )
+
+    # ─── Requirement profiles (W4-01/W4-02) ────────────────────────────────
+
+    def create_requirement_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Write one immutable profile version, refusing an invalid profile."""
+        profile = dict(profile)
+        profile.setdefault("tenant_id", self.config.routing_tenant_id)
+        try:
+            record = self.store.create_requirement_profile_version(profile)
+        except ProfileValidationError as exc:
+            raise RequestError(str(exc), "LCP-100", details={"path": exc.path}) from exc
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-100", 409) from exc
+        self._audit_profile("requirement_profile.create", record)
+        return record
+
+    def activate_requirement_profile(
+        self, profile_id: str, version: str, *, effective_from: str | None = None
+    ) -> dict[str, Any]:
+        record = self._profile_write(
+            "requirement_profile.activate",
+            profile_id,
+            version,
+            effective_from=effective_from,
+        )
+        return record
+
+    def rollback_requirement_profile(
+        self, profile_id: str, version: str, *, effective_from: str | None = None
+    ) -> dict[str, Any]:
+        record = self._profile_write(
+            "requirement_profile.rollback",
+            profile_id,
+            version,
+            effective_from=effective_from,
+        )
+        return record
+
+    def deactivate_requirement_profile(
+        self, profile_id: str, *, effective_to: str | None = None
+    ) -> list[str]:
+        try:
+            versions = self.store.deactivate_requirement_profile(
+                profile_id,
+                tenant_id=self.config.routing_tenant_id,
+                effective_to=effective_to,
+            )
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-100") from exc
+        if not versions:
+            raise RequestError(
+                f"no active requirement profile: {profile_id}", "LCP-003", 404
+            )
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="requirement_profile.deactivate",
+            resource_type="requirement_profile",
+            resource_id=profile_id,
+            metadata={"versions": versions},
+        )
+        return versions
+
+    def list_requirement_profiles(
+        self, profile_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        return self.store.list_requirement_profiles(
+            profile_id, tenant_id=self.config.routing_tenant_id
+        )
+
+    def _profile_write(
+        self,
+        action: str,
+        profile_id: str,
+        version: str,
+        *,
+        effective_from: str | None,
+    ) -> dict[str, Any]:
+        try:
+            record = self.store.activate_requirement_profile(
+                profile_id,
+                version,
+                tenant_id=self.config.routing_tenant_id,
+                effective_from=effective_from,
+            )
+        except ValueError as exc:
+            raise RequestError(str(exc), "LCP-003", 404) from exc
+        self._audit_profile(action, record)
+        return record
+
+    def _audit_profile(self, action: str, record: dict[str, Any]) -> None:
+        self.store.insert_audit(
+            tenant_id=str(record["tenant_id"]),
+            actor_id="operator",
+            action=action,
+            resource_type="requirement_profile",
+            resource_id=str(record["profile_id"]),
+            metadata={
+                "version": record["version"],
+                "status": record["status"],
+                "effective_from": record["effective_from"],
+                "effective_to": record["effective_to"],
+                "service_area_ref": record.get("service_area_ref"),
+            },
+        )
+
     # ─── Inbound messages ──────────────────────────────────────────────────
 
     def ingest(
@@ -304,6 +527,12 @@ class Platform:
         headers: dict[str, str] | None = None,
         raw_body: bytes | None = None,
     ) -> dict[str, Any]:
+        """Single-item intake front door: envelope, transport, auth, throttle.
+
+        Everything after authentication is ``_ingest_lead``, which batch
+        submission loops over — one intake path, not a second ingestion engine
+        (LEP-0001 W2-02).
+        """
         headers = headers or {}
         self._validate_envelope(envelope)
         message = envelope["lcp"]["message"]
@@ -331,20 +560,53 @@ class Platform:
             limit=self.config.rate_limit_per_minute,
         ):
             raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
+        return self._ingest_lead(envelope, message=message, sender_id=sender_id)
 
+    def _ingest_lead(
+        self,
+        envelope: dict[str, Any],
+        *,
+        message: dict[str, Any],
+        sender_id: str,
+        compare_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """The authenticated single-lead path: dedupe → routing → ack.
+
+        Callers have already validated the envelope, the transport flags, the
+        receiver, the sender identity, and the rate limit. Batch submission
+        reaches exactly this code with its one authenticated sender, so
+        per-item parity of validation, idempotency, and audit is structural
+        rather than re-stated (LEP-0001 W2-02).
+
+        ``compare_payload`` scopes the LCP-005 reuse guard to the item's
+        content. A batch item's envelope is synthesized per request (its
+        message id is derived from the batch id and its timestamp is the
+        batch's), so two requests replaying the same item deliberately carry
+        different envelopes; the item's identity is its own idempotency key
+        plus its lead payload (LEP-0001: "replays return the original result").
+        """
+        # LEP-0003 W6-07: the entry provenance is recorded first — before the
+        # idempotency comparison (a replay must compare the same derived bytes)
+        # and before matching (an exclusion predicate must see the declared
+        # source_type) — and it refuses, never mislabels, when the gate is off.
+        self._record_email_form_entry(envelope, sender_id=sender_id)
         existing = self.store.get_lead_by_idempotency(
             sender_id, message["idempotency_key"]
         )
         if existing:
-            if self._body(
-                self.store.decode_envelope(existing["envelope_json"])
-            ) != self._body(envelope):
+            existing_envelope = self.store.decode_envelope(existing["envelope_json"])
+            same_message = (
+                existing_envelope["lcp"]["payload"] == compare_payload
+                if compare_payload is not None
+                else self._body(existing_envelope) == self._body(envelope)
+            )
+            if not same_message:
                 raise RequestError(
                     "Idempotency key was reused with a different message",
                     "LCP-005",
                     409,
                 )
-            self.store.insert_audit(
+            self._enqueue_audit(
                 tenant_id=self.auth.tenant_for(sender_id)
                 or self.config.routing_tenant_id,
                 actor_id=sender_id,
@@ -383,9 +645,21 @@ class Platform:
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         self._validate_attachment_references(payload, sender_id)
         for offer in offers:
-            result = match_offer(offer, payload, sender_id=message["sender_id"])
+            result = match_offer(
+                offer,
+                payload,
+                sender_id=message["sender_id"],
+                profiles=self.store,
+                service_areas=self.service_areas,
+            )
             if result.matched and not self._capacity_available(offer):
-                result = MatchResult(False, result.reasons + ("capacity_exceeded",))
+                result = MatchResult(
+                    False,
+                    result.reasons + ("capacity_exceeded",),
+                    profile=result.profile,
+                    predicates=result.predicates,
+                    service_area=result.service_area,
+                )
             matches.append((offer, result))
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
@@ -418,12 +692,8 @@ class Platform:
             )
 
         for offer, result in matches:
-            self.store.insert_match_decision(
-                lead_id=payload["lead_id"],
-                offer_id=offer["offer_id"],
-                buyer_id=offer["buyer_id"],
-                matched=result.matched,
-                reasons=result.reasons,
+            self._record_match_evaluation(
+                lead_id=payload["lead_id"], offer=offer, result=result
             )
 
         created_pings = 0
@@ -444,7 +714,7 @@ class Platform:
         elif created_pings:
             self.store.update_lead_status(payload["lead_id"], "PINGED")
         self.store.complete_routing_job(payload["lead_id"])
-        self.store.insert_audit(
+        self._enqueue_audit(
             tenant_id=sender_tenant,
             actor_id=sender_id,
             action="lead.routed",
@@ -463,6 +733,284 @@ class Platform:
             status="RECEIVED",
             lead_id=payload["lead_id"],
         )
+
+    # ─── Batch intake (LEP-0001, execution plan W2) ────────────────────────
+
+    def submit_batch(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Bounded batch intake — a loop over the single-item path.
+
+        Wire shape (LEP-0001 ``### Batch submission``)::
+
+            {"lcp": {"version": "1.2.0",
+                     "message": {"type": "batch", ...},
+                     "payload": {"request_id": "...",
+                                 "items": [{"item_id": "...",
+                                            "idempotency_key": "...",
+                                            "payload": {<lead payload>}}]}}}
+
+        Each item's ``payload`` is a **lead payload** — the ``lead.json`` root
+        object, never an envelope. The per-item envelope is synthesized from
+        the batch envelope (same sender/receiver/timestamp/test, a
+        deterministic ``message.id`` derived from the batch id and the item id,
+        and the item's own ``idempotency_key``) and then runs ``_ingest_lead``
+        unchanged, so the wire type adds dispatch and per-item metadata, not a
+        second ingestion engine (W2-02). A replay of the same item collides
+        with the same persisted dedupe row ``POST /v1/lcp/leads`` would.
+
+        Request-level failures reject the whole request before any item runs:
+        the body above ``BATCH_MAX_BODY_BYTES`` (``413``), more than
+        ``BATCH_MAX_ITEMS`` items (``413``), a malformed wrapper, a
+        non-``batch`` message, or an unsupported protocol version
+        (``LCP-100``/``LCP-006``/``LCP-007``), and the usual authentication,
+        receiver, transport, and scope refusals. An item whose *lead payload*
+        is invalid is not a request-level failure — it is that item's receipt.
+        Everything else is per item: each item is validated, throttled,
+        deduped, and persisted by ``_ingest_lead``, so one item's failure never
+        rolls back or blocks its siblings — there is no cross-item transaction
+        (W2-02).
+
+        The response is ``207`` with the LEP's per-item receipt, one per input
+        item, **in input order**::
+
+            {"request_id": "...",
+             "summary": {"total": n, "accepted": a, "duplicate": d,
+                         "rejected": r, "error": e},
+             "results": [{"item_id": ..., "status": "accepted"
+                          | "duplicate" | "rejected" | "error",
+                          "lead_id": ..., "error"?: {...}},
+                         ...]}
+
+        ``accepted`` is the single-item ``RECEIVED`` ack, ``duplicate`` the
+        single-item ``DUPLICATE`` ack replaying the item's original ``lead_id``
+        (existing ``LCP-005`` semantics at item granularity), ``rejected`` a
+        per-item validation/throttle/key-conflict refusal (``error`` present),
+        and ``error`` an unexpected per-item fault that the sender may retry on
+        its own. This receipt is *not* ``ack.status``: it does not extend,
+        reuse, or emit that enum, and it never acknowledges a ``post``
+        delivery (LEP-0001 F5, D2).
+
+        Throttle accounting matches single-item intake: every item consumes one
+        sender token, so a batch cannot outrun ``rate_limit_per_minute``.
+        """
+        headers = headers or {}
+        body = raw_body if raw_body is not None else self._body(envelope)
+        if len(body) > BATCH_MAX_BODY_BYTES:
+            raise RequestError(
+                f"Batch request body exceeds {BATCH_MAX_BODY_BYTES} bytes",
+                "LCP-001",
+                413,
+                details=[
+                    f"a batch request body is capped at {BATCH_MAX_BODY_BYTES} "
+                    "bytes (1 MiB, LEP-0001 W2-01); split the batch and resubmit"
+                ],
+            )
+        items, request_id, message = self._validate_batch_envelope(envelope)
+        self._validate_transport(message, headers)
+        if message["receiver_id"] != self.config.platform_id:
+            raise RequestError("Message receiver is not this platform", "LCP-002", 401)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=body,
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+            required_scope="lead:submit",
+        )
+        if sender_id != message["sender_id"]:
+            raise RequestError(
+                "Authenticated sender does not match message sender", "LCP-002", 401
+            )
+
+        results = [
+            self._batch_item_receipt(
+                item,
+                index=index,
+                sender_id=sender_id,
+                version=envelope["lcp"]["version"],
+                batch_message=message,
+            )
+            for index, item in enumerate(items)
+        ]
+        summary: dict[str, int] = {
+            "total": len(results),
+            "accepted": 0,
+            "duplicate": 0,
+            "rejected": 0,
+            "error": 0,
+        }
+        for receipt in results:
+            summary[receipt["status"]] += 1
+        return {"request_id": request_id, "summary": summary, "results": results}
+
+    def _validate_batch_envelope(
+        self, envelope: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
+        """Validate the batch wrapper and return ``(items, request_id, message)``.
+
+        Only the wrapper is checked here: the envelope schema, ``schemas/batch.json``
+        (per-item metadata and the 100-item cap), the closed ``message.type``,
+        and version negotiation. Each item's lead payload gets the full
+        single-lead treatment inside ``_batch_item_receipt``, so an invalid
+        lead payload is that item's receipt — never a whole-request schema
+        failure (LEP-0001: "one bad item must not fail the batch").
+        """
+        lcp: Any = envelope.get("lcp") if isinstance(envelope, dict) else None
+        message: Any = lcp.get("message") if isinstance(lcp, dict) else None
+        if isinstance(message, dict) and message.get("type") != "batch":
+            raise RequestError("Only batch messages can enter batch intake", "LCP-006")
+        payload: Any = lcp.get("payload") if isinstance(lcp, dict) else None
+        items: Any = payload.get("items") if isinstance(payload, dict) else None
+        # W2-01 caps are fixed at acceptance: exceeding either is a
+        # whole-request refusal, checked ahead of schema validation so the cap
+        # answers 413 rather than the schema's 400.
+        if isinstance(items, list) and len(items) > BATCH_MAX_ITEMS:
+            raise RequestError(
+                f"Batch exceeds {BATCH_MAX_ITEMS} items",
+                "LCP-001",
+                413,
+                details=[
+                    f"a batch request carries at most {BATCH_MAX_ITEMS} items "
+                    f"(got {len(items)}); split the batch and resubmit"
+                ],
+            )
+        self._validate_envelope(envelope)
+        return payload["items"], payload["request_id"], message
+
+    def _batch_item_receipt(
+        self,
+        item: dict[str, Any],
+        *,
+        index: int,
+        sender_id: str,
+        version: str,
+        batch_message: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Process one batch item and return its receipt; never raises.
+
+        The item is a lead payload plus its own ``idempotency_key``. The lead
+        envelope it would have arrived in is synthesized from the batch
+        envelope — same sender, receiver, timestamp and test flag; a
+        deterministic message id from the batch id and ``item_id``; the item's
+        key — and then handed to the single-lead path. Identity, transport,
+        receiver and authentication are the batch's (already established);
+        schema, lifecycle intake rules, idempotency, throttling and audit stay
+        per item.
+        """
+        item_id = item["item_id"]
+        item_payload = item["payload"]
+        claimed_lead_id = item_payload.get("lead_id")
+        lead_id = claimed_lead_id if isinstance(claimed_lead_id, str) else None
+        idempotency_key = item["idempotency_key"]
+        message: dict[str, Any] = {
+            "id": str(uuid5(NAMESPACE_URL, f"{batch_message['id']}/{item_id}")),
+            "type": "lead",
+            "timestamp": batch_message["timestamp"],
+            "sender_id": batch_message["sender_id"],
+            "receiver_id": batch_message["receiver_id"],
+            "correlation_id": None,
+            "idempotency_key": idempotency_key,
+            "test": bool(batch_message.get("test", False)),
+        }
+        envelope: dict[str, Any] = {
+            "lcp": {"version": version, "message": message, "payload": item_payload}
+        }
+        receipt: dict[str, Any] = {
+            "item_id": item_id,
+            "status": "rejected",
+            "lead_id": lead_id,
+        }
+        try:
+            self._validate_envelope(envelope)
+            if not self.store.consume_rate_limit(
+                sender_id, limit=self.config.rate_limit_per_minute
+            ):
+                raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
+            ack = self._ingest_lead(
+                envelope=envelope,
+                message=message,
+                sender_id=sender_id,
+                compare_payload=item_payload,
+            )
+            ack_payload = ack["lcp"]["payload"]
+            receipt["lead_id"] = ack_payload.get("lead_id", lead_id)
+            receipt["status"] = (
+                "duplicate" if ack_payload.get("status") == "DUPLICATE" else "accepted"
+            )
+            return receipt
+        except RequestError as exc:
+            error: dict[str, Any] = {"code": exc.code, "message": str(exc)}
+            if exc.details is not None:
+                error["details"] = exc.details
+            receipt["error"] = error
+            self._audit_batch_item(
+                sender_id=sender_id,
+                lead_id=lead_id,
+                idempotency_key=idempotency_key,
+                index=index,
+                batch_message_id=batch_message["id"],
+                status="rejected",
+                error_code=exc.code,
+            )
+        except Exception:
+            # Per-item isolation: an unexpected fault is this item's receipt,
+            # never a 500 for the request and never a rollback of siblings.
+            receipt["status"] = "error"
+            receipt["error"] = {
+                "code": "LCP-500",
+                "message": "Internal error while processing this item",
+            }
+            self._audit_batch_item(
+                sender_id=sender_id,
+                lead_id=lead_id,
+                idempotency_key=idempotency_key,
+                index=index,
+                batch_message_id=batch_message["id"],
+                status="error",
+                error_code="LCP-500",
+            )
+        return receipt
+
+    def _audit_batch_item(
+        self,
+        *,
+        sender_id: str,
+        lead_id: str | None,
+        idempotency_key: str,
+        index: int,
+        batch_message_id: str,
+        status: str,
+        error_code: str,
+    ) -> None:
+        """One audit row for an item that produced no lead-side row.
+
+        Accepted and duplicate items are audited by ``_ingest_lead`` itself
+        (``lead.routed``/``lead.duplicate``); this covers the two receipts that
+        never reach it, so every processed item has exactly one ``lead.*`` row.
+        An audit failure must not escalate a per-item refusal into a request
+        fault, so it is contained here.
+        """
+        try:
+            self._enqueue_audit(
+                tenant_id=self.auth.tenant_for(sender_id)
+                or self.config.routing_tenant_id,
+                actor_id=sender_id,
+                action=f"lead.{status}",
+                resource_type="lead",
+                resource_id=lead_id or idempotency_key or f"batch-item-{index}",
+                metadata={
+                    "source": "batch",
+                    "batch_message_id": batch_message_id,
+                    "error_code": error_code,
+                },
+            )
+        except Exception:  # noqa: BLE001 - isolated per item, see docstring
+            return
 
     def _validate_extension_policy(self, payload: dict[str, Any]) -> None:
         """LEP-0006 Track B receiver rules for ``extensions`` (§B.2/§B.3.4).
@@ -488,6 +1036,46 @@ class Platform:
             "LCP-100",
             details={"field": problems[0].split(" ", 1)[0]},
         )
+
+    def _record_email_form_entry(
+        self, envelope: dict[str, Any], *, sender_id: str
+    ) -> None:
+        """LEP-0003 W6-07 (SPEC §9-gated): record a captureless email/form entry.
+
+        The gate has two halves, both deployment-side: the sender must be a
+        declared email/form relay (``LCP_EMAIL_FORM_PUBLISHER_IDS``) — the
+        entry surface the platform was told about — *and* the flag
+        (``LCP_FEATURE_EMAIL_FORM_ENTRY``) must be on. A lead that satisfies
+        the surface but arrives while the flag is off is REFUSED: recording it
+        under the normalizer's ``publisher`` default would declare a surface
+        nobody observed, and this platform fails closed on provenance (§9).
+        The derivation itself (declared value, consent-consistent acquisition
+        method, never a client-observed field) is
+        ``validation.email_form_entry_provenance``.
+        """
+        if sender_id not in self.config.email_form_publisher_ids:
+            return
+        payload = envelope["lcp"]["payload"]
+        recorded = email_form_entry_provenance(payload)
+        if recorded is None:
+            return
+        if not self.config.feature_email_form_entry:
+            raise RequestError(
+                "Email-form entry emission is not enabled on this receiver",
+                "LCP-100",
+                400,
+                details=[
+                    "provenance.source_type",
+                    "this deployment does not advertise features.email_form_entry, "
+                    "so a captureless email/form relay entry is refused rather "
+                    "than recorded under a source_type it did not observe",
+                ],
+            )
+        provenance = payload["provenance"]
+        provenance["source_type"] = recorded["source_type"]
+        # A declared acquisition method is the publisher's statement; only an
+        # absent one is filled from the consent recorded on the lead.
+        provenance.setdefault("acquisition_method", recorded["acquisition_method"])
 
     def _verify_agent_attestation(
         self,
@@ -518,7 +1106,7 @@ class Platform:
         token = str(agent.get("attestation", ""))
 
         def audit(outcome: str, reason: str | None, metadata: dict[str, Any]) -> None:
-            self.store.insert_audit(
+            self._enqueue_audit(
                 tenant_id=self.auth.tenant_for(sender_id)
                 or self.config.routing_tenant_id,
                 actor_id=sender_id,
@@ -619,6 +1207,20 @@ class Platform:
             limit=self.config.rate_limit_per_minute,
         ):
             raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
+        # LEP-0009 C7: a token replaces bid_price_cents. Redemption is gated by
+        # the feature switch exactly like minting, and runs before the ordinary
+        # ping-status check: a token after its negotiation expiry answers
+        # `negotiation_closed`, never the generic auction `expired`.
+        if "negotiation_binding_token" in payload:
+            return self._redeem_negotiation_token(
+                envelope,
+                message=message,
+                payload=payload,
+                sender_id=sender_id,
+                ping=ping,
+                ping_envelope=ping_envelope,
+                raw_body=raw_body,
+            )
         if ping["status"] != "OPEN":
             return build_ack(
                 envelope,
@@ -633,6 +1235,1186 @@ class Platform:
                 status="DUPLICATE",
             )
         return build_ack(envelope, sender_id=self.config.platform_id, status="RECEIVED")
+
+    # ─── LEP-0009: negotiation (W4-08 / W5-01…W5-03) ───────────────────────
+    #
+    # One table per negotiation, one audit row per message, one hashed-token
+    # table. The state machine is OPEN -> COUNTERED -> ACCEPTED -> REDEEMED,
+    # with REFUSED / EXPIRED terminal. Every rule below fails closed: a
+    # refusal never guesses a price, never burns a round, and never reopens.
+
+    def _require_negotiation(self) -> None:
+        """LEP-0009 C3: with the switch off the surface does not exist."""
+        if not self.config.feature_negotiation:
+            raise RequestError(
+                "Unknown message type for this deployment",
+                "LCP-006",
+                400,
+                details=[
+                    "quote/counter require LCP_FEATURE_NEGOTIATION (LEP-0009 C3); "
+                    "this deployment does not advertise or accept them"
+                ],
+            )
+
+    def _advertises_negotiation(self, peer_id: str) -> bool:
+        """LEP-0009 C2: parsed semver major == 1, minor >= 2 (never a prefix)."""
+        for element in self.auth.lcp_versions_for(peer_id):
+            match = _FULL_SEMVER_RE.match(str(element).strip())
+            if match and int(match.group(1)) == 1 and int(match.group(2)) >= 2:
+                return True
+        return False
+
+    @staticmethod
+    def _message_digest(raw_body: bytes | None, envelope: dict[str, Any]) -> str:
+        body = (
+            raw_body
+            if raw_body is not None
+            else json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode(
+                "utf-8"
+            )
+        )
+        return hashlib.sha256(body).hexdigest()
+
+    def _negotiation_payload_guard(
+        self, message_type: str, payload: dict[str, Any]
+    ) -> None:
+        problems = negotiation_payload_pii_errors(
+            payload, self.validator.payload_fields(message_type)
+        )
+        if problems:
+            raise RequestError(
+                "Negotiation payload is not ping-safe",
+                "LCP-100",
+                400,
+                details=problems,
+            )
+
+    def _negotiation_preflight(
+        self, envelope: dict[str, Any], expected_type: str
+    ) -> None:
+        """The C4 probe, ahead of schema validation.
+
+        The schema's allowlist already refuses the field, but the record
+        requires the refusal to name the PII axis too; running the probe
+        first keeps both codes in one response instead of collapsing the
+        consumer-shaped field into the generic validation message
+        (LEP-0009 invalid example E).
+        """
+        lcp = envelope.get("lcp") if isinstance(envelope, dict) else None
+        message = lcp.get("message") if isinstance(lcp, dict) else None
+        payload = lcp.get("payload") if isinstance(lcp, dict) else None
+        if isinstance(message, dict) and message.get("type") == expected_type:
+            # C3 first: with the switch off the type does not exist here, so
+            # even a malformed/PII-bearing payload answers LCP-006, not a
+            # validation detail that would confirm the surface.
+            self._require_negotiation()
+            if isinstance(payload, dict):
+                self._negotiation_payload_guard(expected_type, payload)
+
+    def _negotiation_field_error(
+        self, field: str, expected: Any, actual: Any
+    ) -> NoReturn:
+        raise RequestError(
+            f"payload.{field} does not match the negotiation",
+            "LCP-100",
+            400,
+            details=[
+                f"payload.{field}: expected {expected!r}, got {actual!r} "
+                "(LEP-0009; no silent correction)"
+            ],
+        )
+
+    def _negotiation_object(
+        self,
+        row: Any,
+        *,
+        outcome: str,
+        price_cents: int | None = None,
+        rounds_remaining: int | None = None,
+        binding_token: str | None = None,
+        binding_expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        obj: dict[str, Any] = {
+            "negotiation_id": str(row["negotiation_id"]),
+            "outcome": outcome,
+            "currency": str(row["currency"]),
+            "rounds_remaining": int(
+                row["rounds_remaining"]
+                if rounds_remaining is None
+                else rounds_remaining
+            ),
+        }
+        if price_cents is not None:
+            obj["price_cents"] = int(price_cents)
+        if binding_token is not None:
+            obj["binding_token"] = binding_token
+            obj["binding_expires_at"] = binding_expires_at
+        return obj
+
+    def _negotiation_ack(
+        self,
+        envelope: dict[str, Any],
+        *,
+        status: str,
+        negotiation: dict[str, Any],
+        rejection_reason: str | None = None,
+        errors: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return build_ack(
+            envelope,
+            sender_id=self.config.platform_id,
+            status=status,
+            rejection_reason=rejection_reason,
+            errors=errors,
+            negotiation=negotiation,
+        )
+
+    def _record_negotiation_message(
+        self,
+        row: Any,
+        envelope: dict[str, Any],
+        *,
+        actor_role: str,
+        decision: str,
+        price_cents: int | None,
+        state_before: str,
+        state_after: str,
+        rejection_reason: str | None,
+        ack: dict[str, Any],
+        audit_action: str,
+        body_hash: str,
+        updates: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist one message: state update, one round row, one audit row."""
+        message = envelope["lcp"]["message"]
+        negotiation_id = str(row["negotiation_id"])
+        if updates:
+            self.store.update_negotiation(negotiation_id, **updates)
+        # C7: the binding token is returned exactly once, in the live ack. The
+        # persisted ack keeps the outcome/price for replay but never the token
+        # bytes — storage holds a hash only ("never logs or echoes again").
+        persisted_ack = json.loads(json.dumps(ack))
+        persisted_negotiation = (
+            persisted_ack.get("lcp", {}).get("payload", {}).get("negotiation")
+        )
+        if isinstance(persisted_negotiation, dict):
+            persisted_negotiation.pop("binding_token", None)
+        self.store.insert_negotiation_round(
+            negotiation_id=negotiation_id,
+            message_id=str(message["id"]),
+            message_type=str(message["type"]),
+            actor_id=str(message["sender_id"]),
+            actor_role=actor_role,
+            decision=decision,
+            price_cents=price_cents,
+            rounds_remaining_after=int(
+                (updates or {}).get("rounds_remaining", row["rounds_remaining"])
+            ),
+            state_after=state_after,
+            rejection_reason=rejection_reason,
+            idempotency_key=str(message["idempotency_key"]),
+            body_hash=body_hash,
+            ack=persisted_ack,
+        )
+        # Audit metadata carries ids/prices/rounds only — never token bytes.
+        self.store.insert_audit(
+            tenant_id=str(row["tenant_id"]),
+            actor_id=str(message["sender_id"]),
+            action=audit_action,
+            resource_type="negotiation",
+            resource_id=negotiation_id,
+            metadata={
+                "ping_id": str(row["ping_id"]),
+                "offer_id": str(row["offer_id"]),
+                "buyer_id": str(row["buyer_id"]),
+                "actor_role": actor_role,
+                "before_state": state_before,
+                "after_state": state_after,
+                "decision": decision,
+                "price_cents": price_cents,
+                "rounds_remaining": int(
+                    (updates or {}).get("rounds_remaining", row["rounds_remaining"])
+                ),
+                "message_id": str(message["id"]),
+                **({"rejection_reason": rejection_reason} if rejection_reason else {}),
+            },
+        )
+
+    def _negotiation_replay(
+        self, negotiation_id: str, envelope: dict[str, Any], *, body_hash: str
+    ) -> dict[str, Any] | None:
+        """Same key + same bytes -> the original ack; different bytes -> LCP-005."""
+        key = str(envelope["lcp"]["message"]["idempotency_key"])
+        row = self.store.negotiation_round_for_key(negotiation_id, key)
+        if row is None:
+            return None
+        if str(row["body_hash"]) != body_hash:
+            raise RequestError(
+                "Idempotency key reused with different content", "LCP-005", 409
+            )
+        stored = json.loads(str(row["ack_json"]))
+        if not isinstance(stored, dict):
+            raise RequestError("Stored acknowledgement is unreadable", "LCP-500", 500)
+        return stored
+
+    def submit_quote(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Open a negotiation: the platform states its ask for a pinged buyer."""
+        headers = headers or {}
+        self._negotiation_preflight(envelope, "quote")
+        self._validate_envelope(envelope)
+        message = envelope["lcp"]["message"]
+        if message["type"] != "quote":
+            raise RequestError("Quote endpoint requires a quote message", "LCP-006")
+        self._require_negotiation()
+        self._validate_transport(message, headers)
+        if message["sender_id"] != self.config.platform_id:
+            raise RequestError("A quote is a platform-role message", "LCP-002", 401)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+            required_scope="negotiation:send",
+        )
+        if sender_id != self.config.platform_id:
+            raise RequestError(
+                "Authenticated sender does not match the platform", "LCP-002", 401
+            )
+        if not self.store.consume_rate_limit(
+            sender_id, limit=self.config.rate_limit_per_minute
+        ):
+            raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
+        if not self._advertises_negotiation(message["receiver_id"]):
+            # C2: emitting toward a peer whose parsed lcp_versions does not
+            # open the v1.2 gate is a capability violation, not a best effort.
+            raise RequestError(
+                "Receiver does not advertise the negotiation capability",
+                "LCP-006",
+                400,
+                details=[
+                    f"{message['receiver_id']!r} advertises no parsed 1.x "
+                    "element with minor >= 2; quote/counter MUST NOT be emitted "
+                    "(LEP-0009 C2)"
+                ],
+            )
+        payload = envelope["lcp"]["payload"]
+        self._negotiation_payload_guard("quote", payload)
+        ping = self.store.get_ping(str(payload["ping_id"]))
+        if not ping:
+            raise RequestError("Unknown ping_id", "LCP-002", 401)
+        if str(ping["buyer_id"]) != str(message["receiver_id"]):
+            raise RequestError("Buyer is not authorized for this ping", "LCP-002", 401)
+        ping_envelope = self.store.decode_envelope(ping["envelope_json"])
+        ping_message = ping_envelope["lcp"]["message"]
+        ping_payload = ping_envelope["lcp"]["payload"]
+        if message.get("correlation_id") != ping_message["id"]:
+            raise RequestError(
+                "Quote correlation does not name the ping being priced",
+                "LCP-003",
+                400,
+            )
+        if str(payload["offer_id"]) != str(ping["offer_id"]):
+            self._negotiation_field_error(
+                "offer_id", ping["offer_id"], payload["offer_id"]
+            )
+        ping_currency = str(ping_payload.get("currency", ""))
+        if str(payload["currency"]) != ping_currency:
+            self._negotiation_field_error(
+                "currency", ping_currency, payload["currency"]
+            )
+        ping_floor = int(ping_payload.get("floor_price_cents", 0))
+        if int(payload["floor_price_cents"]) != ping_floor:
+            self._negotiation_field_error(
+                "floor_price_cents", ping_floor, payload["floor_price_cents"]
+            )
+        max_rounds = payload.get("max_rounds", NEGOTIATION_DEFAULT_MAX_ROUNDS)
+        if (
+            not _is_int(max_rounds)
+            or not 1 <= max_rounds <= NEGOTIATION_HARD_MAX_ROUNDS
+        ):
+            raise RequestError(
+                "max_rounds is outside the bounded round range",
+                "LCP-100",
+                400,
+                details=[
+                    f"payload.max_rounds: {max_rounds!r} outside 1.."
+                    f"{NEGOTIATION_HARD_MAX_ROUNDS} (LEP-0009 C5; hard cap)"
+                ],
+            )
+        if int(payload["rounds_remaining"]) != max_rounds:
+            self._negotiation_field_error(
+                "rounds_remaining", max_rounds, payload["rounds_remaining"]
+            )
+        expires_at = parse_iso_datetime(payload["expires_at"])
+        timestamp = parse_iso_datetime(message["timestamp"])
+        ping_expiry = parse_iso_datetime(ping_payload.get("expires_at")) or (
+            parse_iso_datetime(ping["expires_at"])
+        )
+        if expires_at is None:
+            raise RequestError("payload.expires_at is not a timestamp", "LCP-100", 400)
+        if ping_expiry is not None and expires_at > ping_expiry:
+            self._negotiation_field_error(
+                "expires_at",
+                format_iso_datetime(ping_expiry),
+                payload["expires_at"],
+            )
+        if (
+            timestamp is None
+            or expires_at <= timestamp
+            or expires_at <= datetime.now(timezone.utc)
+        ):
+            raise RequestError(
+                "payload.expires_at must be in the future of message.timestamp",
+                "LCP-100",
+                400,
+                details=["payload.expires_at: an absolute expiry needs a window"],
+            )
+        negotiation_id = str(payload["negotiation_id"])
+        body_hash = self._message_digest(raw_body, envelope)
+        existing = self.store.get_negotiation(negotiation_id)
+        if existing is not None:
+            replay = self._negotiation_replay(
+                negotiation_id, envelope, body_hash=body_hash
+            )
+            if replay is not None:
+                return replay
+            raise RequestError(
+                "A negotiation with this id already exists", "LCP-004", 422
+            )
+        price_cents = int(payload["price_cents"])
+        if price_cents < ping_floor:
+            # Refused, never clamped: the platform cannot claim a price the
+            # buyer did not state, and no row or token is written.
+            return self._negotiation_ack(
+                envelope,
+                status="REJECTED",
+                rejection_reason="below_floor_price",
+                errors=[
+                    {
+                        "code": "LCP-100",
+                        "message": "price_cents is below the restated floor",
+                        "field": "payload.price_cents",
+                    }
+                ],
+                negotiation={
+                    "negotiation_id": negotiation_id,
+                    "outcome": "refused",
+                    "price_cents": price_cents,
+                    "currency": ping_currency,
+                    "rounds_remaining": int(payload["rounds_remaining"]),
+                },
+            )
+        if str(ping["status"]) != "OPEN":
+            return self._negotiation_ack(
+                envelope,
+                status="REJECTED",
+                rejection_reason="negotiation_expired",
+                negotiation={
+                    "negotiation_id": negotiation_id,
+                    "outcome": "expired",
+                    "price_cents": price_cents,
+                    "currency": ping_currency,
+                    "rounds_remaining": int(payload["rounds_remaining"]),
+                },
+            )
+        tenant_id = (
+            self.auth.tenant_for(str(message["receiver_id"]))
+            or self.config.routing_tenant_id
+        )
+        inserted = self.store.insert_negotiation(
+            negotiation_id=negotiation_id,
+            tenant_id=tenant_id,
+            ping_id=str(ping["ping_id"]),
+            lead_id=str(ping["lead_id"]),
+            offer_id=str(ping["offer_id"]),
+            buyer_id=str(ping["buyer_id"]),
+            platform_id=self.config.platform_id,
+            currency=ping_currency,
+            floor_price_cents=ping_floor,
+            max_rounds=max_rounds,
+            rounds_remaining=max_rounds,
+            platform_price_cents=price_cents,
+            expires_at=format_iso_datetime(expires_at),
+            test=bool(message.get("test", False)),
+        )
+        if not inserted:
+            replay = self._negotiation_replay(
+                negotiation_id, envelope, body_hash=body_hash
+            )
+            if replay is not None:
+                return replay
+            raise RequestError(
+                "A negotiation with this id already exists", "LCP-004", 422
+            )
+        row = self.store.get_negotiation(negotiation_id)
+        if row is None:  # pragma: no cover - insert succeeded a moment ago
+            raise RequestError("Negotiation not found", "LCP-003", 404)
+        ack = self._negotiation_ack(
+            envelope,
+            status="ACCEPTED",
+            negotiation=self._negotiation_object(row, outcome="opened"),
+        )
+        self._record_negotiation_message(
+            row,
+            envelope,
+            actor_role="platform",
+            decision="quote",
+            price_cents=price_cents,
+            state_before="OPEN",
+            state_after="OPEN",
+            rejection_reason=None,
+            ack=ack,
+            audit_action="negotiation.opened",
+            body_hash=body_hash,
+        )
+        return ack
+
+    def submit_counter(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Answer the standing message: counter, accept, or refuse."""
+        headers = headers or {}
+        self._negotiation_preflight(envelope, "counter")
+        self._validate_envelope(envelope)
+        message = envelope["lcp"]["message"]
+        if message["type"] != "counter":
+            raise RequestError("Counter endpoint requires a counter message", "LCP-006")
+        self._require_negotiation()
+        self._validate_transport(message, headers)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+            required_scope="negotiation:send",
+        )
+        if not self.store.consume_rate_limit(
+            sender_id, limit=self.config.rate_limit_per_minute
+        ):
+            raise RequestError("Sender rate limit exceeded", "LCP-011", 429)
+        if not self._advertises_negotiation(
+            message["receiver_id"]
+            if sender_id == self.config.platform_id
+            else sender_id
+        ):
+            # C2: the peer that is not this platform must have advertised the
+            # capability; a platform-role counter checks the buyer receiver.
+            raise RequestError(
+                "Counterparty does not advertise the negotiation capability",
+                "LCP-006",
+                400,
+                details=[
+                    "no parsed 1.x element with minor >= 2; quote/counter are "
+                    "accepted/emitted only between v1.2+ peers (LEP-0009 C2)"
+                ],
+            )
+        payload = envelope["lcp"]["payload"]
+        self._negotiation_payload_guard("counter", payload)
+        negotiation_id = str(payload["negotiation_id"])
+        row = self.store.get_negotiation(negotiation_id)
+        if row is None:
+            # Unknown and retired ids answer identically: no existence oracle.
+            return self._negotiation_ack(
+                envelope,
+                status="REJECTED",
+                rejection_reason="unknown_negotiation",
+                negotiation={
+                    "negotiation_id": negotiation_id,
+                    "outcome": "refused",
+                    "currency": str(payload["currency"]),
+                    "rounds_remaining": int(payload["rounds_remaining"]),
+                },
+            )
+        is_platform = sender_id == self.config.platform_id
+        if not is_platform and sender_id != str(row["buyer_id"]):
+            raise RequestError(
+                "Buyer is not authorized for this negotiation", "LCP-002", 401
+            )
+        if is_platform and str(row["platform_id"]) != self.config.platform_id:
+            raise RequestError(
+                "Platform is not authorized for this negotiation", "LCP-002", 401
+            )
+        tenant_id = self.auth.tenant_for(sender_id)
+        if tenant_id is not None and tenant_id != str(row["tenant_id"]):
+            raise RequestError(
+                "Negotiation is not visible in this tenant", "LCP-002", 401
+            )
+        counterpart = str(row["buyer_id"]) if is_platform else str(row["platform_id"])
+        if str(message["receiver_id"]) != counterpart:
+            raise RequestError(
+                "Counter receiver is not the other party of this negotiation",
+                "LCP-002",
+                401,
+            )
+        body_hash = self._message_digest(raw_body, envelope)
+        replay = self._negotiation_replay(negotiation_id, envelope, body_hash=body_hash)
+        if replay is not None:
+            return replay
+        if (
+            self.store.negotiation_round_for_message(negotiation_id, str(message["id"]))
+            is not None
+        ):
+            # Same message id under a different key is a conflicting reuse,
+            # not a second turn in the negotiation.
+            raise RequestError(
+                "Message id already recorded with a different idempotency key",
+                "LCP-005",
+                409,
+            )
+        actor_role = "platform" if is_platform else "buyer"
+        if str(payload["ping_id"]) != str(row["ping_id"]):
+            self._negotiation_field_error("ping_id", row["ping_id"], payload["ping_id"])
+        if str(payload["offer_id"]) != str(row["offer_id"]):
+            self._negotiation_field_error(
+                "offer_id", row["offer_id"], payload["offer_id"]
+            )
+        if str(payload["currency"]) != str(row["currency"]):
+            self._negotiation_field_error(
+                "currency", row["currency"], payload["currency"]
+            )
+        if int(payload["floor_price_cents"]) != int(row["floor_price_cents"]):
+            self._negotiation_field_error(
+                "floor_price_cents",
+                row["floor_price_cents"],
+                payload["floor_price_cents"],
+            )
+        if str(payload["expires_at"]) != str(row["expires_at"]):
+            self._negotiation_field_error(
+                "expires_at", row["expires_at"], payload["expires_at"]
+            )
+        if int(payload["rounds_remaining"]) != int(row["rounds_remaining"]):
+            # Cheap ordering/replay guard: a stale echo fails instead of
+            # corrupting the round count.
+            self._negotiation_field_error(
+                "rounds_remaining",
+                row["rounds_remaining"],
+                payload["rounds_remaining"],
+            )
+        ping = self.store.get_ping(str(row["ping_id"]))
+        if ping is None:
+            raise RequestError("Unknown ping_id", "LCP-003", 404)
+        ping_message_id = self.store.decode_envelope(ping["envelope_json"])["lcp"][
+            "message"
+        ]["id"]
+        answered = self.store.negotiation_round_for_message(
+            negotiation_id, str(message.get("correlation_id") or "")
+        )
+        if answered is None:
+            if message.get("correlation_id") != ping_message_id:
+                raise RequestError(
+                    "Counter correlation does not name a message in this negotiation",
+                    "LCP-003",
+                    400,
+                )
+            answered_actor = str(row["platform_id"])
+            answered_price = int(row["platform_price_cents"])
+        else:
+            if str(answered["actor_id"]) == sender_id:
+                # Strict alternation: one sender never answers itself.
+                raise RequestError(
+                    "A counter must answer the other party's message",
+                    "LCP-004",
+                    422,
+                )
+            answered_actor = str(answered["actor_id"])
+            answered_price = (
+                int(answered["price_cents"])
+                if answered["price_cents"] is not None
+                else 0
+            )
+        state = str(row["status"])
+        timestamp = parse_iso_datetime(message["timestamp"])
+        expires_at = parse_iso_datetime(row["expires_at"])
+        decision = str(payload["decision"])
+        stated_price = int(payload["price_cents"]) if "price_cents" in payload else None
+
+        def refuse(
+            reason: str,
+            *,
+            state_after: str = "REFUSED",
+            audit_action: str = "negotiation.refused",
+            errors: list[dict[str, Any]] | None = None,
+            updates: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            fields: dict[str, Any] = {}
+            if state_after != state and state_after in {"REFUSED", "EXPIRED"}:
+                fields["status"] = state_after
+                if state_after == "REFUSED":
+                    # Exactly one reason is stored; a later message naming a
+                    # closed id changes no state and keeps the original.
+                    fields["rejection_reason"] = reason
+            if updates:
+                fields.update(updates)
+            ack = self._negotiation_ack(
+                envelope,
+                status="REJECTED",
+                rejection_reason=reason,
+                errors=errors,
+                negotiation=self._negotiation_object(
+                    row,
+                    outcome="refused" if state_after == "REFUSED" else "expired",
+                    price_cents=stated_price,
+                ),
+            )
+            self._record_negotiation_message(
+                row,
+                envelope,
+                actor_role=actor_role,
+                decision=decision,
+                price_cents=stated_price,
+                state_before=state,
+                state_after=state_after,
+                rejection_reason=reason,
+                ack=ack,
+                audit_action=audit_action,
+                body_hash=body_hash,
+                updates=fields,
+            )
+            return ack
+
+        # C8: absolute expiry, judged by the message instant AND wall clock.
+        # A late message never mutates a terminal state.
+        current = datetime.now(timezone.utc)
+        if expires_at is not None and (
+            (timestamp is not None and timestamp >= expires_at) or current >= expires_at
+        ):
+            return refuse(
+                "negotiation_expired",
+                state_after="EXPIRED",
+                audit_action="negotiation.expired",
+            )
+        if state in {"REFUSED", "EXPIRED"}:
+            return refuse("negotiation_closed", state_after=state)
+        if state in {"ACCEPTED", "REDEEMED"}:
+            # The state table's illegal-transition rows: ACCEPTED -> COUNTERED,
+            # a second accept, and REDEEMED -> anything are LCP-004.
+            raise RequestError(
+                f"Invalid negotiation transition {state} -> {decision}",
+                "LCP-004",
+                422,
+            )
+        if decision == "refuse":
+            reason = str(payload["rejection_reason"])
+            ack = self._negotiation_ack(
+                envelope,
+                status="ACCEPTED",
+                negotiation=self._negotiation_object(
+                    row, outcome="refused", price_cents=None
+                ),
+            )
+            self._record_negotiation_message(
+                row,
+                envelope,
+                actor_role=actor_role,
+                decision=decision,
+                price_cents=None,
+                state_before=state,
+                state_after="REFUSED",
+                rejection_reason=reason,
+                ack=ack,
+                audit_action="negotiation.refused",
+                body_hash=body_hash,
+                updates={"status": "REFUSED", "rejection_reason": reason},
+            )
+            return ack
+        if decision == "accept":
+            if stated_price is None or stated_price != answered_price:
+                self._negotiation_field_error(
+                    "price_cents", answered_price, stated_price
+                )
+            if stated_price < int(row["floor_price_cents"]):
+                return refuse(
+                    "below_floor_price",
+                    errors=[
+                        {
+                            "code": "LCP-100",
+                            "message": "price_cents is below the restated floor",
+                            "field": "payload.price_cents",
+                        }
+                    ],
+                )
+            token = new_negotiation_token()
+            token_hash = hash_negotiation_token(token)
+            self.store.insert_negotiation_token(
+                token_hash=token_hash,
+                negotiation_id=negotiation_id,
+                tenant_id=str(row["tenant_id"]),
+                buyer_id=str(row["buyer_id"]),
+                price_cents=stated_price,
+                currency=str(row["currency"]),
+                expires_at=str(row["expires_at"]),
+            )
+            ack = self._negotiation_ack(
+                envelope,
+                status="ACCEPTED",
+                negotiation=self._negotiation_object(
+                    row,
+                    outcome="accepted",
+                    price_cents=stated_price,
+                    binding_token=token,
+                    binding_expires_at=str(row["expires_at"]),
+                ),
+            )
+            self._record_negotiation_message(
+                row,
+                envelope,
+                actor_role=actor_role,
+                decision=decision,
+                price_cents=stated_price,
+                state_before=state,
+                state_after="ACCEPTED",
+                rejection_reason=None,
+                ack=ack,
+                audit_action="negotiation.accepted",
+                body_hash=body_hash,
+                updates={
+                    "status": "ACCEPTED",
+                    "accepted_price_cents": stated_price,
+                    "binding_expires_at": str(row["expires_at"]),
+                    "token_hash": token_hash,
+                },
+            )
+            return ack
+
+        # decision == "counter"
+        if stated_price is None:  # schema requires it; defensive
+            self._negotiation_field_error("price_cents", 0, None)
+        if stated_price < int(row["floor_price_cents"]):
+            return refuse(
+                "below_floor_price",
+                errors=[
+                    {
+                        "code": "LCP-100",
+                        "message": "price_cents is below the restated floor",
+                        "field": "payload.price_cents",
+                    }
+                ],
+            )
+        standing = int(row["platform_price_cents"])
+        if is_platform:
+            # C6: the platform may restate or raise its ask, never lower it.
+            if stated_price < standing:
+                return refuse("non_monotone_counter")
+            ack = self._negotiation_ack(
+                envelope,
+                status="ACCEPTED",
+                negotiation=self._negotiation_object(
+                    row, outcome="countered", price_cents=stated_price
+                ),
+            )
+            self._record_negotiation_message(
+                row,
+                envelope,
+                actor_role=actor_role,
+                decision=decision,
+                price_cents=stated_price,
+                state_before=state,
+                state_after=state,
+                rejection_reason=None,
+                ack=ack,
+                audit_action="negotiation.countered",
+                body_hash=body_hash,
+                updates={"platform_price_cents": stated_price},
+            )
+            return ack
+        if int(row["rounds_remaining"]) <= 0:
+            return refuse("round_limit_exceeded")
+        previous = row["buyer_price_cents"]
+        if previous is not None and stated_price <= int(previous):
+            return refuse("non_monotone_counter")
+        if stated_price >= standing:
+            # Consequence 1: at or above the standing ask closes at the
+            # COUNTER price, never silently downgraded to the ask.
+            token = new_negotiation_token()
+            token_hash = hash_negotiation_token(token)
+            self.store.insert_negotiation_token(
+                token_hash=token_hash,
+                negotiation_id=negotiation_id,
+                tenant_id=str(row["tenant_id"]),
+                buyer_id=str(row["buyer_id"]),
+                price_cents=stated_price,
+                currency=str(row["currency"]),
+                expires_at=str(row["expires_at"]),
+            )
+            ack = self._negotiation_ack(
+                envelope,
+                status="ACCEPTED",
+                negotiation=self._negotiation_object(
+                    row,
+                    outcome="accepted",
+                    price_cents=stated_price,
+                    binding_token=token,
+                    binding_expires_at=str(row["expires_at"]),
+                ),
+            )
+            self._record_negotiation_message(
+                row,
+                envelope,
+                actor_role=actor_role,
+                decision=decision,
+                price_cents=stated_price,
+                state_before=state,
+                state_after="ACCEPTED",
+                rejection_reason=None,
+                ack=ack,
+                audit_action="negotiation.accepted",
+                body_hash=body_hash,
+                updates={
+                    "status": "ACCEPTED",
+                    "buyer_price_cents": stated_price,
+                    "accepted_price_cents": stated_price,
+                    "binding_expires_at": str(row["expires_at"]),
+                    "token_hash": token_hash,
+                },
+            )
+            return ack
+        remaining = int(row["rounds_remaining"]) - 1
+        ack = self._negotiation_ack(
+            envelope,
+            status="ACCEPTED",
+            negotiation=self._negotiation_object(
+                row,
+                outcome="countered",
+                price_cents=stated_price,
+                rounds_remaining=remaining,
+            ),
+        )
+        self._record_negotiation_message(
+            row,
+            envelope,
+            actor_role=actor_role,
+            decision=decision,
+            price_cents=stated_price,
+            state_before=state,
+            state_after="COUNTERED",
+            rejection_reason=None,
+            ack=ack,
+            audit_action="negotiation.countered",
+            body_hash=body_hash,
+            updates={
+                "status": "COUNTERED",
+                "rounds_remaining": remaining,
+                "buyer_price_cents": stated_price,
+            },
+        )
+        return ack
+
+    def _redeem_negotiation_token(
+        self,
+        envelope: dict[str, Any],
+        *,
+        message: dict[str, Any],
+        payload: dict[str, Any],
+        sender_id: str,
+        ping: Any,
+        ping_envelope: dict[str, Any],
+        raw_body: bytes | None,
+    ) -> dict[str, Any]:
+        """C7: first redemption creates the bid; a same-key replay is identical."""
+        self._require_negotiation()
+        token = str(payload["negotiation_binding_token"])
+        if str(payload.get("decision")) != "accept":
+            raise RequestError("A redemption bid must decision accept", "LCP-100", 400)
+        body_hash = self._message_digest(raw_body, envelope)
+        token_row = self.store.get_negotiation_token(hash_negotiation_token(token))
+        if token_row is None:
+            # Unknown hash answers exactly like a closed negotiation: never
+            # "invalid token", which would confirm token existence. No
+            # negotiation object is invented for an id this bid cannot name.
+            return build_ack(
+                envelope,
+                sender_id=self.config.platform_id,
+                status="REJECTED",
+                rejection_reason="negotiation_closed",
+            )
+        if str(token_row["buyer_id"]) != sender_id:
+            raise RequestError(
+                "Token is not authorized for this sender", "LCP-002", 401
+            )
+        tenant_id = self.auth.tenant_for(sender_id)
+        if tenant_id is not None and tenant_id != str(token_row["tenant_id"]):
+            raise RequestError("Token is not visible in this tenant", "LCP-002", 401)
+        negotiation_id = str(token_row["negotiation_id"])
+        row = self.store.get_negotiation(negotiation_id)
+        if row is None:
+            return build_ack(
+                envelope,
+                sender_id=self.config.platform_id,
+                status="REJECTED",
+                rejection_reason="negotiation_closed",
+            )
+        if str(row["ping_id"]) != str(payload["ping_id"]):
+            self._negotiation_field_error("ping_id", row["ping_id"], payload["ping_id"])
+        if str(row["buyer_id"]) != sender_id:
+            raise RequestError("Token is not authorized for this buyer", "LCP-002", 401)
+        price_cents = int(token_row["price_cents"])
+        if "currency" in payload and str(payload["currency"]) != str(
+            token_row["currency"]
+        ):
+            self._negotiation_field_error(
+                "currency", token_row["currency"], payload["currency"]
+            )
+        if (
+            "bid_price_cents" in payload
+            and int(payload["bid_price_cents"]) != price_cents
+        ):
+            self._negotiation_field_error(
+                "bid_price_cents", price_cents, payload["bid_price_cents"]
+            )
+        # Same envelope key + same bytes is a replay, not a reuse: return the
+        # original acknowledgement byte for byte (as a dict) and write nothing.
+        if (
+            token_row["redeemed_at"] is not None
+            and str(token_row["redemption_idempotency_key"])
+            == str(message["idempotency_key"])
+            and str(token_row["redemption_body_hash"]) == body_hash
+        ):
+            stored = json.loads(str(token_row["redemption_ack_json"]))
+            if isinstance(stored, dict):
+                return stored
+        timestamp = parse_iso_datetime(message["timestamp"])
+        token_expiry = parse_iso_datetime(token_row["expires_at"])
+        current = datetime.now(timezone.utc)
+        expired = token_expiry is not None and (
+            (timestamp is not None and timestamp >= token_expiry)
+            or current >= token_expiry
+        )
+        if expired or str(row["status"]) != "ACCEPTED":
+            return self._negotiation_ack(
+                envelope,
+                status="REJECTED",
+                rejection_reason="negotiation_closed",
+                negotiation=self._negotiation_object(
+                    row, outcome="refused", price_cents=price_cents
+                ),
+            )
+        effective = json.loads(json.dumps(envelope))
+        effective_payload = effective["lcp"]["payload"]
+        effective_payload["bid_price_cents"] = price_cents
+        effective_payload.setdefault("currency", str(token_row["currency"]))
+        effective_payload.pop("negotiation_binding_token", None)
+        ack = self._negotiation_ack(
+            effective,
+            status="RECEIVED",
+            negotiation=self._negotiation_object(
+                row, outcome="redeemed", price_cents=price_cents
+            ),
+        )
+        redeemed = self.store.redeem_negotiation_token(
+            token_hash=str(token_row["token_hash"]),
+            negotiation_id=negotiation_id,
+            buyer_id=sender_id,
+            envelope=effective,
+            ping=ping,
+            idempotency_key=str(message["idempotency_key"]),
+            body_hash=body_hash,
+            redemption_ack=ack,
+        )
+        if not redeemed:
+            refreshed = self.store.get_negotiation_token(str(token_row["token_hash"]))
+            if (
+                refreshed is not None
+                and refreshed["redeemed_at"] is not None
+                and str(refreshed["redemption_idempotency_key"])
+                == str(message["idempotency_key"])
+                and str(refreshed["redemption_body_hash"]) == body_hash
+            ):
+                return json.loads(str(refreshed["redemption_ack_json"]))
+            return self._negotiation_ack(
+                effective,
+                status="REJECTED",
+                rejection_reason="negotiation_closed",
+                negotiation=self._negotiation_object(
+                    row, outcome="refused", price_cents=price_cents
+                ),
+            )
+        self.store.insert_audit(
+            tenant_id=str(row["tenant_id"]),
+            actor_id=sender_id,
+            action="negotiation.redeemed",
+            resource_type="negotiation",
+            resource_id=negotiation_id,
+            metadata={
+                "ping_id": str(row["ping_id"]),
+                "offer_id": str(row["offer_id"]),
+                "buyer_id": str(row["buyer_id"]),
+                "actor_role": "buyer",
+                "before_state": "ACCEPTED",
+                "after_state": "REDEEMED",
+                "decision": "accept",
+                "price_cents": price_cents,
+                "rounds_remaining": int(row["rounds_remaining"]),
+                "message_id": str(message["id"]),
+            },
+        )
+        return ack
+
+    def _expire_negotiations(self) -> None:
+        """C8 sweep: idempotent, one audit row per negotiation it moves."""
+        for row in self.store.claim_expired_negotiations():
+            self.store.insert_audit(
+                tenant_id=str(row["tenant_id"]),
+                actor_id=self.config.platform_id,
+                action="negotiation.expired",
+                resource_type="negotiation",
+                resource_id=str(row["negotiation_id"]),
+                metadata={
+                    "ping_id": str(row["ping_id"]),
+                    "offer_id": str(row["offer_id"]),
+                    "buyer_id": str(row["buyer_id"]),
+                    "before_state": str(row["status"]),
+                    "after_state": "EXPIRED",
+                    "expires_at": str(row["expires_at"]),
+                },
+            )
+
+    # D2/v1.2 — PROCESSED acknowledgement. A post is the only delivery a buyer
+    # can acknowledge this way, and PROCESSED is terminal-success
+    # (ACCEPTED -> PROCESSED): it never re-opens a payable, never rewrites
+    # pricing, and never becomes a precondition for SOLD.
+    _ACK_TERMINAL_STATUSES = frozenset({"REJECTED", "EXPIRED", "SOLD"})
+
+    def submit_ack(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        headers = headers or {}
+        self._validate_envelope(envelope)
+        message = envelope["lcp"]["message"]
+        if message["type"] != "ack":
+            raise RequestError("Ack endpoint requires an ack message", "LCP-006", 400)
+        self._validate_transport(message, headers)
+        if message["receiver_id"] != self.config.platform_id:
+            raise RequestError("Message receiver is not this platform", "LCP-002", 401)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+        )
+        payload = envelope["lcp"]["payload"]
+        if payload.get("status") != "PROCESSED":
+            raise RequestError(
+                "Only PROCESSED acknowledgements are accepted by this endpoint",
+                "LCP-006",
+                400,
+            )
+        lead_id = payload.get("lead_id")
+        if not isinstance(lead_id, str) or not lead_id:
+            raise RequestError("An ack for a post must carry lead_id", "LCP-003", 400)
+        delivery = next(
+            (
+                row
+                for row in self.store.deliveries_for_lead(lead_id)
+                if row["message_id"] == payload.get("original_message_id")
+            ),
+            None,
+        )
+        # PROCESSED answers a delivered post; a lead/ping/event (or a post
+        # this platform never delivered) is not a legal target.
+        if (
+            delivery is None
+            or delivery["kind"] != "post"
+            or delivery["buyer_id"] != sender_id
+        ):
+            if delivery is not None and delivery["buyer_id"] != sender_id:
+                raise RequestError(
+                    "Buyer is not authorized for this delivery", "LCP-002", 401
+                )
+            transition = InvalidStatusTransition(
+                "PROCESSED is only valid for a post delivery this buyer received"
+            )
+            raise RequestError(str(transition), "LCP-004", 422) from transition
+
+        lead_row = self.store.get_lead(lead_id)
+        current = str(delivery["status"])
+        terminal = self._ACK_TERMINAL_STATUSES
+        if current in terminal or (
+            lead_row is not None and str(lead_row["status"]) in terminal
+        ):
+            transition = InvalidStatusTransition(
+                f"Invalid ack transition {current} -> PROCESSED"
+            )
+            raise RequestError(str(transition), "LCP-004", 422) from transition
+        # Idempotent: a repeat returns the deterministic original ack and
+        # writes nothing (no second audit, no second status change).
+        if current != "PROCESSED":
+            if current != "DELIVERED":
+                transition = InvalidStatusTransition(
+                    f"A post must be delivered before PROCESSED (current: {current})"
+                )
+                raise RequestError(str(transition), "LCP-004", 422) from transition
+            self.store.mark_delivery(
+                delivery["delivery_id"],
+                status="PROCESSED",
+                attempts=int(delivery["attempts"]),
+                next_attempt_at=now_iso(),
+            )
+            self.store.insert_audit(
+                tenant_id=self.auth.tenant_for(sender_id)
+                or self.config.routing_tenant_id,
+                actor_id=sender_id,
+                action="post.processed",
+                resource_type="delivery",
+                resource_id=delivery["delivery_id"],
+                metadata={
+                    "lead_id": lead_id,
+                    "offer_id": delivery["offer_id"],
+                    "message_id": delivery["message_id"],
+                },
+            )
+        return self._processed_ack(
+            delivery, lead_id=lead_id, test=bool(message.get("test"))
+        )
+
+    def _processed_ack(
+        self, delivery: Any, *, lead_id: str, test: bool
+    ) -> dict[str, Any]:
+        """The ack this platform returns for a PROCESSED post delivery."""
+        post_message = self.store.decode_envelope(delivery["envelope_json"])["lcp"][
+            "message"
+        ]
+        # Deterministic id: a repeated PROCESSED returns the original
+        # acknowledgement, not a new one.
+        message_id = str(uuid5(NAMESPACE_URL, f"lcp:processed:{post_message['id']}"))
+        return {
+            "lcp": {
+                "version": SUPPORTED_LCP_VERSIONS[-1],
+                "message": {
+                    "id": message_id,
+                    "type": "ack",
+                    "timestamp": now_iso(),
+                    "sender_id": self.config.platform_id,
+                    "receiver_id": delivery["buyer_id"],
+                    "correlation_id": post_message["id"],
+                    "idempotency_key": (
+                        f"{self.config.platform_id}-ack-{post_message['id']}-PROCESSED"
+                    ),
+                    "test": test,
+                },
+                "payload": {
+                    "original_message_id": post_message["id"],
+                    "status": "PROCESSED",
+                    "lead_id": lead_id,
+                },
+            }
+        }
 
     # ─── Routing and delivery worker ───────────────────────────────────────
 
@@ -674,17 +2456,23 @@ class Platform:
         )
         matches: list[tuple[dict[str, Any], MatchResult]] = []
         for offer in offers:
-            result = match_offer(offer, payload, sender_id=row["sender_id"])
-            if result.matched and not self._capacity_available(offer):
-                result = MatchResult(False, result.reasons + ("capacity_exceeded",))
-            matches.append((offer, result))
-            self.store.insert_match_decision(
-                lead_id=lead_id,
-                offer_id=offer["offer_id"],
-                buyer_id=offer["buyer_id"],
-                matched=result.matched,
-                reasons=result.reasons,
+            result = match_offer(
+                offer,
+                payload,
+                sender_id=row["sender_id"],
+                profiles=self.store,
+                service_areas=self.service_areas,
             )
+            if result.matched and not self._capacity_available(offer):
+                result = MatchResult(
+                    False,
+                    result.reasons + ("capacity_exceeded",),
+                    profile=result.profile,
+                    predicates=result.predicates,
+                    service_area=result.service_area,
+                )
+            matches.append((offer, result))
+            self._record_match_evaluation(lead_id=lead_id, offer=offer, result=result)
         matching_offers = [offer for offer, result in matches if result.matched]
         direct_offers = [
             offer
@@ -718,6 +2506,12 @@ class Platform:
 
     def process_once(self) -> None:
         """Process retention, durable routing jobs, webhooks, and auction expiry."""
+        # W4-05: the deferred history/decision/audit writes drain here, off the
+        # intake path. Flushing first keeps the trail current before the
+        # retention sweep decides what is expired.
+        self.store.flush_history()
+        # W4-06: batched, interval-gated envelope redaction + history deletion.
+        self.store.sweep_retention()
         for lead in self.store.list_expired_leads():
             self.store.expire_lead(lead["lead_id"])
         for lead in self.store.list_consent_expired_leads():
@@ -728,9 +2522,21 @@ class Platform:
             )
         for attachment in self.store.list_expired_attachments():
             self.store.expire_attachment(attachment["attachment_id"])
+        # LEP-0009 C8: absolute expiry sweep (idempotent), then the non-PII
+        # retention purge for terminal rows past their window.
+        self._expire_negotiations()
+        self.store.purge_expired_negotiations()
+        # I8/W4-02: the match audit is retention bounded like decision history.
+        self.store.purge_match_audits(
+            format_iso_datetime(
+                datetime.now(timezone.utc)
+                - timedelta(days=self.config.match_audit_retention_days)
+            )
+        )
         self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
+        self._process_event_subscriptions()
         self._expire_unacknowledged_posts()
         self._process_attachment_deletions()
         # LEP-0003 §5 item 3: the auction-close re-route claims each expired
@@ -792,9 +2598,7 @@ class Platform:
             contacted_hashes=self._contacted_hashes_for(
                 lead_payload, offer["buyer_id"]
             ),
-            extensions=self._extensions_for_delivery(
-                lead_payload, offer["buyer_id"]
-            ),
+            extensions=self._extensions_for_delivery(lead_payload, offer["buyer_id"]),
             duplicate_resubmission=self.store.has_prior_post_delivery(
                 lead_payload["lead_id"], offer["buyer_id"]
             ),
@@ -885,6 +2689,67 @@ class Platform:
             currency=offer["currency"],
             reason="awaiting_delivery_or_call_outcome",
         )
+
+    def _enqueue_audit(
+        self,
+        *,
+        tenant_id: str,
+        actor_id: str,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Queue an intake audit row instead of writing it on the request path.
+
+        W4-05: the lead is already committed, so the audit trail must never be
+        able to slow or fail intake. The worker flushes; ``list_audit_events``
+        flushes too, so a reader still sees read-your-write. A saturated queue
+        is recorded as ``history.write_drop_risk``/``history_queue.dropped``
+        rather than raised (see ``Store.enqueue_history``).
+        """
+        self.store.enqueue_history(
+            lambda: self.store.insert_audit(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                metadata=metadata,
+            )
+        )
+
+    def _record_match_evaluation(
+        self, *, lead_id: str, offer: dict[str, Any], result: MatchResult
+    ) -> None:
+        """Queue the decision row and its explainable audit row together.
+
+        W4-05: both rows are history, not routing state — nothing downstream
+        of intake reads them back — so they go to the bounded history queue
+        and are flushed by the worker. One closure keeps the pair ordered and
+        stops a half-written decision/audit pair from a torn queue drain.
+        """
+
+        def write() -> None:
+            self.store.insert_match_decision(
+                lead_id=lead_id,
+                offer_id=offer["offer_id"],
+                buyer_id=offer["buyer_id"],
+                matched=result.matched,
+                reasons=result.reasons,
+            )
+            self.store.insert_match_audit(
+                lead_id=lead_id,
+                offer_id=offer["offer_id"],
+                buyer_id=offer["buyer_id"],
+                matched=result.matched,
+                reasons=result.reasons,
+                profile=result.profile,
+                predicates=result.predicates,
+                service_area=result.service_area,
+            )
+
+        self.store.enqueue_history(write)
 
     def _capacity_available(self, offer: dict[str, Any]) -> bool:
         now = datetime.now(timezone.utc)
@@ -1028,6 +2893,92 @@ class Platform:
             )
         return True
 
+    def _settlement_price(
+        self,
+        amount_cents: Any,
+        currency: Any,
+        pricing: Any,
+        settlement_currency: Any,
+        *,
+        counterpart: Any = None,
+        now: datetime | None = None,
+    ) -> tuple[Decimal | None, str | None]:
+        """D7: one price expressed in settlement minor units, or a reason.
+
+        Same currency compares directly. A cross-currency price needs a
+        present, well-formed, non-stale rate from a single source; missing,
+        stale, malformed, expired, or mixed-source metadata returns
+        ``(None, reason)`` and the caller excludes the offer from ranking.
+        Exact decimal arithmetic is used for the auction — never a rounded or
+        clamped value.
+        """
+        if not _is_int(amount_cents) or amount_cents < 0:
+            return None, "fx_amount_malformed"
+        native = str(currency or "USD").upper()
+        settlement = str(settlement_currency or "USD").upper()
+        if not _CURRENCY_RE.fullmatch(native):
+            return None, "fx_currency_malformed"
+        if not _CURRENCY_RE.fullmatch(settlement):
+            return None, "fx_settlement_currency_malformed"
+        if native == settlement:
+            return Decimal(amount_cents), None
+        metadata = pricing if isinstance(pricing, dict) else {}
+        if any(not metadata.get(field) for field in _FX_METADATA_FIELDS):
+            return None, "fx_rate_missing"
+        rate_text = metadata.get("fx_rate")
+        if not isinstance(rate_text, str) or not _FX_RATE_RE.fullmatch(rate_text):
+            return None, "fx_rate_malformed"
+        try:
+            rate = Decimal(rate_text)
+        except InvalidOperation:
+            return None, "fx_rate_malformed"
+        if rate <= 0:
+            return None, "fx_rate_malformed"
+        if rate > _FX_RATE_MAX:
+            return None, "fx_rate_malformed"
+        source = metadata.get("fx_source")
+        if not isinstance(source, str) or not source.strip():
+            return None, "fx_source_missing"
+        if isinstance(counterpart, dict):
+            other_source = counterpart.get("fx_source")
+            if other_source is not None and other_source != source:
+                return None, "fx_source_mixed"
+        reference = now or datetime.now(timezone.utc)
+        timestamp = parse_iso_datetime(metadata.get("fx_timestamp"))
+        if timestamp is None:
+            return None, "fx_timestamp_malformed"
+        if (reference - timestamp).total_seconds() > self.config.fx_max_age_seconds:
+            return None, "fx_rate_stale"
+        expires_at = parse_iso_datetime(metadata.get("fx_expires_at"))
+        if expires_at is None:
+            return None, "fx_expires_at_malformed"
+        if expires_at <= reference:
+            return None, "fx_rate_expired"
+        # LEP-0010 §4.2: `fx_rate` is a MAJOR-unit quote while the amount is
+        # MINOR units, so the exponent difference is part of the arithmetic:
+        #   settlement_minor = native_minor × 10^(exp_settlement − exp_native) ÷ rate
+        # Dropping the factor is the 100× USD→JPY overcharge the LEP forbids.
+        exponent_delta = _minor_unit_exponent(settlement) - _minor_unit_exponent(native)
+        scaled = Decimal(amount_cents) * (Decimal(10) ** exponent_delta)
+        return scaled / rate, None
+
+    def _record_non_comparable_bid(self, bid: Any, reason: str) -> None:
+        """Attach the exclusion reason to the auction decision record."""
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id=self.config.platform_id,
+            action="bid.non_comparable",
+            resource_type="bid",
+            resource_id=str(bid["bid_id"]),
+            metadata={
+                "lead_id": bid["lead_id"],
+                "offer_id": bid["offer_id"],
+                "buyer_id": bid["buyer_id"],
+                "currency": bid["currency"],
+                "reason": reason,
+            },
+        )
+
     def _route_lead(self, lead_id: str) -> None:
         row = self.store.get_lead(lead_id)
         if not row or row["status"] in {
@@ -1052,7 +3003,11 @@ class Platform:
             return
         bids = self.store.list_bids_for_lead(lead_id)
         pings = {ping["ping_id"]: ping for ping in self.store.list_pings(lead_id)}
-        candidates: list[tuple[sqlite3_row, sqlite3_row, dict[str, Any]]] = []
+        candidates: list[
+            tuple[sqlite3_row, sqlite3_row, dict[str, Any], Decimal, dict[str, Any]]
+        ] = []
+        converted_sources: set[str] = set()
+        now = datetime.now(timezone.utc)
         for bid in bids:
             ping = pings.get(bid["ping_id"])
             offer = self.store.get_offer(bid["offer_id"])
@@ -1065,10 +3020,37 @@ class Platform:
                 continue
             if not self._capacity_available(offer):
                 continue
-            if bid["bid_price_cents"] < offer["floor_price_cents"]:
+            bid_payload = self.store.decode_envelope(bid["envelope_json"])["lcp"][
+                "payload"
+            ]
+            settlement_price, reason = self._settlement_price(
+                bid["bid_price_cents"],
+                bid["currency"],
+                bid_payload,
+                offer.get("currency", "USD"),
+                counterpart=offer,
+                now=now,
+            )
+            if reason is not None:
+                self._record_non_comparable_bid(bid, reason)
                 continue
-            if bid["currency"] != offer["currency"]:
+            assert settlement_price is not None
+            converted = (
+                str(bid["currency"]).upper()
+                != str(offer.get("currency", "USD")).upper()
+            )
+            if settlement_price < Decimal(int(offer["floor_price_cents"])):
+                # LEP-0010 §6: a converted candidate excluded under the floor
+                # records WHY. "Your AUD bid was below a USD floor after
+                # conversion" is exactly the surprise the record removes; a
+                # same-currency floor exclusion keeps the existing silent
+                # behaviour (the LEP permits either, and no regression is
+                # introduced by leaving it).
+                if converted:
+                    self._record_non_comparable_bid(bid, "price_below_floor")
                 continue
+            if converted:
+                converted_sources.add(str(bid_payload.get("fx_source")))
             # LEP-0003 §5 item 4: award-eligible ping state. The OPEN-ping
             # requirement previously lived only in submit_bid, so a
             # post-expiry bid that reached the store by another path stayed
@@ -1084,10 +3066,27 @@ class Platform:
                 continue
             if (bid["received_at"] or "") >= (ping["expires_at"] or ""):
                 continue
-            candidates.append((bid, ping, offer))
+            candidates.append((bid, ping, offer, settlement_price, bid_payload))
+        # D7: rates from different providers are not a common basis. Mixed
+        # sources make every converted offer non-comparable (never pick one
+        # source arbitrarily); same-currency offers keep comparing directly.
+        if len(converted_sources) > 1:
+            comparable: list[
+                tuple[sqlite3_row, sqlite3_row, dict[str, Any], Decimal, dict[str, Any]]
+            ] = []
+            for candidate in candidates:
+                candidate_bid, _, candidate_offer, _, _ = candidate
+                if (
+                    str(candidate_bid["currency"]).upper()
+                    != str(candidate_offer.get("currency", "USD")).upper()
+                ):
+                    self._record_non_comparable_bid(candidate_bid, "fx_source_mixed")
+                else:
+                    comparable.append(candidate)
+            candidates = comparable
         candidates.sort(
             key=lambda item: (
-                -item[0]["bid_price_cents"],
+                -item[3],
                 item[0]["estimated_contact_seconds"]
                 if item[0]["estimated_contact_seconds"] is not None
                 else 2**31,
@@ -1108,17 +3107,21 @@ class Platform:
 
         lead_envelope = self.store.decode_envelope(row["envelope_json"])
         delivered = 0
-        for bid, ping, offer in candidates:
+        for bid, ping, offer, settlement_price, bid_payload in candidates:
             if not offer.get("webhook_url"):
                 continue
+            # Presentation rounds half-up only here, after the auction has
+            # ranked on the exact settlement price. The rounded cents never
+            # feed back into ranking.
+            settlement_cents = int(
+                settlement_price.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
             post = build_post(
                 lead_envelope,
                 offer,
                 platform_id=self.config.platform_id,
-                price_cents=bid["bid_price_cents"],
-                buyer_reference=self.store.decode_envelope(bid["envelope_json"])["lcp"][
-                    "payload"
-                ].get("buyer_reference"),
+                price_cents=settlement_cents,
+                buyer_reference=bid_payload.get("buyer_reference"),
                 correlation_id=ping["message_id"],
                 contacted_hashes=self._contacted_hashes_for(
                     lead_payload, offer["buyer_id"]
@@ -1129,6 +3132,14 @@ class Platform:
                 duplicate_resubmission=self.store.has_prior_post_delivery(
                     lead_payload["lead_id"], offer["buyer_id"]
                 ),
+                # D7/LEP-0010 §2: the converted award echoes the buyer's
+                # native amount, the settlement currency, and the winning
+                # bid's four fx_* values verbatim; `price_cents` above stays
+                # in settlement minor units. A same-currency award carries no
+                # FX evidence (its bid's metadata, if any, is inert).
+                fx=bid_fx_evidence(bid_payload, price_cents=int(bid["bid_price_cents"]))
+                if str(bid["currency"]).upper() != str(offer["currency"]).upper()
+                else None,
             )
             self.validator.require_valid_envelope(post)
             # LEP-0003 §5 item 1: the remaining-budget check and the post
@@ -1149,9 +3160,7 @@ class Platform:
                 max_buyers=budget,
             )
             if outcome == "awarded":
-                self._record_pending_payable(
-                    lead_envelope, offer, bid["bid_price_cents"]
-                )
+                self._record_pending_payable(lead_envelope, offer, settlement_cents)
                 self.store.mark_ping_won(ping["ping_id"])
                 delivered += 1
                 if exclusive:
@@ -1352,7 +3361,12 @@ class Platform:
             test=post["lcp"]["message"].get("test", False),
         )
         self.validator.require_valid_envelope(event)
-        if not self.store.insert_event(delivery["lead_id"], "DELIVERED", event):
+        if not self.store.insert_event(
+            delivery["lead_id"],
+            "DELIVERED",
+            event,
+            record_stream=self.config.feature_events,
+        ):
             return
         self.store.insert_delivery(
             lead_id=delivery["lead_id"],
@@ -1662,7 +3676,10 @@ class Platform:
 
         try:
             inserted_event = self.store.insert_event(
-                payload["lead_id"], event_name, envelope
+                payload["lead_id"],
+                event_name,
+                envelope,
+                record_stream=self.config.feature_events,
             )
         except EventIdempotencyConflict as exc:
             raise RequestError(str(exc), "LCP-005", 409) from exc
@@ -1745,6 +3762,487 @@ class Platform:
             status="RECEIVED",
             lead_id=payload["lead_id"],
         )
+
+    # ─── Event subscriptions (LEP-0001 W3) ────────────────────────────────
+
+    def _require_events(self) -> None:
+        if not self.config.feature_events:
+            # Same switch discipline as batch/negotiation: off means the
+            # route does not exist, not a per-request rejection.
+            raise RequestError("Endpoint not found", "LCP-001", 404)
+
+    def authenticate_read(self, headers: dict[str, str], *, required_scope: str) -> str:
+        """Authenticate a read surface (no body, no mutating idempotency key)."""
+        return self.auth.authenticate(
+            sender_id=header(headers, "X-LCP-Sender-Id"),
+            headers=headers,
+            body=b"",
+            mutating=False,
+            required_scope=required_scope,
+        )
+
+    @staticmethod
+    def _subscription_error(exc: SubscriptionValidationError) -> RequestError:
+        details: dict[str, Any] = {"reason": exc.reason}
+        if exc.field:
+            details["field"] = exc.field
+        if exc.reason == "receiver_mismatch":
+            return RequestError(str(exc), "LCP-002", 401, details=details)
+        if exc.reason == "schema_version_unsupported":
+            return RequestError(str(exc), "LCP-007", 422, details=details)
+        if exc.reason == "unknown_message_type":
+            return RequestError(str(exc), "LCP-006", 400, details=details)
+        return RequestError(str(exc), "LCP-100", 400, details=details)
+
+    def subscribe_events(
+        self,
+        envelope: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
+        raw_body: bytes | None = None,
+    ) -> dict[str, Any]:
+        """LEP-0001 W3-01: register a tenant-scoped event subscription.
+
+        Registration is authenticated like any mutating message; the
+        subscription is bound to the authenticated sender's tenant. The
+        per-subscription secret is returned exactly once, here, and never in
+        a list/read response.
+        """
+        self._require_events()
+        headers = headers or {}
+        try:
+            message, normalized = validate_subscription_envelope(
+                envelope,
+                platform_id=self.config.platform_id,
+                advertised_events=set(self._advertised_event_names()),
+                allow_private=self.config.allow_insecure_webhooks,
+            )
+        except SubscriptionValidationError as exc:
+            raise self._subscription_error(exc) from exc
+        # The named allowlist/filter refusals above run first so an attempted
+        # consumer predicate is never reported as a generic schema failure;
+        # the ordinary envelope/schema validator then pins the rest of the
+        # §2 shape (UUID id, timestamp, closed payload keys).
+        self._validate_envelope(envelope)
+        self._validate_transport(message, headers)
+        sender_id = self.auth.authenticate(
+            sender_id=message["sender_id"],
+            headers=headers,
+            body=raw_body if raw_body is not None else self._body(envelope),
+            idempotency_key=message["idempotency_key"],
+            mutating=True,
+            required_scope="event:subscribe",
+        )
+        if sender_id != message["sender_id"]:
+            raise RequestError(
+                "Authenticated sender does not match message sender", "LCP-002", 401
+            )
+        tenant_id = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        payload = envelope["lcp"]["payload"]
+        replay_from = payload.get("replay_from")
+        if replay_from is not None:
+            if not isinstance(replay_from, str) or not replay_from:
+                raise RequestError(
+                    "replay_from must be an event cursor",
+                    "LCP-100",
+                    400,
+                    details={"field": "replay_from", "reason": "cursor_invalid"},
+                )
+            cursor_sequence = self._resolve_event_cursor(replay_from, tenant_id)
+        else:
+            # A fresh subscription starts at the registration boundary: only
+            # events with a later sequence are delivered.
+            cursor_sequence = self.store.latest_event_stream_sequence(tenant_id)
+
+        existing = self.store.find_event_subscription_by_idempotency(
+            sender_id, message["idempotency_key"]
+        )
+        if existing is not None:
+            same = (
+                json.loads(existing["event_types_json"]) == normalized["event_types"]
+                and existing["callback_url"] == normalized["callback_url"]
+                and json.loads(existing["filter_json"]) == normalized["filter"]
+                and existing["replay_from"] == replay_from
+            )
+            if not same:
+                raise RequestError(
+                    "Idempotency key was reused with different subscription content",
+                    "LCP-005",
+                    409,
+                )
+            return self._subscription_view(existing)
+
+        secret = token_urlsafe(32)
+        subscription_id = f"sub_{uuid4().hex}"
+        row = self.store.insert_event_subscription(
+            subscription_id=subscription_id,
+            tenant_id=tenant_id,
+            subscriber_id=sender_id,
+            idempotency_key=message["idempotency_key"],
+            event_types=normalized["event_types"],
+            callback_url=normalized["callback_url"],
+            filter_values=normalized["filter"],
+            secret=secret,
+            replay_from=replay_from if isinstance(replay_from, str) else None,
+            cursor_sequence=cursor_sequence,
+        )
+        self.store.insert_audit(
+            tenant_id=tenant_id,
+            actor_id=sender_id,
+            action="subscription.created",
+            resource_type="event_subscription",
+            resource_id=subscription_id,
+            metadata={
+                "event_types": normalized["event_types"],
+                "filter_keys": sorted(normalized["filter"]),
+            },
+        )
+        return self._subscription_view(row, secret=secret)
+
+    def list_event_subscriptions(
+        self, *, headers: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        self._require_events()
+        sender_id = self.authenticate_read(
+            headers or {}, required_scope="event:subscribe"
+        )
+        tenant_id = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        rows = self.store.list_event_subscriptions(tenant_id)
+        return {"subscriptions": [self._subscription_view(row) for row in rows]}
+
+    def disable_event_subscription(
+        self, subscription_id: str, *, headers: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        self._require_events()
+        sender_id = self.authenticate_read(
+            headers or {}, required_scope="event:subscribe"
+        )
+        tenant_id = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        row = self.store.get_event_subscription(subscription_id)
+        if row is None:
+            raise RequestError("Subscription not found", "LCP-003", 404)
+        if row["tenant_id"] != tenant_id:
+            raise RequestError("Subscription belongs to another tenant", "LCP-002", 403)
+        self.store.deactivate_event_subscription(subscription_id, tenant_id=tenant_id)
+        self.store.insert_audit(
+            tenant_id=tenant_id,
+            actor_id=sender_id,
+            action="subscription.disabled",
+            resource_type="event_subscription",
+            resource_id=subscription_id,
+        )
+        updated = self.store.get_event_subscription(subscription_id) or row
+        return self._subscription_view(updated)
+
+    def events_page(
+        self, query: str, *, headers: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        """LEP-0001 W3-03: tenant-scoped read/replay from a cursor."""
+        self._require_events()
+        sender_id = self.authenticate_read(headers or {}, required_scope="event:read")
+        tenant_id = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        params = parse_qs(query)
+        supplied = params.get("cursor", [None])[0]
+        limit = self._event_page_limit(params)
+        after_sequence = (
+            0 if supplied is None else self._resolve_event_cursor(supplied, tenant_id)
+        )
+        rows = self.store.list_event_stream(
+            tenant_id=tenant_id,
+            after_sequence=after_sequence,
+            limit=limit + 1,
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        events = [self.store.decode_envelope(row["envelope_json"]) for row in rows]
+        next_cursor = encode_event_cursor(int(rows[-1]["sequence"])) if rows else None
+        return {
+            "events": events,
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        }
+
+    @staticmethod
+    def _event_page_limit(params: dict[str, list[str]]) -> int:
+        raw = params.get("limit", ["100"])[0]
+        try:
+            limit = int(raw)
+        except (TypeError, ValueError):
+            raise RequestError(
+                "limit must be an integer",
+                "LCP-100",
+                400,
+                details={"field": "limit", "reason": "limit_invalid"},
+            ) from None
+        if not 1 <= limit <= 500:
+            raise RequestError(
+                "limit must be between 1 and 500",
+                "LCP-100",
+                400,
+                details={"field": "limit", "reason": "limit_invalid"},
+            )
+        return limit
+
+    def _resolve_event_cursor(self, cursor: str, tenant_id: str) -> int:
+        """Decode a cursor; expired and unknown cursors are explicit errors.
+
+        Sequences are allocated per tenant, so a cursor always reads the
+        caller's own stream and cannot name another tenant's event.
+        """
+        try:
+            sequence = decode_event_cursor(cursor)
+        except EventCursorError as exc:
+            raise RequestError(
+                str(exc),
+                "LCP-100",
+                400,
+                details={"field": "cursor", "reason": exc.reason},
+            ) from exc
+        row = self.store.get_event_stream_event_by_sequence(tenant_id, sequence)
+        if row is None:
+            oldest = self.store.oldest_event_stream_sequence(tenant_id)
+            if oldest is None or sequence < oldest:
+                raise RequestError(
+                    "Event cursor has expired; replay from a newer cursor",
+                    "LCP-100",
+                    400,
+                    details={"field": "cursor", "reason": "cursor_expired"},
+                )
+            raise RequestError(
+                "Event cursor does not name a stream event",
+                "LCP-100",
+                400,
+                details={"field": "cursor", "reason": "cursor_unknown"},
+            )
+        event_at = parse_iso_datetime(row["created_at"])
+        if event_at is None:
+            raise RequestError(
+                "Event cursor does not name a stream event",
+                "LCP-100",
+                400,
+                details={"field": "cursor", "reason": "cursor_unknown"},
+            )
+        age = (datetime.now(timezone.utc) - event_at).total_seconds()
+        if age > self.config.event_cursor_ttl_seconds:
+            raise RequestError(
+                "Event cursor has expired; replay from a newer cursor",
+                "LCP-100",
+                400,
+                details={"field": "cursor", "reason": "cursor_expired"},
+            )
+        return sequence
+
+    @staticmethod
+    def _subscription_view(
+        row: dict[str, Any], *, secret: str | None = None
+    ) -> dict[str, Any]:
+        view: dict[str, Any] = {
+            "subscription_id": row["subscription_id"],
+            "event_types": json.loads(row["event_types_json"]),
+            "callback_url": row["callback_url"],
+            "filter": json.loads(row["filter_json"]),
+            "active": bool(row["active"]),
+            "replay_from": row["replay_from"],
+            "created_at": row["created_at"],
+        }
+        if secret is not None:
+            view["secret"] = secret
+        return view
+
+    def _process_event_subscriptions(self) -> None:
+        """Background path: fan out new events, then deliver due attempts.
+
+        Never called from a request handler that produced an event — delivery
+        is a worker concern, so intake latency is independent of subscriber
+        responsiveness.
+        """
+        if not self.config.feature_events:
+            return
+        cutoff = format_iso_datetime(
+            datetime.now(timezone.utc)
+            - timedelta(seconds=self.config.event_cursor_ttl_seconds)
+        )
+        self.store.purge_event_stream(cutoff)
+        for subscription in self.store.list_event_subscriptions(active_only=True):
+            self._fanout_event_subscription(subscription)
+        for delivery in self.store.claim_due_event_deliveries(self.worker_id):
+            self._deliver_event_subscription(delivery)
+
+    def _fanout_event_subscription(self, subscription: dict[str, Any]) -> None:
+        event_types = set(json.loads(subscription["event_types_json"]))
+        filters = json.loads(subscription["filter_json"])
+        # ponytail: one stream page per subscription per worker tick. A deep
+        # backlog drains at the worker cadence instead of holding the tick;
+        # raise the page size or fan out concurrently if delivery lag matters.
+        rows = self.store.list_event_stream(
+            tenant_id=str(subscription["tenant_id"]),
+            after_sequence=int(subscription["cursor_sequence"]),
+            limit=200,
+        )
+        if not rows:
+            return
+        for row in rows:
+            if row["event_type"] not in event_types:
+                continue
+            if not event_matches_filters(
+                event_type=str(row["event_type"]),
+                message_type=row["message_type"],
+                vertical=row["vertical"],
+                status=row["status"],
+                lead_id=row["lead_id"],
+                filters=filters,
+            ):
+                continue
+            self.store.insert_event_delivery(
+                subscription_id=str(subscription["subscription_id"]),
+                event_id=str(row["event_id"]),
+                event_type=str(row["event_type"]),
+            )
+        self.store.update_event_subscription_cursor(
+            str(subscription["subscription_id"]),
+            cursor_sequence=int(rows[-1]["sequence"]),
+        )
+
+    def _deliver_event_subscription(self, delivery: Any) -> None:
+        """Sign and POST one event delivery, with retry/DLQ bookkeeping."""
+        attempts = int(delivery["attempts"]) + 1
+        subscription = self.store.get_event_subscription(
+            str(delivery["subscription_id"])
+        )
+        event = self.store.get_event_stream_event(str(delivery["event_id"]))
+        # Authorization is re-checked on every delivery, not only at
+        # registration: an inactive subscription and a tenant mismatch both
+        # stop here.
+        if (
+            subscription is None
+            or not subscription["active"]
+            or event is None
+            or subscription["tenant_id"] != event["tenant_id"]
+        ):
+            error = "Subscription is inactive or no longer authorized for this event"
+            self.store.mark_event_delivery(
+                str(delivery["delivery_id"]),
+                status="FAILED",
+                attempts=attempts,
+                next_attempt_at=now_iso(),
+                last_error=error,
+                worker_id=self.worker_id,
+            )
+            self.store.record_dead_letter(
+                queue_type="event_subscription",
+                resource_id=str(delivery["delivery_id"]),
+                lead_id=str(event["lead_id"]) if event is not None else None,
+                attempts=attempts,
+                last_error=error,
+            )
+            return
+        secret = self.store.event_subscription_secret(
+            str(subscription["subscription_id"])
+        )
+        if not secret:
+            error = "Subscription has no active HMAC secret"
+            self.store.mark_event_delivery(
+                str(delivery["delivery_id"]),
+                status="FAILED",
+                attempts=attempts,
+                next_attempt_at=now_iso(),
+                last_error=error,
+                worker_id=self.worker_id,
+            )
+            self.store.record_dead_letter(
+                queue_type="event_subscription",
+                resource_id=str(delivery["delivery_id"]),
+                lead_id=str(event["lead_id"]),
+                attempts=attempts,
+                last_error=error,
+            )
+            return
+        try:
+            validate_webhook_url(str(subscription["callback_url"]), self.config)
+            validate_egress_host(
+                urlsplit(str(subscription["callback_url"])).hostname or "",
+                self.config,
+            )
+            envelope = self.store.decode_envelope(str(event["envelope_json"]))
+            body = json.dumps(
+                envelope, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+            timestamp = now_iso()
+            event_id = str(event["event_id"])
+            # LEP-0002 canonical input over the exact bytes above:
+            # <timestamp>\n<event_id>\n<body>. The timestamp signed is the one
+            # emitted on X-LCP-Timestamp, never a normalized value.
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "X-LCP-Sender-Id": self.config.platform_id,
+                "X-LCP-Event-Id": event_id,
+                "X-LCP-Subscription-Id": str(subscription["subscription_id"]),
+                "X-LCP-Timestamp": timestamp,
+                "X-LCP-Idempotency-Key": event_id,
+                "X-LCP-Signature": signature_for(secret, timestamp, event_id, body),
+            }
+            if envelope["lcp"]["message"].get("test"):
+                headers["X-LCP-Test"] = "true"
+            with httpx.Client(
+                timeout=self.config.webhook_timeout_seconds,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                with client.stream(
+                    "POST",
+                    str(subscription["callback_url"]),
+                    content=body,
+                    headers=headers,
+                ) as response:
+                    response_bytes = 0
+                    for chunk in response.iter_bytes():
+                        response_bytes += len(chunk)
+                        if response_bytes > self.config.max_webhook_response_bytes:
+                            raise SecurityPolicyError(
+                                "Webhook response exceeded the configured limit"
+                            )
+                    response_status = response.status_code
+            if response_status == 409 or 200 <= response_status < 300:
+                self.store.mark_event_delivery(
+                    str(delivery["delivery_id"]),
+                    status="DELIVERED",
+                    attempts=attempts,
+                    next_attempt_at=now_iso(),
+                    worker_id=self.worker_id,
+                )
+                return
+            # Never persist arbitrary subscriber response bodies: they may
+            # contain PII and are attacker-controlled.
+            error = f"HTTP {response_status} from subscriber callback"
+        except Exception as exc:  # delivery failures must enter the retry queue
+            error = f"{type(exc).__name__}: {exc}"
+
+        if attempts >= self.config.max_delivery_attempts:
+            status = "FAILED"
+            next_attempt = now_iso()
+        else:
+            status = "RETRY"
+            delay = self._retry_delays[min(attempts - 1, len(self._retry_delays) - 1)]
+            next_attempt = format_iso_datetime(
+                datetime.now(timezone.utc) + timedelta(seconds=delay)
+            )
+        self.store.mark_event_delivery(
+            str(delivery["delivery_id"]),
+            status=status,
+            attempts=attempts,
+            next_attempt_at=next_attempt,
+            last_error=error,
+            worker_id=self.worker_id,
+        )
+        if status == "FAILED":
+            self.store.record_dead_letter(
+                queue_type="event_subscription",
+                resource_id=str(delivery["delivery_id"]),
+                lead_id=str(event["lead_id"]),
+                attempts=attempts,
+                last_error=error,
+            )
 
     def upload_attachment(
         self, *, headers: dict[str, str], body: bytes
@@ -2081,6 +4579,34 @@ class Platform:
             result["consent_expires_at"] = row["consent_expires_at"]
         return result
 
+    @staticmethod
+    def _advertised_event_names() -> list[str]:
+        """The single event vocabulary this receiver advertises (LEP-0001 W3-01).
+
+        Registration and filter validation read this list, so what the
+        capabilities document advertises and what a subscription may name can
+        never drift.
+        """
+        return [
+            "DELIVERED",
+            "ACCEPTED",
+            "REJECTED",
+            "DISPUTED",
+            "REFUNDED",
+            "EXPIRED",
+            "CONVERTED",
+            "ARCHIVED",
+            "CALL_OFFERED",
+            "CALL_CONNECTED",
+            "CALL_ENDED",
+            "CALL_OUTCOME",
+            "CONTACTED",
+            # LEP-0006 Track A: publisher-reported final pricing (external or
+            # in-auction sale outcome). Analytics and bid refinement only —
+            # never a payable or lifecycle signal.
+            "FINAL_PRICING",
+        ]
+
     def capabilities(self) -> dict[str, Any]:
         return {
             # LEP-0003 Compatibility (F6): every element is a FULL
@@ -2090,7 +4616,66 @@ class Platform:
             # This advertisement and the intake LCP-007 negotiation read the
             # same constant (validation.SUPPORTED_LCP_VERSIONS) — issue #181.
             "lcp_versions": list(SUPPORTED_LCP_VERSIONS),
-            "message_types": ["lead", "call", "ping", "bid", "post", "ack", "event"],
+            # D3/v1.2: the core schema version this receiver validates
+            # against, resolved from the package SDK_VERSION. SPEC §2 states
+            # lcp.version IS the core schema version for this major line, so
+            # this is an advertisement, not a new envelope field.
+            "core_schema_version": _read_sdk_version(),
+            # D2/v1.2: absent an offer-level exclusivity hint, a lead is
+            # shared (the v1.0 default made explicit).
+            "exclusivity_default": "shared",
+            # v1.2 additive surfaces actually implemented by this build.
+            # Add a key only when the behaviour is enabled here.
+            "features": {
+                "processed_ack": "1.2.0",
+                "multi_currency": "1.2.0",
+                # LEP-0001 compensating constraint 1: the surface is advertised
+                # only when this deployment enabled it, so a peer that does not
+                # read the advertisement never receives batch unsolicited.
+                **({"batch": "1.2.0"} if self.config.feature_batch else {}),
+                # LEP-0009 C2/C3: advertised only when this deployment enabled
+                # the negotiation surface. Absence is the switch; a peer that
+                # sees no key MUST NOT emit quote/counter.
+                **({"negotiation": "1.2.0"} if self.config.feature_negotiation else {}),
+                # LEP-0001 W3: registration, signed at-least-once delivery,
+                # and cursor replay, advertised only when enabled.
+                **(
+                    {"event_subscriptions": "1.2.0"}
+                    if self.config.feature_events
+                    else {}
+                ),
+                # LEP-0003 W6-07: platform-recorded email/form relay entries
+                # are advertised only when this deployment enabled the surface
+                # (flag AND at least one declared relay publisher), so a peer
+                # never mistakes an absent key for a supported entry surface.
+                **(
+                    {"email_form_entry": "1.2.0"}
+                    if self.config.feature_email_form_entry
+                    and self.config.email_form_publisher_ids
+                    else {}
+                ),
+            },
+            "message_types": [
+                "lead",
+                "call",
+                "ping",
+                "bid",
+                "post",
+                "ack",
+                "event",
+                # LEP-0001 compensating constraint 1: a message type this
+                # deployment has not enabled is not advertised.
+                *(["batch"] if self.config.feature_batch else []),
+                # LEP-0009 C3: same rule for the negotiation types.
+                *(
+                    list(NEGOTIATION_MESSAGE_TYPES)
+                    if self.config.feature_negotiation
+                    else []
+                ),
+                # LEP-0001 W3: the registration type is advertised only when
+                # the subscription surface is enabled.
+                *(["subscription"] if self.config.feature_events else []),
+            ],
             "verticals": [
                 {"id": path.stem, "schema_version": "1.0.0"}
                 for path in (self.validator.vertical_root.glob("*.json"))
@@ -2100,25 +4685,7 @@ class Platform:
             # LEP-0003 §4 (F5/T6): CONTACTED is reportable by a delivered,
             # scoped buyer and must be advertised (the §8 surface the
             # compatibility gate relies on).
-            "events": [
-                "DELIVERED",
-                "ACCEPTED",
-                "REJECTED",
-                "DISPUTED",
-                "REFUNDED",
-                "EXPIRED",
-                "CONVERTED",
-                "ARCHIVED",
-                "CALL_OFFERED",
-                "CALL_CONNECTED",
-                "CALL_ENDED",
-                "CALL_OUTCOME",
-                "CONTACTED",
-                # LEP-0006 Track A: publisher-reported final pricing
-                # (external or in-auction sale outcome). Analytics and bid
-                # refinement only — never a payable or lifecycle signal.
-                "FINAL_PRICING",
-            ],
+            "events": self._advertised_event_names(),
             # SPEC §9: endpoints MAY advertise a non-default response
             # timeout; this is the value the post sweep enforces.
             "post_response_timeout_seconds": self.config.post_response_timeout_seconds,

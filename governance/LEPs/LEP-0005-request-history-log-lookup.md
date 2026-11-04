@@ -133,9 +133,9 @@ through as a normal PR (see Alternatives).
   equality in the matrix is a *new* obligation of this surface, not
   inherited behavior (see "Tenant binding at query time", #202 F2).
 - **SPEC text (implementation-phase, gated on acceptance):** one paragraph
-  in §9 (PII subsection, `SPEC.md:938-945`) norming the history read
+  in §9 (PII subsection, `spec/01-transport.md:82-89`) norming the history read
   surface's contact-hash rule, and a `history` entry in the §8 capability
-  shape (`SPEC.md:694`) so callers can discover the surface.
+  shape (`spec/04-errors.md:46`) so callers can discover the surface.
 - **Schemas:** a new response-shape schema
   (`schemas/history-request-row.json`, drafted below) — not a message
   payload schema; the eight `schemas/*.json` envelope files are untouched.
@@ -277,7 +277,7 @@ rows and keyed child rows on columns the child tables do not have.
 | `deliveries` (`storage.py:650`) | `post`, `event` (outbound webhook records; a `kind=ping` delivery attempt projects onto its `pings` row's `status`/timestamps rather than minting a duplicate row) | `sent` | platform id / `buyer_id` column | own column (`PENDING`/`RETRY`/`DELIVERED` (`router.py:1044`)/`FAILED`/`REDACTED`) | own column |
 | `lifecycle_events` (`storage.py:670`) | `event` (persisted lifecycle record) | per stored envelope direction | stored envelope `message.sender_id`/`receiver_id` | `event_name` column (`DELIVERED`/`ACCEPTED`/…, §4 event enum, open) | `timestamp` column |
 
-**No `ack` rows.** `ack` (§4, `SPEC.md:494`) is a response constructed
+**No `ack` rows.** `ack` (§4, `spec/02-envelope.md:201`) is a response constructed
 per message (`build_ack`, `messages.py:65`); no table stores acks, so a
 promised ack row would be invented from unstored state — precisely what the
 record's "no new stored state" justification forbids. `ack` is cut from the
@@ -306,8 +306,8 @@ different privacy guarantees and this record picks one per field instead of
 leaving the choice to implementers:
 
 1. **`caller_phone_hash` is a *hash with the pair secret*, not a redaction.**
-   Exactly the §9 `phone_hash` model (`SPEC.md:855-869`) that LEP-0003 §3
-   extended to contact hashes (`SPEC.md:871-901`):
+   Exactly the §9 `phone_hash` model (`spec/05-capabilities.md:134-140; spec/01-transport.md:7-13`) that LEP-0003 §3
+   extended to contact hashes (`spec/01-transport.md:15-45`):
    `caller_phone_hash = HMAC-SHA256(pair_secret, verbatim wire
    consumer.phone)` — the platform-side instance already shipped as
    `pair_phone_hash` (`messages.py:48-62`), keyed per pair so the same phone
@@ -776,7 +776,7 @@ platform treats it as a conformance failure.
   LEP-0003's ping fields, but the negotiation discipline is mirrored.
 - **Closed row object.** Future row fields are MINOR version bumps
   negotiated by the full-semver `lcp_versions` rule LEP-0003 F6 normalized
-  (`SPEC.md:698-712`): strict row validators pin the minor they were built
+  (`spec/04-errors.md:50-64`): strict row validators pin the minor they were built
   against; unknown fields on a *response* are the receiver's problem only
   if it chose `additionalProperties: false` — the draft schema does, and
   that is a deliberate trade: response strictness today over silent drift,
@@ -810,7 +810,7 @@ platform treats it as a conformance failure.
   already compute** this digest for" — the membership oracle §9 has
   provided since v1.0 pings; the log surface adds timing and record state
   around it, not identifiability. Enumeration inside a pair is that pair's
-  pre-existing insider threat model (`SPEC.md:855-869`), unchanged.
+  pre-existing insider threat model (`spec/05-capabilities.md:134-140; spec/01-transport.md:7-13`), unchanged.
 - Hashes remain personal data ("hashes of contact data used for matching
   are still personal data under most regimes" — carried honestly from
   LEP-0003's privacy section, issue-tracked there): mitigations are the
@@ -822,7 +822,7 @@ platform treats it as a conformance failure.
 
 **Erasure/retention integration (the §9 interplay the trigger names).**
 
-- §9: "PII retention policies are deployment-defined" (`SPEC.md:945`). The
+- §9: "PII retention policies are deployment-defined" (`spec/01-transport.md:89`). The
   history surface introduces **no second copy of anything**: it projects
   the platform's own operational tables, so retention, deletion, and
   suppression already normed per-deployment apply unchanged; the surface
@@ -858,7 +858,7 @@ platform treats it as a conformance failure.
 **Security.**
 
 - *Query integrity:* the HMAC canonical covers
-  `<timestamp>\n<idempotency-key>\n<raw-request-body>` (`SPEC.md:817-827`)
+  `<timestamp>\n<idempotency-key>\n<raw-request-body>` (`spec/05-capabilities.md:96-106`)
   — for GETs the body is empty, so **query parameters are not signed**.
   Recorded honestly as an inherited property of every existing read
   (`/v1/lcp/offers?vertical=`, attachments, quota), protected by TLS §9;
@@ -1118,7 +1118,7 @@ gate.
   confidentiality cuts across them. Trigger: first publisher adopter
   describing a dispute that requires ping-count visibility; decide with the
   marketplace `final_pricing` item (roadmap Phase 6 sibling).
-- **Ack row class (post-dossier, #202 F3).** `ack` (§4, `SPEC.md:494`) is
+- **Ack row class (post-dossier, #202 F3).** `ack` (§4, `spec/02-envelope.md:201`) is
   a per-message response artifact (`build_ack`, `messages.py:65`) that no
   table stores, so the v1 row universe is requests + deliveries/events
   only and `ack` is cut from the row schema enum (the `message_type=ack`
@@ -1204,7 +1204,7 @@ venv, `jsonschema 4.26.0` (matches `requirements-ci.txt`),
    invalid D'' (`price_cents: "29.00"`) → `REJ "'29.00' is not of type
    'integer'"` → `invalid[0..5] REJ` as quoted.
 5. **Status-vocabulary grounding:** example `status` literals taken from
-   shipped code, not invented: §3 lead statuses (`SPEC.md:255-259`);
+   shipped code, not invented: §3 lead statuses (`spec/03-payloads.md:179-183`);
    pings `'OPEN'`/`'EXPIRED'`/`'WON'`/`'SUPPRESSED'`
    (`storage.py:2102`, `storage.py:2146`, `storage.py:2173`,
    `storage.py:1534`); bids `accept` (`schemas/bid.json` decision enum);

@@ -53,6 +53,17 @@ class LCPClient:
             timeout=timeout,
         )
 
+    def close(self) -> None:
+        """Release the underlying SDK client's resources. Idempotent.
+
+        The SDK opens its HTTP connection per request today, so this closes
+        whatever a future SDK release holds open rather than leaking it; the
+        adapter already funnels shutdown through here.
+        """
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
+
     @property
     def endpoint(self) -> str:
         return self._client.endpoint
@@ -108,7 +119,9 @@ class LCPClient:
         the headers the plain ``get`` helper drops.
         """
         try:
-            data, headers = self._client.request_with_headers("GET", path, params=params)
+            data, headers = self._client.request_with_headers(
+                "GET", path, params=params
+            )
             return _with_metadata(data, 200, True), dict(headers)
         except LCPHTTPError as exc:
             body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}

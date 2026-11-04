@@ -1,0 +1,46 @@
+name: Specification site
+
+# Builds the static specification site from the normative sources and uploads
+# it as a workflow artifact (W6-02). There is deliberately no deploy step and
+# no cloud credential in this workflow: publishing is a separate, reviewed act
+# against the uploaded artifact.
+#
+# Triggers: a published version tag, or a manual dispatch. The committed
+# `site/` tree is verified first, so a hand-edited page or a source change
+# without a rebuild fails here instead of shipping.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lcp-spec-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Build the specification site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Verify the committed site matches the normative sources
+        run: python3 tools/build_spec_site.py --check
+      - name: Rebuild the site from the normative sources
+        run: python3 tools/build_spec_site.py
+      - name: Prove the rebuild is byte-identical (deterministic output)
+        run: python3 tools/build_spec_site.py --check
+      - name: Upload the site artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lcp-spec-site
+          path: site/
+          if-no-files-found: error
+          retention-days: 30

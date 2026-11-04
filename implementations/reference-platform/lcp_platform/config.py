@@ -22,6 +22,14 @@ def _csv(name: str, default: str = "") -> tuple[str, ...]:
     )
 
 
+# W4-03: datasets ship in the repository's ``data/service-areas`` directory.
+# A missing directory yields an empty catalog, so a reference fails closed with
+# ``service_area_unknown`` rather than matching everything.
+_DEFAULT_SERVICE_AREA_DIRECTORY = (
+    Path(__file__).resolve().parents[3] / "data" / "service-areas"
+)
+
+
 @dataclass(frozen=True)
 class PlatformConfig:
     database_path: Path
@@ -49,12 +57,66 @@ class PlatformConfig:
     # ceiling stays the transport body cap above, so a larger value here is
     # redundant rather than unsafe.
     max_extension_bytes: int = 32_768
+    # D7/v1.2: an FX rate older than this (seconds) makes a cross-currency
+    # offer NON-COMPARABLE in the auction. The default matches the decision
+    # record; never compare with a guessed rate.
+    fx_max_age_seconds: int = 300
+    # W4-03: versioned service-area datasets (countries/regions/postal codes)
+    # are loaded from this directory and cached until a file changes.
+    service_area_directory: Path = _DEFAULT_SERVICE_AREA_DIRECTORY
+    # I8/W4-02: the match audit record (profile id+version and one entry per
+    # predicate) is retention bounded like decision history. The worker purges
+    # rows older than this many days.
+    match_audit_retention_days: int = 90
+    # W4-06: encrypted envelope ciphertext (leads, pings, bids, lifecycle
+    # events, terminal deliveries) is redacted by the retention sweep once the
+    # row is older than this many days. The row survives for accounting; the
+    # payload does not.
+    envelope_retention_days: int = 90
+    # W4-06: decision/history rows (match_decisions, match_audits,
+    # audit_events) are unreadable past this many days and deleted by the same
+    # sweep.
+    history_retention_days: int = 365
+    # W4-05: history/decision/audit writes are handed to a bounded queue and
+    # flushed by the worker, so intake never blocks on the audit trail. See
+    # ``Store.enqueue_history`` for the saturation policy.
+    history_queue_capacity: int = 1_024
     max_header_bytes: int = 16_384
     max_webhook_response_bytes: int = 262_144
     rate_limit_per_minute: int = 600
     allow_insecure_webhooks: bool = False
     webhook_host_allowlist: tuple[str, ...] = ()
     test_mode: bool = False
+    # LEP-0001 compensating constraint 2: batch submission ships OFF by
+    # default. Off means no `features.batch` advertisement and no intake — the
+    # route answers exactly like an endpoint this build does not have.
+    feature_batch: bool = False
+    # LEP-0009 C3: the negotiation surface (`quote`/`counter`, token minting
+    # and redemption, the `features.negotiation` advertisement) ships OFF by
+    # default. Off means no advertisement, no intake, and no state written —
+    # the routes answer exactly like an endpoint this build does not have.
+    feature_negotiation: bool = False
+    # LEP-0001 W3: event subscriptions (registration, signed at-least-once
+    # delivery, cursor replay) ship OFF by default. Off means no
+    # `features.event_subscriptions` advertisement, no registration or read
+    # routes, and no event-stream writes — the routes answer exactly like an
+    # endpoint this build does not have.
+    feature_events: bool = False
+    # LEP-0003 W6-07 (§9-gated): email/form-relay entry emission. OFF by
+    # default. Off means no `features.email_form_entry` advertisement, and a
+    # lead from a declared relay publisher that carries no client capture is
+    # REFUSED rather than recorded under a `source_type` the platform did not
+    # observe — fail closed, never a fabricated provenance.
+    feature_email_form_entry: bool = False
+    # The entry-surface declaration: sender ids whose leads arrive through an
+    # email/form relay. Only these can receive a platform-recorded entry, so an
+    # empty list keeps intake bit-for-bit v1.2 whatever the flag says.
+    email_form_publisher_ids: tuple[str, ...] = ()
+    # LEP-0001 W3-03 / I8: the event stream and its cursors are retention
+    # bounded. A cursor older than this is refused with an explicit error;
+    # stream rows past the same bound are purged by the worker. The default
+    # (24 h) matches the Phase 4 retention work item's starting bound.
+    event_cursor_ttl_seconds: int = 86_400
     # LEP-0008 agent attestation verification (§4/§5/§7): "observe" verifies and
     # audits but still accepts (Rollout Phase 2); "enforce" (default at ship)
     # rejects on any §5 failure. Skew cap <= 30 s is a §7 configuration-time
@@ -106,6 +168,18 @@ class PlatformConfig:
             # The bound is a policy target, not a transport rule: a value above
             # max_body_bytes is unreachable, never unsafe, so it is not refused.
             raise ValueError("The extensions policy bound must be positive")
+        if self.fx_max_age_seconds <= 0:
+            raise ValueError("LCP_FX_MAX_AGE_SECONDS must be positive")
+        if self.match_audit_retention_days <= 0:
+            raise ValueError("LCP_MATCH_AUDIT_RETENTION_DAYS must be positive")
+        if self.envelope_retention_days <= 0:
+            raise ValueError("LCP_ENVELOPE_RETENTION_DAYS must be positive")
+        if self.history_retention_days <= 0:
+            raise ValueError("LCP_HISTORY_RETENTION_DAYS must be positive")
+        if self.history_queue_capacity <= 0:
+            raise ValueError("LCP_HISTORY_QUEUE_CAPACITY must be positive")
+        if self.event_cursor_ttl_seconds <= 0:
+            raise ValueError("LCP_EVENT_CURSOR_TTL_SECONDS must be positive")
         if self.max_webhook_response_bytes <= 0:
             raise ValueError("Webhook response limit must be positive")
         if self.max_attachment_bytes <= 0:
@@ -205,8 +279,24 @@ class PlatformConfig:
                 os.environ.get("LCP_WORKER_INTERVAL_SECONDS", "1")
             ),
             max_body_bytes=int(os.environ.get("LCP_MAX_BODY_BYTES", "2000000")),
-            max_extension_bytes=int(
-                os.environ.get("LCP_MAX_EXTENSION_BYTES", "32768")
+            max_extension_bytes=int(os.environ.get("LCP_MAX_EXTENSION_BYTES", "32768")),
+            fx_max_age_seconds=int(os.environ.get("LCP_FX_MAX_AGE_SECONDS", "300")),
+            service_area_directory=Path(
+                os.environ.get(
+                    "LCP_SERVICE_AREA_DIRECTORY", str(_DEFAULT_SERVICE_AREA_DIRECTORY)
+                )
+            ),
+            match_audit_retention_days=int(
+                os.environ.get("LCP_MATCH_AUDIT_RETENTION_DAYS", "90")
+            ),
+            envelope_retention_days=int(
+                os.environ.get("LCP_ENVELOPE_RETENTION_DAYS", "90")
+            ),
+            history_retention_days=int(
+                os.environ.get("LCP_HISTORY_RETENTION_DAYS", "365")
+            ),
+            history_queue_capacity=int(
+                os.environ.get("LCP_HISTORY_QUEUE_CAPACITY", "1024")
             ),
             max_header_bytes=int(os.environ.get("LCP_MAX_HEADER_BYTES", "16384")),
             max_webhook_response_bytes=int(
@@ -218,6 +308,14 @@ class PlatformConfig:
             allow_insecure_webhooks=_bool("LCP_ALLOW_INSECURE_WEBHOOKS", False),
             webhook_host_allowlist=_csv("LCP_WEBHOOK_HOST_ALLOWLIST"),
             test_mode=_bool("LCP_TEST_MODE", False),
+            feature_batch=_bool("LCP_FEATURE_BATCH", False),
+            feature_negotiation=_bool("LCP_FEATURE_NEGOTIATION", False),
+            feature_events=_bool("LCP_FEATURE_EVENTS", False),
+            feature_email_form_entry=_bool("LCP_FEATURE_EMAIL_FORM_ENTRY", False),
+            email_form_publisher_ids=_csv("LCP_EMAIL_FORM_PUBLISHER_IDS"),
+            event_cursor_ttl_seconds=int(
+                os.environ.get("LCP_EVENT_CURSOR_TTL_SECONDS", "86400")
+            ),
             attestation_mode=os.environ.get("LCP_ATTESTATION_MODE", "enforce").lower(),
             attestation_clock_skew_seconds=int(
                 os.environ.get("LCP_ATTESTATION_CLOCK_SKEW_SECONDS", "0")

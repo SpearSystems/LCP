@@ -142,6 +142,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorArray'
+  /leads/batch:
+    post:
+      tags:
+      - Leads
+      summary: Submit a bounded batch of leads
+      operationId: submitLeadsBatch
+      description: 'LEP-0001 bounded batch submission (W2-01): a `batch` message whose payload carries `request_id` and 1..100 items, each an ordinary lead payload with its own `item_id` and `idempotency_key`. Every item runs the same single-lead intake path — validation, authentication, idempotency, throttling, audit — so one invalid item rejects that item only, never its siblings. Caps are fixed at 100 items and a 1 MiB body; exceeding either is a whole-request 413, not per-item rejection.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/TestMode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchEnvelope'
+      responses:
+        '207':
+          description: Partial success — always 207, one receipt per input item in input order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthError'
+        '413':
+          description: Batch refused whole for exceeding 100 items or a 1 MiB body (LCP-001)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorArray'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /calls:
     post:
       tags:
@@ -455,6 +490,7 @@ paths:
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
         description: Publisher record handle.
       - name: message_type
         in: query
@@ -468,12 +504,14 @@ paths:
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
         description: Stored status (open vocabulary per the protocol's open-enum rule).
       - name: vertical
         in: query
         required: false
         schema:
           type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$'
       - name: caller_phone_hash
         in: query
         required: false
@@ -773,6 +811,7 @@ components:
           - RECEIVED
           - VALIDATED
           - ACCEPTED
+          - PROCESSED
           - REJECTED
           - DUPLICATE
           - ERROR
@@ -1065,6 +1104,174 @@ components:
               type: string
               format: date-time
               description: When daily/hourly counters reset.
+    Location:
+      type: object
+      description: Consumer location block carried by lead and call payloads (schemas/core.json). street_address is never ping-safe.
+      required:
+      - country_code
+      anyOf:
+      - required:
+        - state_region
+      - required:
+        - postal_code
+      properties:
+        country_code:
+          type: string
+          pattern: ^[A-Z]{2}$
+          description: ISO 3166-1 alpha-2. Required.
+        state_region:
+          type: string
+          description: Per-country validation registry (state, province, region).
+        postal_code:
+          type: string
+          description: Per-country format.
+        city:
+          type: string
+        street_address:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Residential street address. Not ping-safe; omitted from ping payloads.
+        timezone:
+          type: string
+          description: IANA timezone (e.g. Australia/Sydney).
+      additionalProperties: false
+    Provenance:
+      type: object
+      description: Non-PII origin metadata (schemas/core.json). ip_address is post-only and never ping-safe.
+      properties:
+        received_at:
+          type: string
+          format: date-time
+        source_type:
+          type: string
+          description: Open enumeration of source types.
+        acquisition_method:
+          type: string
+          description: Open enumeration of acquisition methods.
+        is_incentivized:
+          type: boolean
+        incentive_type:
+          type: string
+        source_id:
+          type: string
+        source_url:
+          type: string
+          format: uri
+        ip_hash:
+          type: string
+        ip_address:
+          type: string
+          minLength: 7
+          maxLength: 45
+          description: Consumer IP address (IPv4 or IPv6) captured server-side. Post-only; not ping-safe. ip_hash remains the ping-safe projection.
+        user_agent_hash:
+          type: string
+        funnel_key:
+          type: string
+        flow_key:
+          type: string
+        campaign_id:
+          type: string
+        creative_id:
+          type: string
+        landing_page_url:
+          type: string
+          format: uri
+        platform_source:
+          type: string
+        brand_id:
+          type: string
+          description: Publisher-owned brand identifier.
+        form_id:
+          type: string
+          description: Stable form or flow identifier.
+        agent:
+          type: object
+          required:
+          - agent_id
+          - acting_for
+          - attestation
+          properties:
+            agent_id:
+              type: string
+            acting_for:
+              type: string
+            attestation:
+              type: string
+              pattern: ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$
+              maxLength: 8192
+          additionalProperties: false
+      additionalProperties: false
+    Pricing:
+      type: object
+      description: Post-payload pricing block (schemas/post.json). v1.2 adds settlement currency alongside the native price and the FX rate, so two prices are comparable only when the rate is present, unexpired, and sourced consistently.
+      properties:
+        floor_price_cents:
+          type: integer
+          minimum: 0
+        premium_cents:
+          type: integer
+          minimum: 0
+        final_price_cents:
+          type: integer
+          minimum: 0
+        uncapped_price_cents:
+          type: integer
+          minimum: 0
+        max_allowed_price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: 'Effective settlement currency (ISO 4217 alpha-3), resolved in this order (LEP-0010 §1): `pricing.currency`, else the payload-level `currency`, else USD. When both are present they MUST be equal — two settlement currencies in one billing record is LCP-100 with `field: "pricing.currency"`. On a converted award this is always the settlement currency, never the winning bid''s native currency.'
+        original_price_cents:
+          type: integer
+          minimum: 0
+          description: Buyer's native minor-unit price before conversion.
+        fx_rate:
+          type: string
+          pattern: ^(?:[1-9][0-9]*\.[0-9]{6,12}|0\.[0-9]*[1-9][0-9]{5,11})$
+          description: 'Native major units per 1 settlement major unit (LEP-0010 §4.1). Plain decimal — no sign, exponent, grouping or leading-zero integer part — with a mandatory fractional part of 6-12 digits, at least six significant digits below 1, and a value in [0.000001, 1000000]. Required when the award converted a cross-currency bid; absent otherwise.'
+        fx_source:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Named rate provider or bilateral.
+        fx_timestamp:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: RFC 3339 UTC time the rate was observed.
+        fx_expires_at:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: RFC 3339 UTC end of the rate's validity.
+        price_guardrails:
+          type: boolean
+        is_duplicate_resub:
+          type: boolean
+          description: True if this is an accidental resubmission of a previously delivered lead.
+        payable_definition:
+          type: string
+          description: What makes this lead payable. Open enumeration, agreed bilaterally between publisher and buyer.
+        payable_status:
+          type: string
+          enum:
+          - pending
+          - payable
+          - not_payable
+          - disputed
+          description: Current payable status.
+        dispute_window_hours:
+          type: integer
+          minimum: 1
+          description: Contractually agreed return window in hours.
+        dispute_window_expires_at:
+          type: string
+          format: date-time
+          description: When the dispute window closes.
+      additionalProperties: false
     LeadEnvelope:
       type: object
       required:
@@ -1115,7 +1322,161 @@ components:
                   default: false
             payload:
               type: object
-              description: Lead payload - see schemas/lead.json for full definition.
+              description: Lead payload - see schemas/lead.json for full definition. v1.2 additions surface under location and provenance.
+              properties:
+                location:
+                  $ref: '#/components/schemas/Location'
+                provenance:
+                  $ref: '#/components/schemas/Provenance'
+    BatchEnvelope:
+      type: object
+      required:
+      - lcp
+      properties:
+        lcp:
+          type: object
+          required:
+          - version
+          - message
+          - payload
+          properties:
+            version:
+              type: string
+              pattern: ^\d+\.\d+\.\d+$
+            message:
+              type: object
+              required:
+              - id
+              - type
+              - timestamp
+              - sender_id
+              - receiver_id
+              - idempotency_key
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  enum:
+                  - batch
+                timestamp:
+                  type: string
+                  format: date-time
+                sender_id:
+                  type: string
+                receiver_id:
+                  type: string
+                correlation_id:
+                  type:
+                  - string
+                  - 'null'
+                idempotency_key:
+                  type: string
+                test:
+                  type: boolean
+                  default: false
+            payload:
+              $ref: '#/components/schemas/BatchPayload'
+    BatchPayload:
+      type: object
+      required:
+      - request_id
+      - items
+      additionalProperties: false
+      properties:
+        request_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Caller-supplied request identifier, echoed in the response.
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required:
+            - item_id
+            - idempotency_key
+            - payload
+            additionalProperties: false
+            properties:
+              item_id:
+                type: string
+                minLength: 1
+                maxLength: 64
+                description: Stable per-item identifier, echoed in that item's receipt.
+              idempotency_key:
+                type: string
+                minLength: 1
+                maxLength: 128
+                description: Per-item idempotency key; a replay returns the item's original receipt as `duplicate`.
+              payload:
+                type: object
+                description: Full-PII lead payload — the schemas/lead.json root object (never an envelope, never a ping payload), validated per item.
+    BatchResult:
+      type: object
+      required:
+      - request_id
+      - summary
+      - results
+      properties:
+        request_id:
+          type: string
+        summary:
+          type: object
+          required:
+          - total
+          - accepted
+          - duplicate
+          - rejected
+          - error
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            accepted:
+              type: integer
+              minimum: 0
+            duplicate:
+              type: integer
+              minimum: 0
+            rejected:
+              type: integer
+              minimum: 0
+            error:
+              type: integer
+              minimum: 0
+        results:
+          type: array
+          description: One receipt per input item, in input order. This receipt vocabulary is not ack.status (LEP-0001 F5).
+          items:
+            type: object
+            required:
+            - item_id
+            - status
+            properties:
+              item_id:
+                type: string
+              status:
+                type: string
+                enum:
+                - accepted
+                - duplicate
+                - rejected
+                - error
+              lead_id:
+                type:
+                - string
+                - 'null'
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
     CallEnvelope:
       type: object
       required:
@@ -1166,7 +1527,12 @@ components:
                   default: false
             payload:
               type: object
-              description: Call payload - see schemas/call.json for full definition.
+              description: Call payload - see schemas/call.json for full definition. v1.2 additions surface under location and provenance.
+              properties:
+                location:
+                  $ref: '#/components/schemas/Location'
+                provenance:
+                  $ref: '#/components/schemas/Provenance'
     BidPayload:
       type: object
       required:
@@ -1187,6 +1553,23 @@ components:
         currency:
           type: string
           pattern: ^[A-Z]{3}$
+        fx_rate:
+          type: string
+          pattern: ^(?:[1-9][0-9]*\.[0-9]{6,12}|0\.[0-9]*[1-9][0-9]{5,11})$
+          description: 'LEP-0010 §3: native major units per 1 settlement (offer-currency) major unit — same direction and pattern as post.pricing.fx_rate. Required when `currency` differs from the offer''s currency; inert and ignored for comparison on a same-currency bid.'
+        fx_source:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Named rate provider, or `bilateral`. Required with fx_rate.
+        fx_timestamp:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: Canonical whole-second UTC instant the rate was observed (LEP-0002 form). Required with fx_rate.
+        fx_expires_at:
+          type: string
+          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
+          description: Canonical whole-second UTC end of the rate's validity; strictly later than fx_timestamp. Required with fx_rate.
         estimated_contact_seconds:
           type: integer
           minimum: 0

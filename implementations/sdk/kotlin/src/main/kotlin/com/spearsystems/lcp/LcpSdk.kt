@@ -1,6 +1,7 @@
 package com.spearsystems.lcp
 
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -14,11 +15,18 @@ import java.util.HexFormat
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 
 data class Message(val id: String, val type: String, val timestamp: String, val senderId: String, val receiverId: String, val idempotencyKey: String, val test: Boolean = false)
 data class Envelope(val json: String, val message: Message)
 
+/** One lead in a batch: per-item identifiers plus the lead payload as JSON (schemas/batch.json). */
+data class BatchItem(val itemId: String, val idempotencyKey: String, val payloadJson: String)
+
 object LcpSdk {
+    private val MAPPER = ObjectMapper()
+
     /**
      * Canonical whole-second UTC wire format for `X-LCP-Timestamp` and the mirrored
      * envelope field (LEP-0002). Signers MUST emit exactly this shape; the HMAC
@@ -84,7 +92,81 @@ object LcpSdk {
         fun submitLead(envelope: Envelope) = request("POST", "/v1/lcp/leads", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
         fun submitCall(envelope: Envelope) = request("POST", "/v1/lcp/calls", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
         fun submitBid(envelope: Envelope) = request("POST", "/v1/lcp/bids", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
+        /**
+         * Submit up to 100 lead items in one request (LEP-0001 W2-01) and return
+         * the per-item receipts in input order. HTTP 207 partial success is a
+         * successful response; per-item error objects are preserved. The batch
+         * is never retried as a whole — retrying only rejected/error receipts
+         * is the caller's job.
+         */
+        fun submitLeadsBatch(items: List<BatchItem>, requestId: String? = null): List<JsonNode> {
+            require(items.isNotEmpty() && items.size <= 100) { "batch supports 1..100 items, got ${items.size}" }
+            val root = MAPPER.createObjectNode()
+            root.put("request_id", requestId ?: UUID.randomUUID().toString())
+            val array = root.putArray("items")
+            for (item in items) {
+                val node = array.addObject()
+                node.put("item_id", item.itemId)
+                node.put("idempotency_key", item.idempotencyKey)
+                node.set("payload", MAPPER.readTree(item.payloadJson))
+            }
+            val response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false))
+            val results = response.path("results")
+            check(results.isArray) { "batch response missing results" }
+            val order = items.withIndex().associate { it.value.itemId to it.index }
+            return results.sortedBy { order[it.path("item_id").asText()] ?: items.size }
+        }
+
         fun getCapabilities() = request("GET", "/v1/lcp/capabilities")
         fun listOffers(vertical: String? = null) = request("GET", "/v1/lcp/offers${if (vertical == null) "" else "?vertical=$vertical"}")
+
+        /** Fetch the current status of one submitted lead (`GET /v1/lcp/leads/{leadId}`). */
+        fun queryLeadStatus(leadId: String): String = request("GET", "/v1/lcp/leads/${pathEncode(leadId)}")
+
+        /**
+         * Fetch one protocol schema body (`GET /v1/lcp/schemas/{name}`) and return
+         * it unchanged. The name may be multi-segment (`verticals/mortgage`); see
+         * [pathEncode].
+         */
+        fun getSchema(name: String): String = request("GET", "/v1/lcp/schemas/${pathEncode(name)}")
+
+        /**
+         * LEP-0005 `GET /v1/lcp/history/requests` filters — `history:read`.
+         * Every field is optional: a null or empty value is left out of the
+         * query rather than sent blank, because a blank filter widens the page
+         * instead of narrowing it. Rows are scoped server-side to the
+         * credential's tenant, so there is no tenant field here.
+         */
+        fun requestHistory(
+            limit: Int? = null,
+            cursor: String? = null,
+            requestId: String? = null,
+            status: String? = null,
+            vertical: String? = null,
+            callerPhoneHash: String? = null,
+            from: String? = null,
+            to: String? = null,
+        ): String {
+            val query = listOf(
+                "limit" to limit?.toString(),
+                "cursor" to cursor,
+                "request_id" to requestId,
+                "status" to status,
+                "vertical" to vertical,
+                "caller_phone_hash" to callerPhoneHash,
+                "from" to from,
+                "to" to to,
+            ).mapNotNull { (name, value) -> if (value.isNullOrEmpty()) null else "$name=${URLEncoder.encode(value, "UTF-8")}" }
+            return request("GET", "/v1/lcp/history/requests" + if (query.isEmpty()) "" else "?" + query.joinToString("&"))
+        }
+
+        /**
+         * Percent-encode a request path like `quote(value, safe='/')` in the
+         * sibling SDKs: illegal and delimiter characters (`?`, `#`, space, `%`,
+         * non-ASCII) are escaped so a caller-supplied name cannot break out of
+         * the path, while `/` stays literal because schema names are
+         * multi-segment (`verticals/mortgage`).
+         */
+        private fun pathEncode(value: String): String = URI(null, null, value, null).rawPath
     }
 }

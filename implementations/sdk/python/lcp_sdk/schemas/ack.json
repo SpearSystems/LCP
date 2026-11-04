@@ -10,22 +10,26 @@
   ],
   "properties": {
     "original_message_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "uuid",
       "description": "ID of the message being acknowledged."
     },
     "status": {
+      "x-lcp-pii": "public",
       "type": "string",
       "enum": [
         "RECEIVED",
         "VALIDATED",
         "ACCEPTED",
+        "PROCESSED",
         "REJECTED",
         "DUPLICATE",
         "ERROR"
       ]
     },
     "errors": {
+      "x-lcp-pii": "internal",
       "type": "array",
       "items": {
         "$ref": "core.json#/$defs/error"
@@ -33,17 +37,78 @@
       "description": "Zero or more error objects. Present when status = ERROR or REJECTED."
     },
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Assigned lead ID, if applicable."
     },
     "request_id": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Server-side request ID for tracing."
     },
     "rejection_reason": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "description": "Structured rejection reason when status = REJECTED. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged. Open enumeration.",
       "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)"
+    },
+    "negotiation": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "description": "LEP-0009 \u00a75: the negotiation outcome carried on every ack for a quote/counter (and on the bid ack of a successful redemption), so a buyer never infers state from prose. Absent on a v1.1 exchange.",
+      "required": [
+        "negotiation_id",
+        "outcome",
+        "currency",
+        "rounds_remaining"
+      ],
+      "properties": {
+        "negotiation_id": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "pattern": "^neg_[A-Za-z0-9_-]{8,64}$"
+        },
+        "outcome": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "opened",
+            "countered",
+            "accepted",
+            "refused",
+            "expired",
+            "redeemed"
+          ]
+        },
+        "price_cents": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0,
+          "description": "The accepted, countered, or refused price; absent on a refusal that carried no price."
+        },
+        "currency": {
+          "$ref": "core.json#/$defs/currency"
+        },
+        "rounds_remaining": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "binding_token": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "pattern": "^tok_[A-Za-z0-9_-]{32,128}$",
+          "description": "Present only when outcome = accepted. Single-use; returned exactly once (the ack to the accepting message). The platform stores only a hash."
+        },
+        "binding_expires_at": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "format": "date-time",
+          "description": "At or before the negotiation expires_at; the token is unusable at or after this instant."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

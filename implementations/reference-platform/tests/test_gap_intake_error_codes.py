@@ -146,10 +146,11 @@ class GapIntakeErrorCodesTests(unittest.TestCase):
         # SPEC §5: "LCP-007 | SCHEMA_VERSION_UNSUPPORTED | 422"; §6:
         # "Protocol semver (MAJOR breaking / MINOR additive / PATCH fixes)."
         # Issue #181 repro: a future MAJOR ("2.0.0") must be rejected, not
-        # silently ACKed and processed as v1. A future MINOR ("1.2.0") and a
+        # silently ACKed and processed as v1. A future MINOR ("1.3.0") and a
         # different MAJOR ("0.9.0") are outside the §8 parsed-membership set
-        # this endpoint advertises and stamp the same code.
-        for version in ("2.0.0", "1.2.0", "0.9.0"):
+        # this endpoint advertises and stamp the same code. (1.2.0 is now an
+        # advertised vendor version — LEP-0001/LEP-0010 — so it ACKs.)
+        for version in ("2.0.0", "1.3.0", "0.9.0"):
             lead = self.load_lead()
             lead["lcp"]["version"] = version
             status, _, payload = self.post_lead(lead)
@@ -167,7 +168,7 @@ class GapIntakeErrorCodesTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(payload["errors"][0]["code"], "LCP-100")
 
-        for version in ("1.0.0", "1.1.0", "1.0.9", "1.1.5"):
+        for version in ("1.0.0", "1.1.0", "1.2.0", "1.0.9", "1.1.5"):
             lead = self.load_lead()
             lead["lcp"]["version"] = version
             status, _, payload = self.post_lead(lead)
@@ -181,7 +182,7 @@ class GapIntakeErrorCodesTests(unittest.TestCase):
             "GET", "/v1/lcp/capabilities", headers={}, body=b""
         )
         versions = advertised["lcp_versions"]
-        self.assertEqual(versions, ["1.0.0", "1.1.0"])
+        self.assertEqual(versions, ["1.0.0", "1.1.0", "1.2.0"])
         for version in versions:
             lead = self.load_lead()
             lead["lcp"]["version"] = version

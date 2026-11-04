@@ -11,22 +11,27 @@
   ],
   "properties": {
     "lead_id": {
+      "x-lcp-pii": "internal",
       "type": "string"
     },
     "event": {
+      "x-lcp-pii": "public",
       "type": "string",
       "description": "Lifecycle event. OPEN ENUMERATION \u2014 known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected. Adding new values is a MINOR version bump, not breaking.",
       "$comment": "No enum constraint \u2014 this is an open enumeration per SPEC.md \u00a76. Receivers must accept any string value."
     },
     "timestamp": {
+      "x-lcp-pii": "internal",
       "type": "string",
       "format": "date-time"
     },
     "details": {
+      "x-lcp-pii": "restricted",
       "type": "object",
       "additionalProperties": true
     },
     "external_reference": {
+      "x-lcp-pii": "internal",
       "type": "string"
     }
   },

@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0009-agent-to-agent-negotiation.md">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LEP-0009 — Agent-to-agent negotiation: the quote and counter message types — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0009--agent-to-agent-negotiation-the-quote-and-counter-message-types">LEP-0009 — Agent-to-agent negotiation: the <code>quote</code> and <code>counter</code> message types</h1>
+<ul>
+<li><strong>Title:</strong> Agent-to-agent negotiation: bounded <code>quote</code>/<code>counter</code> price discovery as core message types</li>
+<li><strong>Author(s):</strong> LCP maintainers</li>
+<li><strong>Date:</strong> 2026-11-04</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — accepted 2026-11-04 by the maintainer (D8 of <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md"><code>docs/DECISIONS-v1.2.md</code></span>); built under the D1 trigger waiver, so <strong>no adopter evidence is claimed</strong> (see "Problem statement and evidence")</li>
+<li><strong>Target version:</strong> v1.2.0 (MINOR). Contingency <strong>v1.3.0</strong>, recorded in <code>docs/DECISIONS-v1.2.md</code> "Release consequence": if this wire surface is not complete when v1.2.0 ships, it moves to v1.3.0 — the LEP record, not the release note, decides that outcome</li>
+<li><strong>Decision record:</strong> <code>docs/DECISIONS-v1.2.md</code> D8; registry row <span class="unpublished" title="Not published in the specification site: governance/LEP-REGISTRY.md"><code>governance/LEP-REGISTRY.md</code></span>; delivery lane <code>docs/V1.2-EXECUTION-PLAN.md</code> W4-08 + W5-01…W5-04</li>
+<li><strong>Re-evaluation date:</strong> 2027-05-04 (D1 compensating constraint 3)</li>
+<li><strong>Discussion:</strong> none recorded. The decision is the dated D8 entry; this record is the durable rationale. No issue number is invented here.</li>
+<li><strong>Implementation status:</strong> none. No schema, platform route, SDK model, MCP tool, or vector exists for this surface as of this record.</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</h2>
+<p><strong>Accepted</strong> as a MINOR, additive, capability-gated surface, on the terms of D8:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Contract element</th>
+<th>Normative rule (this record)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C1</td>
+<td>New types</td>
+<td><code>quote</code> and <code>counter</code> join the <strong>closed</strong> <code>message.type</code> enum (SPEC.md §6). Absence of a type is unchanged; unknown types remain <code>LCP-006</code>.</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>Capability gating</td>
+<td>A sender MUST NOT emit either type, nor <code>bid.negotiation_binding_token</code>, nor <code>ack.negotiation</code>, unless the receiver's <code>capabilities().features</code> advertises <code>negotiation</code> and its parsed-semver <code>lcp_versions</code> opens the v1.2 gate (Compatibility, below).</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>Off by default</td>
+<td><code>LCP_FEATURE_NEGOTIATION</code> defaults to <code>off</code> in the reference platform: no advertisement, no intake, no state written. CI exercises the surface with the flag on.</td>
+</tr>
+<tr>
+<td>C4</td>
+<td>Ping-safe</td>
+<td>Integer minor units, ISO 4217 currency, ids, timestamps, round counters, closed reason values. No consumer PII, no contact hash, no free text. Strict allowlist (<code>additionalProperties: false</code>).</td>
+</tr>
+<tr>
+<td>C5</td>
+<td>Bounded rounds</td>
+<td><code>max_rounds</code> default <strong>3</strong>, hard cap <strong>5</strong>; <code>rounds_remaining</code> counts buyer counters; a counter at zero is refused with <code>round_limit_exceeded</code>.</td>
+</tr>
+<tr>
+<td>C6</td>
+<td>Monotone</td>
+<td>Every <code>counter.price_cents</code> MUST be ≥ the sender's own most recent price in that negotiation (strictly greater for the buyer), so no message ever moves the price against the platform. Never below the floor; below floor is <strong>refused, never clamped</strong>.</td>
+</tr>
+<tr>
+<td>C7</td>
+<td>Binding token</td>
+<td>An <code>accept</code> produces a single-use <code>binding_token</code> that replaces <code>bid_price_cents</code> on the buyer's subsequent <code>bid</code>. Replay of the same redemption returns the original outcome; no second bid, no second payable.</td>
+</tr>
+<tr>
+<td>C8</td>
+<td>Absolute expiry</td>
+<td><code>expires_at</code> is absolute, restated on every message, and MUST NOT exceed the ping's TTL. Past expiry the negotiation is <code>EXPIRED</code>; late messages are refused <code>negotiation_expired</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Conditions of acceptance (the "Traceability and implementation gate" of <code>governance/LEP.md</code>):</p>
+<ol>
+<li>Every wire artifact lands with the D1 evidence stand-in: the vector suite <code>test-vectors/negotiation.json</code> (<code>NEG-001</code>…) plus the platform tests named under "Tests". A benchmark is not required because no throughput claim is made.</li>
+<li><code>schemas/</code> stays the only normative source: both payload schemas, the <code>envelope.json</code> enum addition, the <code>bid.json</code> token field, and the <code>ack.json</code> <code>negotiation</code> object are edited there first, then generated or verified downstream (10 SDKs, OpenAPI, MCP, vectors).</li>
+<li>Any deviation from the wire shape in this record returns it to Review before merge.</li>
+<li>The registry row keeps the 2027-05-04 re-evaluation date until adopter evidence replaces the waiver.</li>
+</ol>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p>LCP has exactly one price-exchange round. A ping advertises a lead to prospective buyers with <code>floor_price_cents</code> and <code>expires_at</code> (<code>schemas/ping.json</code>), a buyer answers once with <code>bid{decision, bid_price_cents}</code> (<code>schemas/bid.json</code>), and the platform selects the winner ("The platform collects bids within the ping expiry window"; SPEC.md §4). There is no second round, no seller counter, and no way for a machine buyer to converge on a price it could not state in one shot.</p>
+<p>That is a structural gap for automated buyers, and it shows up in three concrete ways today:</p>
+<ol>
+<li><strong>A buyer cannot improve a losing bid.</strong> A bid that loses on price produces no further message ("losers receive no further messages" — the same paragraph states the property as a privacy feature). A pricing agent that would have closed at an intermediate price has no protocol turn in which to say so.</li>
+<li><strong>The only price signal is binary.</strong> <code>decision</code> is <code>accept | reject | pass</code>, and <code>reject_reason</code> is prose-shaped and open. A platform cannot distinguish "no interest" from "close on price" without reading a free string, which is exactly the kind of field a PII audit removes rather than extends.</li>
+<li><strong>Buyer-side automation has no auditable price history.</strong> Every negotiated price that happens off-protocol (email, chat, a sales rep's call) leaves no trail LCP can reconcile against <code>post.pricing</code>. Disputes then compare a delivered price with an e-mail thread.</li>
+</ol>
+<p><strong>Evidence status — stated plainly.</strong> This is built under the <strong>D1 trigger waiver</strong>. The v1.1 trigger for this item (<code>docs/V1.1-ROADMAP.md</code>, deferred-trigger table: "Agent-to-agent price negotiation | Agent bidding volume large enough that static floor pricing is suboptimal") was <strong>not met</strong>: no adopter reported agent bidding volume at that scale, no interoperability test demanded a counter message, and no second independent adopter asked for the surface. <code>governance/LEP.md</code> decision rules require, before a new universal message type, "evidence from at least two independent adopters or a documented interoperability necessity, plus an extension feasibility analysis"; <strong>neither the two-adopter evidence nor a documented necessity exists</strong>, and the extension feasibility analysis (Alternatives, A and C) does not produce one. The maintainer waived the trigger: D1 says the waiving record supersedes a Deferral "by maintainer decision, not by new adopter evidence".</p>
+<p>What this record does instead of inventing adoption: it names the <strong>deterministic evidence</strong> that stands in for it — the executable vector suite and the platform tests enumerated under "Tests", which fail loudly if rounds, monotonicity, floor refusal, expiry, or token idempotency regress — plus the dated re-evaluation at 2027-05-04, where a reader may challenge the decision with actual usage data. The honest summary is: <strong>the mechanism is built because the maintainer chose to fund it, not because the need was proven.</strong></p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Core protocol (additive MINOR):</strong> two values added to the closed <code>message.type</code> enum (<code>quote</code>, <code>counter</code>); two new strict-allowlist payload schemas with integer-cent pricing and no PII; one optional <code>bid</code> field (<code>negotiation_binding_token</code>); one optional <code>ack</code> object (<code>negotiation</code>); one advertisement key in <code>capabilities().features</code> (<code>negotiation</code>). No envelope shape change, no new required field, no vertical-schema change, no error-code addition (refusals ride the existing open <code>rejection_reason</code>).</li>
+<li><strong>Reference platform:</strong> negotiation state machine with audit, round and floor enforcement at one decision point, single-use token storage (hash only), expiry sweep, tenant authorization, metrics, and the <code>LCP_FEATURE_NEGOTIATION</code> switch — W4-08 and W5-01…W5-03.</li>
+<li><strong>SDKs, OpenAPI, MCP, conformance:</strong> typed models and helpers in all ten SDKs, <code>POST /quotes</code> + <code>POST /counters</code> + redemption on <code>POST /bids</code>, <code>send_quote</code> / <code>send_counter</code> MCP tools, a new vector suite, coverage-matrix rows — W5-04 and the impact section below.</li>
+<li><strong>Not in scope:</strong> pricing <em>strategy</em> (no normative guidance on how a party should choose a price — that is agent policy, deliberately not protocol); seller-side concessions (C6 forbids a platform counter below its standing ask; a cheaper price is a <strong>new</strong> negotiation, not a counter); ceiling semantics beyond the ping's floor (offer-side <code>max_allowed_price_cents</code> already exists for post-time guardrails and is unchanged); negotiation over non-ping surfaces (<code>post</code> reprice, resale, subscriptions); multi-currency conversion (D7 applies unchanged — a negotiation is single-currency and refuses a mismatch rather than converting); any change to <code>post.pricing</code>, payability, disputes, or refunds; a read/list HTTP surface (Deferred question Q6).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-envelope">1. Envelope</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Requirement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>message.type</code></td>
+<td><code>"quote"</code> or <code>"counter"</code>. The enum stays <strong>closed</strong>; an unknown value is still <code>LCP-006 UNKNOWN_MESSAGE_TYPE</code> (SPEC.md §6: "Adding a message type is a MINOR version bump").</td>
+</tr>
+<tr>
+<td><code>lcp.version</code></td>
+<td><code>1.2.0</code> or a later minor. A receiver advertising <code>1.0.x</code>/<code>1.1.x</code> only is never a legal recipient (C2).</td>
+</tr>
+<tr>
+<td><code>message.correlation_id</code></td>
+<td><code>quote</code>: the <code>message.id</code> of the ping being priced (required, non-null). <code>counter</code>: the <code>message.id</code> of the <code>quote</code>/<code>counter</code> it answers (required, non-null). The chain is the negotiation's audit spine.</td>
+</tr>
+<tr>
+<td><code>message.idempotency_key</code></td>
+<td>Required, exactly as for every other type. Same key + same bytes → the original ack; same key + different bytes → <code>LCP-005</code> (SPEC.md §4 idempotency rule).</td>
+</tr>
+<tr>
+<td><code>message.sender_id</code> / <code>receiver_id</code></td>
+<td>The platform and the pinged buyer, in one of the two directions. A third party is <code>LCP-002 UNKNOWN_SENDER</code> (authorization axis).</td>
+</tr>
+<tr>
+<td><code>message.security</code></td>
+<td>HMAC-SHA256 per SPEC.md §9, or the HTTP binding's <code>X-LCP-Timestamp</code>/<code>X-LCP-Signature</code>. Negotiation messages are never unsigned.</td>
+</tr>
+<tr>
+<td><code>message.test</code></td>
+<td>Honored; test negotiation traffic follows <code>LCP-013</code> and never mints a billable bid.</td>
+</tr>
+<tr>
+<td><code>payload</code></td>
+<td>Strict allowlist (<code>additionalProperties: false</code>) on both types. No free-text field of any kind is defined (no <code>note</code>, no <code>message</code>, no <code>buyer_reference</code>), because a free string is the PII-smuggling shape this surface must not carry.</td>
+</tr>
+</tbody>
+</table>
+<p>Both payloads are <strong>ping-class</strong>: they inherit the prohibition a ping carries (§4 "PII: None"), so the ping PII code applies to them, and the D9 taxonomy classifies every property <code>internal</code> (commercial terms) — never <code>contact</code>, <code>restricted</code>, or <code>prohibited</code>.</p>
+<h3 id="2-quote--the-platform-opens-a-negotiation">2. <code>quote</code> — the platform opens a negotiation</h3>
+<p>Sent by the platform (seller) to a buyer it has already pinged. It states the ask for a named ping and opens the bounded round structure.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Req</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>negotiation_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>Opaque platform-assigned id, <code>^neg_[A-Za-z0-9_-]{8,64}$</code>, unique per negotiation. The only lookup key a later message may use.</td>
+</tr>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>The ping this negotiation prices. The ping supplies the floor, the currency, and the TTL ceiling. A <code>ping_id</code> the receiver never sent that buyer is <code>LCP-002</code>.</td>
+</tr>
+<tr>
+<td><code>offer_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>The buyer offer being priced; MUST equal the ping's <code>offer_id</code> (<code>LCP-100</code> on mismatch).</td>
+</tr>
+<tr>
+<td><code>price_cents</code></td>
+<td>integer <code>minimum: 0</code></td>
+<td>yes</td>
+<td>The ask in minor units of <code>currency</code>. MUST be ≥ <code>floor_price_cents</code>; below floor is refused with <code>rejection_reason: "below_floor_price"</code> and <strong>never clamped</strong>.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>ISO 4217 alpha-3</td>
+<td>yes</td>
+<td>MUST equal the ping's <code>currency</code> (D7: no cross-currency comparison, no FX in a negotiation). Mismatch → <code>LCP-100</code>.</td>
+</tr>
+<tr>
+<td><code>floor_price_cents</code></td>
+<td>integer <code>minimum: 0</code></td>
+<td>yes</td>
+<td>Restated from the ping so the buyer can verify the floor and the monotone rule without re-reading the ping. MUST equal the ping's value; mismatch → <code>LCP-100</code> (<code>field: "payload.floor_price_cents"</code>).</td>
+</tr>
+<tr>
+<td><code>max_rounds</code></td>
+<td>integer <code>1..5</code>, default <code>3</code></td>
+<td>no</td>
+<td>Rounds this negotiation may run. Absent = <code>3</code> (D8 default). <code>&gt; 5</code> → <code>LCP-100</code> (hard cap; not a deployment knob).</td>
+</tr>
+<tr>
+<td><code>rounds_remaining</code></td>
+<td>integer <code>0..5</code></td>
+<td>yes</td>
+<td>Buyer counters still available at the moment this message is sent. On the opening quote this equals the effective <code>max_rounds</code> (a quote consumes no round).</td>
+</tr>
+<tr>
+<td><code>expires_at</code></td>
+<td>RFC 3339 UTC</td>
+<td>yes</td>
+<td>Absolute end of the negotiation. MUST NOT be later than the ping's <code>expires_at</code>, nor later than the ping's <code>timestamp</code> plus its TTL when only a TTL was expressed; either failure is <code>LCP-100</code> and no negotiation is created.</td>
+</tr>
+<tr>
+<td><code>rejection_reason</code></td>
+<td>string (open enum)</td>
+<td>cond.</td>
+<td>Present only on a <strong>terminal</strong> refusal message (no negotiation opened): <code>below_floor_price</code>, <code>round_limit_exceeded</code>, <code>negotiation_expired</code>, <code>unknown_negotiation</code>, <code>negotiation_closed</code>. When present, <code>price_cents</code> MUST be absent and the ack for the triggering message carries the same reason.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-counter--either-party-answers-the-standing-message">3. <code>counter</code> — either party answers the standing message</h3>
+<p>Sent by the buyer or the platform, strictly alternating (no two consecutive <code>counter</code> messages from one sender in one negotiation; a violation is <code>LCP-004 INVALID_STATUS_TRANSITION</code> at the receiver, not a new code).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Req</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>negotiation_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>MUST name an existing negotiation for this (tenant, buyer, ping) triple; otherwise <code>unknown_negotiation</code> (or <code>LCP-002</code> when the negotiation belongs to another buyer/tenant).</td>
+</tr>
+<tr>
+<td><code>ping_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>MUST equal the negotiation's ping; mismatch → <code>LCP-100</code>.</td>
+</tr>
+<tr>
+<td><code>offer_id</code></td>
+<td>string</td>
+<td>yes</td>
+<td>MUST equal the negotiation's offer; mismatch → <code>LCP-100</code>.</td>
+</tr>
+<tr>
+<td><code>decision</code></td>
+<td>string, closed enum</td>
+<td>yes</td>
+<td><code>counter</code> (move the price), <code>accept</code> (close at the price of the message being answered), <code>refuse</code> (close with a reason).</td>
+</tr>
+<tr>
+<td><code>price_cents</code></td>
+<td>integer <code>minimum: 0</code></td>
+<td>cond.</td>
+<td>Required unless <code>decision = refuse</code>. <code>counter</code>: subject to the monotone rule below and ≥ <code>floor_price_cents</code>. <code>accept</code>: MUST equal the <code>price_cents</code> of the message it answers; any other value is <code>LCP-100</code>.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>ISO 4217 alpha-3</td>
+<td>yes</td>
+<td>MUST equal the negotiation currency; mismatch → <code>LCP-100</code>. Carried on every message so a refusal is self-describing without a lookup.</td>
+</tr>
+<tr>
+<td><code>floor_price_cents</code></td>
+<td>integer <code>minimum: 0</code></td>
+<td>yes</td>
+<td>Restated and checked against the negotiation's floor; mismatch → <code>LCP-100</code>.</td>
+</tr>
+<tr>
+<td><code>rounds_remaining</code></td>
+<td>integer <code>0..5</code></td>
+<td>yes</td>
+<td>The sender's view of the buyer counters still available <strong>at the moment this message is sent</strong>, i.e. before it is applied. A stale value (not equal to the platform's stored value) is <code>LCP-100</code> — it is the cheap ordering/replay guard that makes out-of-order delivery fail instead of corrupting the count.</td>
+</tr>
+<tr>
+<td><code>expires_at</code></td>
+<td>RFC 3339 UTC</td>
+<td>yes</td>
+<td>The negotiation's absolute end, unchanged. MUST NOT exceed the value set by the opening quote; later → <code>LCP-100</code>. A message whose <code>message.timestamp</code> is at or after <code>expires_at</code> is refused <code>negotiation_expired</code>.</td>
+</tr>
+<tr>
+<td><code>rejection_reason</code></td>
+<td>string (open enum)</td>
+<td>cond.</td>
+<td>Required when <code>decision = refuse</code>; absent otherwise. Known values (open enumeration on the ack side already exists, <code>schemas/ack.json</code>): <code>below_floor_price</code>, <code>non_monotone_counter</code>, <code>round_limit_exceeded</code>, <code>negotiation_expired</code>, <code>unknown_negotiation</code>, <code>negotiation_closed</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Monotone rule (normative, C6).</strong> For one negotiation, let <code>p_sender</code> be the sender's own most recent <code>price_cents</code> in that negotiation, or <code>null</code> when the sender has not stated a price yet (the platform's opening quote is its <code>p_sender</code> from then on):</p>
+<ul>
+<li><code>p_sender</code> is <code>null</code> — the counter is bounded by the floor alone: <code>price_cents ≥ floor_price_cents</code>, so a buyer's opening counter may sit exactly on the floor (the floor rule below is what refuses anything lower);</li>
+<li>a buyer <code>counter</code> with <code>p_sender</code> present MUST satisfy <code>price_cents &gt; p_sender</code> and <code>price_cents ≥ floor_price_cents</code>;</li>
+<li>a platform <code>counter</code> with <code>p_sender</code> present MUST satisfy <code>price_cents ≥ p_sender</code> (it may restate the ask, never lower it) and <code>price_cents ≥ floor_price_cents</code>;</li>
+<li><code>accept</code> is not a counter and is not constrained by the monotone rule — a platform MAY accept any buyer price at or above the floor, which is how a concession is expressed (a concession is an <code>accept</code>, never a lower counter).</li>
+</ul>
+<p>Two consequences, stated because they are the design and not an accident:</p>
+<ol>
+<li><strong>The price path of a negotiation never decreases.</strong> The buyer climbs; the platform restates. A buyer counter at or above the standing ask terminates the negotiation accepted at the <strong>counter</strong> price (the platform receives at least its ask — never silently downgrade the winner's price).</li>
+<li><strong>A platform that wants to sell cheaper must open a new negotiation.</strong> Seller-side price discovery downward is a pricing decision with its own audit trail; smuggling it in as a lower counter is what C6 forbids.</li>
+</ol>
+<h3 id="4-round-accounting-and-termination">4. Round accounting and termination</h3>
+<ul>
+<li><code>max_rounds</code> is per negotiation; the effective value is the opening quote's <code>max_rounds</code> or <code>3</code> when absent, and never exceeds <code>5</code>.</li>
+<li>Only a buyer message with <code>decision: "counter"</code> consumes a round: <code>rounds_remaining</code> decrements by one when the platform accepts the counter into state. <code>accept</code> and <code>refuse</code> are terminal and consume nothing, and a refused message never moves the price or burns a round — the only mutation a refusal causes is the terminal <code>REFUSED</code> state itself.</li>
+<li>A buyer counter received when <code>rounds_remaining</code> is <code>0</code> is refused <code>round_limit_exceeded</code>; the negotiation moves to <code>REFUSED</code> and is never reopened. A new price discussion is a new <code>negotiation_id</code>.</li>
+<li><code>accept</code> from either side is terminal-accepted: the platform records <code>ACCEPTED</code> at the accepted price and mints the binding token below.</li>
+<li><code>refuse</code>, a floor violation, a monotone violation, an expiry, or round exhaustion all terminate <code>REFUSED</code> (or <code>EXPIRED</code>) with exactly one <code>rejection_reason</code>. There is no "retry the same negotiation" state: a refused negotiation id is permanently closed, and a later message naming it is refused <code>negotiation_closed</code>.</li>
+</ul>
+<h3 id="5-binding-token-c7">5. Binding token (C7)</h3>
+<p>An <code>accept</code> is agreement; it is not yet a bid. The platform answers the accepting message with an ack carrying:</p>
+<pre class="code-block"><code class="language-json">{
+  "negotiation": {
+    "negotiation_id": "neg_7c1f0a9b2e4d",
+    "outcome": "accepted",
+    "price_cents": 10000,
+    "currency": "USD",
+    "rounds_remaining": 2,
+    "binding_token": "tok_9fQ2x8Lm4Vb7Kd1Rt6Yp3Wc5Nz0Hs2Ja",
+    "binding_expires_at": "2026-11-04T12:10:00Z"
+  }
+}</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>negotiation_id</code></td>
+<td>string</td>
+<td>The negotiation this outcome belongs to.</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>string, closed enum</td>
+<td><code>opened</code>, <code>countered</code>, <code>accepted</code>, <code>refused</code>, <code>expired</code>, <code>redeemed</code>. Present on <strong>every</strong> ack for a <code>quote</code>/<code>counter</code> (and on the bid ack of a successful redemption), so a buyer never has to infer state from prose.</td>
+</tr>
+<tr>
+<td><code>price_cents</code></td>
+<td>integer</td>
+<td>The accepted, countered, or refused price (absent on <code>refused</code> when the refusal carried no price).</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>ISO 4217</td>
+<td>The negotiation currency.</td>
+</tr>
+<tr>
+<td><code>rounds_remaining</code></td>
+<td>integer</td>
+<td>The post-message value.</td>
+</tr>
+<tr>
+<td><code>binding_token</code></td>
+<td>string, <code>^tok_[A-Za-z0-9_-]{32,128}$</code></td>
+<td>Present <strong>only</strong> when <code>outcome = "accepted"</code>. Single-use. Returned exactly once (the ack to the accepting message); the platform stores only a hash, mirroring <code>api_key_hash</code>, and never logs or echoes the token again.</td>
+</tr>
+<tr>
+<td><code>binding_expires_at</code></td>
+<td>RFC 3339 UTC</td>
+<td>≤ the negotiation <code>expires_at</code>. A token is unusable at or after this instant.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Redemption.</strong> The buyer presents the token in a <code>bid</code> (new optional field, <code>schemas/bid.json</code>): <code>negotiation_binding_token</code>, with <code>ping_id</code> equal to the negotiation's ping, <code>decision: "accept"</code>, and <code>bid_price_cents</code> either absent or exactly the token's price. Rules:</p>
+<ol>
+<li>First redemption creates the bid at the token price and moves the negotiation to <code>REDEEMED</code>. The bid is then an ordinary bid for every downstream purpose (auction, post, payability) — the token is a price carrier, never a money shortcut. The acknowledgment for the redemption is the bid's normal ack with <code>negotiation.outcome: "redeemed"</code>, the redeemed price, and no <code>binding_token</code>.</li>
+<li>A replay of the <strong>same</strong> redemption (same <code>idempotency_key</code>, same bytes) returns the original ack byte for byte, creates no second bid, and cannot produce a second payable.</li>
+<li>A token presented after <code>REDEEMED</code>, or after <code>binding_expires_at</code>, is refused <code>negotiation_closed</code> — except the same-sender same-key replay in (2), which is "replay returns the original outcome", not a reuse.</li>
+<li>A token presented by any other sender or tenant is <code>LCP-002</code>.</li>
+<li>Token format or checksum failure is <code>LCP-100</code>; an unknown hash is <code>negotiation_closed</code> (never "invalid token" — that would confirm token existence).</li>
+</ol>
+<h3 id="valid-example-1--opening-quote-platform--buyer">Valid example 1 — opening <code>quote</code> (platform → buyer)</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a10e8400-0000-4000-8000-000000000901",
+      "type": "quote",
+      "timestamp": "2026-11-04T12:00:00Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_001",
+      "correlation_id": "d70e8400-0000-4000-8000-000000000021",
+      "idempotency_key": "platform-001-quote-neg_7c1f0a9b2e4d-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "price_cents": 10000,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "max_rounds": 3,
+      "rounds_remaining": 3,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Valid because:</em> the ask is above the restated floor, <code>expires_at</code> equals the ping's expiry (not later), <code>max_rounds</code> is within the hard cap, and the payload carries no field outside the allowlist. <code>correlation_id</code> names the ping.</p>
+<h3 id="valid-example-2--buyer-counter-inside-the-bounds">Valid example 2 — buyer <code>counter</code> inside the bounds</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a20e8400-0000-4000-8000-000000000902",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:00:40Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a10e8400-0000-4000-8000-000000000901",
+      "idempotency_key": "buyer-001-counter-neg_7c1f0a9b2e4d-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "counter",
+      "price_cents": 8000,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 3,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Valid because:</em> 8000 is above the buyer's baseline (the floor, 6000 for a first buyer message), above the floor, and below the standing ask; the echoed <code>rounds_remaining</code> is the pre-message value (3); the platform's ack says <code>outcome: "countered"</code> with the post-message <code>rounds_remaining: 2</code>.</p>
+<h3 id="valid-example-3--accept-and-the-binding-token-ack">Valid example 3 — <code>accept</code> and the binding-token ack</h3>
+<p>The buyer closes at the platform's standing ask (10 000) instead of spending its last round:</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a30e8400-0000-4000-8000-000000000903",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:02:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a25e8400-0000-4000-8000-000000000905",
+      "idempotency_key": "buyer-001-accept-neg_7c1f0a9b2e4d-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "accept",
+      "price_cents": 10000,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 2,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a40e8400-0000-4000-8000-000000000904",
+      "type": "ack",
+      "timestamp": "2026-11-04T12:02:00Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_001",
+      "correlation_id": "a30e8400-0000-4000-8000-000000000903",
+      "idempotency_key": "platform-001-ack-a30e8400-1",
+      "test": false
+    },
+    "payload": {
+      "original_message_id": "a30e8400-0000-4000-8000-000000000903",
+      "status": "ACCEPTED",
+      "negotiation": {
+        "negotiation_id": "neg_7c1f0a9b2e4d",
+        "outcome": "accepted",
+        "price_cents": 10000,
+        "currency": "USD",
+        "rounds_remaining": 2,
+        "binding_token": "tok_9fQ2x8Lm4Vb7Kd1Rt6Yp3Wc5Nz0Hs2Ja",
+        "binding_expires_at": "2026-11-04T12:10:00Z"
+      }
+    }
+  }
+}</code></pre>
+<p><em>Valid because:</em> the accepted price equals the answered message's price, the ack carries exactly one token, and <code>binding_expires_at</code> does not exceed the negotiation expiry.</p>
+<h3 id="invalid-example-a--price-below-the-floor-refused-never-clamped">Invalid example A — price below the floor (refused, never clamped)</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b10e8400-0000-4000-8000-000000000911",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:01:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a10e8400-0000-4000-8000-000000000901",
+      "idempotency_key": "buyer-001-counter-below-floor-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "counter",
+      "price_cents": 4500,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 3,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Rejected:</em> 4500 &lt; 6000. The platform answers <code>ack.status: "REJECTED"</code> with <code>rejection_reason: "below_floor_price"</code> and one <code>errors[]</code> entry <code>{code: "LCP-100", field: "payload.price_cents"}</code>, moves the negotiation to <code>REFUSED</code>, creates no bid and no post, and <strong>does not rewrite the price to the floor</strong> — a clamped price would be a seller-side fabrication with a money consequence, and the buyer could not tell it happened. No token is minted.</p>
+<h3 id="invalid-example-b--round-exhaustion">Invalid example B — round exhaustion</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b20e8400-0000-4000-8000-000000000912",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:04:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a28e8400-0000-4000-8000-000000000905",
+      "idempotency_key": "buyer-001-counter-round-4-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "counter",
+      "price_cents": 9200,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 0,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Rejected:</em> <code>max_rounds</code> was 3 and the buyer has already consumed all three (<code>rounds_remaining: 0</code>). The message is refused <code>round_limit_exceeded</code>, the negotiation moves to <code>REFUSED</code>, and the id closes permanently — an unbounded negotiation loop is the abuse surface C5 exists to remove. The price itself is monotone-valid, which is the point: the cap binds independently of the price rules.</p>
+<h3 id="invalid-example-c--expired-negotiation">Invalid example C — expired negotiation</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b30e8400-0000-4000-8000-000000000913",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:10:01Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a29e8400-0000-4000-8000-000000000906",
+      "idempotency_key": "buyer-001-counter-late-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "counter",
+      "price_cents": 9600,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 1,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Rejected:</em> <code>message.timestamp</code> (12:10:01Z) is at/after <code>expires_at</code> (12:10:00Z). Refused <code>negotiation_expired</code>; the negotiation is <code>EXPIRED</code> and <code>sweep</code>-visible. Expiry is absolute — wall-clock appeal, a fresher <code>timestamp</code>, or a later quote cannot extend it, and the value may never exceed the ping's TTL (that attempt is <code>LCP-100</code> at quote intake, before any state exists).</p>
+<h3 id="invalid-example-d--non-monotone-counter">Invalid example D — non-monotone counter</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b40e8400-0000-4000-8000-000000000914",
+      "type": "counter",
+      "timestamp": "2026-11-04T12:03:00Z",
+      "sender_id": "buyer_001",
+      "receiver_id": "platform_001",
+      "correlation_id": "a25e8400-0000-4000-8000-000000000905",
+      "idempotency_key": "buyer-001-counter-backwards-1",
+      "test": false
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "decision": "counter",
+      "price_cents": 7000,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "rounds_remaining": 1,
+      "expires_at": "2026-11-04T12:10:00Z"
+    }
+  }
+}</code></pre>
+<p><em>Rejected:</em> the buyer's previous price in this negotiation was 8000, so 7000 walks the price backwards. Refused <code>non_monotone_counter</code>; no round is consumed and no state changes on a rejected message, but the negotiation is terminal <code>REFUSED</code> (C6/C8: the id does not become reusable). The platform's mirror case — a <code>counter</code> below its own standing ask — is refused the same way; it is a concession dressed as a counter.</p>
+<h3 id="invalid-example-e--pii-attempt">Invalid example E — PII attempt</h3>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b50e8400-0000-4000-8000-000000000915",
+      "type": "quote",
+      "timestamp": "2026-11-04T12:00:00Z",
+      "sender_id": "platform_001",
+      "receiver_id": "buyer_001",
+      "correlation_id": "d70e8400-0000-4000-8000-000000000021",
+      "idempotency_key": "platform-001-quote-pii-1",
+      "test": true
+    },
+    "payload": {
+      "negotiation_id": "neg_7c1f0a9b2e4d",
+      "ping_id": "ping_9f31c2",
+      "offer_id": "offer_mortgage_nsw",
+      "price_cents": 10000,
+      "currency": "USD",
+      "floor_price_cents": 6000,
+      "max_rounds": 3,
+      "rounds_remaining": 3,
+      "expires_at": "2026-11-04T12:10:00Z",
+      "consumer_phone": "+15125550147",
+      "note": "call Jordan after 6pm, prefers SMS"
+    }
+  }
+}</code></pre>
+<p><em>Rejected twice over:</em> <code>consumer_phone</code> and <code>note</code> are outside the strict allowlist, so the message fails <code>LCP-100</code> naming <code>payload.consumer_phone</code>; because the field name is a consumer identifier (and a phone number is a contact value, not a price term), the ping-class prohibition applies and <code>LCP-008 PII_IN_PING</code> is returned with it. The code is reused rather than renamed — a new code would be a receiver-visible change a v1.0 peer cannot anticipate (SPEC.md §5). Both the value and the reason are recorded as a security finding, never stored as a payload.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>Ping-safe proof (field by field).</strong> Every field of every message in this surface is one of: an opaque platform id (<code>negotiation_id</code>, <code>ping_id</code>, <code>offer_id</code>, <code>sender_id</code>, <code>receiver_id</code>, <code>correlation_id</code>, <code>original_message_id</code>, <code>binding_token</code>), an integer in minor units (<code>price_cents</code>, <code>floor_price_cents</code>, <code>rounds_remaining</code>, <code>max_rounds</code>), an ISO 4217 code, a UTC timestamp, or a value from a closed/known reason enumeration. None of them is derived from a consumer, and — unlike the contacted-hash surface — <strong>no consumer identifier is hashed into this surface at all</strong>: negotiation happens before delivery, so there is nothing to dedup and a hash would only create a per-pair oracle nobody needs. The allowlist (<code>additionalProperties: false</code>) is the enforcement, not prose: unknown fields fail validation, and a consumer-shaped name fails the ping-class PII rule (invalid example E). The conformance runner gains the same three checks it applies to pings (allowlist, no PII block, no contact digest) for both new types, and the D9 <code>x-lcp-pii</code> annotation is required on every property — all <code>internal</code>.</p>
+<p><strong>No free text (stated because it is the design constraint, not an oversight).</strong> The surface defines no <code>note</code>, <code>comment</code>, <code>description</code>, <code>reason_text</code>, or <code>buyer_reference</code>. Refusal reasons are enumeration values, so an operator cannot explain a refusal in the field where a consumer name would otherwise be typed. Anything a party wants to say in prose belongs in its own systems (LEP-0007 takes the same position for <code>details</code>).</p>
+<p><strong>Authorization and tenancy.</strong> A negotiation is scoped to one <code>(tenant, buyer_id, ping_id, offer_id)</code> tuple. The buyer must be one the platform pinged for that offer; the platform must be the <code>receiver_id</code> of the ping the buyer bids against. A <code>negotiation_id</code> presented by any other principal is <code>LCP-002</code> — the id is not a bearer credential, and the response is indistinguishable from "no such negotiation" so it cannot be used to probe existence. Token redemption is bound to <code>(negotiation_id, buyer_id, price, expiry)</code>; a foreign or expired token is <code>negotiation_closed</code>, never "invalid". Every route carries the tenant predicate (<code>tenant_id</code>) and the existing <code>test_tenant_isolation</code> gate (execution-plan invariant I6).</p>
+<p><strong>Replay and duplication.</strong> Envelope HMAC plus the five-minute replay window (SPEC §9, <code>LCP-012</code>) apply unchanged. Idempotency keys are mandatory; same key/different bytes is <code>LCP-005</code>. A duplicate counter returns the original ack and does not consume a second round. A duplicate redemption returns the original ack and creates no second bid. Tokens are unguessable, single-use, stored as hashes, and never logged (the existing operational rule: "audit rows, metrics, and logs never carry token bytes").</p>
+<p><strong>Money and price integrity.</strong> All arithmetic is on integer minor units (D7 unchanged; no FX, no float, no rounding in this surface). A mismatch between the restated <code>floor_price_cents</code>/<code>currency</code> and the platform's stored values is <code>LCP-100</code>, never a silent correction. Below-floor prices are refused, never clamped, so the platform never claims a price the buyer did not state. An accepted price is the bid price: the token carries it, redemption cannot restate it, and the ordinary auction/post payability path is the only thing that can create money. Negotiation messages never create a payable, never touch <code>post.pricing</code>, and never re-open a payable (D2's rule generalizes).</p>
+<p><strong>Abuse surfaces, bounded.</strong> Negotiation-id enumeration is infeasible (opaque random ids, authenticated pair scope, non-oracular error). Price probing is bounded by <code>max_rounds</code> (≤ 5) and by the existing per-sender rate limits (<code>LCP-011</code>). Floor mining discloses nothing new: the floor is already in the ping. Round-loop DoS is capped by C5. Forgotten negotiations are swept by expiry, so an unbounded id population cannot accumulate.</p>
+<p><strong>Retention and erasure.</strong> Negotiation rows contain no consumer data, so they are non-PII routing/audit records and are retained under the platform's non-PII class (W4-06), not the envelope class. <code>privacy erase-lead</code> redacts persisted envelopes and cancels pending deliveries; because a negotiation holds only ids, prices, and timestamps, erasure has nothing to redact here and MUST NOT delete the negotiation's audit trail — but it MUST also not be usable as a re-identification path, and the blocking test asserts there is no such field to find. Tokens are hashed; erasure leaves a hash that grants nothing after <code>REDEEMED</code>/expiry.</p>
+<p><strong>Universal-core audit (SPEC §12 items).</strong> No market vocabulary (no vertical, country, channel, or product term appears). No executable matching rule, no expression language, no callback. No hidden PII flow (the whole point of C4). No new dependency (stdlib only). No change to any existing required field, no change to a v1.0/v1.1 payload, and no change to an existing error code. One stable enunciation per semantic (a price is <code>price_cents</code> + <code>currency</code>, exactly as in <code>bid</code>/<code>post</code>/<code>ping</code> — no parallel spelling).</p>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Closed-enum addition → MINOR.</strong> SPEC.md §6 states <code>message.type</code> is closed and "adding a message type is a MINOR version bump". v1.2.0 is that bump. The enum stays closed, so a receiver that has not implemented the types rejects them <code>LCP-006</code> loudly rather than passing them through.</li>
+<li><strong>A 1.0/1.1 peer must never receive these types unsolicited.</strong> Emission is gated on two independent facts: (a) the receiver's parsed-semver <code>lcp_versions</code> contains <code>major == 1 and minor &gt;= 2</code> (SPEC §8 membership rule — parsed elements, never string prefixes), <strong>and</strong> (b) the receiver's <code>capabilities().features</code> map contains <code>negotiation</code> (W0-03 spine, <code>{"batch": "1.2.0", "negotiation": "1.2.0", …}</code>). Both are required because a deployment may run the code with the feature off. Capability absence means the sender must not emit; emitting anyway is a conformance failure, and the receiver answers <code>LCP-006</code> (documented, not a crash).</li>
+<li><strong><code>ack.negotiation</code> and <code>bid.negotiation_binding_token</code> are additive optionals</strong> on closed objects, gated by the same advertisement. A v1.1 receiver never sees them; a v1.2 receiver tolerates absence and treats their absence as "no negotiation" (the pre-existing behaviour).</li>
+<li><strong>The other direction is untouched.</strong> A 1.2 receiver accepting a 1.0 or 1.1 sender behaves exactly as it did: no new required field, no new rejection on an old message, no changed default. Adding a minor to <code>lcp_versions</code> never invalidates a lower-minor sender (SPEC §2/§8 rule).</li>
+<li><strong>Deprecation.</strong> Nothing is deprecated by this record. If the surface is superseded later, the N+2 compatibility window and two-year grace period of <code>governance/LEP.md</code> step 7 apply to two message types that no non-advertising peer can receive — the smallest possible deprecation surface.</li>
+<li><strong>Contingency.</strong> If implementation does not complete, <code>docs/DECISIONS-v1.2.md</code> moves the wire surface to v1.3.0 while the LEP record stays Accepted with a Design-Complete/not-implemented status in the registry. The registry status must never claim <code>Implemented</code> without the vector and platform evidence links.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<p><strong>Schemas (normative source, edited first):</strong> <code>schemas/envelope.json</code> (<code>message.type</code> +2 values), new <code>schemas/quote.json</code> and <code>schemas/counter.json</code> (strict allowlist, <code>x-lcp-pii: internal</code> on every property, <code>max_rounds</code>/<code>rounds_remaining</code> bounds, conditional <code>price_cents</code>), <code>schemas/bid.json</code> (+<code>negotiation_binding_token</code>), <code>schemas/ack.json</code> (+<code>negotiation</code> object, closed <code>outcome</code> enum). <code>$defs.currency</code> is reused from <code>core.json</code>; no new core definition.</p>
+<p><strong>Ten SDKs.</strong> Each ships: <code>Quote</code>/<code>Counter</code> payload models (closed-enum discriminated message unions where the language has them), a negotiation helper (<code>send_quote</code>, <code>send_counter</code>, <code>accept_negotiation</code>, <code>refuse_negotiation</code>), token redemption on the existing bid call (<code>submit_bid(..., negotiation_binding_token=…)</code>), <code>negotiation</code> awareness in the capabilities model, and updated schema manifests. Per language — <code>typescript</code>, <code>python</code>, <code>go</code>, <code>java</code>, <code>kotlin</code>, <code>rust</code>, <code>csharp</code>, <code>php</code>, <code>ruby</code>, <code>swift</code> (<code>implementations/sdk/&lt;lang&gt;</code>) — the acceptance is: <code>tools/check_schema_sync.py</code> green for all ten, per-SDK compile/test green in <code>sdk-interop.yml</code>, and the closed-enum corpus (<code>test-vectors/sdk/enum-passthrough-corpus.json</code>) still refusing unknown <code>message.type</code> values while accepting <code>quote</code>/<code>counter</code> only when advertised.</p>
+<p><strong>OpenAPI (<code>api/lcp-openapi.yaml</code>):</strong> <code>POST /quotes</code> (<code>operationId: submitQuote</code>), <code>POST /counters</code> (<code>submitCounter</code>), redemption on the existing <code>POST /bids</code> (<code>submitBid</code>, with <code>negotiation_binding_token</code> on <code>BidPayload</code>), <code>Capabilities.features</code> as an additional-properties string map, <code>Ack.negotiation</code> and <code>NegotiationOutcome</code> schemas, and two tags (<code>Negotiations</code>). The change is additive: no operation, parameter, or response shape changes for a client that does not use it. The <code>check-openapi</code> gate asserts pattern equivalence between the OpenAPI enums and the JSON Schemas.</p>
+<p><strong>MCP (<code>implementations/mcp-server/lcp_mcp_server/server.py</code>, currently <code>submit_lead</code>, <code>submit_call</code>, <code>query_lead_status</code>, <code>get_schema</code>, <code>get_capabilities</code>, <code>get_request_history</code>, <code>list_offers</code>, <code>submit_bid</code>):</strong></p>
+<ul>
+<li><code>send_quote</code> — platform-role tool; arguments mirror the payload table.</li>
+<li><code>send_counter</code> — buyer- or platform-role tool; <code>decision</code> explicit, so an agent cannot "counter" without stating a price.</li>
+<li><code>redeem_negotiation_token</code> — a thin wrapper over <code>submit_bid</code> with the token argument, present so an agent does not have to know the bid field name.</li>
+<li><code>get_capabilities</code> gains <code>features</code> pass-through verbatim (no filtering, so an agent sees the same advertisement a wire peer sees).</li>
+</ul>
+<p><strong>Conformance.</strong> New suite <code>test-vectors/negotiation.json</code> (ids <code>NEG-001</code>…), run by <code>test-vectors/conformance.py</code>, covering at minimum: valid quote/counter/accept round trip; below-floor refusal with no clamping; round exhaustion; expired message; non-monotone (buyer and platform directions); <code>max_rounds &gt; 5</code>; <code>expires_at</code> beyond the ping TTL; currency/floor mismatch; duplicate counter (no round burned); token redemption and same-key replay; foreign-sender token; a quote/counter carrying a consumer field or a 48–64-hex contact digest; and an unadvertised receiver. The runner treats a receiver that does not advertise <code>negotiation</code> as <strong>skip, not fail</strong> (the advertisement is the switch), and the new coverage-matrix rows cite this LEP for every emission and refusal rule. Vector IDs are stable and never reused.</p>
+<p><strong>Platform state machine (W4-08/W5-03).</strong> One table per negotiation, one audit row per message, one hashed-token table:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Entered by</th>
+<th>Terminal</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPEN</code></td>
+<td><code>quote</code> accepted at intake and persisted</td>
+<td>no</td>
+<td>The ask is recorded; <code>rounds_remaining = max_rounds</code>.</td>
+</tr>
+<tr>
+<td><code>COUNTERED</code></td>
+<td>buyer <code>decision: "counter"</code> accepted into state</td>
+<td>no</td>
+<td><code>rounds_remaining</code> decremented by one; new standing price recorded.</td>
+</tr>
+<tr>
+<td><code>ACCEPTED</code></td>
+<td><code>decision: "accept"</code> from either side, at an allowed price</td>
+<td>no (redeemable)</td>
+<td>Price frozen; one token hash minted; <code>binding_expires_at</code> recorded.</td>
+</tr>
+<tr>
+<td><code>REDEEMED</code></td>
+<td>first valid token redemption in a bid</td>
+<td>yes</td>
+<td>The bid row exists; all downstream money semantics are the bid's.</td>
+</tr>
+<tr>
+<td><code>REFUSED</code></td>
+<td>any terminal refusal (<code>below_floor_price</code>, <code>non_monotone_counter</code>, <code>round_limit_exceeded</code>, <code>negotiation_expired</code>, <code>unknown_negotiation</code>)</td>
+<td>yes</td>
+<td>Exactly one reason stored; the id never reopens. A later message naming a closed id is answered <code>negotiation_closed</code> with <strong>no</strong> state change.</td>
+</tr>
+<tr>
+<td><code>EXPIRED</code></td>
+<td>expiry sweep past <code>expires_at</code></td>
+<td>yes</td>
+<td>Sweep is idempotent; a late message is <code>negotiation_expired</code>, not a state change.</td>
+</tr>
+</tbody>
+</table>
+<p>Illegal transitions return <code>LCP-004 INVALID_STATUS_TRANSITION</code> (<code>REDEEMED</code> → anything; <code>ACCEPTED</code> → <code>COUNTERED</code>; a second accept from the same negotiation). Audit event names follow the platform's dotted convention (<code>negotiation.opened</code>, <code>negotiation.countered</code>, <code>negotiation.accepted</code>, <code>negotiation.refused</code>, <code>negotiation.expired</code>, <code>negotiation.redeemed</code>) and record actor, before/after state, price, round, and request id — never token bytes.</p>
+<p><strong>Operations.</strong> <code>GET /v1/lcp/metrics</code> gains <code>negotiation.{opened,countered,accepted,refused,expired,redeemed}</code> counters, <code>negotiation.rounds_used</code> (histogram 0–5), <code>negotiation.refusals_by_reason</code>, and <code>negotiation.token_redemption_failures</code>. Operator guidance (docs update): a nonzero sustained <code>token_redemption_failures</code> is a client bug or a token leak; a <code>round_limit_exceeded</code> share above half means the cap is miscalibrated or the ask is unrealistic; refusals must never alert as errors (they are the designed refusal path). <code>LCP_FEATURE_NEGOTIATION</code> is documented beside <code>LCP_MAX_DELIVERY_ATTEMPTS</code> and the other <code>LCP_*</code> switches in the deployment guide; it is the only new switch for this surface (no per-tenant sub-flags, no per-peer toggles).</p>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<p><strong>A. Reuse <code>ping</code>/<code>bid</code> with extension fields (rejected).</strong> The obvious cheapest route: add <code>counter_price_cents</code>, <code>round</code>, <code>negotiation_id</code> to <code>bid</code> and let the platform "counter" by sending another ping. It fails on four measured properties of the current core:</p>
+<ol>
+<li><code>ping</code> and <code>bid</code> are both strict allowlists (<code>schemas/ping.json</code> and <code>schemas/bid.json</code>, <code>additionalProperties: false</code>), so a v1.1 receiver rejects the new fields <code>LCP-100</code>/<code>LCP-008</code> — the same compatibility wall D8 exists to avoid, only spread across two existing types instead of two new ones.</li>
+<li>A ping is a <strong>broadcast</strong> to many buyers and carries <code>lead_age_minutes</code>, quality signals, and slot state. Re-pinging to counter would either re-broadcast the counter (leaking one buyer's price to its competitors — a commercial-information breach) or require a private ping variant, which is a new type in disguise.</li>
+<li><code>bid.decision</code> is a three-value closed enum with no round semantics; adding <code>counter</code> to it makes <code>decision: counter</code> mean "a message that will be answered", which is a state machine living in a field that has none.</li>
+<li><code>bid</code> has no floor echo and no round counter, so a receiver cannot verify the monotone rule or detect replay — the exact ambiguity this record removes.</li>
+</ol>
+<p>The extension route was therefore rejected as <strong>more</strong> wire surface, not less: a new type with a strict allowlist is smaller than five fields of state spread across two closed objects.</p>
+<p><strong>B. Out-of-band negotiation (rejected).</strong> Keep prices in email/chat/sales calls and send a single final <code>bid</code>. Rejected because: the agreed price is not signed, not idempotent, and not replay-safe; it cannot be reconciled with <code>post.pricing</code> during a dispute (the audit is a mail archive); it gives an automated buyer no machine path, which is the entire requirement; and it carries consumer context into a channel with no PII boundary. The one thing it has — zero wire cost — is not worth an unattributable price.</p>
+<p><strong>C. Namespaced extension event values for the negotiation rounds (rejected).</strong> LEP-0007's route (open <code>event</code> values + <code>details</code>) is the right shape for a <em>report</em>, and it is the wrong shape for a <strong>typed price response</strong>: <code>event.details</code> is an open object whose content cannot be schema-constrained, so integer minor units, the floor echo, the round counter, and the allowlist could not be enforced — and an open <code>details</code> object is exactly the PII-smuggling shape this surface forbids. It would also make a state machine out of an event log, where "who may answer" is not expressible.</p>
+<p><strong>D. New <code>ack.status</code> values instead of <code>rejection_reason</code> (rejected).</strong> <code>ack.status</code> is a closed schema enum (<code>schemas/ack.json</code>) with a defined lifecycle; adding <code>COUNTERED</code>/<code>EXPIRED_FOR_NEGOTIATION</code> there is a receiver-visible closed-enum change on the one object every implementer switches on, and it would re-open money semantics (D2's whole argument is that status values near payability are dangerous). The existing <strong>open</strong> <code>rejection_reason</code> enumeration plus the new <code>ack.negotiation.outcome</code> closed enum (six values, scoped to negotiation acks only) carry the same information without touching the shared status axis.</p>
+<p><strong>E. Keep the behavior deployment-specific (rejected).</strong> A buyer agent that must implement each platform's bespoke counter endpoint has no interoperability value and no incentive to build it; the surface would fragment into N incompatible dialects, which is the failure mode LCP exists to prevent. D8 accepted the core cost for exactly this reason — while recording that the adoption evidence for the choice was waived, not produced.</p>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<p><strong>Rollout.</strong></p>
+<ol>
+<li>Schemas, vectors, OpenAPI, and SDK models land together (change gate I2); the feature is <strong>off</strong>.</li>
+<li><code>LCP_FEATURE_NEGOTIATION</code> (default <code>off</code>, parsed in <code>config.py</code> alongside the other <code>LCP_*</code> switches) gates three things only: the <code>features.negotiation</code> advertisement, intake of the two message types, and token minting/redemption. With the flag off, the platform advertises <code>message_types</code> without the new values, answers <code>LCP-006</code> for them, and writes no negotiation rows.</li>
+<li>Tables (<code>negotiation</code>, <code>negotiation_round</code>, <code>negotiation_token</code>) are created by <code>initialize()</code> unconditionally — a schema that depends on an env var is a migration hazard, and empty tables cost nothing. There is no backfill: nothing pre-existing maps onto a negotiation.</li>
+<li>Enable per-tenant/per-deployment only after the vectors and the platform suite are green (<code>W5</code> gate row). Enabling is the advertisement change; no client upgrade is required on the peer side.</li>
+<li>A deployment that enables negotiation MUST advertise a <code>lcp_versions</code> element of <code>1.2.0</code> or higher, because <code>features</code> alone does not satisfy a strictly-conforming 1.2 sender's semver check.</li>
+</ol>
+<p><strong>Observability.</strong> The metrics above, plus the audit event stream; no consumer data and no token bytes in either. A dashboard per deployment should show rounds used (the cap's real cost), refusals by reason (the refusal path is the designed path, so it needs visibility, not paging), accepted→redeemed conversion (a low rate means the token TTL or ask is wrong), and expiry volume.</p>
+<p><strong>Rollback.</strong> Rollback is <strong>disabling the advertisement</strong> (the same mechanism OPERATIONS.md documents for the v1.1 slot surface): <code>LCP_FEATURE_NEGOTIATION=off</code> (or dropping the <code>negotiation</code> key and the <code>1.2.0</code> element from the advertisement) makes the surface unreachable for every peer, with no data-format migration.</p>
+<ul>
+<li>In-flight negotiations become unusable: a redemption against them returns <code>negotiation_closed</code>. No money moves, because nothing was delivered — a negotiation is pre-delivery by construction.</li>
+<li>Rows and audit trail are retained (non-PII, required for dispute reconstruction); they can be archived under W4-06 like any other non-PII history.</li>
+<li>Already-redeemed tokens are ordinary bids and are unaffected by rollback.</li>
+<li>Re-enabling is the same switch. There is no data epoch, no dual-write, and no SDK version pin, because the surface is opt-in in both directions.</li>
+</ul>
+<h2 id="tests">Tests</h2>
+<p>Blocking. Each line names the smallest test that fails if the rule breaks; all run in <code>implementations/reference-platform/tests</code> with the feature flag on, plus the new conformance suite for the vector-side assertions (W5 gate).</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Test</th>
+<th>Asserts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td><code>test_negotiation_round_cap</code></td>
+<td><code>max_rounds</code> absent ⇒ 3 rounds accepted and a 4th buyer counter refused <code>round_limit_exceeded</code>; <code>max_rounds: 5</code> allows exactly 5; <code>max_rounds: 6</code> is <code>LCP-100</code> at quote intake; the cap is enforced in state, not by the client echo (<code>rounds_remaining</code> is checked, then ignored for counting).</td>
+</tr>
+<tr>
+<td>T2</td>
+<td><code>test_negotiation_monotone_enforced</code></td>
+<td>A buyer counter at or below its own previous price is refused <code>non_monotone_counter</code>; a platform counter below its standing ask is refused the same way; a legitimate climb is accepted and moves <code>COUNTERED</code>; a refused message consumes no round and leaves the stored standing price unchanged; both directions are covered by vectors <code>NEG-005</code>/<code>NEG-006</code>.</td>
+</tr>
+<tr>
+<td>T3</td>
+<td><code>test_negotiation_floor_refusal_never_clamps</code></td>
+<td>A price below the restated floor is refused <code>below_floor_price</code> with <code>LCP-100</code> naming <code>payload.price_cents</code>; the stored price is unchanged; no bid, post, or token exists afterwards; the refusal response contains no price the sender did not state.</td>
+</tr>
+<tr>
+<td>T4</td>
+<td><code>test_negotiation_expiry_absolute</code></td>
+<td>A message at/after <code>expires_at</code> is refused <code>negotiation_expired</code> and the negotiation is <code>EXPIRED</code>; a quote whose <code>expires_at</code> exceeds the ping's expiry (or its timestamp+TTL) is <code>LCP-100</code> before any row is written; a fresh <code>message.timestamp</code> inside the replay window does not extend anything; the sweep is idempotent.</td>
+</tr>
+<tr>
+<td>T5</td>
+<td><code>test_negotiation_token_single_use_idempotent</code></td>
+<td>First redemption creates exactly one bid at the token price and <code>REDEEMED</code>; the same envelope with the same <code>idempotency_key</code> returns the original ack byte for byte with no second bid and no second payable; the same token from a different sender is <code>LCP-002</code>; the same token from the same sender with a different key after <code>REDEEMED</code> is <code>negotiation_closed</code>; only a hash is stored and the plaintext token never appears in a log, audit row, or metrics label.</td>
+</tr>
+<tr>
+<td>T6</td>
+<td><code>test_negotiation_capability_absence</code></td>
+<td>With <code>LCP_FEATURE_NEGOTIATION</code> off, <code>capabilities()</code> has no <code>negotiation</code> key and no new <code>message_types</code>, and intake of <code>quote</code>/<code>counter</code> is <code>LCP-006</code>; with the flag on but a receiver advertising only <code>1.1.0</code>, the sender helper refuses to emit (client-side gate) and the platform does not advertise the types to that peer; <code>features</code> present with a lower <code>lcp_versions</code> element does not open the gate.</td>
+</tr>
+<tr>
+<td>T7</td>
+<td><code>test_negotiation_tenant_authorization</code></td>
+<td>Buyer B presenting buyer A's <code>negotiation_id</code> receives <code>LCP-002</code> (indistinguishable from a nonexistent id); a buyer that was not pinged for that offer cannot open or join a negotiation; a cross-tenant read attempt returns no price, round, or state; the row is never visible outside its tenant predicate.</td>
+</tr>
+<tr>
+<td>T8</td>
+<td><code>test_negotiation_retention_erasure</code></td>
+<td><code>privacy erase-lead</code> on a lead with a negotiation leaves the negotiation's audit rows addressable by opaque ids and containing <strong>no</strong> consumer field (there is none to find); tokens remain hashed and unredeemable after erasure/expiry; retention expiry (W4-06) makes expired negotiation rows unreachable, archives included; erasure does not delete the price/audit trail needed for dispute reconstruction and does not resurrect any envelope data.</td>
+</tr>
+</tbody>
+</table>
+<p>Two additional non-blocking-but-required gates ride the standard matrix rather than this table: <code>tools/check_schema_sync.py</code> (schemas ↔ ten SDK bundles ↔ manifests) and the coverage matrix's zero-unexplained-gap check for the new SPEC clauses.</p>
+<h2 id="deferred-questions">Deferred questions</h2>
+<p>Each carries the trigger that reopens it. None of these blocks acceptance; all are recorded so a later change does not have to re-litigate this one.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Question</th>
+<th>Why deferred</th>
+<th>Trigger to revisit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Should the protocol offer normative <em>strategy</em> (how many rounds to use, how to size a first counter)?</td>
+<td>Strategy is agent policy; a normative default would encode a commercial position into the core and make the platform's reserve guessable.</td>
+<td>Two adopters ship their own strategy and both ask for a shared default, with measured closed rates.</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>May a platform concede downward inside a negotiation (a real seller counter below its ask)?</td>
+<td>C6 forbids it: a lower counter is a price concession with no audit distinction from a mistake. Implementing it needs a monotone-rule revision (a signed delta, a concession flag, and a refusal reason for an unearned delta).</td>
+<td>Adopter evidence that restating the ask loses closable sales, plus a security review of the concession surface.</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>Should the buyer's ceiling travel on the wire (from <code>offer.max_allowed_price_cents</code>)?</td>
+<td>The ceiling is already offer-side configuration; putting it in a negotiation discloses the buyer's walk-away price to the seller.</td>
+<td>An adopter needs a wire-visible ceiling for cross-vendor automation, with a comparison rule and a refusal reason.</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>Negotiation over non-ping surfaces (<code>post</code> reprice, resale, subscription repricing).</td>
+<td>Different footing: post-delivery repricing touches payability, disputes, and already-delivered PII.</td>
+<td>Two independent adopters, plus a money-semantics review that starts from <code>post.pricing</code>, not from this record.</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>Multi-currency negotiation with FX comparison.</td>
+<td>D7 requires a non-stale, consistently-sourced rate before two prices may be compared; a negotiation would need that same rule plus a refusal reason for a stale rate.</td>
+<td>D7 has ≥2 adopters using <code>fx_rate</code>, and the negotiation refusal vocabulary gains a <code>stale_rate</code> value.</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>A read/list surface (<code>GET /v1/lcp/negotiations</code>, history parity with LEP-0005).</td>
+<td>No adopter has asked; it adds an authorization + pagination surface with a PII-adjacent audit read, and the state table is already queryable operationally.</td>
+<td>An operator needs self-service history, with a security review of the tenant predicate and a retention rule for the read.</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td><code>max_rounds</code> above the hard cap of 5.</td>
+<td>The cap is the abuse bound, not a tuning knob; raising it needs a measured benefit at the boundary.</td>
+<td>A deployment shows a closed-rate gain at 5 rounds that continues to 8, with cost data.</td>
+</tr>
+<tr>
+<td>Q8</td>
+<td>Negotiation for <code>call</code> leads (telephony pricing, per-minute terms).</td>
+<td>The same surface prices a lead; call pricing has its own unit (<code>durations</code>, <code>payable_rules</code>) and no evidence yet.</td>
+<td>Two adopters negotiating call pricing, plus a unit definition that is not minor units.</td>
+</tr>
+</tbody>
+</table>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-envelope">1. Envelope</a></li><li class="depth-3"><a href="#2-quote--the-platform-opens-a-negotiation">2. quote — the platform opens a negotiation</a></li><li class="depth-3"><a href="#3-counter--either-party-answers-the-standing-message">3. counter — either party answers the standing message</a></li><li class="depth-3"><a href="#4-round-accounting-and-termination">4. Round accounting and termination</a></li><li class="depth-3"><a href="#5-binding-token-c7">5. Binding token (C7)</a></li><li class="depth-3"><a href="#valid-example-1--opening-quote-platform--buyer">Valid example 1 — opening quote (platform → buyer)</a></li><li class="depth-3"><a href="#valid-example-2--buyer-counter-inside-the-bounds">Valid example 2 — buyer counter inside the bounds</a></li><li class="depth-3"><a href="#valid-example-3--accept-and-the-binding-token-ack">Valid example 3 — accept and the binding-token ack</a></li><li class="depth-3"><a href="#invalid-example-a--price-below-the-floor-refused-never-clamped">Invalid example A — price below the floor (refused, never clamped)</a></li><li class="depth-3"><a href="#invalid-example-b--round-exhaustion">Invalid example B — round exhaustion</a></li><li class="depth-3"><a href="#invalid-example-c--expired-negotiation">Invalid example C — expired negotiation</a></li><li class="depth-3"><a href="#invalid-example-d--non-monotone-counter">Invalid example D — non-monotone counter</a></li><li class="depth-3"><a href="#invalid-example-e--pii-attempt">Invalid example E — PII attempt</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#tests">Tests</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0009-agent-to-agent-negotiation.md</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

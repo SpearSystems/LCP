@@ -3,6 +3,7 @@ package com.spearsystems.lcp;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -12,8 +13,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public final class LcpSdk {
     private LcpSdk() {}
@@ -118,8 +126,110 @@ public final class LcpSdk {
         public String submitLead(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/leads", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
         public String submitCall(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/calls", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
         public String submitBid(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/bids", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
-        public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + URI.create("https://lcp.invalid/" + id).getRawPath(), null, null, false); }
+        /** One lead in a batch: per-item identifiers plus the lead payload as JSON (schemas/batch.json). */
+        public record BatchItem(String itemId, String idempotencyKey, String payloadJson) {}
+
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+
+        /**
+         * Submit up to 100 lead items in one request (LEP-0001 W2-01) and
+         * return the per-item receipts in input order. HTTP 207 partial success
+         * is a successful response; per-item error objects are preserved. The
+         * batch is never retried as a whole — retrying only rejected/error
+         * receipts is the caller's job.
+         */
+        public List<JsonNode> submitLeadsBatch(List<BatchItem> items) throws Exception { return submitLeadsBatch(items, null); }
+
+        public List<JsonNode> submitLeadsBatch(List<BatchItem> items, String requestId) throws Exception {
+            if (items.isEmpty() || items.size() > 100) throw new IllegalArgumentException("batch supports 1..100 items, got " + items.size());
+            var root = MAPPER.createObjectNode();
+            root.put("request_id", requestId == null ? UUID.randomUUID().toString() : requestId);
+            var array = root.putArray("items");
+            for (var item : items) {
+                var node = array.addObject();
+                node.put("item_id", item.itemId());
+                node.put("idempotency_key", item.idempotencyKey());
+                node.set("payload", MAPPER.readTree(item.payloadJson()));
+            }
+            var response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false));
+            var results = response.path("results");
+            if (!results.isArray()) throw new IllegalStateException("batch response missing results");
+            var order = new HashMap<String, Integer>();
+            for (int index = 0; index < items.size(); index++) order.put(items.get(index).itemId(), index);
+            var ordered = new ArrayList<JsonNode>();
+            results.forEach(ordered::add);
+            ordered.sort(Comparator.comparingInt(node -> order.getOrDefault(node.path("item_id").asText(), items.size())));
+            return ordered;
+        }
+
+        public String queryLeadStatus(String id) throws Exception { return request("GET", "/v1/lcp/leads/" + pathEncode(id), null, null, false); }
         public String getCapabilities() throws Exception { return request("GET", "/v1/lcp/capabilities", null, null, false); }
+
+        /**
+         * Fetch one protocol schema body ({@code GET /v1/lcp/schemas/{name}}) and
+         * return it unchanged. The name may be multi-segment
+         * ({@code verticals/mortgage}); see {@link #pathEncode(String)}.
+         */
+        public String getSchema(String name) throws Exception { return request("GET", "/v1/lcp/schemas/" + pathEncode(name), null, null, false); }
         public String listOffers(String vertical) throws Exception { return request("GET", "/v1/lcp/offers" + (vertical == null ? "" : "?vertical=" + URI.create("https://lcp.invalid/?v=" + vertical).getRawQuery().substring(2)), null, null, false); }
+
+        /**
+         * LEP-0005 {@code GET /v1/lcp/history/requests} filters. Every field is
+         * optional: a null or empty value is left out of the query rather than
+         * sent blank, because a blank filter widens the page instead of
+         * narrowing it. Rows are scoped server-side to the credential's tenant,
+         * so there is no tenant field here.
+         */
+        public record HistoryParams(
+                Integer limit,
+                String cursor,
+                String requestId,
+                String status,
+                String vertical,
+                String callerPhoneHash,
+                String from,
+                String to) {}
+
+        /**
+         * Page the LEP-0005 request-history audit log ({@code history:read}) and
+         * return the response body unchanged ({@code {"requests": [...]}}). A 4xx
+         * throws {@link IllegalStateException} through the shared request path.
+         */
+        public String requestHistory(HistoryParams params) throws Exception {
+            var query = new ArrayList<String>();
+            if (params.limit() != null) query.add("limit=" + params.limit());
+            addHistoryFilter(query, "cursor", params.cursor());
+            addHistoryFilter(query, "request_id", params.requestId());
+            addHistoryFilter(query, "status", params.status());
+            addHistoryFilter(query, "vertical", params.vertical());
+            addHistoryFilter(query, "caller_phone_hash", params.callerPhoneHash());
+            addHistoryFilter(query, "from", params.from());
+            addHistoryFilter(query, "to", params.to());
+            return request("GET", "/v1/lcp/history/requests" + (query.isEmpty() ? "" : "?" + String.join("&", query)), null, null, false);
+        }
+
+        private static void addHistoryFilter(ArrayList<String> query, String name, String value) {
+            if (value != null && !value.isEmpty()) query.add(name + "=" + historyEncode(value));
+        }
+
+        private static String historyEncode(String value) {
+            return URI.create("https://lcp.invalid/?v=" + value).getRawQuery().substring(2);
+        }
+
+        /**
+         * Percent-encode a request path the way {@code quote(value, safe='/')}
+         * does in the sibling SDKs: illegal and delimiter characters
+         * ({@code ?}, {@code #}, space, {@code %}, non-ASCII) are escaped so a
+         * caller-supplied name cannot break out of the path, while {@code /}
+         * stays literal because schema names are multi-segment
+         * ({@code verticals/mortgage}).
+         */
+        private static String pathEncode(String value) {
+            try {
+                return new URI(null, null, value, null).getRawPath();
+            } catch (URISyntaxException error) {
+                throw new IllegalArgumentException("invalid request path: " + value, error);
+            }
+        }
     }
 }

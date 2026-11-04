@@ -10,7 +10,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import json
 import sqlite3
-from threading import RLock
+from collections import deque
+from threading import Lock, RLock
 from typing import Any, Iterator
 
 from .crypto import EnvelopeCipher
@@ -97,7 +98,15 @@ class PostgresStore(Store):
     processes, as shown in the Kubernetes example, for horizontal capacity.
     """
 
-    def __init__(self, dsn: str, *, pii_encryption_key: str | bytes | None = None):
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        pii_encryption_key: str | bytes | None = None,
+        history_queue_capacity: int = 1_024,
+        envelope_retention_days: int = 90,
+        history_retention_days: int = 365,
+    ):
         try:
             import psycopg
         except ImportError as exc:
@@ -107,6 +116,22 @@ class PostgresStore(Store):
         self.path = dsn
         self._cipher = EnvelopeCipher(pii_encryption_key)
         self._lock = RLock()
+        # W4-05/W4-06: identical deferred-write and retention state to the
+        # SQLite store; ``Store.__init__`` is not called because it opens a
+        # SQLite connection.
+        self._history_queue = deque()
+        self._history_lock = Lock()
+        self._history_capacity = max(1, int(history_queue_capacity))
+        self._history_stats = {
+            "enqueued": 0,
+            "flushed": 0,
+            "drop_risk": 0,
+            "dropped": 0,
+            "failed": 0,
+        }
+        self._envelope_retention_days = int(envelope_retention_days)
+        self._history_retention_days = int(history_retention_days)
+        self._last_retention_sweep = float("-inf")
         self._raw = psycopg.connect(dsn, row_factory=_decoded_dict_row)
         # Store read methods use short implicit statements while write methods
         # open explicit transactions. Autocommit prevents a standalone SELECT
@@ -180,6 +205,7 @@ class PostgresStore(Store):
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TEXT")
 
     def close(self) -> None:
+        self.flush_history()
         with self._lock:
             self._raw.close()
 

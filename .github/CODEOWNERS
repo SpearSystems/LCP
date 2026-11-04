@@ -1,15 +1,22 @@
-# LCP repository ownership
-# Keep these owners synchronized with MAINTAINERS.md and the protected branch rules.
-# The repository's current maintainer account is @rbeno; add an independent
-# security reviewer/team before enabling mandatory two-person approval.
+# LCP repository ownership.
+#
+# GitHub reads this file for review routing only; it grants no approval power.
+# The `main protection` ruleset currently requires zero approving reviews and
+# the `release` environments permit self-review, because LCP has one maintainer
+# (MAINTAINERS.md). See docs/MAINTAINER-RELEASE-SETUP.md, "Applied state".
+#
+# Every rule below resolves to the same person today. The path-specific rules
+# are the review routing a second maintainer with release duties would take
+# over; until then they do not constitute independent review.
 
-/SPEC.md @rbeno
-/schemas/ @rbeno
-/verticals/ @rbeno
-/test-vectors/ @rbeno
-/api/ @rbeno
-/.github/ @rbeno
-/governance/ @rbeno
-/implementations/ @rbeno
-/tools/ @rbeno
-* @rbeno
+* @randybeno
+
+# Protocol surface: wire schema, the spec text that normatively describes it,
+# and the governance records that authorize either.
+/governance/ @randybeno
+/schemas/ @randybeno
+/spec/ @randybeno
+
+# Workflow edits are supply-chain changes (pinned action SHAs, release and
+# publication paths, OIDC trust).
+/.github/workflows/ @randybeno

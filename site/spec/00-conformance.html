@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="spec/00-conformance.md">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP — Lead Context Protocol Specification — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lcp--lead-context-protocol-specification">LCP — Lead Context Protocol Specification</h1>
+<blockquote>
+<p>Part of the normative LCP v1.0 specification: <strong>Conformance</strong>. Scope, conformance tiers, governance, universal-core audit, authoring order, and the review log. Index: <a href="../index.html">SPEC.md</a> · File map: <a href="index.html">spec/README.md</a>.</p>
+</blockquote>
+<h2 id="1-overview">1. Overview</h2>
+<p>LCP is a universal protocol for exchanging consumer lead data between publishers, platforms, and buyers. It is:</p>
+<ul>
+<li><strong>Channel-agnostic</strong> — form fills, calls, chats, clicks, API, AI agents.</li>
+<li><strong>Vertical-agnostic</strong> — the core has zero vertical-specific fields; verticals are typed extension blocks.</li>
+<li><strong>Market-agnostic</strong> — ISO 3166-1 country codes, per-country territory and postal validation, ISO 4217 currency.</li>
+<li><strong>PII-disciplined</strong> — ping messages carry non-PII attributes + hashes only; full PII flows only in post messages to the winning buyer.</li>
+<li><strong>Agent-ready</strong> — agents are first-class senders via a binding layer (MCP first), never coupled into the core.</li>
+</ul>
+<p><strong>Scope.</strong> LCP governs lead data exchange — the envelope, payload, lifecycle, and compliance evidence. It does <strong>not</strong> govern money movement (settlement, invoicing, payout); financial arrangements are bilateral between parties. LIP lifecycle statuses (<code>accepted</code>, <code>rejected</code>, <code>disputed</code>, <code>refunded</code>, <code>converted</code>) describe the lead's state, not the payment's state.</p>
+<h3 id="design-principles">Design principles</h3>
+<ol>
+<li>Universal core, extensible verticals.</li>
+<li>Channel-agnostic message types.</li>
+<li>PII discipline (ping/post split).</li>
+<li>Envelope/payload separation.</li>
+<li>Semver + per-schema versions + N+2 deprecation.</li>
+<li>Mandatory idempotency.</li>
+<li>Structured errors (array-shaped, multi-error).</li>
+<li>Machine-readable schemas (JSON Schema).</li>
+<li>Capability discovery.</li>
+<li>Conformance tiers L1–L3, self-declared.</li>
+<li>Backward compatibility with open/closed enum policy.</li>
+</ol>
+<h2 id="7-conformance-tiers">7. Conformance tiers</h2>
+<ul>
+<li><strong>L1:</strong> envelope + required fields + idempotency + ack + valid timestamps.</li>
+<li><p><strong>L2:</strong> full lifecycle + ping/post split (strict allowlist enforcement)</p>
+<ul>
+<li>compliance records (consent evidence + purposes).</li>
+</ul></li>
+<li><strong>L3:</strong> full + dedup fingerprints + capability discovery + published JSON Schemas + agent binding (attestation verification).</li>
+</ul>
+<h2 id="11-governance">11. Governance</h2>
+<ul>
+<li>Apache 2.0 (patent retaliation clause rationale).</li>
+<li>Anti-capture clause: no mandatory fees, approvals, or proprietary dependencies.</li>
+<li>Extension registry: namespace registration, format-only validation.</li>
+<li>No mandatory certification; conformance self-declared.</li>
+<li>CLA for contributors.</li>
+</ul>
+<p>See <span class="unpublished" title="Not published in the specification site: governance">governance/</span>.</p>
+<h2 id="12-universal-audit">12. Universal audit</h2>
+<p>The core must work for a gutter lead in Australia, a solar lead in the US, a call lead in NZ, and a lead submitted by an AI agent — with zero core changes. Audit checklist:</p>
+<ul>
+<li>[ ] No vertical-specific fields in core.</li>
+<li>[ ] No market-specific fields in core — <strong>including named sub-fields of <code>compliance</code></strong> (no vendor names like <code>jornaya_token</code> or law references like <code>tcpac_consent</code> as core fields; use <code>consent_evidence[]</code> with generic <code>type</code>/<code>provider</code>).</li>
+<li>[ ] <code>consumer</code> does not assume Western name splitting (<code>full_name</code> available as alternative to <code>first_name</code>/<code>last_name</code>).</li>
+<li>[ ] <code>consumer.gender</code> is NOT in core (moved to vertical <code>attributes</code>).</li>
+<li>[ ] Phone E.164 universal; <code>phone_hash</code> is HMAC-SHA256 (per-pair).</li>
+<li>[ ] Call leads first-class (<code>call</code> message type).</li>
+<li>[ ] AI-agent submissions: <code>channel=agent</code>, <code>source_type=agent</code>.</li>
+<li>[ ] Ping is a strict allowlist (<code>additionalProperties: false</code>), not a blocklist.</li>
+<li>[ ] Vertical schemas tag every field <code>ping_safe: true/false</code>.</li>
+<li>[ ] Vertical schemas do not shadow core field names in <code>attributes</code>.</li>
+<li>[ ] <code>capabilities.countries</code> is ISO 3166-1 alpha-2 codes (no legacy <code>markets</code> grouping).</li>
+<li>[ ] Status transition table is published and matches §3.</li>
+<li>[ ] Open/closed enum policy is stated (§6).</li>
+<li>[ ] Legacy production wire contract fields map 1:1 into LCP.</li>
+</ul>
+<h2 id="13-todo-authoring-order">13. TODO (authoring order)</h2>
+<ul>
+<li>[x] Run the deep-research review pass (<code>docs/lcp-deep-research-prompt.md</code>).</li>
+<li>[x] Resolve or explicitly defer every finding (see §14).</li>
+<li>[x] Fill envelope + core schemas (<code>schemas/*.json</code>).</li>
+<li>[x] Fill message-type schemas (lead, call, ping, post, ack, event).</li>
+<li>[x] Fill vertical schemas — mortgage first (<code>verticals/mortgage.json</code>).</li>
+<li>[x] Tag every vertical attribute field <code>ping_safe: true/false</code>.</li>
+<li>[x] Fill examples (<code>examples/*.json</code>).</li>
+<li>[x] Fill test vectors (<code>test-vectors/</code>).</li>
+<li>[x] Write conformance runner (L1/L2/L3) — 30/30 pass, including the post-release sensitive-ping vectors.</li>
+<li>[x] Write reference MCP server (<code>implementations/mcp-server/</code>).</li>
+<li>[x] Add <code>governance/SECURITY.md</code> (responsible disclosure).</li>
+<li>[x] Add trademark/usage policy for "LCP compliant" claims.</li>
+<li>[x] Fill extension registry format (namespace, registration, payload location).</li>
+<li>[x] Write CLA full text (<code>governance/CLA.md</code>).</li>
+<li>[x] Publish decision — repository is public under Apache 2.0 (see <span class="unpublished" title="Not published in the specification site: docs/RELEASE.md">RELEASE.md</span> for the tagged release record).</li>
+<li>[ ] Spec site (LEX-style) — trigger-gated: publish only once a maintained canonical-source workflow exists (see §14); not part of v1.1.</li>
+</ul>
+<h2 id="14-review-log-appendix">14. Review-log appendix</h2>
+<p>Findings from the deep-research review (<code>docs/lcp-deep-research-review.md</code>) and their resolution:</p>
+<h3 id="blockers--all-resolved">Blockers — all resolved</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Finding</th>
+<th>Resolution</th>
+<th>Section</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1</td>
+<td>Ping PII safety is a blocklist</td>
+<td>Replaced with strict allowlist (<code>additionalProperties: false</code>) + <code>ping_safe</code> tagging</td>
+<td>§4 ping, §12</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>Compliance block hardcodes US vendors</td>
+<td>Replaced with generic <code>consent_evidence[]</code> array; vendors are examples</td>
+<td>§3 compliance</td>
+</tr>
+<tr>
+<td>B3</td>
+<td><code>phone_hash</code> unsalted sha256 (trivially reversible)</td>
+<td>Switched to per-pair <code>HMAC-SHA256(shared_secret, e164)</code></td>
+<td>§9</td>
+</tr>
+<tr>
+<td>B4</td>
+<td>No status transition graph</td>
+<td>Published full transition table with terminal states + resolution paths</td>
+<td>§3 status</td>
+</tr>
+<tr>
+<td>B5</td>
+<td>Open/closed enum policy unstated</td>
+<td>Added open/closed enum table: <code>message.type</code> closed, all others open</td>
+<td>§6</td>
+</tr>
+</tbody>
+</table>
+<h3 id="should-fix--resolved-in-v10">Should-fix — resolved in v1.0</h3>
+<table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Resolution</th>
+<th>Section</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>call</code> vs <code>lead</code> consolidation</td>
+<td>Kept separate; design note added for contributors</td>
+<td>§4</td>
+</tr>
+<tr>
+<td><code>full_name</code> for non-Western names</td>
+<td>Added to <code>consumer</code></td>
+<td>§3</td>
+</tr>
+<tr>
+<td><code>consumer.gender</code> in core</td>
+<td>Removed; moved to vertical <code>attributes</code></td>
+<td>§3</td>
+</tr>
+<tr>
+<td>No transport-neutral security home</td>
+<td>Added <code>payload.message.security</code> block</td>
+<td>§9</td>
+</tr>
+<tr>
+<td><code>test</code> not mirrored as header</td>
+<td>Added <code>X-LCP-Test</code> header requirement</td>
+<td>§2</td>
+</tr>
+<tr>
+<td>Error shape inconsistency (singular vs. array)</td>
+<td>Unified to <code>errors[]</code> everywhere</td>
+<td>§5</td>
+</tr>
+<tr>
+<td>Missing <code>LCP-011 RATE_LIMITED</code></td>
+<td>Added (429)</td>
+<td>§5</td>
+</tr>
+<tr>
+<td><code>LCP-002</code> conflates identity + signature</td>
+<td>Split into <code>LCP-002</code> (identity) + <code>LCP-012</code> (signature)</td>
+<td>§5</td>
+</tr>
+<tr>
+<td><code>attestation</code> is free text</td>
+<td>Defined as signed JWT with verifiable claims</td>
+<td>§9</td>
+</tr>
+<tr>
+<td>Agent-as-consumer timeout undefined</td>
+<td>Defined as 30s default with auto-<code>EXPIRED</code> fallback</td>
+<td>§9</td>
+</tr>
+<tr>
+<td>Vertical schemas can shadow core field names</td>
+<td>Reserved-namespace rule added</td>
+<td>§3 attributes, §12</td>
+</tr>
+<tr>
+<td><code>capabilities.markets</code> undefined</td>
+<td>Replaced with <code>countries</code> (ISO 3166-1 alpha-2)</td>
+<td>§8</td>
+</tr>
+<tr>
+<td>Consent captures <em>that</em>, not <em>what</em></td>
+<td>Added <code>consent_purposes[]</code></td>
+<td>§3 compliance</td>
+</tr>
+<tr>
+<td>No lead expiry field</td>
+<td>Added <code>expires_at</code> / <code>ttl_seconds</code></td>
+<td>§3</td>
+</tr>
+<tr>
+<td>No exclusivity model</td>
+<td>Added <code>exclusivity</code> + <code>max_buyers</code></td>
+<td>§3</td>
+</tr>
+<tr>
+<td>Settlement/billing scope ambiguous</td>
+<td>Added scope statement to §1</td>
+<td>§1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="should-fix--delivered-in-v120-records-kept">Should-fix — delivered in v1.2.0 (records kept)</h3>
+<p>v1.1.0 delivered the LEP-driven set (canonical timestamps and cross-SDK interop, shared-lead slots, request history, extensions and <code>FINAL_PRICING</code>, attestation verification). Every row below was then delivered in v1.2.0 under the <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.2.md">D1 trigger waiver (<code>docs/DECISIONS-v1.2.md</code>)</span> — the triggers were <strong>not</strong> met; the waiver records that choice and its 2027-05-04 re-evaluation. The trigger column is kept as the original reason.</p>
+<table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Original trigger</th>
+<th>Resolved as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Batch submission (<code>submit_leads_batch</code>)</td>
+<td>Agent submission volume grows</td>
+<td><code>POST /v1/lcp/leads/batch</code> + MCP <code>submit_leads_batch</code> (LEP-0001)</td>
+</tr>
+<tr>
+<td>Push delivery (webhook/event subscription)</td>
+<td>Polling at volume becomes costly</td>
+<td><code>subscription</code> message type + registration/delivery/replay routes (LEP-0001)</td>
+</tr>
+<tr>
+<td>Platform quality score in ping/post</td>
+<td>Platforms want to share independent scoring</td>
+<td>Registered <code>lcp.platform.assessment</code>; post always, ping only as a ping-safe registration</td>
+</tr>
+<tr>
+<td>Delivery receipt (<code>PROCESSED</code> ack status)</td>
+<td>Buyer CRM sync failures need detection</td>
+<td><code>PROCESSED</code> in <code>ack.status</code>, post-delivery terminal success only (D2)</td>
+</tr>
+<tr>
+<td>Vertical-specific buyer criteria in offers</td>
+<td>Complex matching rules per vertical</td>
+<td>Registered <code>lcp.buyer.criteria</code> over the allowlisted predicate operators</td>
+</tr>
+<tr>
+<td>Raw IP address in post (full PII context)</td>
+<td>Fraud detection + geo-validation</td>
+<td><code>provenance.ip_address</code>, post-only; <code>ip_hash</code> stays the ping-safe projection (D5)</td>
+</tr>
+<tr>
+<td>Raw form submission data</td>
+<td>Dispute evidence — what consumer actually entered</td>
+<td>Registered <code>lcp.intake.raw_form</code>, post-only, classed <code>restricted</code> (D6)</td>
+</tr>
+<tr>
+<td>Multi-currency pricing</td>
+<td>Cross-border lead-gen (US buyer purchasing AU leads)</td>
+<td><code>post.pricing</code> FX fields + comparability rule with ISO 4217 exponents (LEP-0010)</td>
+</tr>
+<tr>
+<td>Core schema version in envelope</td>
+<td>Schema-level breaking change detection</td>
+<td>Documented that <code>lcp.version</code> <em>is</em> the core schema version, plus <code>capabilities().core_schema_version</code> (D3)</td>
+</tr>
+<tr>
+<td>Address fields in core (<code>street_address</code>)</td>
+<td>Multiple verticals need consumer residential address</td>
+<td><code>location.street_address</code>, optional, post-only (D4)</td>
+</tr>
+<tr>
+<td>Spec site (LEX-style)</td>
+<td>Adoption grows beyond GitHub</td>
+<td><code>tools/build_spec_site.py</code> → committed <code>site/</code> with a staleness gate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="deferred-items--status-after-v120">Deferred items — status after v1.2.0</h3>
+<table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Original trigger</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent-to-agent price negotiation</td>
+<td>Agent bidding volume large enough that static floor pricing is suboptimal</td>
+<td>Delivered as LEP-0009 (<code>quote</code>/<code>counter</code>), capability-gated and off by default</td>
+</tr>
+<tr>
+<td>Formal sensitivity taxonomy for PII</td>
+<td>A market regulates a category not covered (e.g. biometric)</td>
+<td>Delivered as LEP-0011 + <code>docs/PII-CLASSES.md</code> with <code>x-lcp-pii</code> on every property</td>
+</tr>
+<tr>
+<td>Multi-maintainer governance</td>
+<td>External contributors adopt LCP</td>
+<td><strong>Open — human blocker.</strong> <code>CODEOWNERS</code> and the exact ruleset delta are prepared; independent release approval is not claimed (D12)</td>
+</tr>
+<tr>
+<td>LEP (LCP Enhancement Proposal) process</td>
+<td>Community growth requires structured proposal workflow</td>
+<td>Delivered (LEP-0004, operative with the ARB charter)</td>
+</tr>
+<tr>
+<td>Hosted conformance sandbox</td>
+<td>Self-hosted conformance runner is insufficient for certification</td>
+<td>Self-hostable runner delivered (<code>tools/conformance_runner.py</code>, D11); no certification claim until a second operator runs it</td>
+</tr>
+<tr>
+<td>Split SPEC.md into focused documents</td>
+<td>Spec exceeds ~1000 lines or gets second major section</td>
+<td>Delivered: <code>SPEC.md</code> is the index over <code>spec/00-conformance.md</code> … <code>spec/05-capabilities.md</code> (D10)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="naming">Naming</h3>
+<p>The review flagged that "LCP" collides with Largest Contentful Paint (Google Core Web Vitals). This is a real discoverability concern. The decision is to <strong>keep the name "LCP"</strong> — the collision is a marketing/ SEO problem, not a protocol problem. Mitigation: consistent "Lead Context Protocol" branding, a spec site with topical authority, and disambiguation in public materials.</p>
+<hr>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#1-overview">1. Overview</a></li><li class="depth-3"><a href="#design-principles">Design principles</a></li><li class="depth-2"><a href="#7-conformance-tiers">7. Conformance tiers</a></li><li class="depth-2"><a href="#11-governance">11. Governance</a></li><li class="depth-2"><a href="#12-universal-audit">12. Universal audit</a></li><li class="depth-2"><a href="#13-todo-authoring-order">13. TODO (authoring order)</a></li><li class="depth-2"><a href="#14-review-log-appendix">14. Review-log appendix</a></li><li class="depth-3"><a href="#blockers--all-resolved">Blockers — all resolved</a></li><li class="depth-3"><a href="#should-fix--resolved-in-v10">Should-fix — resolved in v1.0</a></li><li class="depth-3"><a href="#should-fix--delivered-in-v120-records-kept">Should-fix — delivered in v1.2.0 (records kept)</a></li><li class="depth-3"><a href="#deferred-items--status-after-v120">Deferred items — status after v1.2.0</a></li><li class="depth-3"><a href="#naming">Naming</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>spec/00-conformance.md</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

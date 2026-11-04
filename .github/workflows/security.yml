@@ -55,7 +55,11 @@ jobs:
           # into any tracked file fails this job before merge. The rules file
           # is passed explicitly and is NOT named "trivy-secret.yaml", so it
           # does not leak into the container-scan job's default config load.
-          "${RUNNER_TEMP}/trivy" fs --scanners secret --secret-config trivy-secret-rules.yaml --skip-version-check --exit-code 1 .
+          # site/ is generated from the scanned sources (spec, schemas, LEPs) by
+          # tools/build_spec_site.py; scanning it only re-reports example JWT
+          # strings that the source files already contain and that the vector
+          # suite deliberately treats as fixtures.
+          "${RUNNER_TEMP}/trivy" fs --scanners secret --secret-config trivy-secret-rules.yaml --skip-version-check --skip-dirs site --exit-code 1 .
 
   pip-audit:
     name: Python dependency audit

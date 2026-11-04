@@ -10,36 +10,101 @@
         "items": {
           "$ref": "core.json#/$defs/error"
         },
-        "type": "array"
+        "type": "array",
+        "x-lcp-pii": "internal"
       },
       "lead_id": {
         "description": "Assigned lead ID, if applicable.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "negotiation": {
+        "additionalProperties": false,
+        "description": "LEP-0009 \u00a75: the negotiation outcome carried on every ack for a quote/counter (and on the bid ack of a successful redemption), so a buyer never infers state from prose. Absent on a v1.1 exchange.",
+        "properties": {
+          "binding_expires_at": {
+            "description": "At or before the negotiation expires_at; the token is unusable at or after this instant.",
+            "format": "date-time",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "binding_token": {
+            "description": "Present only when outcome = accepted. Single-use; returned exactly once (the ack to the accepting message). The platform stores only a hash.",
+            "pattern": "^tok_[A-Za-z0-9_-]{32,128}$",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "currency": {
+            "$ref": "core.json#/$defs/currency"
+          },
+          "negotiation_id": {
+            "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "outcome": {
+            "enum": [
+              "opened",
+              "countered",
+              "accepted",
+              "refused",
+              "expired",
+              "redeemed"
+            ],
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "price_cents": {
+            "description": "The accepted, countered, or refused price; absent on a refusal that carried no price.",
+            "minimum": 0,
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          },
+          "rounds_remaining": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          }
+        },
+        "required": [
+          "negotiation_id",
+          "outcome",
+          "currency",
+          "rounds_remaining"
+        ],
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "original_message_id": {
         "description": "ID of the message being acknowledged.",
         "format": "uuid",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "rejection_reason": {
         "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)",
         "description": "Structured rejection reason when status = REJECTED. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged. Open enumeration.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "request_id": {
         "description": "Server-side request ID for tracing.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "status": {
         "enum": [
           "RECEIVED",
           "VALIDATED",
           "ACCEPTED",
+          "PROCESSED",
           "REJECTED",
           "DUPLICATE",
           "ERROR"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -47,6 +112,65 @@
       "status"
     ],
     "title": "LCP Ack Message",
+    "type": "object"
+  },
+  "schemas/batch.json": {
+    "$id": "https://lcp.dev/schemas/batch.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "v1.2 (LEP-0001 W2-01): bounded batch submission. The batch is a loop over the single-item intake path \u2014 each item's payload is a lead payload validated by schemas/lead.json, authenticated, deduped, and persisted exactly as a single lead would be. The batch schema therefore fixes the per-item metadata (item_id, idempotency_key) and the item payload's container, never the lead's own field rules: an item whose lead payload is invalid is a per-item `rejected` receipt, not a whole-request schema failure. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "properties": {
+      "items": {
+        "description": "LEP-0001 W2-01 caps a batch at 100 items; exceeding the cap is a whole-request 413 LCP-001, never a per-item rejection.",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "idempotency_key": {
+              "description": "Per-item idempotency key (LEP-0001: per-item idempotency). A replay returns the item's original result as a `duplicate` receipt (existing DUPLICATE/LCP-005 semantics at item granularity).",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string",
+              "x-lcp-pii": "internal"
+            },
+            "item_id": {
+              "description": "Stable per-item identifier, echoed in that item's receipt. It also seeds the synthesized lead envelope's deterministic message id, so a replay of the same item reuses the same message.",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string",
+              "x-lcp-pii": "internal"
+            },
+            "payload": {
+              "description": "A full-PII lead payload \u2014 the root object of schemas/lead.json, never an envelope and never a ping payload. It is validated per item against schemas/lead.json and the lifecycle intake rules; an invalid payload rejects that item only.",
+              "type": "object",
+              "x-lcp-pii": "restricted"
+            }
+          },
+          "required": [
+            "item_id",
+            "idempotency_key",
+            "payload"
+          ],
+          "type": "object",
+          "x-lcp-pii": "restricted"
+        },
+        "maxItems": 100,
+        "minItems": 1,
+        "type": "array",
+        "x-lcp-pii": "restricted"
+      },
+      "request_id": {
+        "description": "Caller-supplied request identifier, echoed in the per-item response so a client can correlate the receipt list with its own submission record.",
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      }
+    },
+    "required": [
+      "request_id",
+      "items"
+    ],
+    "title": "LCP Batch Message",
     "type": "object"
   },
   "schemas/bid.json": {
@@ -58,7 +182,8 @@
         "if": {
           "properties": {
             "decision": {
-              "const": "accept"
+              "const": "accept",
+              "x-lcp-pii": "internal"
             }
           },
           "required": [
@@ -66,9 +191,18 @@
           ]
         },
         "then": {
-          "required": [
-            "bid_price_cents",
-            "currency"
+          "anyOf": [
+            {
+              "required": [
+                "negotiation_binding_token"
+              ]
+            },
+            {
+              "required": [
+                "bid_price_cents",
+                "currency"
+              ]
+            }
           ]
         }
       }
@@ -78,16 +212,19 @@
       "bid_price_cents": {
         "description": "Buyer's bid price in cents. Required when decision = accept. Ignored when decision = reject or pass.",
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "buyer_reference": {
         "description": "Buyer's internal reference for this bid (for tracking).",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "capacity_remaining": {
         "description": "Buyer's remaining capacity after this bid. Helps the platform route future pings. Optional.",
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "currency": {
         "$ref": "core.json#/$defs/currency"
@@ -99,26 +236,62 @@
           "reject",
           "pass"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "estimated_contact_seconds": {
         "description": "Buyer's estimated time-to-contact in seconds. Used by the platform for speed-to-contact routing. Optional.",
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "fx_expires_at": {
+        "description": "v1.2 (LEP-0010 \u00a73): canonical whole-second UTC end of the rate's validity; MUST be strictly later than fx_timestamp. REQUIRED with fx_rate.",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "fx_rate": {
+        "description": "v1.2 (LEP-0010 \u00a73): native major units per 1 settlement (offer-currency) major unit. Same direction and pattern as post.pricing.fx_rate. REQUIRED when bid.currency differs from the offer's currency; MUST NOT be relied on otherwise \u2014 on a same-currency bid the FX fields are inert and ignored for comparison (still schema-validated).",
+        "pattern": "^(?:[1-9][0-9]*\\.[0-9]{6,12}|0\\.[0-9]*[1-9][0-9]{5,11})$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "fx_source": {
+        "description": "v1.2 (LEP-0010 \u00a73): named rate provider, or the literal 'bilateral' for a rate the two parties agreed directly. Compared by exact byte equality. REQUIRED with fx_rate.",
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "fx_timestamp": {
+        "description": "v1.2 (LEP-0010 \u00a73): canonical whole-second UTC instant the rate was observed (LEP-0002 canonical form). REQUIRED with fx_rate.",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "negotiation_binding_token": {
+        "description": "v1.2 (LEP-0009 C7): single-use token returned on a negotiation accept. It replaces bid_price_cents on this bid (the token carries the agreed price); a sender presents it only toward a receiver advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later.",
+        "pattern": "^tok_[A-Za-z0-9_-]{32,128}$",
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "ping_id": {
         "description": "ID of the ping being responded to.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "reject_reason": {
         "description": "Why the buyer rejected (e.g. out_of_hours, capacity_full, vertical_mismatch, price_too_low). Open enumeration. Optional.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "slots_claimed": {
         "description": "v1.1 (LEP-0003 \u00a72): buyer slots this buyer claims if selected. The claim is a request, not a reservation \u2014 the platform awards slots at post time (delivery is the claim event; bids are non-binding). Only meaningful with decision 'accept'; absent = 1. Capped at exactly 1 for v1.1: multi-slot agency claims (N > 1) have no delivery path on the per-(lead, offer) award guard and no awarded-count wire signal, so they are deferred (LEP-0003 Deferred questions, #153 T5) \u2014 this schema enforces maximum: 1 now. Capability-gated (SPEC.md \u00a78): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1.",
         "maximum": 1,
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       }
     },
     "required": [
@@ -147,64 +320,79 @@
             "additionalProperties": false,
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "contact"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "contact"
           },
           "call_id": {
             "description": "Unique call identifier.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "caller_phone_hash": {
             "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "did": {
             "description": "Dialed number (Direct Inward Dial) \u2014 the tracking number the consumer called.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "direction": {
             "enum": [
               "inbound",
               "outbound"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "disposition": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "durations": {
             "additionalProperties": false,
             "properties": {
               "agent_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "hold_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "ivr_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "total_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "forwarded_to": {
             "description": "Number the call was forwarded to (buyer's destination number). E.164.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "hangup_cause": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "ivr": {
             "additionalProperties": true,
@@ -212,85 +400,104 @@
             "properties": {
               "abandoned": {
                 "description": "True if the caller dropped during IVR before reaching an agent.",
-                "type": "boolean"
+                "type": "boolean",
+                "x-lcp-pii": "internal"
               },
               "digits": {
                 "description": "DTMF digits pressed during IVR.",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "restricted"
               },
               "language": {
                 "description": "IVR language selected (BCP-47 tag, e.g. 'en-AU', 'es-US').",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "menu_options_selected": {
                 "description": "Ordered list of menu option labels selected.",
                 "items": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": "array",
+                "x-lcp-pii": "internal"
               },
               "path": {
                 "description": "IVR menu path taken (e.g. 'sales > mortgage > refinance').",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "queue": {
             "additionalProperties": false,
             "description": "Call queue that handled this call.",
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "recording": {
             "additionalProperties": false,
             "properties": {
               "storage_ref": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "restricted"
               },
               "transcript_url": {
                 "format": "uri",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "restricted"
               },
               "url": {
                 "format": "uri",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "restricted"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "started_at": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "status": {
             "$comment": "Open enumeration per SPEC.md \u00a76.",
             "description": "OPEN ENUMERATION \u2014 known values: answered, no_answer, busy, failed, voicemail. Unknown values MUST be stored and passed through.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "tracking_number": {
             "description": "Tracking/marketing number assigned to this campaign (may differ from DID if call was routed through a tracking pool). E.164.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "transferred_from": {
             "additionalProperties": false,
             "description": "Present if this call was transferred from another call/queue.",
             "properties": {
               "original_call_id": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "transfer_reason": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
@@ -299,12 +506,14 @@
           "started_at"
         ],
         "title": "Call Detail Block",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "channel": {
         "const": "call",
         "description": "Always 'call' for call messages.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "compliance": {
         "$ref": "core.json#/$defs/compliance"
@@ -319,10 +528,12 @@
         "$ref": "core.json#/$defs/expiry"
       },
       "external_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "lead_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "location": {
         "$ref": "core.json#/$defs/location"
@@ -336,7 +547,8 @@
       "submitted_at": {
         "description": "When the call was initiated (distinct from provenance.received_at).",
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       }
     },
     "required": [
@@ -359,32 +571,38 @@
           "properties": {
             "attachment_id": {
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "content_type": {
               "pattern": "^[^;\\s]+/[^;\\s]+$",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "created_at": {
               "format": "date-time",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "encryption": {
               "enum": [
                 "application_encrypted",
                 "provider_encrypted"
               ],
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "expires_at": {
               "format": "date-time",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "filename": {
               "maxLength": 255,
               "minLength": 1,
               "pattern": "^[^/\\\\]+$",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "restricted"
             },
             "malware_scan": {
               "additionalProperties": false,
@@ -393,18 +611,21 @@
                 "engine": {
                   "maxLength": 100,
                   "minLength": 1,
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 },
                 "scanned_at": {
                   "format": "date-time",
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 },
                 "status": {
                   "enum": [
                     "clean",
                     "not_scanned"
                   ],
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 }
               },
               "required": [
@@ -412,31 +633,37 @@
                 "engine",
                 "scanned_at"
               ],
-              "type": "object"
+              "type": "object",
+              "x-lcp-pii": "internal"
             },
             "purpose": {
               "maxLength": 100,
               "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "residency": {
               "description": "Country or deployment region where the attachment bytes are stored and scanned.",
               "pattern": "^[A-Z0-9][A-Z0-9._-]{1,31}$",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "sha256": {
               "pattern": "^[a-f0-9]{64}$",
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "internal"
             },
             "size_bytes": {
               "maximum": 104857600,
               "minimum": 1,
-              "type": "integer"
+              "type": "integer",
+              "x-lcp-pii": "internal"
             },
             "storage_ref": {
               "maxLength": 512,
               "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "x-lcp-pii": "restricted"
             }
           },
           "required": [
@@ -452,16 +679,19 @@
           "type": "object"
         },
         "maxItems": 50,
-        "type": "array"
+        "type": "array",
+        "x-lcp-pii": "restricted"
       },
       "attributes": {
         "description": "Vertical-specific fields. Shape defined by per-vertical JSON Schema in verticals/.",
         "properties": {
           "schema_version": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           },
           "vertical": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           }
         },
         "required": [
@@ -469,50 +699,60 @@
           "schema_version"
         ],
         "title": "Attributes",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "channel": {
         "description": "Open enumeration of lead channels.",
         "title": "Lead Channel",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "compliance": {
         "additionalProperties": false,
         "description": "Consent and regulatory compliance evidence.",
         "properties": {
           "call_recording_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "consent_evidence": {
             "items": {
               "$ref": "core.json#/$defs/consent_evidence_entry"
             },
-            "type": "array"
+            "type": "array",
+            "x-lcp-pii": "restricted"
           },
           "consent_expires_at": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "consent_purposes": {
             "description": "What was consented to (e.g. calls, sms, email, share_with_partners).",
             "items": {
               "type": "string"
             },
-            "type": "array"
+            "type": "array",
+            "x-lcp-pii": "internal"
           },
           "consent_source_url": {
             "format": "uri",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "consent_text_version": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "consent_timestamp": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "dnc_checked": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "otp": {
             "additionalProperties": false,
@@ -520,7 +760,8 @@
             "properties": {
               "attempts": {
                 "minimum": 1,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "channel": {
                 "enum": [
@@ -528,21 +769,26 @@
                   "email",
                   "voice"
                 ],
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "verified_at": {
                 "format": "date-time",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "verified_value_hash": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "contact"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "otp_verified": {
             "description": "One-time-passcode verified.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "scrubs": {
             "items": {
@@ -550,13 +796,16 @@
               "properties": {
                 "checked_at": {
                   "format": "date-time",
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 },
                 "details": {
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "restricted"
                 },
                 "provider": {
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 },
                 "result": {
                   "enum": [
@@ -565,10 +814,12 @@
                     "blocked",
                     "not_checked"
                   ],
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 },
                 "type": {
-                  "type": "string"
+                  "type": "string",
+                  "x-lcp-pii": "internal"
                 }
               },
               "required": [
@@ -577,14 +828,17 @@
               ],
               "type": "object"
             },
-            "type": "array"
+            "type": "array",
+            "x-lcp-pii": "restricted"
           },
           "session_capture_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           }
         },
         "title": "Compliance",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "consent_evidence_entry": {
         "additionalProperties": false,
@@ -592,15 +846,18 @@
         "properties": {
           "provider": {
             "description": "Vendor or system (e.g. jornaya, trustedform, internal).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "token_or_url": {
             "description": "Verification token, certificate URL, or reference.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "type": {
             "description": "Consent framework or evidence type (e.g. tcpa_consent, gdpr_opt_in).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
@@ -609,7 +866,8 @@
           "token_or_url"
         ],
         "title": "Consent Evidence Entry",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "consumer": {
         "additionalProperties": false,
@@ -641,41 +899,50 @@
           "dob": {
             "description": "Sensitive.",
             "format": "date",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "email": {
             "format": "email",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "email_hash": {
             "description": "HMAC-SHA256(shared_secret, normalized_email). For dedup in ping. Same per-pair model as phone_hash.",
             "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "first_name": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "full_name": {
             "description": "Unstructured name \u2014 use when Western given/family splitting does not apply.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "last_name": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "locale": {
             "description": "BCP-47 language tag (e.g. en-AU, es-US).",
             "pattern": "^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "phone": {
             "description": "E.164 format.",
             "pattern": "^\\+[1-9]\\d{1,14}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "phone_hash": {
             "description": "HMAC-SHA256(shared_secret, e164). 64 hex chars.",
             "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "preferred_contact_method": {
             "description": "Consumer's preferred contact method. Affects contact strategy and compliance.",
@@ -685,47 +952,57 @@
               "sms",
               "any"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "secondary_phone": {
             "description": "Secondary phone (work, spouse, alternate). E.164. Optional.",
             "pattern": "^\\+[1-9]\\d{1,14}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           }
         },
         "title": "Consumer",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "currency": {
         "pattern": "^[A-Z]{3}$",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "error": {
         "additionalProperties": false,
         "properties": {
           "code": {
             "pattern": "^LCP-\\d{3}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           },
           "details": {
             "additionalProperties": true,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "field": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           }
         },
         "required": [
           "code",
           "message"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "errors_array": {
         "additionalProperties": false,
@@ -735,13 +1012,15 @@
               "$ref": "core.json#/$defs/error"
             },
             "minItems": 1,
-            "type": "array"
+            "type": "array",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
           "errors"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "exclusivity": {
         "additionalProperties": false,
@@ -752,14 +1031,17 @@
               "exclusive",
               "shared"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "max_buyers": {
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "expiry": {
         "additionalProperties": false,
@@ -778,14 +1060,17 @@
         "properties": {
           "expires_at": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "ttl_seconds": {
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "location": {
         "additionalProperties": false,
@@ -803,31 +1088,44 @@
         ],
         "properties": {
           "city": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "country_code": {
             "description": "ISO 3166-1 alpha-2. Required.",
             "pattern": "^[A-Z]{2}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "postal_code": {
             "description": "Per-country format.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "state_region": {
             "description": "Per-country validation registry (state, province, region).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "street_address": {
+            "description": "Residential street address. Not ping-safe; omitted from ping payloads.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "timezone": {
             "description": "IANA timezone (e.g. Australia/Sydney).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
           "country_code"
         ],
         "title": "Location",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "contact"
       },
       "provenance": {
         "additionalProperties": false,
@@ -835,21 +1133,25 @@
         "properties": {
           "acquisition_method": {
             "description": "Open enumeration of acquisition methods.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "agent": {
             "additionalProperties": false,
             "properties": {
               "acting_for": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "agent_id": {
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "attestation": {
                 "maxLength": 8192,
                 "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "restricted"
               }
             },
             "required": [
@@ -857,79 +1159,107 @@
               "acting_for",
               "attestation"
             ],
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "brand_id": {
             "description": "Publisher-owned brand identifier.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "campaign_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "creative_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "flow_key": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "form_id": {
             "description": "Stable form or flow identifier.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "funnel_key": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "incentive_type": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "ip_address": {
+            "description": "Consumer IP address (IPv4 or IPv6) captured server-side. Post-only; not ping-safe. ip_hash remains the ping-safe projection.",
+            "maxLength": 45,
+            "minLength": 7,
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "ip_hash": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "is_incentivized": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "landing_page_url": {
             "format": "uri",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "platform_source": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "received_at": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "source_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "source_type": {
             "description": "Open enumeration of source types.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "source_url": {
             "format": "uri",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "user_agent_hash": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           }
         },
         "title": "Provenance",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "security": {
         "additionalProperties": false,
         "properties": {
           "algorithm": {
             "const": "HMAC-SHA256",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           },
           "signature": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "restricted"
           },
           "timestamp": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
@@ -937,18 +1267,137 @@
           "timestamp",
           "algorithm"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "status": {
         "description": "Open enumeration of lifecycle statuses.",
         "title": "Lead Status",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       }
     },
     "$id": "https://lcp.dev/schemas/core.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "Shared definitions for the LCP canonical core. Referenced by message-type and vertical schemas via $ref. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "title": "LCP Core Definitions",
+    "type": "object"
+  },
+  "schemas/counter.json": {
+    "$id": "https://lcp.dev/schemas/counter.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "else": {
+          "not": {
+            "required": [
+              "rejection_reason"
+            ]
+          },
+          "required": [
+            "price_cents"
+          ]
+        },
+        "if": {
+          "properties": {
+            "decision": {
+              "const": "refuse",
+              "x-lcp-pii": "internal"
+            }
+          },
+          "required": [
+            "decision"
+          ]
+        },
+        "then": {
+          "not": {
+            "required": [
+              "price_cents"
+            ]
+          },
+          "required": [
+            "rejection_reason"
+          ]
+        }
+      }
+    ],
+    "description": "Either party answers the standing negotiation message (LEP-0009). Strict allowlist: integer minor units, ISO 4217 currency, opaque ids, round counters, and closed/known reason values only. No consumer PII and no free text. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "properties": {
+      "currency": {
+        "$ref": "core.json#/$defs/currency"
+      },
+      "decision": {
+        "description": "counter = move the price; accept = close at the price of the message being answered; refuse = close with a reason.",
+        "enum": [
+          "counter",
+          "accept",
+          "refuse"
+        ],
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "expires_at": {
+        "description": "The negotiation's absolute end, unchanged. MUST NOT exceed the value set by the opening quote.",
+        "format": "date-time",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "floor_price_cents": {
+        "description": "Restated and checked against the negotiation's floor (LCP-100 on mismatch).",
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "negotiation_id": {
+        "description": "MUST name an existing negotiation for this (tenant, buyer, ping) triple; otherwise unknown_negotiation (or LCP-002 when it belongs to another buyer/tenant).",
+        "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "offer_id": {
+        "description": "MUST equal the negotiation's offer (LCP-100 on mismatch).",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "ping_id": {
+        "description": "MUST equal the negotiation's ping (LCP-100 on mismatch).",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "price_cents": {
+        "description": "Required unless decision = refuse. counter: subject to the monotone rule and at or above floor_price_cents. accept: MUST equal the price of the message it answers.",
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "rejection_reason": {
+        "description": "Open enumeration. Required when decision = refuse; absent otherwise. Known values: below_floor_price, non_monotone_counter, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed.",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "rounds_remaining": {
+        "description": "The sender's view of the buyer counters still available at the moment this message is sent, before it is applied. A stale value is LCP-100.",
+        "maximum": 5,
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      }
+    },
+    "required": [
+      "negotiation_id",
+      "ping_id",
+      "offer_id",
+      "decision",
+      "currency",
+      "floor_price_cents",
+      "rounds_remaining",
+      "expires_at"
+    ],
+    "title": "LCP Counter Message",
     "type": "object"
   },
   "schemas/envelope.json": {
@@ -959,6 +1408,41 @@
     "properties": {
       "lcp": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "message": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "quote",
+                        "counter"
+                      ],
+                      "x-lcp-pii": "public"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "x-lcp-pii": "internal"
+                }
+              },
+              "required": [
+                "message"
+              ]
+            },
+            "then": {
+              "description": "LEP-0009 C1/C2: negotiation types exist from protocol 1.2.0 (MINOR); a later major is a different contract and never rides this pattern.",
+              "properties": {
+                "version": {
+                  "pattern": "^1\\.(?:[2-9]|[1-9][0-9]+)\\.\\d+$",
+                  "x-lcp-pii": "public"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "message": {
             "additionalProperties": false,
@@ -968,40 +1452,48 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "x-lcp-pii": "internal"
               },
               "id": {
                 "description": "Unique message identifier (UUID v4).",
                 "format": "uuid",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "idempotency_key": {
                 "description": "Idempotency key \u2014 duplicate submissions with the same key return the original result.",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "receiver_id": {
                 "description": "Receiver identifier.",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "security": {
                 "$ref": "core.json#/$defs/security",
-                "description": "Transport-neutral HMAC signature. Optional for HTTP (headers used instead); required for non-HTTP transports."
+                "description": "Transport-neutral HMAC signature. Optional for HTTP (headers used instead); required for non-HTTP transports.",
+                "x-lcp-pii": "restricted"
               },
               "sender_id": {
                 "description": "Sender identifier (publisher/platform/buyer).",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "test": {
                 "default": false,
                 "description": "Test message. Mirrored as X-LCP-Test header in the HTTP binding.",
-                "type": "boolean"
+                "type": "boolean",
+                "x-lcp-pii": "public"
               },
               "timestamp": {
                 "format": "date-time",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "type": {
-                "description": "Message type. Closed enumeration \u2014 unknown types trigger LCP-006.",
+                "description": "Message type. Closed enumeration \u2014 unknown types trigger LCP-006. `quote`/`counter` are the LEP-0009 negotiation types, emitted only toward a peer advertising `negotiation` and a parsed lcp_versions element of 1.2.0 or later. `subscription` is the LEP-0001 W3 registration type, emitted only toward a receiver advertising `event_subscriptions`.",
                 "enum": [
                   "lead",
                   "call",
@@ -1009,9 +1501,14 @@
                   "post",
                   "ack",
                   "event",
-                  "bid"
+                  "bid",
+                  "batch",
+                  "quote",
+                  "counter",
+                  "subscription"
                 ],
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "public"
               }
             },
             "required": [
@@ -1023,15 +1520,18 @@
               "idempotency_key"
             ],
             "title": "Message Header",
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "payload": {
-            "description": "Message payload. Shape determined by message.type \u2014 see message-type schemas (lead.json, call.json, ping.json, post.json, ack.json, event.json)."
+            "description": "Message payload. Shape determined by message.type \u2014 see message-type schemas (lead.json, call.json, ping.json, post.json, ack.json, event.json, bid.json, batch.json, quote.json, counter.json, subscription.json).",
+            "x-lcp-pii": "computed"
           },
           "version": {
             "description": "Protocol semver (e.g. 1.0.0).",
             "pattern": "^\\d+\\.\\d+\\.\\d+$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "public"
           }
         },
         "required": [
@@ -1039,7 +1539,8 @@
           "message",
           "payload"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       }
     },
     "required": [
@@ -1056,22 +1557,27 @@
     "properties": {
       "details": {
         "additionalProperties": true,
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "event": {
         "$comment": "No enum constraint \u2014 this is an open enumeration per SPEC.md \u00a76. Receivers must accept any string value.",
         "description": "Lifecycle event. OPEN ENUMERATION \u2014 known values: DELIVERED, ACCEPTED, REJECTED, DISPUTED, REFUNDED, EXPIRED, CONVERTED, ARCHIVED. Unknown values MUST be stored and passed through, not rejected. Adding new values is a MINOR version bump, not breaking.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "external_reference": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "lead_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "timestamp": {
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       }
     },
     "required": [
@@ -1109,11 +1615,13 @@
         "properties": {
           "available_from": {
             "description": "Local time HH:MM format (24h).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "available_to": {
             "description": "Local time HH:MM format (24h).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "days": {
             "description": "Days of week the consumer is available.",
@@ -1129,14 +1637,17 @@
               ],
               "type": "string"
             },
-            "type": "array"
+            "type": "array",
+            "x-lcp-pii": "contact"
           },
           "timezone": {
             "description": "IANA timezone for the window times (e.g. Australia/Sydney).",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "contact"
       },
       "exclusivity": {
         "$ref": "core.json#/$defs/exclusivity"
@@ -1153,14 +1664,17 @@
           },
           "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$"
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "external_id": {
         "description": "Publisher's internal lead ID.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "lead_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "lead_quality": {
         "additionalProperties": false,
@@ -1173,7 +1687,8 @@
               "standard",
               "rich"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "duplicate_risk": {
             "description": "Publisher's assessment of duplicate risk based on their dedup window.",
@@ -1182,13 +1697,15 @@
               "medium",
               "high"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "spam_risk_score": {
             "description": "Publisher's spam risk score (0 = clean, 100 = likely spam). Scoring methodology is publisher-defined.",
             "maximum": 100,
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "verification": {
             "additionalProperties": false,
@@ -1197,42 +1714,52 @@
               "email_method": {
                 "$comment": "Open enum \u2014 new email verification services are additive.",
                 "description": "How the email was verified. Known values: otp, smtp_check, bounce_check, briteverify, zerobounce, kickbox, none. Open enumeration.",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "email_verified_at": {
                 "format": "date-time",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "email_verified_by": {
                 "description": "Provider that performed the verification (e.g. briteverify, zerobounce, internal, publisher_otp).",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "phone_method": {
                 "$comment": "Open enum \u2014 new verification methods (e.g. new enrichment providers) are additive.",
                 "description": "How the phone was verified. Known values: otp, carrier_lookup, call_connect, twilio_lookup, manual_call, none. Open enumeration.",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "phone_verified_at": {
                 "format": "date-time",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               },
               "phone_verified_by": {
                 "description": "Provider that performed the verification (e.g. twilio, numverify, internal, publisher_otp).",
-                "type": "string"
+                "type": "string",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "verified_email": {
             "description": "Email was verified (OTP, bounce check, or SMTP validation).",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "verified_phone": {
             "description": "Phone number was verified (OTP, call connect, or carrier lookup).",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "location": {
         "$ref": "core.json#/$defs/location"
@@ -1246,7 +1773,8 @@
       "submitted_at": {
         "description": "When the consumer submitted the lead (distinct from provenance.received_at which is when the platform received it).",
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       }
     },
     "required": [
@@ -1267,18 +1795,21 @@
         "properties": {
           "available_from": {
             "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "available_to": {
             "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "channels": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-lcp-pii": "internal"
           },
           "days": {
             "items": {
@@ -1295,18 +1826,21 @@
             },
             "minItems": 1,
             "type": "array",
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-lcp-pii": "internal"
           },
           "timezone": {
             "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "verticals": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-lcp-pii": "public"
           }
         },
         "required": [
@@ -1315,7 +1849,8 @@
           "available_to",
           "days"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       }
     },
     "$id": "https://lcp.dev/schemas/offer.json",
@@ -1325,7 +1860,8 @@
     "properties": {
       "active": {
         "default": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "allowed_brand_ids": {
         "description": "Optional publisher brand allowlist evaluated against provenance.brand_id.",
@@ -1334,7 +1870,8 @@
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "allowed_publisher_ids": {
         "description": "Optional publisher sender-ID allowlist. Matching fails closed when the incoming publisher is not listed.",
@@ -1343,12 +1880,14 @@
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "attribute_equals": {
         "additionalProperties": true,
         "description": "Safe declarative equality predicates keyed by vertical attribute name. Values are data, never executable expressions.",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "attribute_in": {
         "additionalProperties": {
@@ -1356,11 +1895,13 @@
           "type": "array"
         },
         "description": "Safe declarative allowlists keyed by vertical attribute name.",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "buyer_id": {
         "minLength": 1,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "call_routing_mode": {
         "default": "post_call",
@@ -1369,7 +1910,8 @@
           "post_call",
           "realtime_transfer"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "channels": {
         "items": {
@@ -1377,13 +1919,15 @@
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "connect_timeout_seconds": {
         "description": "Maximum time allowed for a real-time call transfer decision.",
         "maximum": 60,
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "countries": {
         "items": {
@@ -1392,67 +1936,79 @@
         },
         "minItems": 1,
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "currency": {
         "pattern": "^[A-Z]{3}$",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "daily_cap": {
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "delivery_windows": {
         "items": {
           "$ref": "#/$defs/delivery_window"
         },
-        "type": "array"
+        "type": "array",
+        "x-lcp-pii": "internal"
       },
       "excluded_acquisition_methods": {
         "items": {
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "excluded_claim_language": {
         "items": {
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "excluded_incentive_types": {
         "items": {
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "excluded_source_types": {
         "items": {
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "extensions": {
         "additionalProperties": true,
         "description": "Namespaced deployment-specific criteria. Matching implementations must not execute arbitrary values as code.",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "floor_price_cents": {
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "hourly_cap": {
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "max_spam_risk_score": {
         "maximum": 100,
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "min_data_completeness": {
         "enum": [
@@ -1460,17 +2016,20 @@
           "standard",
           "rich"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "monthly_maximum_payable": {
         "description": "Optional hard maximum for payable outcomes in a calendar month.",
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "monthly_minimum_payable": {
         "description": "Operational pacing target for payable outcomes in each calendar month. It is not a guarantee of available supply.",
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "monthly_quota_policy": {
         "default": "monitor",
@@ -1480,19 +2039,23 @@
           "pace",
           "hard_cap"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "monthly_quota_timezone": {
         "description": "IANA timezone used to determine the monthly quota period.",
         "minLength": 1,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "offer_id": {
         "minLength": 1,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "payable_definition": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "payable_rules": {
         "additionalProperties": false,
@@ -1503,15 +2066,18 @@
               "type": "string"
             },
             "type": "array",
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-lcp-pii": "internal"
           },
           "exclude_duplicate_resubmissions": {
             "default": true,
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "minimum_call_seconds": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "mode": {
             "default": "post_delivery",
@@ -1519,18 +2085,22 @@
               "post_delivery",
               "call_outcome"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "require_call_answered": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "ping_timeout_seconds": {
         "default": 30,
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "postal_codes": {
         "items": {
@@ -1538,28 +2108,36 @@
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "reject_blacklist_flagged": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "reject_dnc_flagged": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "reject_incentivized": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "reject_litigator_flagged": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "require_consent_evidence": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "require_verified_email": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "require_verified_phone": {
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "routing_mode": {
         "default": "auction",
@@ -1568,10 +2146,12 @@
           "auction",
           "direct"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "schema_version": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "state_regions": {
         "items": {
@@ -1579,20 +2159,24 @@
           "type": "string"
         },
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
       },
       "tenant_id": {
         "description": "Owning platform tenant. Deployment metadata; not necessarily exposed in public offer discovery.",
         "minLength": 1,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "vertical": {
         "minLength": 1,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "webhook_url": {
         "format": "uri",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       }
     },
     "required": [
@@ -1616,7 +2200,8 @@
         "if": {
           "properties": {
             "exclusivity": {
-              "const": "exclusive"
+              "const": "exclusive",
+              "x-lcp-pii": "internal"
             }
           },
           "required": [
@@ -1626,7 +2211,8 @@
         "then": {
           "properties": {
             "slots_available": {
-              "const": 1
+              "const": 1,
+              "x-lcp-pii": "internal"
             }
           }
         }
@@ -1637,32 +2223,39 @@
       "attributes": {
         "additionalProperties": true,
         "description": "Only fields tagged ping_safe: true in the vertical schema. Banded/aggregated only \u2014 never exact values.",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "compliance_flags": {
         "additionalProperties": true,
         "description": "Presence indicators only \u2014 never tokens or evidence.",
         "properties": {
           "consent": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "consent_valid": {
             "description": "True if consent is still within its validity window (not expired).",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "dnc_checked": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "otp_verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "country_code": {
         "description": "ISO 3166-1 alpha-2.",
         "pattern": "^[A-Z]{2}$",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "currency": {
         "$ref": "core.json#/$defs/currency"
@@ -1670,12 +2263,14 @@
       "dedup_window_hours": {
         "description": "Sender hint: how many hours to dedup against. Optional.",
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "email_hash": {
         "description": "HMAC-SHA256(shared_secret, normalized_email) \u2014 per-pair, optional. Optional, for email-based dedup.",
         "pattern": "^[a-f0-9]{64}$",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "contact"
       },
       "exclusivity": {
         "description": "Hint to buyer: is this an exclusive or shared lead?",
@@ -1683,44 +2278,70 @@
           "exclusive",
           "shared"
         ],
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "expires_at": {
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "extensions": {
+        "additionalProperties": {
+          "maxProperties": 32,
+          "type": "object"
+        },
+        "description": "v1.2: optional namespaced extension container. The receiver admits a namespace on a ping ONLY when its registration declares ping safety (governance/EXTENSION-REGISTRY.md); every other namespace is refused by name. Values are bounded objects and never carry consumer PII.",
+        "maxProperties": 8,
+        "propertyNames": {
+          "not": {
+            "pattern": "^lcp\\.core\\."
+          },
+          "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$"
+        },
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "floor_price_cents": {
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "lead_age_minutes": {
         "description": "How many minutes since the consumer submitted the lead. Freshness signal for buyer pricing. Non-PII.",
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "lead_reference": {
         "description": "Opaque reference to the lead (not the lead_id).",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "offer_id": {
         "description": "ID of the buyer offer this ping is being sent against. Enables audit trail for billing and disputes.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "phone_hash": {
         "description": "HMAC-SHA256(shared_secret, e164) \u2014 per-pair. See SPEC.md \u00a79.",
         "pattern": "^[a-f0-9]{64}$",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "contact"
       },
       "ping_id": {
         "description": "Unique ping identifier.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "postal_code": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "publisher_id": {
         "description": "ID of the publisher that generated the lead. Non-PII \u2014 buyers need this for quality tracking and routing.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "quality_flags": {
         "additionalProperties": true,
@@ -1728,7 +2349,8 @@
         "properties": {
           "acquisition_method": {
             "description": "paid_ad, organic_search, marketplace, gmb, cold_outbound, scraped, unknown. Open enum.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "blacklist_status": {
             "description": "Blacklist alliance scrub result.",
@@ -1738,7 +2360,8 @@
               "blocked",
               "not_checked"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "dnc_status": {
             "description": "DNC scrub result.",
@@ -1748,7 +2371,8 @@
               "blocked",
               "not_checked"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "duplicate_risk": {
             "enum": [
@@ -1756,15 +2380,18 @@
               "medium",
               "high"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "incentive_type": {
             "description": "What incentive was offered (e.g. free_consultation, gift_card). Open enum.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "is_incentivized": {
             "description": "True if consumer was offered an incentive (free consultation, gift card, etc.).",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "litigator_status": {
             "description": "Litigator scrub result.",
@@ -1774,33 +2401,41 @@
               "blocked",
               "not_checked"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "spam_risk_score": {
             "maximum": 100,
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "verified_email": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "verified_phone": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "slots_available": {
         "description": "v1.1 (LEP-0003): remaining buyer-award slots of this lead that can still be sold at ping time, INCLUDING the slot this ping's recipient may win. A slot counts a distinct awarded buyer, never delivered copies (SPEC.md \u00a73 slot semantics). For exclusivity 'exclusive' this MUST be 1 \u2014 the one-slot special case (enforced by the top-level conditional in this schema). Absent = the platform does not advertise slot state (v1.0 behavior). A platform MUST NOT send slots_available: 0; zero remaining means stop pinging. Non-PII integer count carrying no consumer data: it joins the ping strict allowlist as a reviewed non-PII field, and conformance keeps rejecting every other field outside the allowlist (LCP-008 PII_IN_PING protection preserved) and every attribute not tagged ping_safe: true in the vertical schema. Capability-gated (SPEC.md \u00a78): senders MUST NOT include v1.1 slot fields toward receivers whose lcp_versions advertisement does not parse to major == 1, minor >= 1.",
         "minimum": 1,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "state_region": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "vertical": {
         "description": "Vertical identifier.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -1828,11 +2463,13 @@
         "$ref": "core.json#/$defs/attributes"
       },
       "buyer_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "buyer_reference": {
         "description": "Buyer's internal reference.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "call": {
         "additionalProperties": false,
@@ -1840,81 +2477,101 @@
         "properties": {
           "agent": {
             "additionalProperties": false,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "contact"
           },
           "call_id": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "caller_phone_hash": {
             "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "contact"
           },
           "did": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "direction": {
             "enum": [
               "inbound",
               "outbound"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "disposition": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "durations": {
             "additionalProperties": false,
             "properties": {
               "agent_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "hold_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "ivr_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               },
               "total_seconds": {
                 "minimum": 0,
-                "type": "integer"
+                "type": "integer",
+                "x-lcp-pii": "internal"
               }
             },
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "forwarded_to": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "hangup_cause": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "ivr": {
             "additionalProperties": true,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "queue": {
             "additionalProperties": false,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           },
           "recording": {
             "additionalProperties": true,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "restricted"
           },
           "started_at": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "tracking_number": {
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "transferred_from": {
             "additionalProperties": false,
-            "type": "object"
+            "type": "object",
+            "x-lcp-pii": "internal"
           }
         },
         "required": [
@@ -1922,7 +2579,8 @@
           "status",
           "started_at"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "compliance": {
         "$ref": "core.json#/$defs/compliance"
@@ -1938,14 +2596,16 @@
           "type": "string"
         },
         "maxItems": 100,
-        "type": "array"
+        "type": "array",
+        "x-lcp-pii": "contact"
       },
       "currency": {
         "$ref": "core.json#/$defs/currency"
       },
       "delivered_at": {
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "exclusivity": {
         "$ref": "core.json#/$defs/exclusivity"
@@ -1959,10 +2619,12 @@
           },
           "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*){2,}$"
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "restricted"
       },
       "lead_id": {
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "location": {
         "$ref": "core.json#/$defs/location"
@@ -1970,49 +2632,91 @@
       "matched_preferences": {
         "additionalProperties": true,
         "description": "Buyer preferences that matched this lead.",
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "offer_id": {
         "description": "ID of the buyer offer that matched. Audit trail for billing and disputes.",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "price_cents": {
         "minimum": 0,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "pricing": {
         "additionalProperties": false,
         "properties": {
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "type": "string",
+            "x-lcp-pii": "public"
+          },
           "dispute_window_expires_at": {
             "description": "When the dispute window closes. Platforms mechanically reject disputes after this timestamp.",
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "dispute_window_hours": {
             "description": "Contractually agreed return window in hours. Buyer can dispute within this window.",
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "final_price_cents": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "floor_price_cents": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          },
+          "fx_expires_at": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "fx_rate": {
+            "description": "LEP-0010 \u00a74.1: native major units per 1 settlement major unit. Plain decimal \u2014 no sign, exponent, grouping or leading-zero integer part \u2014 with a mandatory fractional part of 6\u201312 digits, minimum six *significant* digits below 1, and a value in [0.000001, 1000000].",
+            "pattern": "^(?:[1-9][0-9]*\\.[0-9]{6,12}|0\\.[0-9]*[1-9][0-9]{5,11})$",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "fx_source": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "fx_timestamp": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "is_duplicate_resub": {
             "description": "True if this is an accidental resubmission of a previously delivered lead.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "max_allowed_price_cents": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          },
+          "original_price_cents": {
+            "minimum": 0,
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "payable_definition": {
             "$comment": "Payable definition is agreed bilaterally between publisher and buyer. This field records which definition applies to this delivery.",
             "description": "What makes this lead payable (e.g. 'form_lead_valid_phone', 'call_answered_30s', 'connected_transfer', 'exclusive_delivery'). Open enumeration.",
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "payable_status": {
             "description": "Current payable status. 'pending' = within validation window, 'payable' = meets payable definition, 'not_payable' = failed validation, 'disputed' = under review.",
@@ -2022,21 +2726,26 @@
               "not_payable",
               "disputed"
             ],
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "premium_cents": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           },
           "price_guardrails": {
-            "type": "boolean"
+            "type": "boolean",
+            "x-lcp-pii": "internal"
           },
           "uncapped_price_cents": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "x-lcp-pii": "internal"
           }
         },
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "provenance": {
         "$ref": "core.json#/$defs/provenance"
@@ -2044,7 +2753,8 @@
       "submitted_at": {
         "description": "When the consumer originally submitted the lead. Lets buyer assess lead age.",
         "format": "date-time",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       }
     },
     "required": [
@@ -2058,6 +2768,282 @@
       "attributes"
     ],
     "title": "LCP Post Message",
+    "type": "object"
+  },
+  "schemas/quote.json": {
+    "$id": "https://lcp.dev/schemas/quote.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "else": {
+          "required": [
+            "price_cents"
+          ]
+        },
+        "if": {
+          "required": [
+            "rejection_reason"
+          ]
+        },
+        "then": {
+          "not": {
+            "required": [
+              "price_cents"
+            ]
+          }
+        }
+      }
+    ],
+    "description": "Platform-opened, bounded price negotiation for a named ping (LEP-0009). Ping-class: integer minor units, ISO 4217 currency, opaque ids, timestamps, round counters, and closed/known reason values only. No consumer PII and no free text \u2014 the strict allowlist is the enforcement. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "properties": {
+      "currency": {
+        "$ref": "core.json#/$defs/currency"
+      },
+      "expires_at": {
+        "description": "Absolute end of the negotiation. MUST NOT be later than the ping's expires_at (or its timestamp plus TTL).",
+        "format": "date-time",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "floor_price_cents": {
+        "description": "Restated from the ping so the buyer can verify the floor and the monotone rule without re-reading the ping.",
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "max_rounds": {
+        "default": 3,
+        "description": "Rounds this negotiation may run. Absent = 3 (D8 default); above the hard cap of 5 is LCP-100, never a deployment knob.",
+        "maximum": 5,
+        "minimum": 1,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "negotiation_id": {
+        "description": "Opaque platform-assigned negotiation id, unique per negotiation. The only lookup key a later message may use.",
+        "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "offer_id": {
+        "description": "The buyer offer being priced; MUST equal the ping's offer_id (LCP-100 on mismatch).",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "ping_id": {
+        "description": "The ping this negotiation prices. Supplies the floor, currency, and the TTL ceiling.",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "price_cents": {
+        "description": "The ask in minor units of currency. MUST be at or above floor_price_cents; below floor is refused below_floor_price and never clamped.",
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      },
+      "rejection_reason": {
+        "description": "Open enumeration. Present only on a terminal refusal message (no negotiation opened): below_floor_price, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed. When present, price_cents MUST be absent.",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "rounds_remaining": {
+        "description": "Buyer counters still available at the moment this message is sent. On the opening quote this equals the effective max_rounds (a quote consumes no round).",
+        "maximum": 5,
+        "minimum": 0,
+        "type": "integer",
+        "x-lcp-pii": "internal"
+      }
+    },
+    "required": [
+      "negotiation_id",
+      "ping_id",
+      "offer_id",
+      "currency",
+      "floor_price_cents",
+      "rounds_remaining",
+      "expires_at"
+    ],
+    "title": "LCP Quote Message",
+    "type": "object"
+  },
+  "schemas/subscription.json": {
+    "$id": "https://lcp.dev/schemas/subscription.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "v1.2 (LEP-0001 W3): event-subscription registration and its resource view. The payload is a strict object: an explicit event allowlist drawn from the receiver's advertised `capabilities().events`, an HTTPS callback URL, and a filter whose keys are a closed set of core enums and identifiers. Consumer, provenance, attributes, details, contact, and security paths are never filter keys. The registration response carries `subscription_id`, `active`, `created_at`, and the per-subscription `secret` exactly once. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "properties": {
+      "active": {
+        "description": "Subscription state. A disabled subscription receives no new deliveries.",
+        "type": "boolean",
+        "x-lcp-pii": "internal"
+      },
+      "callback_url": {
+        "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses.",
+        "maxLength": 2048,
+        "pattern": "^https?://",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "created_at": {
+        "description": "Registration time in whole-second UTC form.",
+        "format": "date-time",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "event_types": {
+        "description": "Explicit event allowlist. Values are the receiver's advertised event names; no wildcard and no second vocabulary exist. An unadvertised value is refused, never silently ignored.",
+        "items": {
+          "enum": [
+            "DELIVERED",
+            "ACCEPTED",
+            "REJECTED",
+            "DISPUTED",
+            "REFUNDED",
+            "EXPIRED",
+            "CONVERTED",
+            "ARCHIVED",
+            "CALL_OFFERED",
+            "CALL_CONNECTED",
+            "CALL_ENDED",
+            "CALL_OUTCOME",
+            "CONTACTED",
+            "FINAL_PRICING"
+          ],
+          "type": "string",
+          "x-lcp-pii": "internal"
+        },
+        "maxItems": 14,
+        "minItems": 1,
+        "type": "array",
+        "uniqueItems": true,
+        "x-lcp-pii": "internal"
+      },
+      "filter": {
+        "additionalProperties": false,
+        "description": "Closed filter over core enums and identifiers. Any other key, including consumer.email, provenance.*, and attributes.*, is refused with a named error.",
+        "properties": {
+          "event_type": {
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            ],
+            "x-lcp-pii": "internal"
+          },
+          "lead_id": {
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            ],
+            "x-lcp-pii": "internal"
+          },
+          "message_type": {
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            ],
+            "x-lcp-pii": "internal"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            ],
+            "x-lcp-pii": "internal"
+          },
+          "vertical": {
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            ],
+            "x-lcp-pii": "internal"
+          }
+        },
+        "type": "object",
+        "x-lcp-pii": "internal"
+      },
+      "replay_from": {
+        "description": "Opaque cursor from GET /v1/lcp/events. A subscription created with it replays that event set deterministically; an expired cursor is an explicit error.",
+        "minLength": 1,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "secret": {
+        "description": "Per-subscription HMAC secret. Returned exactly once on registration and never again; deliveries are signed with it over the LEP-0002 canonical input.",
+        "minLength": 32,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "subscription_id": {
+        "description": "Opaque subscription identifier returned on registration. It is not a bearer credential: every read, disable, and delivery is authorized against the subscriber's tenant.",
+        "pattern": "^sub_[A-Za-z0-9_-]{8,64}$",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      }
+    },
+    "required": [
+      "event_types",
+      "callback_url"
+    ],
+    "title": "LCP Subscription Message",
     "type": "object"
   },
   "verticals/home_services.json": {
@@ -2077,7 +3063,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "damage_type": {
         "enum": [
@@ -2092,26 +3079,31 @@
           "none"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "exact_budget": {
         "description": "Exact budget is post-only; use budget_band in a ping.",
         "minimum": 0,
         "ping_safe": false,
-        "type": "number"
+        "type": "number",
+        "x-lcp-pii": "restricted"
       },
       "free_text": {
         "description": "Free text is post-only because it may contain names, addresses, or sensitive details.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "has_existing_damage": {
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "has_insurance_claim": {
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "material": {
         "enum": [
@@ -2128,7 +3120,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "number_of_rooms_band": {
         "enum": [
@@ -2140,7 +3133,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "occupancy": {
         "enum": [
@@ -2151,7 +3145,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "preferred_schedule": {
         "enum": [
@@ -2162,7 +3157,8 @@
           "specific_date"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "project_type": {
         "description": "Legacy-compatible project classification.",
@@ -2177,7 +3173,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_age_band": {
         "enum": [
@@ -2189,7 +3186,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_type": {
         "enum": [
@@ -2201,7 +3199,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "roof_type": {
         "enum": [
@@ -2214,11 +3213,13 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "service_subtype": {
         "description": "Controlled service operation. A more specific taxonomy can be introduced by a future vertical schema version without changing the core.",
@@ -2235,7 +3236,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "service_type": {
         "description": "Controlled top-level service category.",
@@ -2262,7 +3264,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "square_footage_band": {
         "enum": [
@@ -2275,7 +3278,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "stories_band": {
         "enum": [
@@ -2285,7 +3289,8 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "urgency": {
         "enum": [
@@ -2295,11 +3300,13 @@
           "flexible"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "vertical": {
         "const": "home_services",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -2324,7 +3331,8 @@
           "three_or_more"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "coverage_amount_band": {
         "description": "Banded coverage amount for ping use.",
@@ -2338,7 +3346,8 @@
           "over_1m"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "coverage_type": {
         "description": "Type of coverage sought.",
@@ -2357,12 +3366,14 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "current_insurer": {
         "description": "Current insurance company name. Company name \u2014 not ping_safe.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "deductible_band": {
         "description": "Banded deductible amount for ping use.",
@@ -2375,7 +3386,8 @@
           "over_5000"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "driver_age_band": {
         "description": "Banded driver age. Ping_safe for auto insurance underwriting.",
@@ -2389,7 +3401,8 @@
           "over_65"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "gender": {
         "description": "Gender \u2014 sensitive underwriting data; post-only.",
@@ -2400,12 +3413,14 @@
           "prefer_not_to_say"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "has_claims_history": {
         "description": "Has the consumer filed any claims? Sensitive underwriting data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "health_condition_band": {
         "description": "Self-reported health condition band for health insurance; sensitive health data, post-only.",
@@ -2417,7 +3432,8 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "height_band": {
         "description": "Banded height for health/life insurance underwriting; sensitive health data, post-only.",
@@ -2429,7 +3445,8 @@
           "over_6ft"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "insurance_type": {
         "enum": [
@@ -2440,7 +3457,8 @@
           "business"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "marital_status": {
         "enum": [
@@ -2452,7 +3470,8 @@
           "domestic_partnership"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "occupation_class": {
         "description": "Occupation risk class for life/disability insurance underwriting; sensitive employment data, post-only.",
@@ -2466,7 +3485,8 @@
           "other"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "property_type": {
         "description": "Property type for home insurance.",
@@ -2480,16 +3500,19 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "smoker": {
         "description": "Smoking status for health/life insurance underwriting; sensitive health data, post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "vehicle_type": {
         "description": "Vehicle type for auto insurance. Ping_safe for auto.",
@@ -2505,11 +3528,13 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "vertical": {
         "const": "insurance",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "weight_band": {
         "description": "Banded weight (lbs) for health/life insurance underwriting; sensitive health data, post-only.",
@@ -2522,7 +3547,8 @@
           "over_250"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "years_with_current_insurer_band": {
         "description": "Banded years with current insurer.",
@@ -2534,7 +3560,8 @@
           "over_10"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -2553,7 +3580,8 @@
       "at_fault": {
         "description": "Was the consumer at fault? Sensitive legal liability data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "case_type": {
         "enum": [
@@ -2567,7 +3595,8 @@
           "medical_malpractice"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "claim_status": {
         "description": "Current status of the claim; sensitive legal data, post-only.",
@@ -2580,23 +3609,27 @@
           "in_litigation"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "has_attorney": {
         "description": "Does the consumer already have an attorney? Legal-representation data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "incident_date": {
         "description": "Date of incident. Not ping_safe \u2014 could narrow identity.",
         "format": "date",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "incident_state": {
         "description": "US state where incident occurred.",
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "injury_severity": {
         "description": "Severity of injury sustained; sensitive health/legal data, post-only.",
@@ -2609,37 +3642,44 @@
           "fatal"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "insurance_company": {
         "description": "Insurance company involved. Company name \u2014 not ping_safe.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "medical_treatment_received": {
         "description": "Has medical treatment been received? Sensitive health/legal data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "police_report_filed": {
         "description": "Was a police report filed? Sensitive incident data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "time_to_contact_deadline_days": {
         "description": "Days remaining to contact before statute of limitations or deadline; sensitive legal timing, post-only.",
         "maximum": 3650,
         "minimum": 0,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "internal"
       },
       "vertical": {
         "const": "legal",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -2665,18 +3705,21 @@
           "over_150k"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "annual_income_cents": {
         "description": "Annual income. PII-adjacent \u2014 not ping_safe.",
         "minimum": 0,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "restricted"
       },
       "bankruptcy_history": {
         "description": "Has the consumer filed for bankruptcy? Sensitive financial data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "cash_out_amount_band": {
         "enum": [
@@ -2687,13 +3730,15 @@
           "over_100k"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "cash_out_amount_cents": {
         "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
         "minimum": 0,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "restricted"
       },
       "credit_rating_band": {
         "description": "Credit classification is sensitive financial data; post-only.",
@@ -2705,12 +3750,14 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "current_lender": {
         "description": "Current mortgage lender (refinance context). Company name \u2014 not ping_safe.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "desired_rate_term": {
         "description": "Desired mortgage rate term.",
@@ -2725,7 +3772,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "employment_status": {
         "enum": [
@@ -2736,27 +3784,32 @@
           "student"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "existing_rate_percent": {
         "description": "Current interest rate. Not ping_safe \u2014 can narrow identity.",
         "maximum": 30,
         "minimum": 0,
         "ping_safe": false,
-        "type": "number"
+        "type": "number",
+        "x-lcp-pii": "restricted"
       },
       "foreclosure_history": {
         "description": "Has the consumer had a foreclosure? Sensitive financial data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "has_existing_mortgage": {
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "is_first_home_buyer": {
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "loan_amount_band": {
         "description": "Banded loan amount for ping use.",
@@ -2769,13 +3822,15 @@
           "over_1m"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "loan_amount_cents": {
         "description": "Exact loan amount in cents. PII-adjacent \u2014 not ping_safe.",
         "minimum": 0,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "restricted"
       },
       "loan_term_band": {
         "description": "Banded loan term.",
@@ -2787,14 +3842,16 @@
           "over_30"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "loan_term_years": {
         "description": "Exact loan term in years. Not ping_safe.",
         "maximum": 40,
         "minimum": 1,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "restricted"
       },
       "loan_type": {
         "enum": [
@@ -2806,7 +3863,8 @@
           "investment"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "ltv_ratio_band": {
         "description": "Loan-to-value ratio band.",
@@ -2819,7 +3877,8 @@
           "over_95"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "mortgage_product": {
         "additionalProperties": false,
@@ -2838,7 +3897,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "x-lcp-pii": "public"
           },
           "ca_product": {
             "description": "Canadian mortgage product type. Null if not CA.",
@@ -2852,12 +3912,14 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "x-lcp-pii": "public"
           },
           "country_code": {
             "description": "ISO 3166-1 alpha-2 country code (e.g. US, CA, GB, AU).",
             "ping_safe": true,
-            "type": "string"
+            "type": "string",
+            "x-lcp-pii": "internal"
           },
           "gb_product": {
             "description": "UK mortgage product type. Null if not GB.",
@@ -2872,7 +3934,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "x-lcp-pii": "public"
           },
           "us_product": {
             "description": "US mortgage product type. Null if not US.",
@@ -2889,13 +3952,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "x-lcp-pii": "public"
           }
         },
         "required": [
           "country_code"
         ],
-        "type": "object"
+        "type": "object",
+        "x-lcp-pii": "internal"
       },
       "mortgage_purpose": {
         "enum": [
@@ -2905,12 +3970,14 @@
           "debt_consolidation"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_address": {
         "description": "Full property address. PII \u2014 never in ping.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "contact"
       },
       "property_type": {
         "enum": [
@@ -2922,7 +3989,8 @@
           "land"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_value_band": {
         "enum": [
@@ -2934,26 +4002,31 @@
           "over_1m"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_value_cents": {
         "description": "Estimated property value. Not ping_safe \u2014 could narrow identity.",
         "minimum": 0,
         "ping_safe": false,
-        "type": "integer"
+        "type": "integer",
+        "x-lcp-pii": "restricted"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "self_employed_income_verified": {
         "description": "For self-employed leads, whether income has been verified; sensitive financial data, post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "vertical": {
         "const": "mortgage",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "veteran_status": {
         "description": "Veteran or military status is sensitive eligibility data; post-only.",
@@ -2964,7 +4037,8 @@
           "non_veteran"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       }
     },
     "required": [
@@ -2984,7 +4058,8 @@
         "description": "Exact accident date. Post-only; never include in a ping.",
         "format": "date",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "accident_date_band": {
         "description": "Age band of the accident; never expose an exact date in a ping.",
@@ -2996,7 +4071,8 @@
           "over_12_months"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "accident_type": {
         "enum": [
@@ -3011,17 +4087,20 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "additional_context": {
         "description": "Free text may contain sensitive information and is post-only.",
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "claim_filed": {
         "description": "Claim status is sensitive legal/insurance data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "internal"
       },
       "claim_stage": {
         "enum": [
@@ -3033,11 +4112,13 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "commercial_vehicle_involved": {
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "consumer_insured": {
         "description": "Consumer insurance status is sensitive insurance data; post-only.",
@@ -3047,12 +4128,14 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "emergency_services_called": {
         "description": "Emergency-response information is sensitive incident data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "evidence_available": {
         "description": "Presence indicators only. The actual records are represented by encrypted attachments.",
@@ -3070,7 +4153,8 @@
         },
         "ping_safe": true,
         "type": "array",
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-lcp-pii": "public"
       },
       "fault_position": {
         "description": "Fault position is sensitive legal/liability data; post-only.",
@@ -3082,12 +4166,14 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "injury_present": {
         "description": "Injury indicator is sensitive health/legal data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "injury_severity_band": {
         "description": "Injury severity is sensitive health/legal data; post-only.",
@@ -3100,12 +4186,14 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "jurisdiction": {
         "description": "State, province, or territory where the accident occurred. Prefer core location for the consumer's current location.",
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "medical_treatment": {
         "description": "Medical treatment is sensitive health data; post-only.",
@@ -3118,12 +4206,14 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "restricted"
       },
       "other_driver_identified": {
         "description": "Other-party identification status is sensitive incident data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "other_driver_insured": {
         "description": "Other-party insurance status is sensitive insurance data; post-only.",
@@ -3133,7 +4223,8 @@
           "unknown"
         ],
         "ping_safe": false,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "passenger_count_band": {
         "enum": [
@@ -3144,26 +4235,31 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "police_report_available": {
         "description": "Police-report availability is sensitive incident data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "prior_attorney_consultation": {
         "description": "Prior legal consultation is sensitive legal data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "represented_by_attorney": {
         "description": "Attorney-representation status is sensitive legal data; post-only.",
         "ping_safe": false,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "vehicle_count_band": {
         "enum": [
@@ -3173,11 +4269,13 @@
           "unknown"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "vertical": {
         "const": "mva",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [
@@ -3196,7 +4294,8 @@
       "battery_storage_interest": {
         "description": "Consumer interest in battery storage.",
         "ping_safe": true,
-        "type": "boolean"
+        "type": "boolean",
+        "x-lcp-pii": "public"
       },
       "current_energy_source": {
         "description": "Current energy source.",
@@ -3209,7 +4308,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "installation_timeline": {
         "description": "Desired installation timeline.",
@@ -3221,7 +4321,8 @@
           "exploring"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "monthly_electric_bill_band": {
         "description": "Banded monthly electric bill in dollars.",
@@ -3234,7 +4335,8 @@
           "over_500"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "number_of_panels_band": {
         "description": "Banded number of solar panels.",
@@ -3246,7 +4348,8 @@
           "over_40"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "ownership": {
         "description": "Property ownership status.",
@@ -3255,7 +4358,8 @@
           "rent"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "property_type": {
         "enum": [
@@ -3267,7 +4371,8 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "roof_type": {
         "description": "Roof material type.",
@@ -3281,11 +4386,13 @@
           "other"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "schema_version": {
         "const": "1.0.0",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "shade_level": {
         "description": "Roof shade level affecting solar production.",
@@ -3295,7 +4402,8 @@
           "significant"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "system_size_kw_band": {
         "description": "Banded solar system size in kilowatts.",
@@ -3307,16 +4415,19 @@
           "over_20kw"
         ],
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       },
       "utility_provider": {
         "description": "Current utility provider name.",
         "ping_safe": true,
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "internal"
       },
       "vertical": {
         "const": "solar",
-        "type": "string"
+        "type": "string",
+        "x-lcp-pii": "public"
       }
     },
     "required": [

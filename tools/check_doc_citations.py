@@ -4,7 +4,7 @@
 Governance dossiers and SPEC appendices cite code as ``path:line`` or
 ``path:symbol``. Docs drift when code moves underneath them; a stale
 "verified" citation in a public repo is a defect (plan §0.4). This checker
-regex-extracts every such citation from SPEC.md, docs/*.md, and
+regex-extracts every such citation from SPEC.md, spec/*.md, docs/*.md, and
 governance/LEPs/*.md and verifies it against the current tree:
 
 - the cited file must exist (repo-root-relative, then document-relative);
@@ -33,7 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-DOC_SETS = ("SPEC.md", "docs", "governance/LEPs")
+DOC_SETS = ("SPEC.md", "spec", "docs", "governance/LEPs")
 
 EXTS = "cjs cs go java js json kt md mjs php proto py rb rs sh sql toml ts tsx yaml yml"
 # path:line | path#Lline | path:symbol — path must look like a source/doc file.

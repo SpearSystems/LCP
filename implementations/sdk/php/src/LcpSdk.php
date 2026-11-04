@@ -10,6 +10,7 @@ require_once __DIR__ . '/GeneratedModels.php';
 
 use DateTimeImmutable;
 use DateTimeZone;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class Signing
@@ -110,16 +111,17 @@ final class Client
 {
     public function __construct(private readonly string $endpoint, private readonly ?string $senderId = null, private readonly ?string $apiKey = null, private readonly ?string $hmacSecret = null, private readonly int $maxRetries = 2) {}
 
-    public function request(string $method, string $path, ?array $payload = null, bool $test = false): array
+    public function request(string $method, string $path, ?array $payload = null, bool $test = false, ?int $maxRetries = null): array
     {
         $body = $payload === null ? '' : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $key = $payload['lcp']['message']['idempotency_key'] ?? null;
-        for ($attempt = 0; $attempt <= max(0, $this->maxRetries); $attempt++) {
+        $retries = max(0, $maxRetries ?? $this->maxRetries);
+        for ($attempt = 0; $attempt <= $retries; $attempt++) {
             $headers = ['Content-Type: application/json', 'Accept: application/json']; if ($this->senderId) $headers[] = 'X-LCP-Sender-Id: ' . $this->senderId; if ($this->apiKey) $headers[] = 'Authorization: Bearer ' . $this->apiKey; if ($key) $headers[] = 'X-LCP-Idempotency-Key: ' . $key; if ($test) $headers[] = 'X-LCP-Test: true';
             if ($this->hmacSecret) { $timestamp = gmdate('Y-m-d\\TH:i:s\\Z'); $headers[] = 'X-LCP-Timestamp: ' . $timestamp; $headers[] = 'X-LCP-Signature: ' . Signing::sign($this->hmacSecret, $timestamp, $key, $body); }
             $handle = curl_init(rtrim($this->endpoint, '/') . '/' . ltrim($path, '/')); curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_POSTFIELDS => $body === '' ? null : $body, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]); $responseBody = curl_exec($handle); $error = curl_error($handle); $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE); curl_close($handle);
-            if ($error !== '' && $attempt < $this->maxRetries) { sleep(2 ** $attempt); continue; } if ($error !== '') throw new RuntimeException($error);
-            $result = json_decode((string)$responseBody, true) ?? ['raw' => $responseBody]; if ($status >= 200 && $status < 300) return $result; if (!in_array($status, [429, 500, 502, 503, 504], true) || $attempt === $this->maxRetries) throw new RuntimeException("LCP HTTP $status: " . json_encode($result)); sleep(2 ** $attempt);
+            if ($error !== '' && $attempt < $retries) { sleep(2 ** $attempt); continue; } if ($error !== '') throw new RuntimeException($error);
+            $result = json_decode((string)$responseBody, true) ?? ['raw' => $responseBody]; if ($status >= 200 && $status < 300) return $result; if (!in_array($status, [429, 500, 502, 503, 504], true) || $attempt === $retries) throw new RuntimeException("LCP HTTP $status: " . json_encode($result)); sleep(2 ** $attempt);
         }
         throw new RuntimeException('LCP request failed');
     }
@@ -127,7 +129,55 @@ final class Client
     public function submitLead(array $envelope, bool $test = false): array { Envelope::validate($envelope); return $this->request('POST', '/v1/lcp/leads', $envelope, $test); }
     public function submitCall(array $envelope, bool $test = false): array { Envelope::validate($envelope); return $this->request('POST', '/v1/lcp/calls', $envelope, $test); }
     public function submitBid(array $envelope, bool $test = false): array { Envelope::validate($envelope); return $this->request('POST', '/v1/lcp/bids', $envelope, $test); }
+
+    /**
+     * Submit up to 100 lead items in one request (LEP-0001 W2-01) and return the
+     * per-item receipts in input order. HTTP 207 partial success is a successful
+     * response; per-item `error` objects are preserved. The batch is never
+     * retried as a whole — retrying only rejected/error receipts is the
+     * caller's job.
+     */
+    public function submitLeadsBatch(array $items, ?string $requestId = null): array
+    {
+        if (count($items) < 1 || count($items) > 100) throw new InvalidArgumentException('batch supports 1..100 items, got ' . count($items));
+        $response = $this->request('POST', '/v1/lcp/leads/batch', ['request_id' => $requestId ?? bin2hex(random_bytes(16)), 'items' => array_values($items)], false, 0);
+        $results = $response['results'] ?? null;
+        if (!is_array($results)) throw new RuntimeException('batch response missing results');
+        $order = [];
+        foreach ($items as $index => $item) $order[$item['item_id'] ?? ''] = $index;
+        usort($results, static fn (array $left, array $right): int => ($order[$left['item_id'] ?? ''] ?? count($items)) <=> ($order[$right['item_id'] ?? ''] ?? count($items)));
+        return $results;
+    }
     public function queryLeadStatus(string $id): array { return $this->request('GET', '/v1/lcp/leads/' . rawurlencode($id)); }
     public function getCapabilities(): array { return $this->request('GET', '/v1/lcp/capabilities'); }
     public function listOffers(?string $vertical = null): array { return $this->request('GET', '/v1/lcp/offers' . ($vertical === null ? '' : '?vertical=' . rawurlencode($vertical))); }
+
+    /**
+     * LEP-0005 request-history read (`GET /v1/lcp/history/requests`,
+     * `history:read`). Only supplied, non-empty filters reach the query string:
+     * a blank filter would widen the page instead of narrowing it. Rows are
+     * scoped server-side to the credential's tenant, so there is no tenant
+     * argument here. The decoded body comes back unchanged (`requests`).
+     */
+    public function requestHistory(array $params = []): array
+    {
+        $query = [];
+        foreach (['limit', 'cursor', 'request_id', 'status', 'vertical', 'caller_phone_hash', 'from', 'to'] as $name) {
+            $value = $params[$name] ?? null;
+            if ($value === null || $value === '') continue;
+            $query[] = $name . '=' . rawurlencode((string) $value);
+        }
+        return $this->request('GET', '/v1/lcp/history/requests' . ($query === [] ? '' : '?' . implode('&', $query)));
+    }
+
+    /**
+     * Fetch one protocol schema by name (`GET /v1/lcp/schemas/{name}`) and
+     * return the decoded body unchanged. Slash namespaces such as
+     * `verticals/mortgage` are legitimate, so each segment is encoded
+     * separately and the separators are kept.
+     */
+    public function getSchema(string $name): array
+    {
+        return $this->request('GET', '/v1/lcp/schemas/' . implode('/', array_map('rawurlencode', explode('/', $name))));
+    }
 }

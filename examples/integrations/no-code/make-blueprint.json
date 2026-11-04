@@ -1,0 +1,131 @@
+{
+  "_format": "make-module-configuration/v1",
+  "_importable": false,
+  "_why_not_a_blueprint": "A Make blueprint is only trustworthy when Make itself exports it: the scenario wrapper carries app versions, designer metadata and interface stanzas that change between Make releases and cannot be verified from this repository. This file is the module configuration to recreate in the Make editor (about two minutes) — it is not a compile-time-valid blueprint and Make will not import it as one. See examples/integrations/no-code/README.md.",
+  "_auth": "Bearer API key. HMAC signing needs a SHA-256 HMAC over the exact request body; do not assemble that from Make text functions. If your operator requires HMAC, post through the Supabase edge function (supabase-edge-function.ts) or another signing relay instead.",
+  "scenario": {
+    "name": "LCP - send lead",
+    "steps": [
+      {
+        "step": 1,
+        "role": "trigger",
+        "examples": [
+          "Webhooks > Custom webhook (a form tool posts a JSON row here)",
+          "Google Sheets > Watch rows",
+          "HTTP > Custom webhook response is not needed for this flow"
+        ],
+        "must_output": [
+          "submission_id (stable id from the source) or a UUID you generate once per submission",
+          "email",
+          "phone",
+          "first_name / last_name or full_name",
+          "country_code",
+          "state_region or postal_code",
+          "consent (boolean) and consent_source_url",
+          "campaign_id (optional)"
+        ]
+      },
+      {
+        "step": 2,
+        "role": "http",
+        "app": "HTTP",
+        "module": "Make a request",
+        "module_id_hint": "http:ActionSendData",
+        "note": "Module and field labels differ slightly between Make versions. Find the HTTP app, add 'Make a request', and match the field names below."
+      },
+      {
+        "step": 3,
+        "role": "optional",
+        "examples": [
+          "Tools > Set variable to store the ack status, then a router: ACCEPTED or PROCESSED continues, 4xx goes to an alert branch"
+        ]
+      }
+    ]
+  },
+  "http_module": {
+    "url": "{{1.lcp_endpoint}}/v1/lcp/leads",
+    "url_note": "Replace {{1.lcp_endpoint}} with your platform base URL (for example a scenario variable holding https://platform.example) or paste the URL directly. Never put the trailing slash in twice.",
+    "method": "POST",
+    "headers": [
+      {
+        "name": "Authorization",
+        "value": "Bearer {{1.lcp_api_key}}",
+        "note": "Keep the key in a Make connection or a scenario variable marked as sensitive, not in the body template."
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      },
+      {
+        "name": "Accept",
+        "value": "application/json"
+      },
+      {
+        "name": "X-LCP-Idempotency-Key",
+        "value": "{{1.submission_id}}",
+        "note": "Must equal lcp.message.idempotency_key in the body. Stable per submission, so a Make retry or replay returns the original result instead of a second lead."
+      }
+    ],
+    "body": {
+      "content_type": "Raw / JSON (application/json)",
+      "raw": "{\"lcp\":{\"version\":\"1.0.0\",\"message\":{\"id\":\"{{1.lcp_message_id}}\",\"type\":\"lead\",\"timestamp\":\"{{now}}\",\"sender_id\":\"{{1.lcp_sender_id}}\",\"receiver_id\":\"{{1.lcp_receiver_id}}\",\"correlation_id\":null,\"idempotency_key\":\"{{1.submission_id}}\",\"test\":{{1.lcp_test_mode}}},\"payload\":{\"lead_id\":\"lead-{{1.submission_id}}\",\"external_id\":\"{{1.submission_id}}\",\"submitted_at\":\"{{now}}\",\"status\":\"NEW\",\"channel\":\"form\",\"consumer\":{\"first_name\":\"{{1.first_name}}\",\"last_name\":\"{{1.last_name}}\",\"email\":\"{{1.email}}\",\"phone\":\"{{1.phone}}\"},\"location\":{\"country_code\":\"{{1.country_code}}\",\"state_region\":\"{{1.state_region}}\",\"postal_code\":\"{{1.postal_code}}\"},\"compliance\":{\"consent_timestamp\":\"{{1.consent_timestamp}}\",\"consent_source_url\":\"{{1.consent_source_url}}\",\"consent_purposes\":[\"calls\",\"email\",\"share_with_partners\"]},\"provenance\":{\"source_type\":\"publisher\",\"platform_source\":\"make\",\"campaign_id\":\"{{1.campaign_id}}\"},\"attributes\":{\"vertical\":\"{{1.vertical}}\",\"schema_version\":\"{{1.schema_version}}\"}}}}"
+    },
+    "body_rules": [
+      "Delete any key whose source value is empty rather than sending an empty string: the schemas validate formats, and '' is not a valid phone, email, or country_code.",
+      "lcp.message.id must be a UUID. Make's function picker offers a UUID function on most plans; if yours does not, store a gen_random_uuid() column upstream and map it as {{1.lcp_message_id}}.",
+      "lcp.message.timestamp and submitted_at accept any RFC 3339 date-time; {{now}} is one. Whole-second UTC with a trailing Z is what LCP signers emit and the friendliest form.",
+      "lcp.message.test must be true while you are pointed at the operator's sandbox, and false only after the ack is clean. Send it as a JSON boolean, not a string."
+    ]
+  },
+  "variable_sources": {
+    "lcp_endpoint": "Scenario variable: https://platform.example (no trailing slash)",
+    "lcp_sender_id": "The sender id the operator issued to you (for example publisher_001)",
+    "lcp_receiver_id": "The platform receiver id (for example spx)",
+    "lcp_api_key": "Sensitive scenario variable or Make connection, from the operator's portal",
+    "lcp_test_mode": "true while testing; false once live",
+    "lcp_message_id": "UUID once per submission",
+    "submission_id": "Source record id; the same value must appear in the header, message.idempotency_key, payload.external_id",
+    "vertical": "Your vertical key, for example mortgage (see verticals/ in this repository)",
+    "schema_version": "The vertical schema version, for example 1.0.0"
+  },
+  "field_map": {
+    "email": "consumer.email",
+    "phone": "consumer.phone (E.164, for example +61412345678 — convert local formats before Make sees them)",
+    "first_name": "consumer.first_name",
+    "last_name": "consumer.last_name",
+    "country_code": "location.country_code (ISO 3166-1 alpha-2)",
+    "state_region": "location.state_region (required when postal_code is absent)",
+    "postal_code": "location.postal_code (required when state_region is absent)",
+    "consent_timestamp": "compliance.consent_timestamp (the moment the consumer ticked consent)",
+    "consent_source_url": "compliance.consent_source_url (the page or form the consent text was shown on)",
+    "campaign_id": "provenance.campaign_id"
+  },
+  "expected_response": {
+    "success_shape": {
+      "original_message_id": "the lcp.message.id you sent",
+      "status": "ACCEPTED or VALIDATED or RECEIVED or PROCESSED",
+      "lead_id": "platform-assigned id"
+    },
+    "duplicate_shape": {
+      "status": "DUPLICATE",
+      "note": "A retry with the same idempotency key. This is success, not an error: do not create a second row in your CRM."
+    },
+    "error_shape": {
+      "errors": [
+        {
+          "code": "LCP-003",
+          "name": "MISSING_REQUIRED_FIELD",
+          "message": "human-readable",
+          "field": "location.postal_code"
+        }
+      ]
+    }
+  },
+  "first_run": [
+    "Set lcp_test_mode to true and point the URL at the operator's sandbox.",
+    "Run the scenario once with a real submission from your own test form.",
+    "Accept only an ack whose status is not ERROR or REJECTED, and check the platform has the lead flagged as test.",
+    "Run it again unchanged. A second run should return DUPLICATE for the same submission_id; that proves the idempotency key is stable.",
+    "Flip lcp_test_mode to false and remove the test lead from the sandbox only after the buyer-side confirmation."
+  ]
+}

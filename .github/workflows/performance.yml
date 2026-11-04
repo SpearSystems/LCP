@@ -12,6 +12,18 @@ permissions:
 jobs:
   postgres-scale:
     name: PostgreSQL 18.4 scale and candidate-index regression
+    # Threshold table (the --min-* flags below). These are REGRESSION
+    # DETECTORS, not capacity guarantees: a green run means "no measured
+    # regression on the CI runner profile", not "this deployment handles N
+    # records/sec". Do not raise a floor from a fast local run.
+    #
+    # Baseline measured 2026-11-04 against the local service profile
+    # (macOS arm64, PostgreSQL 16.4, loopback socket, 4 workers, W4-05/W4-06
+    # code): candidate index 2029.0 records/s at 95.8 % reduction, Postgres
+    # intake 291.2 records/s, Postgres delivery 437.4 records/s intake /
+    # 47.3 deliveries/s / 36.7 end-to-end records/s. Every floor below keeps
+    # >4x headroom under the slower shared CI runner, so they are unchanged by
+    # that measurement; see docs/OPERATIONS.md § "CI capacity thresholds".
     runs-on: ubuntu-latest
     services:
       postgres:

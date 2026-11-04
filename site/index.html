@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="SPEC.md">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP — Lead Context Protocol Specification — LCP</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="index.html">LCP</a><a href="spec/index.html">Specification</a><a href="schemas/index.html">Schemas</a><a href="verticals/index.html">Verticals</a><a href="leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lcp--lead-context-protocol-specification">LCP — Lead Context Protocol Specification</h1>
+<blockquote>
+<p><strong>Created and maintained by Spear Systems</strong> (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+</blockquote>
+<p><strong>Status:</strong> v1.0 — published specification. <strong>License:</strong> Apache 2.0 (see <span class="unpublished" title="Not published in the specification site: LICENSE">LICENSE</span>).</p>
+<blockquote>
+<p>This is the canonical specification. The design is grounded in the production ping/post wire contract (HMAC signing, idempotency, nonce replay protection, PII-stripped pings) and the industry-standard ping/post model. Findings from the deep-research review pass (<code>docs/lcp-deep-research-review.md</code>) have been resolved — see the review-log appendix (§14).</p>
+</blockquote>
+<p><strong>This file is the normative index.</strong> The specification is published as the six documents under <a href="spec/index.html">spec/</a>; those files carry the normative text, and this index carries the table of contents. Section numbers are stable — every original <code>SPEC.md#N-…</code> anchor still resolves to the heading below, and each heading links to the document that now owns the section.</p>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="spec/00-conformance.html">spec/00-conformance.md</a></td>
+<td>Scope, conformance, governance, audit, review log</td>
+</tr>
+<tr>
+<td><a href="spec/01-transport.html">spec/01-transport.md</a></td>
+<td>Transport and security</td>
+</tr>
+<tr>
+<td><a href="spec/02-envelope.html">spec/02-envelope.md</a></td>
+<td>Envelope and message types</td>
+</tr>
+<tr>
+<td><a href="spec/03-payloads.html">spec/03-payloads.md</a></td>
+<td>Payloads and lifecycle</td>
+</tr>
+<tr>
+<td><a href="spec/04-errors.html">spec/04-errors.md</a></td>
+<td>Errors and status codes</td>
+</tr>
+<tr>
+<td><a href="spec/05-capabilities.html">spec/05-capabilities.md</a></td>
+<td>Capabilities and markets</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-overview">1. Overview</h2>
+<p>Purpose, scope (lead data exchange, not money movement), market/channel/ vertical agnosticism, and the eleven design principles — <a href="spec/00-conformance.html#1-overview">read in spec/00-conformance.md</a>.</p>
+<h2 id="2-envelope">2. Envelope</h2>
+<p>The transport-agnostic envelope: message identity, sender/receiver, timestamps, idempotency key, the canonical <code>test</code> flag, and the envelope schema — <a href="spec/02-envelope.html#2-envelope">read in spec/02-envelope.md</a>.</p>
+<h2 id="3-canonical-core">3. Canonical core</h2>
+<p>The vertical-free payload blocks (<code>consumer</code>, <code>location</code>, <code>compliance</code>, <code>provenance</code>, <code>attributes</code>, <code>attachments</code>), the lead status machine, lead expiry, and exclusivity slot semantics — <a href="spec/03-payloads.html#3-canonical-core">read in spec/03-payloads.md</a>.</p>
+<h2 id="4-message-types">4. Message types</h2>
+<p>The seven message types — <code>lead</code>, <code>call</code>, <code>ping</code>, <code>bid</code>, <code>post</code>, <code>ack</code>, <code>event</code> — including the ping allowlist, the ping/bid/post auction flow, and the event class rules — <a href="spec/02-envelope.html#4-message-types">read in spec/02-envelope.md</a>.</p>
+<h2 id="5-error-taxonomy">5. Error taxonomy</h2>
+<p>The structured error codes, their HTTP status mapping, the single shared error shape, and the identity/replay rejection split — <a href="spec/04-errors.html#5-error-taxonomy">read in spec/04-errors.md</a>.</p>
+<h2 id="6-versioning--extensibility">6. Versioning &amp; extensibility</h2>
+<p>Protocol and schema semver, N+2 deprecation, the namespaced extension mechanism, and the open-vs-closed enumeration policy — <a href="spec/05-capabilities.html#6-versioning--extensibility">read in spec/05-capabilities.md</a>.</p>
+<h2 id="7-conformance-tiers">7. Conformance tiers</h2>
+<p>The self-declared L1/L2/L3 tiers and what each one adds — <a href="spec/00-conformance.html#7-conformance-tiers">read in spec/00-conformance.md</a>.</p>
+<h2 id="8-capability-discovery">8. Capability discovery</h2>
+<p>The capabilities document, version-string membership rules, capacity, offer restrictions, delivery windows, and country discovery — <a href="spec/05-capabilities.html#8-capability-discovery">read in spec/05-capabilities.md</a>.</p>
+<h2 id="9-security">9. Security</h2>
+<p>TLS, API-key and HMAC authentication (canonical signing input and timestamp form), per-pair hash schemes, agent attestation verification, rate limits, PII handling, webhook signing, and the post timeout — <a href="spec/01-transport.html#9-security">read in spec/01-transport.md</a>.</p>
+<h2 id="10-agent-binding">10. Agent binding</h2>
+<p>Agent roles, agent identity, the abstract binding rules, and the MCP binding — <a href="spec/01-transport.html#10-agent-binding">read in spec/01-transport.md</a>.</p>
+<h2 id="11-governance">11. Governance</h2>
+<p>Licensing, the anti-capture clause, the extension registry, self-declared conformance, and the CLA — <a href="spec/00-conformance.html#11-governance">read in spec/00-conformance.md</a>.</p>
+<h2 id="12-universal-audit">12. Universal audit</h2>
+<p>The checklist that keeps the core vertical- and market-neutral — <a href="spec/00-conformance.html#12-universal-audit">read in spec/00-conformance.md</a>.</p>
+<h2 id="13-todo-authoring-order">13. TODO (authoring order)</h2>
+<p>Authoring status: completed deliverables and the remaining trigger-gated items — <a href="spec/00-conformance.html#13-todo-authoring-order">read in spec/00-conformance.md</a>.</p>
+<h2 id="14-review-log-appendix">14. Review-log appendix</h2>
+<p>The deep-research review findings, their resolutions, and the deferred items with triggers — <a href="spec/00-conformance.html#14-review-log-appendix">read in spec/00-conformance.md</a>.</p>
+<h2 id="appendix-a-consent-evidence-provider-examples">Appendix A: Consent evidence provider examples</h2>
+<p>Non-normative examples of <code>consent_evidence</code> provider/type values — <a href="spec/03-payloads.html#appendix-a-consent-evidence-provider-examples">read in spec/03-payloads.md</a>.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#1-overview">1. Overview</a></li><li class="depth-2"><a href="#2-envelope">2. Envelope</a></li><li class="depth-2"><a href="#3-canonical-core">3. Canonical core</a></li><li class="depth-2"><a href="#4-message-types">4. Message types</a></li><li class="depth-2"><a href="#5-error-taxonomy">5. Error taxonomy</a></li><li class="depth-2"><a href="#6-versioning--extensibility">6. Versioning &amp; extensibility</a></li><li class="depth-2"><a href="#7-conformance-tiers">7. Conformance tiers</a></li><li class="depth-2"><a href="#8-capability-discovery">8. Capability discovery</a></li><li class="depth-2"><a href="#9-security">9. Security</a></li><li class="depth-2"><a href="#10-agent-binding">10. Agent binding</a></li><li class="depth-2"><a href="#11-governance">11. Governance</a></li><li class="depth-2"><a href="#12-universal-audit">12. Universal audit</a></li><li class="depth-2"><a href="#13-todo-authoring-order">13. TODO (authoring order)</a></li><li class="depth-2"><a href="#14-review-log-appendix">14. Review-log appendix</a></li><li class="depth-2"><a href="#appendix-a-consent-evidence-provider-examples">Appendix A: Consent evidence provider examples</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>SPEC.md</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

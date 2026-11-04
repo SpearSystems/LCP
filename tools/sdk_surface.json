@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "sdk_root": "implementations/sdk",
+  "comment": [
+    "Public client surface every LCP SDK ships, one entry per language.",
+    "Derived from the code in implementations/sdk/ at v1.2.0 (see tools/check_sdk_surface.py).",
+    "`members.<sdk>.name` is the exact, case-sensitive identifier in `file`; `null`",
+    "records a shipped gap: the operation exists in the protocol but that SDK does not",
+    "expose it yet. Gaps are reported, not failed, unless --fail-on-gap is passed.",
+    "Paths are relative to the SDK root; `file` is relative to implementations/sdk/<sdk>/."
+  ],
+  "operations": [
+    {
+      "id": "submit_lead",
+      "endpoint": "POST /v1/lcp/leads",
+      "summary": "Submit one lead envelope.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "SubmitLeadAsync" },
+        "go": { "file": "lcp.go", "name": "SubmitLead" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "submitLead" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "submitLead" },
+        "php": { "file": "src/LcpSdk.php", "name": "submitLead" },
+        "python": { "file": "lcp_sdk/client.py", "name": "submit_lead" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_lead" },
+        "rust": { "file": "src/lib.rs", "name": "submit_lead" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitLead" },
+        "typescript": { "file": "src/index.ts", "name": "submitLead" }
+      }
+    },
+    {
+      "id": "submit_call",
+      "endpoint": "POST /v1/lcp/calls",
+      "summary": "Submit one call envelope.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "SubmitCallAsync" },
+        "go": { "file": "lcp.go", "name": "SubmitCall" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "submitCall" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "submitCall" },
+        "php": { "file": "src/LcpSdk.php", "name": "submitCall" },
+        "python": { "file": "lcp_sdk/client.py", "name": "submit_call" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_call" },
+        "rust": { "file": "src/lib.rs", "name": "submit_call" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitCall" },
+        "typescript": { "file": "src/index.ts", "name": "submitCall" }
+      }
+    },
+    {
+      "id": "submit_bid",
+      "endpoint": "POST /v1/lcp/bids",
+      "summary": "Submit one bid envelope.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "SubmitBidAsync" },
+        "go": { "file": "lcp.go", "name": "SubmitBid" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "submitBid" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "submitBid" },
+        "php": { "file": "src/LcpSdk.php", "name": "submitBid" },
+        "python": { "file": "lcp_sdk/client.py", "name": "submit_bid" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_bid" },
+        "rust": { "file": "src/lib.rs", "name": "submit_bid" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitBid" },
+        "typescript": { "file": "src/index.ts", "name": "submitBid" }
+      }
+    },
+    {
+      "id": "submit_leads_batch",
+      "endpoint": "POST /v1/lcp/leads/batch",
+      "summary": "Submit 1..100 lead items in one request and return per-item receipts.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "SubmitLeadsBatchAsync" },
+        "go": { "file": "lcp.go", "name": "SubmitLeadsBatch" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "submitLeadsBatch" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "submitLeadsBatch" },
+        "php": { "file": "src/LcpSdk.php", "name": "submitLeadsBatch" },
+        "python": { "file": "lcp_sdk/client.py", "name": "submit_leads_batch" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "submit_leads_batch" },
+        "rust": { "file": "src/lib.rs", "name": "submit_leads_batch" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "submitLeadsBatch" },
+        "typescript": { "file": "src/index.ts", "name": "submitLeadsBatch" }
+      }
+    },
+    {
+      "id": "query_lead_status",
+      "endpoint": "GET /v1/lcp/leads/{id}",
+      "summary": "Fetch the current status of one submitted lead.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "QueryLeadStatusAsync" },
+        "go": { "file": "lcp.go", "name": "QueryLeadStatus" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "queryLeadStatus" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "queryLeadStatus" },
+        "php": { "file": "src/LcpSdk.php", "name": "queryLeadStatus" },
+        "python": { "file": "lcp_sdk/client.py", "name": "query_lead_status" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "query_lead_status" },
+        "rust": { "file": "src/lib.rs", "name": "query_lead_status" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "queryLeadStatus" },
+        "typescript": { "file": "src/index.ts", "name": "queryLeadStatus" }
+      }
+    },
+    {
+      "id": "get_schema",
+      "endpoint": "GET /v1/lcp/schemas/{name}",
+      "summary": "Fetch one protocol schema by name.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "GetSchemaAsync" },
+        "go": { "file": "lcp.go", "name": "GetSchema" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "getSchema" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "getSchema" },
+        "php": { "file": "src/LcpSdk.php", "name": "getSchema" },
+        "python": { "file": "lcp_sdk/client.py", "name": "get_schema" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "get_schema" },
+        "rust": { "file": "src/lib.rs", "name": "get_schema" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "getSchema" },
+        "typescript": { "file": "src/index.ts", "name": "getSchema" }
+      }
+    },
+    {
+      "id": "get_capabilities",
+      "endpoint": "GET /v1/lcp/capabilities",
+      "summary": "Fetch the receiver capability document.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "GetCapabilitiesAsync" },
+        "go": { "file": "lcp.go", "name": "GetCapabilities" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "getCapabilities" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "getCapabilities" },
+        "php": { "file": "src/LcpSdk.php", "name": "getCapabilities" },
+        "python": { "file": "lcp_sdk/client.py", "name": "get_capabilities" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "get_capabilities" },
+        "rust": { "file": "src/lib.rs", "name": "get_capabilities" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "getCapabilities" },
+        "typescript": { "file": "src/index.ts", "name": "getCapabilities" }
+      }
+    },
+    {
+      "id": "list_offers",
+      "endpoint": "GET /v1/lcp/offers",
+      "summary": "List offers, optionally filtered by vertical.",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "ListOffersAsync" },
+        "go": { "file": "lcp.go", "name": "ListOffers" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "listOffers" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "listOffers" },
+        "php": { "file": "src/LcpSdk.php", "name": "listOffers" },
+        "python": { "file": "lcp_sdk/client.py", "name": "list_offers" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "list_offers" },
+        "rust": { "file": "src/lib.rs", "name": "list_offers" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "listOffers" },
+        "typescript": { "file": "src/index.ts", "name": "listOffers" }
+      }
+    },
+    {
+      "id": "request_history",
+      "endpoint": "GET /v1/lcp/history/requests",
+      "summary": "Page the request-history audit log (LEP-0005, history:read scope).",
+      "members": {
+        "csharp": { "file": "src/LcpSdk.cs", "name": "RequestHistoryAsync" },
+        "go": { "file": "lcp.go", "name": "RequestHistory" },
+        "java": { "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "name": "requestHistory" },
+        "kotlin": { "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "name": "requestHistory" },
+        "php": { "file": "src/LcpSdk.php", "name": "requestHistory" },
+        "python": { "file": "lcp_sdk/client.py", "name": "request_history" },
+        "ruby": { "file": "lib/lcp_sdk.rb", "name": "request_history" },
+        "rust": { "file": "src/lib.rs", "name": "request_history" },
+        "swift": { "file": "Sources/LCP/Lcp.swift", "name": "requestHistory" },
+        "typescript": { "file": "src/index.ts", "name": "requestHistory" }
+      }
+    }
+  ]
+}

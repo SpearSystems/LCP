@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="schemas/history-request-row.json">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP History Request Row (LEP-0005 draft overlay) — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP History Request Row (LEP-0005 draft overlay)</h1>
+<p><code>https://lcp.dev/schemas/history-request-row.json</code></p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>caller_phone_hash</code></td><td><code>string</code></td><td><code>contact</code></td><td></td><td>Per-pair HMAC keyed to the REQUESTING credential. Absent — never blank — when the rule in the next section omits it.</td></tr>
+<tr><td><code>created_at</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td></td></tr>
+<tr><td><code>currency</code></td><td><code>string</code></td><td><code>public</code></td><td></td><td></td></tr>
+<tr><td><code>direction</code></td><td>enum (<code>"received"</code>, <code>"sent"</code>)</td><td><code>public</code></td><td>yes</td><td>From the platform's side: an inbound envelope it received, or an outbound record it sent/delivered.</td></tr>
+<tr><td><code>expires_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>lead_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td>Publisher-supplied record handle, pinned at the projection (rule 6): anchored charset plus refusal of the §3 contact shapes — a leading 10-15 digit phone run, an all-digits/punctuation value, or an email address cannot ride a history row; hyphen-delimited digit segments (uuid-style ids) intentionally pass.</td></tr>
+<tr><td><code>message_type</code></td><td>enum (<code>"lead"</code>, <code>"call"</code>, <code>"ping"</code>, <code>"bid"</code>, <code>"post"</code>, <code>"event"</code>)</td><td><code>public</code></td><td>yes</td><td>Stored-record classes only. 'ack' is excluded: acks are response artifacts, no table backs them (row universe, below; Deferred questions).</td></tr>
+<tr><td><code>price_cents</code></td><td><code>integer</code></td><td><code>internal</code></td><td></td><td>Minor units only (LEP-0003 units discipline); currency travels separately.</td></tr>
+<tr><td><code>receiver_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>request_id</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>The stored envelope's message.id — the reference pattern's 'token'.</td></tr>
+<tr><td><code>sender_id</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>status</code></td><td><code>string</code></td><td><code>internal</code></td><td>yes</td><td>Stored record status (open pass-through per §6 — the vocabulary stays open; the shape is pinned, rule 6).</td></tr>
+<tr><td><code>test</code></td><td><code>boolean</code></td><td><code>public</code></td><td></td><td></td></tr>
+<tr><td><code>updated_at</code></td><td><code>string</code></td><td><code>internal</code></td><td></td><td></td></tr>
+<tr><td><code>vertical</code></td><td><code>['string', 'null']</code></td><td><code>public</code></td><td></td><td></td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/history-request-row.json",
+  "title": "LCP History Request Row (LEP-0005 draft overlay)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "message_type",
+    "direction",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "request_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "uuid",
+      "description": "The stored envelope's message.id — the reference pattern's 'token'."
+    },
+    "lead_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$",
+      "not": {
+        "pattern": "(?&lt;![-\\w])\\d{10,15}|^[0-9 .()+-]{10,}$|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+      },
+      "description": "Publisher-supplied record handle, pinned at the projection (rule 6): anchored charset plus refusal of the §3 contact shapes — a leading 10-15 digit phone run, an all-digits/punctuation value, or an email address cannot ride a history row; hyphen-delimited digit segments (uuid-style ids) intentionally pass."
+    },
+    "message_type": {
+      "x-lcp-pii": "public",
+      "enum": [
+        "lead",
+        "call",
+        "ping",
+        "bid",
+        "post",
+        "event"
+      ],
+      "description": "Stored-record classes only. 'ack' is excluded: acks are response artifacts, no table backs them (row universe, below; Deferred questions)."
+    },
+    "direction": {
+      "x-lcp-pii": "public",
+      "enum": [
+        "received",
+        "sent"
+      ],
+      "description": "From the platform's side: an inbound envelope it received, or an outbound record it sent/delivered."
+    },
+    "status": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$",
+      "description": "Stored record status (open pass-through per §6 — the vocabulary stays open; the shape is pinned, rule 6)."
+    },
+    "sender_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "receiver_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+    },
+    "test": {
+      "x-lcp-pii": "public",
+      "type": "boolean"
+    },
+    "price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minor units only (LEP-0003 units discipline); currency travels separately."
+    },
+    "currency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "caller_phone_hash": {
+      "x-lcp-pii": "contact",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Per-pair HMAC keyed to the REQUESTING credential. Absent — never blank — when the rule in the next section omits it."
+    },
+    "expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "created_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "updated_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    }
+  }
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>schemas/history-request-row.json</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

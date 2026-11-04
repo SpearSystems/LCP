@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "systems.spear"
-version = "1.1.1"
+version = "1.2.0"
 
 repositories { mavenCentral() }
 

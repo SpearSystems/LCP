@@ -1,0 +1,10 @@
+{
+  "name": "au-east-coast",
+  "version": "2026-01-01",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "source": "Deployment service-area fixture; state-level only",
+  "countries": ["AU"],
+  "regions": ["NSW", "VIC", "QLD"],
+  "postal_codes": []
+}

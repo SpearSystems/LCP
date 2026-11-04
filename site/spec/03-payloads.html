@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="spec/03-payloads.md">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LCP — Lead Context Protocol Specification — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lcp--lead-context-protocol-specification">LCP — Lead Context Protocol Specification</h1>
+<blockquote>
+<p>Part of the normative LCP v1.0 specification: <strong>Payloads and lifecycle</strong>. Canonical core payload blocks, status transitions, lead expiry, exclusivity slots, and the consent-evidence appendix. Index: <a href="../index.html">SPEC.md</a> · File map: <a href="index.html">spec/README.md</a>.</p>
+</blockquote>
+<h2 id="3-canonical-core">3. Canonical core</h2>
+<p>The core contains zero vertical-specific or market-specific fields.</p>
+<h3 id="consumer">consumer</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>first_name</code></td>
+<td>string</td>
+<td>Given name.</td>
+</tr>
+<tr>
+<td><code>last_name</code></td>
+<td>string</td>
+<td>Family name.</td>
+</tr>
+<tr>
+<td><code>full_name</code></td>
+<td>string</td>
+<td>Unstructured name — use when Western given/family splitting does not apply (large fraction of global names).</td>
+</tr>
+<tr>
+<td><code>email</code></td>
+<td>string (email)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>phone</code></td>
+<td>string</td>
+<td>E.164 format.</td>
+</tr>
+<tr>
+<td><code>phone_hash</code></td>
+<td>string</td>
+<td><code>HMAC-SHA256(shared_secret, e164)</code> — see §9.</td>
+</tr>
+<tr>
+<td><code>email_hash</code></td>
+<td>string</td>
+<td><code>HMAC-SHA256(shared_secret, normalized_email)</code> — per-pair, for email dedup in ping.</td>
+</tr>
+<tr>
+<td><code>dob</code></td>
+<td>string (date)</td>
+<td>Sensitive.</td>
+</tr>
+<tr>
+<td><code>locale</code></td>
+<td>string</td>
+<td>BCP-47 language tag (e.g. <code>en-AU</code>, <code>es-US</code>). Optional; for non-English free-text fields.</td>
+</tr>
+</tbody>
+</table>
+<p>At least one of name (<code>first_name</code>+<code>last_name</code> OR <code>full_name</code>), <code>email</code>, or <code>phone</code> is required.</p>
+<blockquote>
+<p><strong><code>gender</code> removed from core.</strong> Gender was inherited from insurance/mortgage underwriting and is not universally needed (a gutter lead or solar lead does not require it). Vertical schemas that need gender (e.g. insurance) define it in <code>attributes</code>.</p>
+</blockquote>
+<h3 id="location">location</h3>
+<p><code>country_code</code> (ISO 3166-1 alpha-2, REQUIRED), <code>state_region</code> (per-country validation registry), <code>postal_code</code> (per-country format), <code>city</code>, <code>timezone</code> (IANA). <code>state_region</code> OR <code>postal_code</code> required.</p>
+<h3 id="compliance">compliance</h3>
+<p>Consent and regulatory compliance evidence. The core defines a generic evidence array — no vendor-specific fields are baked into the core.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>consent_timestamp</code></td>
+<td>string (datetime)</td>
+<td>When consent was captured.</td>
+</tr>
+<tr>
+<td><code>consent_source_url</code></td>
+<td>string (uri)</td>
+<td>URL of the consent page/form.</td>
+</tr>
+<tr>
+<td><code>consent_text_version</code></td>
+<td>string</td>
+<td>Version identifier of the consent text shown.</td>
+</tr>
+<tr>
+<td><code>consent_purposes</code></td>
+<td>array\&lt;string\&gt;</td>
+<td>What was consented to (e.g. <code>"calls"</code>, <code>"sms"</code>, <code>"email"</code>, <code>"share_with_partners"</code>). Consent <em>scope</em> is what gets litigated — capture it.</td>
+</tr>
+<tr>
+<td><code>consent_evidence</code></td>
+<td>array\&lt;object\&gt;</td>
+<td>Structured evidence records. See below.</td>
+</tr>
+<tr>
+<td><code>otp_verified</code></td>
+<td>boolean</td>
+<td>One-time-passcode verified.</td>
+</tr>
+<tr>
+<td><code>otp</code></td>
+<td>object</td>
+<td>OTP details: <code>channel</code> (sms/email/voice), <code>verified_at</code>, <code>verified_value_hash</code>, <code>attempts</code>. The actual OTP code MUST NOT be included — it is ephemeral and poses a replay risk.</td>
+</tr>
+<tr>
+<td><code>session_capture_id</code></td>
+<td>string</td>
+<td>Session replay reference (e.g. rrweb).</td>
+</tr>
+<tr>
+<td><code>call_recording_id</code></td>
+<td>string</td>
+<td>Call recording reference.</td>
+</tr>
+<tr>
+<td><code>dnc_checked</code></td>
+<td>boolean</td>
+<td>Do-not-call list checked.</td>
+</tr>
+<tr>
+<td><code>consent_expires_at</code></td>
+<td>string (datetime)</td>
+<td>When consent validity expires. Optional — absent = does not expire. Buyers should not contact after this.</td>
+</tr>
+<tr>
+<td><code>scrubs</code></td>
+<td>array\&lt;object\&gt;</td>
+<td>Compliance scrubbing results. See below.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="scrubs-entries"><code>scrubs[]</code> entries</h4>
+<p>Each entry is one scrub check performed against the consumer's phone/email:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>Scrub type: <code>dnc_national</code>, <code>dnc_state</code>, <code>dnc_internal</code>, <code>litigator</code>, <code>blacklist</code>, <code>fraud_check</code>, <code>carrier_lookup</code>, <code>number_portability</code>. Open enumeration.</td>
+</tr>
+<tr>
+<td><code>provider</code></td>
+<td>string</td>
+<td>Service that performed the scrub (e.g. <code>ftc_dnc</code>, <code>au_dncregister</code>, <code>litigator_list</code>, <code>tcpa_scrub</code>, <code>first_orion</code>, <code>hiya</code>, <code>internal</code>).</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td>string</td>
+<td><code>clean</code> (passed), <code>flagged</code> (on a list, buyer decides), <code>blocked</code> (should not be contacted), <code>not_checked</code>.</td>
+</tr>
+<tr>
+<td><code>checked_at</code></td>
+<td>string (datetime)</td>
+<td>When the scrub was run.</td>
+</tr>
+<tr>
+<td><code>details</code></td>
+<td>string</td>
+<td>Optional human-readable detail. Do not include PII.</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>result</code> values are deliberately split into three actionable states:</p>
+<ul>
+<li><code>clean</code> — the consumer is not on any list; safe to contact.</li>
+<li><code>flagged</code> — the consumer appears on a list (e.g. known litigator, DNC registry) but the publisher did not block the lead. The buyer decides whether to accept. This is important for TCPA compliance: a <code>litigator</code> flag doesn't mean the lead is invalid, it means the buyer should be aware of elevated legal risk.</li>
+<li><code>blocked</code> — the consumer is on a list and the publisher blocked further processing. This lead should not have been delivered. If a buyer receives a <code>blocked</code> lead, they should reject it immediately.</li>
+</ul>
+<h4 id="consent_evidence-entries"><code>consent_evidence[]</code> entries</h4>
+<pre class="code-block"><code class="language-json">{
+  "type": "tcpa_consent",
+  "provider": "jornaya",
+  "token_or_url": "jrn_abc123..."
+}</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>Consent framework or evidence type (e.g. <code>"tcpa_consent"</code>, <code>"gdpr_opt_in"</code>, <code>"verified_consent"</code>).</td>
+</tr>
+<tr>
+<td><code>provider</code></td>
+<td>string</td>
+<td>Vendor or system that generated the evidence (e.g. <code>"jornaya"</code>, <code>"trustedform"</code>, <code>"internal"</code>, <code>"eu-consent-platform"</code>).</td>
+</tr>
+<tr>
+<td><code>token_or_url</code></td>
+<td>string</td>
+<td>Verification token, certificate URL, or reference.</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>consent_evidence</code> array is extensible — new consent frameworks (GDPR, LGPD, CCPA, future regimes) register new <code>type</code> values without core changes. US-specific vendors (Jornaya, TrustedForm) are <em>examples</em> of providers, not required core fields. See the non-normative provider examples in <a href="#appendix-a-consent-evidence-provider-examples">Appendix A</a>.</p>
+<h3 id="provenance-non-pii">provenance (non-PII)</h3>
+<p><code>received_at</code>, <code>source_type</code> (publisher|direct|agent|api|referral| organic|marketplace|outbound|scraped — open enum), <code>acquisition_method</code> (paid_ad|organic_search|marketplace|gmb|directory|cold_outbound| warm_transfer|scraped|unknown — open enum), <code>is_incentivized</code> (boolean), <code>incentive_type</code> (free_consultation|gift_card|discount_coupon|free_quote| cash_offer — open enum), <code>source_id</code>, <code>source_url</code>, <code>ip_hash</code>, <code>user_agent_hash</code>, <code>funnel_key</code>, <code>flow_key</code>, <code>campaign_id</code>, <code>creative_id</code>, <code>landing_page_url</code>, <code>platform_source</code> (google_ads|facebook|tiktok| bing_ads|organic|direct, open enum).</p>
+<p>Agent-specific provenance (when <code>source_type</code> = <code>agent</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provenance.agent.agent_id</code></td>
+<td>string</td>
+<td>Unique agent identifier.</td>
+</tr>
+<tr>
+<td><code>provenance.agent.acting_for</code></td>
+<td>string</td>
+<td>Party the agent acts on behalf of.</td>
+</tr>
+<tr>
+<td><code>provenance.agent.attestation</code></td>
+<td>string</td>
+<td>Signed verification token (JWT recommended — see §9).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="attributes">attributes</h3>
+<p>Vertical-specific, JSON Schema per vertical (see <a href="../verticals/index.html">verticals/</a>). <code>vertical</code> + <code>schema_version</code> required.</p>
+<p>Every field in a vertical schema MUST be tagged <code>ping_safe: true</code> or <code>ping_safe: false</code>. The conformance runner (L2/L3) mechanically rejects any <code>ping</code> payload containing a non-<code>ping_safe</code> field. This closes the loophole where vertical-specific fields leak PII through <code>attributes</code>.</p>
+<p>Vertical schemas MUST NOT redefine core field names (<code>phone</code>, <code>email</code>, <code>first_name</code>, <code>last_name</code>, <code>full_name</code>, <code>country_code</code>, etc.) inside <code>attributes</code> — core field names are reserved. See §12.</p>
+<p>When a vertical needs country-specific data (e.g. mortgage product types like HELOC, FHA, VA, etc.), model it as a country-scoped object within the vertical schema — NOT as separate per-country vertical files. Each country-scoped object has a <code>country_code</code> (ISO 3166-1 alpha-2) required field and nullable country-specific enum fields. See AGENTS.md rule 7 for details.</p>
+<p>Performance metrics (speed-to-contact, contact rate, close rate, close value) are <strong>buyer-side analytics</strong>, not lead data. They belong in the extensions mechanism, not in the core or vertical schemas:</p>
+<pre class="code-block"><code class="language-json">"extensions": {
+  "acme.metrics.performance": {
+    "speed_to_contact_seconds": 45,
+    "contact_rate": 0.72,
+    "close_rate": 0.18
+  }
+}</code></pre>
+<p>The <code>CONVERTED</code> event's <code>details.conversion_value_cents</code> is the one exception — close value on conversion is structured in the event (see §4 event) because it's a lifecycle fact, not a calculated metric.</p>
+<h3 id="attachments">attachments</h3>
+<p>Lead, call, and post payloads MAY include <code>attachments[]</code> metadata for contracts, medical records, insurance documents, call recordings, or other agreed evidence. Each entry contains <code>attachment_id</code>, <code>purpose</code>, <code>filename</code>, <code>content_type</code>, <code>size_bytes</code>, <code>sha256</code>, <code>storage_ref</code>, and <code>created_at</code>, with optional expiry, residency, encryption, and malware-scan markers. A production attachment MUST have a clean malware-scan result before downstream release. A deployment MUST enforce sender ownership, hash integrity, content limits, authorization, retention, and country/region residency. The HTTP reference profile uploads bytes through an authenticated attachment endpoint; the protocol does not mandate a particular object-store provider. The reference platform's production adapter uses an S3-compatible API with provider-side SSE-KMS and an opaque storage reference.</p>
+<h3 id="status">status</h3>
+<p><code>NEW</code>, <code>PINGED</code>, <code>POSTED</code>, <code>ACCEPTED</code>, <code>REJECTED</code>, <code>DUPLICATE</code>, <code>DISPUTED</code>, <code>REFUNDED</code>, <code>EXPIRED</code>, <code>CONVERTED</code>, <code>ARCHIVED</code>.</p>
+<h4 id="status-transition-table">Status transition table</h4>
+<p>Terminal states are marked with §. Non-terminal states can transition per the legal edges below. All unspecified transitions are invalid (error <code>LCP-004 INVALID_STATUS_TRANSITION</code>).</p>
+<pre class="code-block"><code>NEW ──────────────► PINGED ──────────► POSTED
+ │                    │                   │
+ │                    │                   ├─► ACCEPTED ──► CONVERTED §
+ │                    │                   │      │
+ │                    │                   │      ├─► DISPUTED ──► REFUNDED §
+ │                    │                   │      │      └────► ACCEPTED (resolved)
+ │                    │                   │      └─► ARCHIVED §
+ │                    │                   │
+ │                    │                   ├─► REJECTED §
+ │                    │                   │
+ │                    │                   ├─► EXPIRED §
+ │                    │                   │
+ │                    │                   └─► DUPLICATE §
+ │                    │
+ │                    ├─► EXPIRED §
+ │                    │
+ │                    └─► DUPLICATE §
+ │
+ ├─► REJECTED §
+ │
+ ├─► EXPIRED §
+ │
+ └─► DUPLICATE §</code></pre>
+<p><strong>Terminal states</strong> (no outgoing transitions): <code>CONVERTED</code>, <code>REFUNDED</code>, <code>REJECTED</code>, <code>ARCHIVED</code>, <code>EXPIRED</code>, <code>DUPLICATE</code>.</p>
+<p><strong>Notable resolution path:</strong> <code>DISPUTED → ACCEPTED</code> (a dispute can resolve in the buyer's favor) and <code>DISPUTED → REFUNDED</code> (dispute resolves in the publisher's favor, lead is refunded).</p>
+<h3 id="lead-expiry">lead expiry</h3>
+<p>Leads MAY carry an <code>expires_at</code> (ISO 8601 datetime) or <code>ttl_seconds</code> (integer) field. If the lead reaches its expiry without being accepted, the platform transitions it to <code>EXPIRED</code>.</p>
+<h3 id="exclusivity">exclusivity</h3>
+<p>Leads MAY carry an <code>exclusivity</code> field:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exclusivity</code></td>
+<td>string</td>
+<td><code>"exclusive"</code> (single buyer) or <code>"shared"</code> (multiple buyers). Default: <code>"shared"</code>.</td>
+</tr>
+<tr>
+<td><code>max_buyers</code></td>
+<td>integer</td>
+<td>For <code>shared</code> leads, maximum number of buyers who may receive the lead.</td>
+</tr>
+</tbody>
+</table>
+<p>This models the commercial reality of lead selling (exclusive vs. shared leads) — distinct from <code>pricing.is_duplicate_resub</code>, which addresses accidental resubmission.</p>
+<p><strong>Slot semantics (v1.1, LEP-0003).</strong> The budget <code>max_buyers</code> counts <strong>distinct awarded buyers</strong>, not delivered copies: one awarded buyer consumes exactly <strong>one slot</strong> regardless of how many matching offers they hold, while delivery remains per <code>(lead, offer)</code> — so the number of delivered post copies for a lead can legally exceed the budget (a single awarded buyer holding two matching offers receives two posts inside their one slot). <code>exclusivity: "exclusive"</code> is exactly the one-slot special case. The undeclared case is normative: a <code>shared</code> lead without <code>max_buyers</code> has a slot budget of <strong>1</strong>. A conformant platform MUST NOT award more distinct buyers than the budget (never oversell) and MUST NOT advertise zero remaining slots — zero remaining means stop pinging, not ping with zero (see §4 <code>slots_available</code>).</p>
+<h2 id="appendix-a-consent-evidence-provider-examples">Appendix A: Consent evidence provider examples</h2>
+<blockquote>
+<p>Non-normative. These are examples of <code>consent_evidence</code> provider/type values, not required core fields.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Type</th>
+<th>Market</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jornaya</code></td>
+<td><code>tcpa_consent</code></td>
+<td>US</td>
+<td>Lead consent certification.</td>
+</tr>
+<tr>
+<td><code>trustedform</code></td>
+<td><code>tcpa_consent</code></td>
+<td>US</td>
+<td>Form consent certification.</td>
+</tr>
+<tr>
+<td><code>internal</code></td>
+<td><code>verified_consent</code></td>
+<td>Any</td>
+<td>Publisher's own consent system.</td>
+</tr>
+<tr>
+<td><code>eu-consent-platform</code></td>
+<td><code>gdpr_opt_in</code></td>
+<td>EU</td>
+<td>GDPR opt-in evidence.</td>
+</tr>
+<tr>
+<td><code>anatel-consent</code></td>
+<td><code>lgpd_consent</code></td>
+<td>BR</td>
+<td>Brazilian LGPD consent.</td>
+</tr>
+</tbody>
+</table>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#3-canonical-core">3. Canonical core</a></li><li class="depth-3"><a href="#consumer">consumer</a></li><li class="depth-3"><a href="#location">location</a></li><li class="depth-3"><a href="#compliance">compliance</a></li><li class="depth-4"><a href="#scrubs-entries">scrubs[] entries</a></li><li class="depth-4"><a href="#consent_evidence-entries">consent_evidence[] entries</a></li><li class="depth-3"><a href="#provenance-non-pii">provenance (non-PII)</a></li><li class="depth-3"><a href="#attributes">attributes</a></li><li class="depth-3"><a href="#attachments">attachments</a></li><li class="depth-3"><a href="#status">status</a></li><li class="depth-4"><a href="#status-transition-table">Status transition table</a></li><li class="depth-3"><a href="#lead-expiry">lead expiry</a></li><li class="depth-3"><a href="#exclusivity">exclusivity</a></li><li class="depth-2"><a href="#appendix-a-consent-evidence-provider-examples">Appendix A: Consent evidence provider examples</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>spec/03-payloads.md</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

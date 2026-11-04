@@ -6,6 +6,7 @@ import json
 import time
 from typing import Any, Mapping
 from urllib.parse import quote
+from uuid import uuid4
 
 import httpx
 
@@ -14,6 +15,7 @@ from .signing import sign_hmac
 from .validation import SchemaValidator
 
 MAX_BODY_CHARS = 2048
+MAX_BATCH_ITEMS = 100  # LEP-0001 W2-01 batch cap (schemas/batch.json)
 _TRUNCATION_SUFFIX = "…[truncated]"
 _REQUEST_ID_MAX_CHARS = 64  # request ids are server-supplied; bound the echo
 
@@ -136,6 +138,7 @@ class LCPClient:
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         test: bool = False,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         """Perform one LCP request and return the decoded JSON body."""
         data, _headers = self.request_with_headers(
@@ -145,6 +148,7 @@ class LCPClient:
             params=params,
             idempotency_key=idempotency_key,
             test=test,
+            max_retries=max_retries,
         )
         return data
 
@@ -157,6 +161,7 @@ class LCPClient:
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         test: bool = False,
+        max_retries: int | None = None,
     ) -> tuple[dict[str, Any], Mapping[str, str]]:
         """Perform one LCP request and return ``(body, response headers)``.
 
@@ -168,9 +173,9 @@ class LCPClient:
         """
         body = b""
         if payload is not None:
-            body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
-                "utf-8"
-            )
+            body = json.dumps(
+                payload, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
             if idempotency_key is None:
                 try:
                     idempotency_key = message_metadata(payload)["idempotency_key"]
@@ -180,8 +185,9 @@ class LCPClient:
         url = f"{self.endpoint}/{path.lstrip('/')}"
         retryable = method.upper() in {"GET", "HEAD", "PUT", "DELETE", "POST"}
         last_error: Exception | None = None
+        retries = self.max_retries if max_retries is None else max(0, max_retries)
 
-        for attempt in range(self.max_retries + 1):
+        for attempt in range(retries + 1):
             try:
                 with httpx.Client(timeout=self.timeout) as client:
                     response = client.request(
@@ -193,7 +199,7 @@ class LCPClient:
                     )
             except httpx.RequestError as exc:
                 last_error = exc
-                if not retryable or attempt >= self.max_retries:
+                if not retryable or attempt >= retries:
                     raise
                 time.sleep(2**attempt)
                 continue
@@ -204,9 +210,13 @@ class LCPClient:
                 data = {"raw": response.text}
             if response.is_success:
                 return data, response.headers
-            if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+            if response.status_code in {429, 500, 502, 503, 504} and attempt < retries:
                 retry_after = response.headers.get("Retry-After")
-                delay = float(retry_after) if retry_after and retry_after.isdigit() else 2**attempt
+                delay = (
+                    float(retry_after)
+                    if retry_after and retry_after.isdigit()
+                    else 2**attempt
+                )
                 time.sleep(delay)
                 continue
             raise LCPHTTPError(
@@ -219,17 +229,54 @@ class LCPClient:
             raise last_error
         raise RuntimeError("LCP request failed without a response")
 
-    def submit_lead(self, envelope: dict[str, Any], *, test: bool = False) -> dict[str, Any]:
+    def submit_lead(
+        self, envelope: dict[str, Any], *, test: bool = False
+    ) -> dict[str, Any]:
         self._validate(envelope)
         return self.request("POST", "/v1/lcp/leads", payload=envelope, test=test)
 
-    def submit_call(self, envelope: dict[str, Any], *, test: bool = False) -> dict[str, Any]:
+    def submit_call(
+        self, envelope: dict[str, Any], *, test: bool = False
+    ) -> dict[str, Any]:
         self._validate(envelope)
         return self.request("POST", "/v1/lcp/calls", payload=envelope, test=test)
 
-    def submit_bid(self, envelope: dict[str, Any], *, test: bool = False) -> dict[str, Any]:
+    def submit_bid(
+        self, envelope: dict[str, Any], *, test: bool = False
+    ) -> dict[str, Any]:
         self._validate(envelope)
         return self.request("POST", "/v1/lcp/bids", payload=envelope, test=test)
+
+    def submit_leads_batch(
+        self,
+        items: list[dict[str, Any]],
+        request_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Submit up to ``MAX_BATCH_ITEMS`` lead items in one request.
+
+        Each item is ``{"item_id": ..., "idempotency_key": ..., "payload": ...}``
+        with the lead payload at ``payload`` (schemas/batch.json). Returns the
+        per-item receipts in input order; an HTTP 207 partial success is a
+        successful response. The batch is never retried as a whole — retrying
+        only ``rejected``/``error`` receipts is the caller's job, and per-item
+        idempotency keys make a full resend safe but wasteful.
+        """
+        if not items or len(items) > MAX_BATCH_ITEMS:
+            raise ValueError(
+                f"batch supports 1..{MAX_BATCH_ITEMS} items, got {len(items)}"
+            )
+        body = {"request_id": request_id or str(uuid4()), "items": items}
+        response = self.request(
+            "POST", "/v1/lcp/leads/batch", payload=body, max_retries=0
+        )
+        results = response.get("results")
+        if not isinstance(results, list):
+            raise ValueError("batch response missing results")
+        order = {item.get("item_id"): index for index, item in enumerate(items)}
+        return sorted(
+            results,
+            key=lambda result: order.get(result.get("item_id"), len(items)),
+        )
 
     def query_lead_status(self, lead_id: str) -> dict[str, Any]:
         return self.request("GET", f"/v1/lcp/leads/{quote(lead_id, safe='')}")
@@ -243,6 +290,45 @@ class LCPClient:
     def list_offers(self, vertical: str | None = None) -> dict[str, Any]:
         params = {"vertical": vertical} if vertical else None
         return self.request("GET", "/v1/lcp/offers", params=params)
+
+    def request_history(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+        request_id: str | None = None,
+        status: str | None = None,
+        vertical: str | None = None,
+        caller_phone_hash: str | None = None,
+        from_: str | None = None,
+        to: str | None = None,
+    ) -> dict[str, Any]:
+        """Page the LEP-0005 request-history audit log (``history:read``).
+
+        Every filter is optional; an omitted or empty value is left out of the
+        query entirely, never sent as an empty string (an ignored blank filter
+        silently broadens the result set). Rows are scoped server-side to the
+        credential's tenant, so no tenant argument exists here. ``from_`` maps
+        to the wire parameter ``from``; values are whole-second UTC
+        (``YYYY-MM-DDTHH:MM:SSZ``). Returns the response body unchanged:
+        ``{"requests": [...]}``.
+        """
+        params = {
+            "limit": limit,
+            "cursor": cursor,
+            "request_id": request_id,
+            "status": status,
+            "vertical": vertical,
+            "caller_phone_hash": caller_phone_hash,
+            "from": from_,
+            "to": to,
+        }
+        supplied = {
+            name: value
+            for name, value in params.items()
+            if value is not None and value != ""
+        }
+        return self.request("GET", "/v1/lcp/history/requests", params=supplied or None)
 
     def _validate(self, envelope: dict[str, Any]) -> None:
         if self.validator:

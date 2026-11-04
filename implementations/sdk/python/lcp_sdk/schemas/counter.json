@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/counter.json",
+  "title": "LCP Counter Message",
+  "description": "Either party answers the standing negotiation message (LEP-0009). Strict allowlist: integer minor units, ISO 4217 currency, opaque ids, round counters, and closed/known reason values only. No consumer PII and no free text. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "negotiation_id",
+    "ping_id",
+    "offer_id",
+    "decision",
+    "currency",
+    "floor_price_cents",
+    "rounds_remaining",
+    "expires_at"
+  ],
+  "properties": {
+    "negotiation_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^neg_[A-Za-z0-9_-]{8,64}$",
+      "description": "MUST name an existing negotiation for this (tenant, buyer, ping) triple; otherwise unknown_negotiation (or LCP-002 when it belongs to another buyer/tenant)."
+    },
+    "ping_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "MUST equal the negotiation's ping (LCP-100 on mismatch)."
+    },
+    "offer_id": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "MUST equal the negotiation's offer (LCP-100 on mismatch)."
+    },
+    "decision": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "counter",
+        "accept",
+        "refuse"
+      ],
+      "description": "counter = move the price; accept = close at the price of the message being answered; refuse = close with a reason."
+    },
+    "price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Required unless decision = refuse. counter: subject to the monotone rule and at or above floor_price_cents. accept: MUST equal the price of the message it answers."
+    },
+    "currency": {
+      "$ref": "core.json#/$defs/currency"
+    },
+    "floor_price_cents": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "description": "Restated and checked against the negotiation's floor (LCP-100 on mismatch)."
+    },
+    "rounds_remaining": {
+      "x-lcp-pii": "internal",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "The sender's view of the buyer counters still available at the moment this message is sent, before it is applied. A stale value is LCP-100."
+    },
+    "expires_at": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "format": "date-time",
+      "description": "The negotiation's absolute end, unchanged. MUST NOT exceed the value set by the opening quote."
+    },
+    "rejection_reason": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "minLength": 1,
+      "description": "Open enumeration. Required when decision = refuse; absent otherwise. Known values: below_floor_price, non_monotone_counter, round_limit_exceeded, negotiation_expired, unknown_negotiation, negotiation_closed."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "refuse",
+            "x-lcp-pii": "internal"
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "then": {
+        "required": [
+          "rejection_reason"
+        ],
+        "not": {
+          "required": [
+            "price_cents"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "price_cents"
+        ],
+        "not": {
+          "required": [
+            "rejection_reason"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

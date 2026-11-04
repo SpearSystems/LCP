@@ -46,7 +46,7 @@ def vertical_doc(props: dict[str, Any], *, envelope: bool = True) -> dict[str, A
 
 
 class Sandbox(unittest.TestCase):
-    """tmp repo seeded with the real core.json + SPEC.md so prose trips hold."""
+    """tmp repo seeded with the real core.json + spec/ so prose trips hold."""
 
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
@@ -55,7 +55,7 @@ class Sandbox(unittest.TestCase):
         shutil.copyfile(
             REPO / "schemas" / "core.json", self.tmp / "schemas" / "core.json"
         )
-        shutil.copyfile(REPO / "SPEC.md", self.tmp / "SPEC.md")
+        shutil.copytree(REPO / "spec", self.tmp / "spec")
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -76,7 +76,7 @@ class Sandbox(unittest.TestCase):
 
     def find(self) -> list[str]:
         return find_violations(
-            self.tmp / "schemas", self.tmp / "verticals", self.tmp / "SPEC.md"
+            self.tmp / "schemas", self.tmp / "verticals", self.tmp / "spec"
         )
 
 
@@ -85,7 +85,7 @@ class TestCleanPass(Sandbox):
         # Includes the legitimate nested mortgage_product.country_code and
         # the root vertical/schema_version envelope keys.
         self.assertEqual(
-            find_violations(REPO / "schemas", REPO / "verticals", REPO / "SPEC.md"), []
+            find_violations(REPO / "schemas", REPO / "verticals", REPO / "spec"), []
         )
 
     def test_envelope_keys_and_nested_country_code_are_exempt(self) -> None:
@@ -261,7 +261,7 @@ class TestCli(Sandbox):
             "--verticals-dir",
             str(self.tmp / "verticals"),
             "--spec",
-            str(self.tmp / "SPEC.md"),
+            str(self.tmp / "spec"),
         ]
         old = sys.argv
         sys.argv = argv

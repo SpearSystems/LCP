@@ -3,6 +3,7 @@ use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
+use std::collections::HashMap;
 use std::time::Duration;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
@@ -139,6 +140,26 @@ pub fn slot_capability_errors(envelope: &Value, advertised_lcp_versions: &[&str]
 }
 pub fn verify_hmac(secret: &str, signature: &str, timestamp: &str, idempotency_key: Option<&str>, body: &[u8], max_skew: Duration, now: OffsetDateTime) -> Result<(), String> { let signed_at = OffsetDateTime::parse(timestamp, &Rfc3339).map_err(|_| "invalid timestamp".to_string())?; if (now - signed_at).whole_seconds().unsigned_abs() > max_skew.as_secs() { return Err("timestamp outside replay window".into()); } let expected = sign_hmac(secret, timestamp, idempotency_key, body); if expected.as_bytes().ct_eq(signature.to_lowercase().as_bytes()).unwrap_u8() != 1 { return Err("invalid signature".into()); } Ok(()) }
 
+/// LEP-0001 W2-01 caps one batch at 100 items (schemas/batch.json).
+pub const MAX_BATCH_ITEMS: usize = 100;
+
+/// LEP-0005 `GET /v1/lcp/history/requests` filters (`history:read`). Every
+/// field is optional: `None` and empty strings are omitted from the query
+/// instead of being sent blank, because a blank filter widens the page rather
+/// than narrowing it. Rows are scoped server-side to the credential's tenant,
+/// so there is no tenant field here.
+#[derive(Debug, Default, Clone)]
+pub struct HistoryParams<'a> {
+    pub limit: Option<u32>,
+    pub cursor: Option<&'a str>,
+    pub request_id: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub vertical: Option<&'a str>,
+    pub caller_phone_hash: Option<&'a str>,
+    pub from: Option<&'a str>,
+    pub to: Option<&'a str>,
+}
+
 pub struct Client { endpoint: String, sender_id: Option<String>, api_key: Option<String>, hmac_secret: Option<String>, http: HttpClient, max_retries: u32 }
 impl Client {
     pub fn new(endpoint: impl Into<String>) -> Self { Self { endpoint: endpoint.into().trim_end_matches('/').to_string(), sender_id: None, api_key: None, hmac_secret: None, http: HttpClient::builder().timeout(Duration::from_secs(30)).build().expect("HTTP client"), max_retries: 2 } }
@@ -146,9 +167,35 @@ impl Client {
     pub fn api_key(mut self, value: impl Into<String>) -> Self { self.api_key = Some(value.into()); self }
     pub fn hmac_secret(mut self, value: impl Into<String>) -> Self { self.hmac_secret = Some(value.into()); self }
     pub fn request(&self, method: reqwest::Method, path: &str, payload: Option<Value>, test: bool) -> Result<Value, Box<dyn std::error::Error>> {
+        self.request_with_retries(method, path, payload, test, self.max_retries)
+    }
+
+    fn request_with_retries(&self, method: reqwest::Method, path: &str, payload: Option<Value>, test: bool, max_retries: u32) -> Result<Value, Box<dyn std::error::Error>> {
         let body = payload.as_ref().map(|value| serde_json::to_vec(value)).transpose()?; let key = payload.as_ref().and_then(|value| value.pointer("/lcp/message/idempotency_key")).and_then(Value::as_str);
-        for attempt in 0..=self.max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = now_iso_utc(); request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(error) if attempt < self.max_retries => { std::thread::sleep(Duration::from_secs(1 << attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == self.max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(Duration::from_secs(1 << attempt)); }
+        for attempt in 0..=max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = now_iso_utc(); request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(error) if attempt < max_retries => { std::thread::sleep(Duration::from_secs(1 << attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(Duration::from_secs(1 << attempt)); }
         Err("LCP request failed".into())
+    }
+
+    /// Submit up to [`MAX_BATCH_ITEMS`] lead items in one request (LEP-0001
+    /// W2-01) and return the per-item receipts in input order. HTTP 207 partial
+    /// success is a successful response; per-item `error` objects are preserved.
+    /// The batch is never retried as a whole — retrying only rejected/error
+    /// receipts is the caller's job.
+    pub fn submit_leads_batch(&self, items: &[Value], request_id: Option<&str>) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+        if items.is_empty() || items.len() > MAX_BATCH_ITEMS {
+            return Err(format!("batch supports 1..={MAX_BATCH_ITEMS} items, got {}", items.len()).into());
+        }
+        let request_id = request_id.map(str::to_string).unwrap_or_else(uuid);
+        let body = json!({"request_id": request_id, "items": items});
+        let response = self.request_with_retries(reqwest::Method::POST, "/v1/lcp/leads/batch", Some(body), false, 0)?;
+        let results = response.get("results").and_then(Value::as_array).ok_or("batch response missing results")?;
+        let order: HashMap<&str, usize> = items.iter().enumerate().filter_map(|(index, item)| item.get("item_id").and_then(Value::as_str).map(|id| (id, index))).collect();
+        let mut ordered: Vec<(usize, usize, Value)> = results.iter().cloned().enumerate().map(|(index, result)| {
+            let rank = result.get("item_id").and_then(Value::as_str).and_then(|id| order.get(id)).copied().unwrap_or(items.len());
+            (rank, index, result)
+        }).collect();
+        ordered.sort_by_key(|(rank, index, _)| (*rank, *index));
+        Ok(ordered.into_iter().map(|(_, _, result)| result).collect())
     }
 
     pub fn submit_lead(&self, envelope: Value, test: bool) -> Result<Value, Box<dyn std::error::Error>> { self.request(reqwest::Method::POST, "/v1/lcp/leads", Some(envelope), test) }
@@ -157,6 +204,46 @@ impl Client {
     pub fn query_lead_status(&self, id: &str) -> Result<Value, Box<dyn std::error::Error>> { self.request(reqwest::Method::GET, &format!("/v1/lcp/leads/{}", urlencoding::encode(id)), None, false) }
     pub fn get_capabilities(&self) -> Result<Value, Box<dyn std::error::Error>> { self.request(reqwest::Method::GET, "/v1/lcp/capabilities", None, false) }
     pub fn list_offers(&self, vertical: Option<&str>) -> Result<Value, Box<dyn std::error::Error>> { let path = vertical.map(|value| format!("/v1/lcp/offers?vertical={}", urlencoding::encode(value))).unwrap_or_else(|| "/v1/lcp/offers".to_string()); self.request(reqwest::Method::GET, &path, None, false) }
+
+    /// Page the LEP-0005 request-history audit log and return the decoded body
+    /// unchanged (`{"requests": [...]}`); a 4xx surfaces as the shared request
+    /// error, like every other read.
+    pub fn request_history(&self, params: &HistoryParams) -> Result<Value, Box<dyn std::error::Error>> {
+        let mut query: Vec<String> = Vec::new();
+        if let Some(limit) = params.limit {
+            query.push(format!("limit={limit}"));
+        }
+        for (name, value) in [
+            ("cursor", params.cursor),
+            ("request_id", params.request_id),
+            ("status", params.status),
+            ("vertical", params.vertical),
+            ("caller_phone_hash", params.caller_phone_hash),
+            ("from", params.from),
+            ("to", params.to),
+        ] {
+            if let Some(value) = value {
+                if !value.is_empty() {
+                    query.push(format!("{name}={}", urlencoding::encode(value)));
+                }
+            }
+        }
+        let path = if query.is_empty() {
+            "/v1/lcp/history/requests".to_string()
+        } else {
+            format!("/v1/lcp/history/requests?{}", query.join("&"))
+        };
+        self.request(reqwest::Method::GET, &path, None, false)
+    }
+
+    /// Fetch one protocol schema by name (`GET /v1/lcp/schemas/{name}`) and
+    /// return the decoded body unchanged. Slash namespaces such as
+    /// `verticals/mortgage` are legitimate, so each segment is percent-encoded
+    /// on its own and the separators are kept.
+    pub fn get_schema(&self, name: &str) -> Result<Value, Box<dyn std::error::Error>> {
+        let encoded: Vec<String> = name.split('/').map(|segment| urlencoding::encode(segment).into_owned()).collect();
+        self.request(reqwest::Method::GET, &format!("/v1/lcp/schemas/{}", encoded.join("/")), None, false)
+    }
 }
 
 trait ConstantTimeEq { fn ct_eq(&self, other: &[u8]) -> subtle::Choice; }
@@ -284,5 +371,147 @@ mod tests {
         let validator = SchemaValidator::new(schemas);
         let payload: Value = serde_json::from_str(&json).unwrap();
         validator.validate("schemas/bid.json", &payload).unwrap();
+    }
+
+    #[test]
+    fn batch_submission_orders_receipts_and_treats_207_as_success() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                buffer.extend_from_slice(&chunk[..read]);
+                if read == 0 || buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let header_end = buffer.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4;
+            let headers = String::from_utf8_lossy(&buffer[..header_end]).to_lowercase();
+            let length: usize = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("content-length:"))
+                .map(|value| value.trim().parse().unwrap())
+                .unwrap_or(0);
+            while buffer.len() - header_end < length {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+            }
+            let body = String::from_utf8_lossy(&buffer[header_end..header_end + length]).to_string();
+            assert!(body.contains("\"request_id\":\"req-batch-1\""));
+            assert!(body.contains("\"item_id\":\"item_a\""));
+            let response = r#"{"request_id":"req-batch-1","summary":{"total":2,"accepted":1,"duplicate":0,"rejected":1,"error":0},"results":[{"item_id":"item_b","status":"accepted","lead_id":"lead_b"},{"item_id":"item_a","status":"rejected","error":{"code":"LCP-100","message":"invalid lead"}}]}"#;
+            write!(stream, "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+        });
+        let client = Client::new(format!("http://{}", address));
+        let items = vec![
+            json!({"item_id":"item_a","idempotency_key":"batch-a","payload":{"lead_id":"lead_a"}}),
+            json!({"item_id":"item_b","idempotency_key":"batch-b","payload":{"lead_id":"lead_b"}}),
+        ];
+        let results = client.submit_leads_batch(&items, Some("req-batch-1")).unwrap();
+        server.join().unwrap();
+        assert_eq!(results[0]["item_id"], "item_a");
+        assert_eq!(results[0]["status"], "rejected");
+        assert_eq!(results[0]["error"]["code"], "LCP-100");
+        assert_eq!(results[1]["status"], "accepted");
+        let over_cap: Vec<Value> = (0..101)
+            .map(|index| json!({"item_id": format!("item_{index}"), "idempotency_key": format!("key_{index}"), "payload": {}}))
+            .collect();
+        assert!(client.submit_leads_batch(&over_cap, None).is_err());
+    }
+
+    #[test]
+    fn history_read_sends_only_supplied_filters_and_surfaces_errors() {
+        use std::io::{Read, Write};
+
+        fn serve(status_line: &'static str, body: &'static str) -> (String, std::thread::JoinHandle<String>) {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let handle = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let read = stream.read(&mut chunk).unwrap();
+                    buffer.extend_from_slice(&chunk[..read]);
+                    if read == 0 || buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let text = String::from_utf8_lossy(&buffer).to_string();
+                let target = text.lines().next().unwrap_or_default().split(' ').nth(1).unwrap_or_default().to_string();
+                write!(stream, "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                target
+            });
+            (format!("http://{address}"), handle)
+        }
+
+        let (endpoint, server) = serve(
+            "HTTP/1.1 200 OK",
+            r#"{"requests":[{"request_id":"req-hist-1","message_type":"lead","direction":"inbound","status":"OPEN","created_at":"2026-11-01T00:00:00Z"}]}"#,
+        );
+        let body = Client::new(endpoint)
+            .request_history(&HistoryParams {
+                limit: Some(2),
+                cursor: Some(""),
+                status: Some("OPEN"),
+                to: Some("2026-11-01T00:00:00Z"),
+                ..Default::default()
+            })
+            .unwrap();
+        let target = server.join().unwrap();
+        assert_eq!(body["requests"][0]["request_id"], "req-hist-1");
+        assert_eq!(body["requests"][0]["status"], "OPEN");
+        // Supplied filters only, in declaration order; the empty cursor is absent.
+        assert_eq!(
+            target,
+            "/v1/lcp/history/requests?limit=2&status=OPEN&to=2026-11-01T00%3A00%3A00Z"
+        );
+
+        let (endpoint, server) = serve(
+            "HTTP/1.1 400 Bad Request",
+            r#"{"errors":[{"code":"LCP-001","message":"limit out of range"}]}"#,
+        );
+        let error = Client::new(endpoint)
+            .request_history(&HistoryParams { limit: Some(500), ..Default::default() })
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(error.to_string().contains("LCP HTTP 400"), "{error}");
+    }
+
+    #[test]
+    fn schema_fetch_encodes_name_segments_and_returns_the_body() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                buffer.extend_from_slice(&chunk[..read]);
+                if read == 0 || buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let text = String::from_utf8_lossy(&buffer).to_string();
+            let target = text.lines().next().unwrap_or_default().split(' ').nth(1).unwrap_or_default().to_string();
+            let response = r#"{"title":"Lead","type":"object"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+            target
+        });
+        let body = Client::new(format!("http://{}", address)).get_schema("verticals/mortgage?x=1").unwrap();
+        let target = server.join().unwrap();
+        assert_eq!(body["title"], "Lead");
+        assert_eq!(body["type"], "object");
+        // Slash namespaces keep their separators; every other character is encoded.
+        assert_eq!(target, "/v1/lcp/schemas/verticals/mortgage%3Fx%3D1");
     }
 }

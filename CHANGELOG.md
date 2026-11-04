@@ -6,6 +6,232 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-04
+
+Additive MINOR. Four new wire surfaces — batch submission, event
+subscriptions, agent-to-agent negotiation, and the `PROCESSED`
+acknowledgement — plus multi-currency pricing, two new post-only PII fields,
+the schema-level PII taxonomy, and ping-side extension admission. Every one is
+opt-in and advertised through `capabilities()`; the three that carry new state
+or new message types ship disabled in the reference platform
+(`LCP_FEATURE_BATCH`, `LCP_FEATURE_EVENTS`, `LCP_FEATURE_NEGOTIATION`, all
+default `off`), so a 1.0 or 1.1 peer sees no changed byte and no new rejection.
+Also in this release, with no wire change: a versioned requirement-profile
+store with an allowlisted predicate language and versioned service-area
+datasets, retention windows with envelope redaction and an archive
+exporter/verifier, the SPEC split with a generated specification site, a
+self-hostable conformance runner, MCP transport work, and batch helpers in all
+ten SDKs.
+
+### Added
+
+- **Bounded batch submission (LEP-0001 W2).** `POST /v1/lcp/leads/batch`
+  accepts up to **100** lead envelopes in a body of at most **1 MiB** and
+  answers `207` with one receipt per item (`accepted`, `duplicate`,
+  `rejected`, `error`) in input order. The route is a loop over the
+  single-item intake path: each item is validated, authorized, throttled, and
+  deduped exactly like `POST /v1/lcp/leads`, there is no cross-item
+  transaction, a rejected item never rolls back its siblings, and replaying an
+  item key returns that item's original receipt. Whole-request refusals are
+  limited to authentication, a malformed wrapper, and either cap (`413`);
+  everything else is per item. `capabilities().features.batch` and the `batch`
+  message type appear only when `LCP_FEATURE_BATCH` is on, and the route is a
+  `404` otherwise.
+- **Event subscriptions (LEP-0001 W3).** `POST /v1/lcp/events/subscribe`,
+  `GET /v1/lcp/events/subscriptions`,
+  `DELETE /v1/lcp/events/subscriptions/{id}`, and `GET /v1/lcp/events?cursor=`
+  add tenant-scoped push delivery and cursor replay. Registration is an
+  authenticated `subscription` envelope; `event_types` is an explicit
+  allowlist drawn from `capabilities().events` (no wildcard), and the
+  per-subscription HMAC secret is returned once and never in a read response.
+  Delivery is at-least-once from a background worker with `X-LCP-Signature`
+  over `<timestamp>\n<event_id>\n<exact body bytes>`, a stable
+  `X-LCP-Event-Id`, the retry ladder `1, 5, 30, 120, 600` seconds under
+  `LCP_MAX_DELIVERY_ATTEMPTS` (default 5), and a dead-letter row when the
+  budget is spent. Cursors are the tenant's monotonic sequence, bounded by
+  `LCP_EVENT_CURSOR_TTL_SECONDS` (default 86400); an older cursor is refused
+  explicitly. Filters are restricted to the closed key set `event_type`,
+  `message_type`, `vertical`, `status`, `lead_id` — a PII path such as
+  `consumer.email` is refused. Advertised only when `LCP_FEATURE_EVENTS` is
+  on.
+- **Agent-to-agent negotiation (LEP-0009).** `quote` and `counter` join
+  `message.type` as a ping-safe price-negotiation surface (integer cents,
+  currency, `expires_at`, `max_rounds`, `negotiation_id`), served by
+  `POST /v1/lcp/quotes` and `POST /v1/lcp/counters`. Rounds are bounded
+  (default 3, hard cap 5), a counter must be monotone in the platform's favor
+  relative to the message it answers, a price below the ping's floor is
+  refused with a reason rather than clamped, and accepting a counter yields a
+  single-use binding token that stands in for a bid — replaying the token
+  returns the original outcome. Expiry is absolute and cannot exceed the
+  ping's TTL. New message types are advertised, and reachable, only when
+  `LCP_FEATURE_NEGOTIATION` is on.
+- **`PROCESSED` acknowledgement (D2).** `PROCESSED` joins the `ack.status`
+  enum as a terminal-success transition `ACCEPTED → PROCESSED`, valid only for
+  a `post` delivery and only from the buyer that received it. It is idempotent,
+  never re-opens a payable, never changes `pricing`, and is never a
+  precondition for `SOLD`; `PROCESSED` after `REJECTED`, `EXPIRED`, or `SOLD`
+  is a transition error.
+- **Multi-currency pricing (LEP-0010).** `pricing` gains `currency`
+  (ISO 4217 alpha-3 settlement currency; absent means `USD`), the buyer's
+  native `original_price_cents`, and `fx_rate` / `fx_source` / `fx_timestamp` /
+  `fx_expires_at`. Two prices are comparable only when their settlement
+  currency matches, or when both carry a present, non-stale
+  (`LCP_FX_MAX_AGE_SECONDS`, default 300), consistently sourced rate; a
+  missing, stale, malformed, or mixed-source rate makes the offer
+  non-comparable and excludes it with an explainable reason instead of
+  coercing a number. Conversion applies each currency's ISO 4217 minor-unit
+  exponent rather than assuming two decimals, so a settlement in a
+  zero- or three-decimal currency is arithmetic-correct rather than off by two
+  orders of magnitude; ranking stays in integer minor units and rounding is
+  presentation-only.
+- **`location.street_address` and `provenance.ip_address` (D4/D5).** Both are
+  optional and `ping_safe: false`. `street_address` gets the same scrub
+  treatment as the other address parts; `ip_address` (IPv4 or IPv6,
+  length-bounded and format-validated) is post-only, and
+  `provenance.ip_hash` stays the ping-safe projection, classed `contact` under
+  the PII taxonomy while the raw address never enters a ping.
+- **Ping-side extension admission (D6, D9, LEP-0006/0007/0011).** `ping` gains
+  the namespaced `extensions` container, and the platform admits a namespace on
+  a ping only when its registration declares ping safety — every other
+  namespace is refused by name, so the strict ping allowlist is preserved
+  rather than widened. Registrations live in
+  `governance/EXTENSION-REGISTRY.md`: `lcp.platform.assessment` (bounded 0–100
+  quality score, held on a ping because it carries no PII), `lcp.buyer.criteria`
+  (offer-only predicates), `lcp.intake.raw_form` (post-only, ≤ 8 KiB, classed
+  `restricted`), and `lcp.outbound.call_request` (LEP-0007: namespaced
+  `event` value with the open `rejection_reason` value `ignored`, no schema
+  addition).
+- **PII sensitivity taxonomy (LEP-0011).** `docs/PII-CLASSES.md` defines five
+  classes — `public`, `internal`, `contact`, `restricted`, `prohibited` — and
+  `schemas/` annotates every property with `x-lcp-pii`.
+  `tools/check_pii_annotations.py` fails on an unannotated property, and the
+  platform refuses at load time an unannotated, downgraded, or `prohibited`
+  class: a field's class can never be lowered by a vertical, extension, or
+  deployment. `prohibited` is a named validator error, not a scrub.
+- **`core_schema_version` and the default-exclusivity advertisement (D3,
+  W1-10).** `GET /v1/lcp/capabilities` now returns `core_schema_version` (read
+  from the package `SDK_VERSION`) and `exclusivity_default: "shared"`, beside
+  a `features` map naming the additive surfaces this build actually
+  implements. SPEC §2 records that `lcp.version` **is** the core schema
+  version for this major line.
+- **Requirement-profile store (W4-01).** A deployment can keep buyer
+  requirement profiles in the platform instead of copying predicates into every
+  offer: each `{profile_id, version}` row is immutable, carries
+  `effective_from`/`effective_to`, and moves through
+  create (`inactive`) → activate → supersede → roll back, with the previously
+  active window closed on each transition. An offer references a stored profile
+  by `{profile_id, version}` and is then **pinned** — activating a newer version
+  never silently changes what it matches — while omitting `version` follows the
+  active one, which is what makes activation and rollback observable. Every
+  match decision writes an audit row naming the profile version and each
+  predicate outcome.
+- **Allowlisted predicate language (W4-02).** Profiles express requirements as
+  typed predicates over a fixed path registry with the operator set
+  `eq, in, not_in, gte, lte, range, exists`; there are no expressions,
+  functions, or regular expressions, depth and count are bounded, and an
+  unknown path or operator is a write-time validation error naming the path
+  instead of a silent match-time miss. A failed match is explainable per
+  predicate rather than a bare boolean.
+- **Versioned service-area datasets (W4-03).** Named country / region /
+  exact-postal allowlists load from a versioned dataset with source identity
+  and effective time; an offer references one by name, an unknown set is
+  rejected, and a version mismatch is reported rather than quietly resolved.
+  Polygons are explicitly out of scope.
+- **Retention, redaction, and archival (W4-05/W4-06).** Two retention windows
+  are deployment configuration and are enforced by the worker's sweep:
+  `LCP_ENVELOPE_RETENTION_DAYS` (default 90) rewrites stored envelope ciphertext
+  — leads, pings, bids, lifecycle events, event-stream rows, terminal
+  deliveries — through the same redaction an erasure uses, keeping ids,
+  statuses, timestamps, payables, and audit rows; and
+  `LCP_HISTORY_RETENTION_DAYS` (default 365) makes `match_decisions`,
+  `match_audits`, and `audit_events` rows past the window **unreadable** before
+  the sweep deletes them, so a lagging sweep cannot serve expired history.
+  Retention deletion is not erasure and is accounted separately.
+  `tools/archive_store.py` (standard library only) exports
+  retention-bounded rows to deterministic JSONL with a SHA-256 manifest, and
+  verifies and re-imports them, so the archive — not the live database — is the
+  retention evidence.
+- **Self-hostable conformance runner (D11).** `tools/conformance_runner.py` is
+  a standard-library service: `POST /run` with a base URL and credentials
+  returns a signed JSON report built from transport probes against the live
+  peer plus the repository vector suite run in a subprocess. Loopback,
+  link-local, private, and reserved targets are refused unless explicitly
+  allowed, the host is resolved once and the connection pinned so a rebind
+  cannot redirect it, responses are bounded by size and wall clock, and the
+  API key is never echoed into the report or the log. It makes no
+  certification claim.
+- **Specification site.** `tools/build_spec_site.py` renders `site/` from the
+  normative sources (dependencies: none), `--check` fails on a stale page, a
+  broken internal link, or a non-generated file, and the `Specification site`
+  workflow rebuilds and uploads the artifact on a `v*` tag. The workflow holds
+  no deploy credentials.
+- **Batch and subscription helpers in all ten SDKs.** `submit_leads_batch`
+  with per-item result types in the Python, TypeScript, Go, Rust, C#,
+  Java, Kotlin, PHP, Ruby, and Swift SDKs — retries are per failed item, never
+  a re-send of the whole batch; MCP gains `submit_leads_batch`,
+  `subscribe_to_events`, and the negotiation tools (`quote`, `counter`,
+  `redeem_negotiation_token`).
+- **R1 OpenAPI pattern-equivalence vector (LEP-0005 follow-up).** The
+  conformance suite now asserts that the request-history filter patterns in
+  `api/lcp-openapi.yaml` and the JSON Schema agree, so the two artifacts
+  cannot drift apart silently.
+
+### Adoption tooling
+
+- **`lcp-doctor`.** One command checks a deployment end to end — capabilities
+  reachability, TLS, advertised versions and features, authentication, and a
+  synthetic `test: true` lead — then prints PASS/FAIL per stage and a
+  translated fix for any `LCP-0xx` failure. `--explain CODE` works without an
+  endpoint; `--json` for machines. Every code, its common causes, and the
+  field-level fix are in [docs/ERROR-GUIDE.md](docs/ERROR-GUIDE.md).
+- **Buyer webhook kit.** Runnable receivers (Python stdlib and Node, plus a
+  container) that verify both signed delivery surfaces, return the protocol
+  ack, and de-duplicate replays. `selftest.py` proves valid/tampered/replay
+  behaviour against the real signature inputs.
+- **No-code recipes.** [docs/RECIPES.md](docs/RECIPES.md) walks
+  Lovable/Supabase, GoHighLevel, Make, Zapier, and Google Sheets from field
+  map to test run, with a Deno edge function, a Make module configuration, and
+  an Apps Script poster under `examples/integrations/no-code/`. The docs state
+  plainly where a genuine one-click template cannot be exported.
+- **SDK surface guard.** `tools/check_sdk_surface.py` compares a manifest of
+  nine required operations against the ten implementations and prints a
+  presence matrix. This release closes the gaps it found — the request-history
+  read, schema fetch, Kotlin lead-status, and seven missing Swift operations —
+  so the manifest is 90/90 and the check now runs blocking in `sdk.yml`.
+
+### Changed
+
+- **`SPEC.md` is now an index.** Normative text moved to
+  `spec/00-conformance.md`, `spec/01-transport.md`, `spec/02-envelope.md`,
+  `spec/03-payloads.md`, `spec/04-errors.md`, and
+  `spec/05-capabilities.md`, with section order preserved and every inbound
+  `SPEC.md#…` anchor still resolving; `check_doc_citations.py --strict` runs
+  over the split.
+- **MCP transport.** The server keeps one cached `LCPClient` behind a lock and
+  runs every blocking upstream call on a worker thread, so concurrent tool
+  calls no longer serialize on the event loop; `close_client()` releases it.
+- **Schema bundles regenerated** for all ten SDKs from the 20 normative
+  schemas, including the new `batch`, `counter`, `quote`, and `subscription`
+  schemas.
+- **Adoption and operations docs.** New sections in `docs/OPERATIONS.md` cover
+  the specification site, batch submission, event subscriptions, the
+  conformance runner, retention/archive/restore, and the CI capacity
+  thresholds with their measured baselines;
+  `docs/BUYER-ONBOARDING.md`, `docs/PUBLISHER-ONBOARDING.md`, and
+  `docs/PLATFORM-INTEGRATION.md` were added or refreshed, and
+  `docs/AUDIT-2026-11.md` closes its residuals with a dated resolution row
+  each.
+
+### Fixed
+
+- **FX arithmetic uses ISO 4217 minor units, not an assumed two decimals.**
+  Conversion multiplies by `10 ** (exponent(settlement) - exponent(native))`,
+  so a USD→JPY or an oil-currency settlement settles in the right magnitude;
+  the `fx_rate` pattern refuses exponent notation, grouping, sign, and fewer
+  than six significant digits, and the post echoes the currency and FX fields
+  it was priced with so a settlement record is reconstructible without the
+  bid.
+
 ## [1.1.1] — 2026-11-04
 
 Patch: the delivered-post half of the §9 response window. No wire-shape change;

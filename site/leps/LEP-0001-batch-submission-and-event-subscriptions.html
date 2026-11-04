@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md">
+<meta name="lcp-build" content="1f47d086a297">
+<title>LEP-0001 — Bounded batch submission and event subscriptions — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0001--bounded-batch-submission-and-event-subscriptions">LEP-0001 — Bounded batch submission and event subscriptions</h1>
+<ul>
+<li><strong>Title:</strong> Bounded batch submission and event subscriptions</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft for adopter review)</li>
+<li><strong>Date:</strong> 2026-08-18</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — accepted 2026-11-04 (maintainer, <code>docs/DECISIONS-v1.2.md</code> D1); both tracks</li>
+<li><strong>Target version:</strong> v1.2.0 (MINOR; see Compatibility and versioning)</li>
+<li><strong>Last revised:</strong> 2026-11-04 (2026-11-03 Deferral superseded by maintainer waiver D1 — accepted, not re-evidenced; F1–F5 dispositioned and implementation authorized, see "Decision")</li>
+<li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/164" rel="noopener">#164</a> (<code>[LEP] Bounded batch submission and event subscriptions</code>)</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</h2>
+<p><strong>Accepted — both tracks.</strong> Recorded by the maintainer (randybeno) under the per-decision sign-off model. Basis: <code>docs/DECISIONS-v1.2.md</code> <strong>D1</strong> (trigger waiver, 2026-11-04) and the work items <strong>W2</strong> (bounded batch submission) and <strong>W3</strong> (event subscriptions) it funds in <code>docs/V1.2-EXECUTION-PLAN.md</code>. This decision supersedes the 2026-11-03 Deferral of this same record; the deferral's numbers and its dossier link remain permanent history, and its disposition is discharged by the F1–F5 resolutions and the compensating constraints below.</p>
+<p><strong>Superseded by waiver, not by evidence.</strong> The 2026-11-03 finding stands unchanged. <code>LEP.md</code> requires evidence from at least two independent adopters or a documented interoperability necessity before a new universal message type is added; this record never produced either — the repo shows one non-independent adopter, and the roadmap's own volume trigger is arithmetically unmet by its published baselines. D1 waives that trigger for the items the execution plan enumerates; it does not refute the arithmetic, and this record does not claim adopter evidence it does not have.</p>
+<p><strong>Two tracks, accepted together.</strong> Batch submission and event subscriptions are the two independently decidable tracks described in this record (see <code>governance/LEP-REGISTRY.md</code>). Both are accepted here because both are funded by the same waiver; neither is a precondition for the other, and either may be withdrawn later without reopening the other's acceptance criteria.</p>
+<h3 id="post-draft-collisions-f1f5-resolved">Post-draft collisions F1–F5, resolved</h3>
+<p>Each collision recorded on 2026-11-03 is resolved explicitly below. Where the resolution is a design change, the change is stated.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Collision (as recorded 2026-11-03)</th>
+<th>Resolution in this acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F1</strong></td>
+<td>Two-adopter/trigger arithmetic unmet by published baselines</td>
+<td><strong>Waived by D1, not refuted.</strong> No adopter evidence is asserted. The deterministic evidence that stands in for it is the W2-05 batch-vs-sequential throughput benchmark (100 items, recorded in <code>docs/OPERATIONS.md</code>) plus the batch and subscription conformance vectors. Re-evaluation 2027-05-04.</td>
+</tr>
+<tr>
+<td><strong>F2</strong></td>
+<td>Event-vocabulary mismatch with <code>capabilities().events</code> and the shipped LEP-0003 <code>CONTACTED</code> surface</td>
+<td><strong>Design change.</strong> Subscription <code>event_types</code> are the receiving platform's <strong>advertised</strong> event names — the closed set <code>capabilities().events</code> publishes (<code>DELIVERED</code>, <code>ACCEPTED</code>, <code>REJECTED</code>, <code>DISPUTED</code>, <code>REFUNDED</code>, <code>EXPIRED</code>, <code>CONVERTED</code>, <code>ARCHIVED</code>, <code>CALL_OFFERED</code>, <code>CALL_CONNECTED</code>, <code>CALL_ENDED</code>, <code>CALL_OUTCOME</code>, <code>CONTACTED</code>, <code>FINAL_PRICING</code>) plus registered extension event values (LEP-0006). The draft's dotted lowercase names (<code>lead.accepted</code>, <code>lead.posted</code>, <code>offer.selected</code>) are withdrawn; the record carries no second vocabulary. <code>CONTACTED</code> is subscribable, and its buyer-side reporting scope (LEP-0003 §4: delivered, scoped buyer) decides who may register for it. A type absent from the advertisement is refused at registration (<code>422</code>), never silently ignored.</td>
+</tr>
+<tr>
+<td><strong>F3</strong></td>
+<td>Replay/signing interplay with the now canonical LEP-0002 timestamp</td>
+<td><strong>Clarified, no new mechanism.</strong> Subscription delivery is signed with the existing per-pair HMAC canonical input (SPEC §9, <code>&lt;timestamp&gt;\n&lt;idempotency-key&gt;\n&lt;raw-request-body&gt;</code>) using the per-subscription secret, and the timestamp is the whole-second UTC wire form emitted verbatim and verified byte-for-byte. Because the replay window (default five minutes) is judged on the transmitted header, a delivery attempt cannot reuse an earlier timestamp: every attempt — including a cursor replay — is signed over the bytes actually sent, with its own <code>X-LCP-Timestamp</code> and its own idempotency key, while <code>event_id</code> and the event body stay byte-identical. Dedupe is therefore by <code>event_id</code>, never by signature; replay reproduces the same event <strong>set</strong>, not the same signature bytes.</td>
+</tr>
+<tr>
+<td><strong>F4</strong></td>
+<td>PII claims unenforceable while <code>event.details</code> stays open</td>
+<td><strong>Resolved by enforcement that now exists.</strong> The SPEC §4 class rule is enforced at ingest for every event name and both reporting directions by <code>_validate_event_details_pii</code> (<code>implementations/reference-platform/lcp_platform/router.py:1417</code>, invoked at <code>router.py:1637</code>), using the shared walk in <code>pii.py</code> that also backs the LEP-0006 B.3.4 extension-value rule (issue #198): a plaintext contact value anywhere in the open <code>details</code> object is a validation rejection, not a documentation promise. Subscription delivery reuses that same <code>event</code> payload and validator, so no consumer value reaches a subscriber and this record adds no PII field.</td>
+</tr>
+<tr>
+<td><strong>F5</strong></td>
+<td>Ack-contract shadowing in the batch response</td>
+<td><strong>Design clarification.</strong> The batch response is a closed per-item <strong>receipt</strong> vocabulary (<code>accepted</code>, <code>duplicate</code>, <code>rejected</code>, <code>error</code>) carried inside the HTTP response (partial success → <code>207</code>). It is not <code>ack.status</code>, it does not extend or reuse the <code>ack</code> enum, and it never acknowledges a <code>post</code> delivery — the <code>ack</code> message remains the only acknowledgement surface, with <code>PROCESSED</code> added there alone (D2). <code>duplicate</code> reuses existing <code>LCP-005</code> semantics at item granularity, so batch introduces no new error code. The caps this record flagged as draft are fixed at acceptance at <strong>100 items / 1 MiB body</strong> (execution plan W2-01), narrowed from the draft's 500 / 5 MB.</td>
+</tr>
+</tbody>
+</table>
+<p>Three consequences worth stating plainly, because they are the points a reader could otherwise read as a silent rewrite:</p>
+<ul>
+<li>The batch track is a <strong>loop over the existing single-item path</strong>, not a second ingestion engine (W2-02). Per-item isolation, parity of validation, and per-item idempotency are the reason the wire type exists; the intake semantics are unchanged.</li>
+<li>The subscription track delivers the <strong>existing</strong> event vocabulary. It adds registration, signed at-least-once push, cursor replay, and dead-lettering around events the platform already emits and already advertises; it does not mint new event names, and <code>capabilities().events</code> stays the single source of truth for what is subscribable.</li>
+<li>The subscription <strong>REST route</strong> is the execution plan's <code>POST</code>/<code>GET</code>/<code>DELETE /v1/lcp/events/subscribe</code> with <code>GET /v1/lcp/events?cursor=</code> for replay (W3-01, W3-03), replacing the earlier <code>/v1/lcp/subscriptions/{id}</code> sketch. The <code>subscription</code> message type and its payload are unchanged by that move; only the HTTP surface moves.</li>
+</ul>
+<h3 id="compensating-constraints-d1">Compensating constraints (D1)</h3>
+<p>Every surface built under this acceptance MUST be:</p>
+<ol>
+<li><strong>Additive-only on the wire and capability-gated.</strong> The two message types and their payloads are additions to the closed <code>message.type</code> and no existing field, type, or error code changes. Both tracks are advertised through <code>capabilities()</code> — including the <code>capabilities().features</code> map (W0-03) that names the version each surface arrived in — so a peer that does not read the advertisement never receives these surfaces unsolicited, and a 1.0/1.1 peer still rejects them with the structured unknown-message-type error.</li>
+<li><strong>Off by default in the reference platform.</strong> Both tracks ship behind <code>LCP_FEATURE_*</code> flags — one per track, off by default — while remaining exercised by CI, the vectors, and the conformance suite. Presence in the code is not a claim that a deployment has it enabled.</li>
+<li><strong>Backed by stand-in evidence.</strong> The deterministic evidence that would have stood in for the missing adopter signal — the W2-05 batch throughput benchmark and the batch/subscription vectors — accompanies the implementation. Benchmarks here are directional, not capacity guarantees.</li>
+<li><strong>Dated for re-evaluation — 2027-05-04.</strong> The registry row and <code>docs/DECISIONS-v1.2.md</code> carry the same date.</li>
+</ol>
+<h3 id="independent-review-and-challenge">Independent review and challenge</h3>
+<ul>
+<li>The 2026-11-03 ARB dossier (&lt;https://github.com/SpearSystems/LCP/issues/164#issuecomment-6592471520&gt;) remains the independent-review record for this proposal. It is not re-run, nothing in it is withdrawn, and its F1 finding is answered by a waiver rather than by refutation.</li>
+<li>The waiver is a <strong>maintainer decision</strong>, recorded as a decision: a reader can see that no adopter evidence was produced. A reader may challenge it at the 2027-05-04 re-evaluation; a dossier that survives the <code>ARB.md</code> charter gates and contradicts this acceptance returns the record to Review.</li>
+<li>Implementation proceeds under the <code>LEP.md</code> traceability gate — schemas, examples, vectors, SDK bundles and SHA-256 manifests, OpenAPI/MCP contracts, changelog. Any wire-shape deviation discovered during implementation returns this record to Review before merge.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p>Independent publishers need bulk intake (backfills, migrations, high-volume campaigns) and lower per-lead request overhead, and buyers need event delivery that does not depend on polling or per-offer webhook configuration.</p>
+<p>Measured baselines from the reference platform (synthetic data, single process; see <code>docs/V1.1-ROADMAP.md</code> Phase 3/4):</p>
+<ul>
+<li>SQLite intake and routing saturate around <strong>50–54 records/sec</strong> single-process; the full active-offer list is scanned per lead.</li>
+<li>A publisher exceeding a <strong>few hundred leads per minute</strong> is already above the single-process intake profile, so bulk intake is the first scaling lever.</li>
+<li>Buyer webhook latency dominates delivery throughput; delivery must be parallelized once per-webhook latency exceeds a few milliseconds, and polling/per-offer webhooks cannot meet latency, volume, or integration-management requirements for buyers at that point.</li>
+</ul>
+<p>These numbers are directional, not capacity guarantees, but they establish that the pain point is real at the measured baselines and is cross-language and cross-organization — not a single deployment's quirk.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Core protocol:</strong> two new message types (<code>batch</code>, <code>subscription</code>) with payload schemas dispatched through the existing <code>message.type</code> + <code>payload</code> envelope shape — requires the MINOR version bump and the universal-core audit (§12 checklist).</li>
+<li><strong>Reference implementation:</strong> batch intake + subscription registry, delivery, replay, retry/dead-letter in the reference platform.</li>
+<li><strong>REST / OpenAPI and MCP:</strong> <code>submit_leads_batch</code> and <code>subscribe_to_events</code> (authorized by the 2026-11-04 acceptance; tracked as W2/W3 in <code>docs/V1.2-EXECUTION-PLAN.md</code>).</li>
+<li><strong>SDKs:</strong> typed models, schema bundles, and helpers in all 10 SDKs.</li>
+<li><strong>Conformance:</strong> new vectors for batch and subscription behavior.</li>
+<li><strong>Not in scope:</strong> multi-currency auctions, richer predicate language, streaming uploads, and polygon geocoding (see Alternatives considered).</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="batch-submission">Batch submission</h3>
+<p>A new <code>batch</code> message type uses the same top-level <code>lcp.message</code> and <code>lcp.payload</code> shape as existing messages. Each item payload reuses the current lead schema and authentication boundary; the batch dispatch and per-item metadata are the new v1.2.0 surface.</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "d9a20000-0000-4000-8000-000000000001",
+      "type": "batch",
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "publisher_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "publisher-001-batch-001",
+      "test": true
+    },
+    "payload": {
+      "request_id": "batch-20260818-001",
+      "items": [
+        {
+          "item_id": "item-001",
+          "idempotency_key": "publisher-001/batch-001/lead-1",
+          "payload": {
+            "lead_id": "lead-1",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Ada", "last_name": "Lovelace" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        },
+        {
+          "item_id": "item-002",
+          "idempotency_key": "publisher-001/batch-001/lead-2",
+          "payload": {
+            "lead_id": "lead-2",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Grace", "last_name": "Hopper" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        }
+      ]
+    }
+  }
+}</code></pre>
+<p><strong>Response — per-item result, partial success is the contract:</strong></p>
+<pre class="code-block"><code class="language-json">{
+  "request_id": "batch-20260818-001",
+  "summary": { "total": 2, "accepted": 1, "duplicate": 1, "rejected": 0, "error": 0 },
+  "results": [
+    { "item_id": "item-001", "status": "accepted", "lead_id": "lead-1" },
+    { "item_id": "item-002", "status": "duplicate", "lead_id": "lead-1" }
+  ]
+}</code></pre>
+<p><strong>Constraints (from the roadmap design constraints):</strong></p>
+<ul>
+<li><strong>No cross-item transaction.</strong> Each item is accepted or rejected independently; a failure in one item never rolls back others.</li>
+<li><strong>Per-item idempotency.</strong> Each item carries its own <code>idempotency_key</code>; replays return the original result (<code>duplicate</code>, reusing the existing <code>DUPLICATE</code>/<code>LCP-005</code> semantics at item granularity).</li>
+<li><strong>Per-item acknowledgement (receipt).</strong> Every item gets an explicit status in the HTTP response, so a client can retry <strong>only failed items</strong>. This is a receipt, not an <code>ack</code> message — the two vocabularies stay separate (see the F5 resolution).</li>
+<li><strong>Limits (fixed at acceptance):</strong> maximum 100 items and 1 MiB body per request; exceed either → whole-request <code>413</code>, not per-item rejection.</li>
+<li><strong>Validation:</strong> every item is validated by the same <code>lead.json</code> schema, authentication, and lifecycle intake rules as a single lead. Items are full-PII intake payloads, never ping payloads.</li>
+</ul>
+<p><strong>Invalid example — one bad item must not fail the batch:</strong></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "type": "batch",
+      "timestamp": "2026-08-18T09:00:01Z",
+      "sender_id": "publisher_001",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "publisher-001-batch-002",
+      "test": true
+    },
+    "payload": {
+      "request_id": "batch-20260818-002",
+      "items": [
+        {
+          "item_id": "item-001",
+          "idempotency_key": "publisher-001/batch-002/lead-1",
+          "payload": {
+            "lead_id": "lead-1",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {},
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        },
+        {
+          "item_id": "item-002",
+          "idempotency_key": "publisher-001/batch-002/lead-2",
+          "payload": {
+            "lead_id": "lead-2",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": { "first_name": "Lin", "last_name": "Zhao" },
+            "location": { "country_code": "AU", "state_region": "NSW" },
+            "attributes": { "vertical": "mortgage", "schema_version": "1.0.0" }
+          }
+        }
+      ]
+    }
+  }
+}</code></pre>
+<p>Result: <code>item-001</code> → <code>rejected</code> (<code>required</code> field error, per-item), <code>item-002</code> → <code>accepted</code>. No cross-item rollback.</p>
+<h3 id="event-subscriptions">Event subscriptions</h3>
+<p>A new <code>subscription</code> message type uses the existing envelope shape to register an authenticated, tenant-scoped event subscription:</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "type": "subscription",
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "buyer-002-subscription-001",
+      "test": true
+    },
+    "payload": {
+      "event_types": ["DELIVERED", "ACCEPTED", "CONTACTED"],
+      "callback_url": "https://buyer.example/hooks/lcp",
+      "filter": { "offer_id": "offer-17" }
+    }
+  }
+}</code></pre>
+<p><strong>Delivery contract (roadmap design constraints):</strong></p>
+<ul>
+<li><strong>Authenticated registration</strong> and <strong>tenant authorization</strong> — a subscriber can only register for and receive events about its own leads/offers.</li>
+<li><strong>Explicit event allowlist</strong> — <code>event_types</code> values are the receiver's advertised event names (<code>capabilities().events</code>) plus registered extension event values (LEP-0006); no second vocabulary exists. Unknown or unadvertised types are rejected (<code>422</code>), not silently ignored.</li>
+<li><strong>Privacy-safe filters</strong> — filters are a closed key set drawn from core enums and identifiers (event type, status, vertical, lead/offer ids); <strong>no consumer fields become subscription filters</strong> — <code>consumer.*</code>, <code>provenance.*</code>, and <code>attributes.*</code> paths are refused — and no raw PII is delivered in events (hashes only, mirroring ping discipline). The open <code>details</code> object is class-checked at ingest (see the F4 resolution).</li>
+<li><strong>Signed at-least-once delivery</strong> — existing LCP signing: the SPEC §9 per-pair canonical input, whole-second timestamp emitted verbatim, signed per delivery attempt (see the F3 resolution — a replay re-signs the bytes it actually sends). Delivery is retried with backoff and moves to a dead-letter queue after the retry budget is exhausted.</li>
+<li><strong>Stable event IDs and replay/cursor support</strong> — each delivery carries a stable <code>event_id</code> and a monotonic cursor so subscribers can dedupe and replay from a cursor. Duplicates are legal (at-least-once); delivery order is not part of the contract, and a replay reproduces the same event set.</li>
+</ul>
+<p><strong>Invalid example:</strong></p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "a2000000-0000-4000-8000-000000000002",
+      "type": "subscription",
+      "timestamp": "2026-08-18T09:00:00Z",
+      "sender_id": "buyer_002",
+      "receiver_id": "platform_001",
+      "correlation_id": null,
+      "idempotency_key": "buyer-002-subscription-002",
+      "test": true
+    },
+    "payload": {
+      "event_types": ["CONSUMER_EMAIL_CHANGED"],
+      "callback_url": "https://buyer.example/hooks/lcp"
+    }
+  }
+}</code></pre>
+<p>Result: rejected — the event type is not advertised in <code>capabilities().events</code> (and an event carrying a consumer email would violate the §4 class rule anyway).</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>PII boundaries unchanged.</strong> Batch items are full-PII lead-intake payloads validated by the existing lead schema and authentication rules; nothing new crosses into pings. Subscription events carry hashes and allowlisted metadata only.</li>
+<li><strong>No predicate-driven PII leakage.</strong> Subscription filters are restricted to allowlisted event metadata; arbitrary consumer-field filters are rejected by schema (closed <code>filter</code> shape).</li>
+<li><strong>AuthN/AuthZ:</strong> batch intake authenticates the publisher exactly like single lead intake; subscription registration requires authentication and is tenant-scoped, with authorization checked on registration and on every delivery.</li>
+<li><strong>Universal core audit:</strong> the two new message types and their payloads add <strong>zero vertical-specific or market-specific fields</strong> to the core. Vertical data continues to live in <code>attributes</code>. Run the §12 checklist before merge.</li>
+<li><strong>Abuse cases considered:</strong> oversized batches (limit + 413), subscription flooding (per-subscriber rate limits, dead-letter caps), filter enumeration (allowlist only), and replay amplification (cursor TTL + retention bounds).</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>MINOR bump to v1.2.0</strong> — new message types and additive payload schemas are backward compatible; unknown-message-type receivers already return the structured error required by SPEC.md, so a v1.0 receiver rejects <code>batch</code> / <code>subscription</code> cleanly instead of misreading them.</li>
+<li>Additive-only: no existing field, message type, or error code changes.</li>
+<li>N+2 deprecation window applies to any later change; nothing here is deprecated.</li>
+<li>The closed <code>message.type</code> gains <code>batch</code> and <code>subscription</code>, each with a payload schema; the existing <code>lcp.message</code> + <code>lcp.payload</code> envelope shape is retained and unknown message types continue to receive the structured error. Unknown optional fields continue to be ignored by v1 receivers (unchanged rule).</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>OpenAPI/REST:</strong> <code>POST /v1/lcp/leads/batch</code>; subscription registration <code>POST</code> / <code>GET</code> / <code>DELETE</code> on <code>/v1/lcp/events/subscribe</code>; and <code>GET /v1/lcp/events?cursor=</code> for replay (W3-01, W3-03 — the route shape this record's earlier <code>/v1/lcp/subscriptions/{id}</code> sketch is replaced by).</li>
+<li><strong>MCP:</strong> <code>submit_leads_batch</code> and <code>subscribe_to_events</code> tools added together with the REST surface (per roadmap constraint).</li>
+<li><strong>SDKs:</strong> typed models + schema bundles + SHA-256 manifest re-synced in all 10 SDKs (<code>tools/check_sdk_schema_sync.py</code>), plus helpers that surface per-item results and cursor replay.</li>
+<li><strong>Conformance:</strong> new vectors — batch happy path, partial success, per-item duplicate/idempotency, size/count limits, subscription registration, allowlist rejection, cursor replay, dead-letter after retry budget.</li>
+<li><strong>Reference platform:</strong> batch intake path, subscription registry, parallelized delivery, retry/dead-letter, cursor storage.</li>
+<li><strong>Operational:</strong> backpressure on intake, dead-letter observability, delivery lag metrics, retention-bounded event and cursor storage (ties into the Phase 4 retention work item).</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Deployment-specific extension instead of core.</strong> Rejected: the roadmap evidence shows bulk intake and event delivery are shared cross-organization needs; keeping them private means every publisher re-implements idempotent batch and every buyer re-implements polling. The namespaced-extension path remains the fallback if the core review rejects the wire shape.</li>
+<li><strong>Per-publisher bulk endpoints.</strong> Rejected: duplicates authentication, validation, and vector coverage for no protocol gain.</li>
+<li><strong>Streaming/chunked upload.</strong> Deferred: not needed at current volumes; revisit if backfill sizes exceed the 100-item / 1 MiB limits in practice.</li>
+<li><strong>Keep polling + per-offer webhooks.</strong> Rejected as the <em>only</em> option: the latency, volume, and integration-management gap is what this record addresses, and subscriptions are additive — they do not remove webhooks. No adopter measurement is asserted here; the trigger is waived by D1, not evidenced.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li>Release the additive schema + vectors first; old receivers reject the new message types with the structured error (verified by vector).</li>
+<li>Implement batch + subscription behind their reference-platform feature flags (off by default); roll out REST and MCP surfaces together.</li>
+<li>Ship SDK helpers and bundles in the same release; no migration required for existing single-item publishers (unchanged paths).</li>
+<li><strong>Observability:</strong> per-item batch latency and outcome distribution, batch size/limit utilization, delivery lag, retry and dead-letter rates, cursor replay depth.</li>
+<li><strong>Rollback:</strong> stop advertising the new message types / disable the flag — additive-only means no data-format migration and no impact on v1.0 receivers.</li>
+</ol>
+<h2 id="deferred-questions-trigger-to-revisit">Deferred questions (trigger to revisit)</h2>
+<p>Status of each question at the 2026-11-04 acceptance. Each is marked <strong>Resolved</strong> (answered here, by machinery already shipped, or by the named work item that must answer it before the surface ships) or <strong>Waived</strong> (explicitly dropped, with the reason). None is deleted.</p>
+<ul>
+<li><strong>Exact limits</strong> — <strong>Resolved 2026-11-04.</strong> Fixed at 100 items / 1 MiB body per request (execution plan W2-01), narrowed from this record's draft 500 items / 5 MB. The W2-05 benchmark (batch vs sequential at 100 items, recorded in <code>docs/OPERATIONS.md</code>) is the calibration evidence; raising either cap needs that evidence and a revised record.</li>
+<li><strong>Event ordering</strong> — <strong>Resolved 2026-11-04 by narrowing the promise, not by picking an ordering.</strong> Delivery is at-least-once and order is not part of the contract: subscribers dedupe by <code>event_id</code>, and a cursor replay reproduces the same event set (W3-02, W3-03). A per-subscription FIFO guarantee is not claimed and MUST NOT be relied on; a subscriber that needs ordering is a new record.</li>
+<li><strong>Event retention</strong> — <strong>Resolved 2026-11-04 (numeric TTLs land in W4-06).</strong> Cursor and event-stream TTLs come from the retention work under invariant I8 — retention is defined before a surface stores new data — and an expired cursor returns an explicit error (W3-03). The surface does not ship enabled until those bounds exist, so no unbounded event or cursor storage is authorized by this acceptance.</li>
+<li><strong>Error taxonomy</strong> — <strong>Resolved 2026-11-04.</strong> Batch introduces no new error code: per-item outcomes reuse existing codes (<code>duplicate</code> → <code>LCP-005</code> at item granularity) and whole-request failures use the existing limit and validation errors. The F5 resolution records why the per-item receipt vocabulary is closed and distinct from <code>ack.status</code>.</li>
+<li><strong>Cross-tenant delivery</strong> — <strong>Resolved 2026-11-04.</strong> Authorization is checked at registration and again on every delivery against the subscriber's tenant; fan-out is per subscription, not a shared broadcast, and no wildcard scope exists by default. Tenant-isolation tests are blocking (invariant I6).</li>
+</ul>
+<p><strong>Re-evaluation:</strong> 2027-05-04 (D1). Earlier trigger: adopter or subscriber evidence that the limits, ordering, retention, or delivery assumptions do not hold, or an <code>ARB.md</code> dossier that survives charter gates and contradicts this acceptance — either returns this record to Review.</p>
+<h2 id="implementation-authorization">Implementation authorization</h2>
+<p>Accepted 2026-11-04 (maintainer). This section lists the work the acceptance authorizes and nothing more; it authorizes implementation against this record, not a release (<code>LEP.md</code>, "Traceability and implementation gate"). Work-item ids refer to <code>docs/V1.2-EXECUTION-PLAN.md</code>.</p>
+<p><strong>Batch submission (W2).</strong></p>
+<ul>
+<li>REST <code>POST /v1/lcp/leads/batch</code> — <code>items[]</code> (max 100 / 1 MiB), per-item <code>lead_id</code> and <code>idempotency_key</code>, per-item receipt, <code>207</code> on partial success, no cross-item transaction; the platform path is a loop over the single-item intake path, not a second ingestion engine (W2-01, W2-02).</li>
+<li>MCP <code>submit_leads_batch</code> — same contract, per-item receipts returned in input order (W2-03).</li>
+<li>SDK helpers in <strong>all 10 SDKs</strong> — <code>submit_leads_batch</code> with per-item result types; a retry covers failed items only, never the whole batch (W2-04).</li>
+<li>Throughput evidence — batch vs sequential at 100 items, recorded in <code>docs/OPERATIONS.md</code>; directional, not a capacity guarantee (W2-05).</li>
+</ul>
+<p><strong>Event subscriptions (W3).</strong></p>
+<ul>
+<li>Registration <code>POST /v1/lcp/events/subscribe</code>, with <code>GET</code>/<code>DELETE</code> on the same resource — tenant-scoped, explicit <code>event_types</code> allowlist drawn from <code>capabilities().events</code>, per-subscription secret never returned, deactivation supported, no wildcard by default (W3-01).</li>
+<li>Signed at-least-once delivery — <code>X-LCP-Signature</code>/<code>X-LCP-Timestamp</code> over the SPEC §9 canonical input with the per-subscription secret, stable <code>event_id</code>, retry with backoff, dead-letter after the retry budget; duplicates are legal and documented (W3-02 and the F3 resolution).</li>
+<li>Replay and cursor — <code>?cursor=</code> on <code>GET /v1/lcp/events</code> and a <code>replay_from</code> subscription parameter; a replay returns the identical event set, an expired cursor is an explicit error (W3-03).</li>
+<li>Privacy-safe filters — closed key set of core enums and identifiers, consumer paths refused (W3-04).</li>
+<li>MCP <code>subscribe_to_events</code> and SDK helpers in all 10 SDKs — registration plus poll-fallback parity (W3-05).</li>
+<li>Ops CLI — <code>lcp-platform subscriptions list/show/disable</code> and dead-letter inspection, with documentation citations (W3-06).</li>
+</ul>
+<p><strong>Vectors (both tracks).</strong></p>
+<ul>
+<li>Batch: all-valid, partial success, per-item duplicate/idempotency replay returning the original receipts, oversize → <code>413</code>, per-item validation error, and sibling persistence after an induced item failure.</li>
+<li>Subscriptions: registration, unadvertised event type refused (<code>422</code>), filter on a consumer path refused, signature verification, clock skew, duplicate delivery, cursor replay, and dead-letter after the retry budget.</li>
+</ul>
+<p><strong>Not authorized here.</strong> Multi-currency auctions, a richer predicate language, streaming uploads, polygon geocoding, new event names, and any change to <code>ack.status</code> beyond D2. Both tracks ship behind <code>LCP_FEATURE_*</code> flags that default off; enabling them in a deployment is an operator decision, not a protocol claim. Registry status, release notes, and verification evidence remain the maintainer's records — this section does not make them.</p>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-04">Decision (maintainer, 2026-11-04)</a></li><li class="depth-3"><a href="#post-draft-collisions-f1f5-resolved">Post-draft collisions F1–F5, resolved</a></li><li class="depth-3"><a href="#compensating-constraints-d1">Compensating constraints (D1)</a></li><li class="depth-3"><a href="#independent-review-and-challenge">Independent review and challenge</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#batch-submission">Batch submission</a></li><li class="depth-3"><a href="#event-subscriptions">Event subscriptions</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions-trigger-to-revisit">Deferred questions (trigger to revisit)</a></li><li class="depth-2"><a href="#implementation-authorization">Implementation authorization</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md</code> · build <code>1f47d086a297</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>
