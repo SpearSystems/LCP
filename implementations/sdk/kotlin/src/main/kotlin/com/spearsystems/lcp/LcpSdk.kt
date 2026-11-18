@@ -1,5 +1,6 @@
 package com.spearsystems.lcp
 
+import java.io.IOException
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -85,9 +86,45 @@ object LcpSdk {
     fun contactHash(secret: String, value: String, domain: String = "phone"): String = hmacHex(secret.toByteArray(), normalizeContact(value, domain).toByteArray())
     fun verifyHmac(secret: String, signature: String, timestamp: String, idempotencyKey: String?, body: ByteArray, maxSkew: Duration = Duration.ofMinutes(5), now: Instant = Instant.now()) { val signedAt = Instant.parse(timestamp); require(kotlin.math.abs(Duration.between(signedAt, now).seconds) <= maxSkew.seconds) { "timestamp outside replay window" }; require(MessageDigest.isEqual(signHmac(secret, timestamp, idempotencyKey, body).toByteArray(), signature.lowercase().toByteArray())) { "invalid signature" } }
 
-    class Client(private val endpoint: String, private val senderId: String? = null, private val apiKey: String? = null, private val hmacSecret: String? = null, private val http: HttpClient = HttpClient.newHttpClient()) {
-        fun request(method: String, path: String, body: String? = null, idempotencyKey: String? = null, test: Boolean = false): String {
-            val raw = body?.toByteArray() ?: ByteArray(0); val builder = HttpRequest.newBuilder(URI.create("${endpoint.trimEnd('/')}/${path.trimStart('/')}" )).timeout(Duration.ofSeconds(30)).header("Accept", "application/json").header("Content-Type", "application/json"); senderId?.let { builder.header("X-LCP-Sender-Id", it) }; apiKey?.let { builder.header("Authorization", "Bearer $it") }; idempotencyKey?.let { builder.header("X-LCP-Idempotency-Key", it) }; if (test) builder.header("X-LCP-Test", "true"); hmacSecret?.let { val timestamp = nowIsoUtc(); builder.header("X-LCP-Timestamp", timestamp).header("X-LCP-Signature", signHmac(it, timestamp, idempotencyKey, raw)) }; builder.method(method, if (body == null) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofByteArray(raw)); val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString()); require(response.statusCode() in 200..299) { "LCP HTTP ${response.statusCode()}: ${response.body()}" }; return response.body()
+    /**
+     * [timeout] bounds each attempt. [maxRetries] is how many times a 429, 500,
+     * 502, 503 or 504 response, or an I/O failure, is retried after the first
+     * attempt; the wait honours a delta-seconds `Retry-After` and otherwise
+     * backs off 1 s, 2 s, 4 s, ... — the Python SDK policy. Each attempt is
+     * signed afresh with the same idempotency key and body.
+     */
+    class Client(private val endpoint: String, private val senderId: String? = null, private val apiKey: String? = null, private val hmacSecret: String? = null, private val http: HttpClient = HttpClient.newHttpClient(), private val timeout: Duration = Duration.ofSeconds(30), maxRetries: Int = 2) {
+        private val maxRetries = maxOf(0, maxRetries)
+
+        fun request(method: String, path: String, body: String? = null, idempotencyKey: String? = null, test: Boolean = false, maxRetries: Int = this.maxRetries): String {
+            val raw = body?.toByteArray() ?: ByteArray(0)
+            var attempt = 0
+            while (true) {
+                val builder = HttpRequest.newBuilder(URI.create("${endpoint.trimEnd('/')}/${path.trimStart('/')}" )).timeout(timeout).header("Accept", "application/json").header("Content-Type", "application/json"); senderId?.let { builder.header("X-LCP-Sender-Id", it) }; apiKey?.let { builder.header("Authorization", "Bearer $it") }; idempotencyKey?.let { builder.header("X-LCP-Idempotency-Key", it) }; if (test) builder.header("X-LCP-Test", "true"); hmacSecret?.let { val timestamp = nowIsoUtc(); builder.header("X-LCP-Timestamp", timestamp).header("X-LCP-Signature", signHmac(it, timestamp, idempotencyKey, raw)) }; builder.method(method, if (body == null) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofByteArray(raw))
+                val response = try {
+                    http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+                } catch (error: IOException) {
+                    if (attempt >= maxRetries) throw error
+                    Thread.sleep(retryDelayMillis(null, attempt++)); continue
+                }
+                if (response.statusCode() in 200..299) return response.body()
+                require(response.statusCode() in RETRYABLE_STATUSES && attempt < maxRetries) { "LCP HTTP ${response.statusCode()}: ${response.body()}" }
+                Thread.sleep(retryDelayMillis(response.headers().firstValue("Retry-After").orElse(null), attempt++))
+            }
+        }
+
+        companion object {
+            /** Statuses retried with backoff, matching the Python SDK. */
+            private val RETRYABLE_STATUSES = setOf(429, 500, 502, 503, 504)
+
+            /**
+             * Wait before retry [attempt] (0-based): a delta-seconds `Retry-After`
+             * wins; an absent, HTTP-date or malformed value falls back to 1 s,
+             * 2 s, 4 s, ... backoff.
+             */
+            internal fun retryDelayMillis(retryAfter: String?, attempt: Int): Long =
+                retryAfter?.takeIf { it.isNotEmpty() && it.all { char -> char in '0'..'9' } }?.toLongOrNull()?.takeIf { it <= Long.MAX_VALUE / 1000 }?.times(1000)
+                    ?: (1000L shl minOf(attempt, 30))
         }
         fun submitLead(envelope: Envelope) = request("POST", "/v1/lcp/leads", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
         fun submitCall(envelope: Envelope) = request("POST", "/v1/lcp/calls", envelope.json, envelope.message.idempotencyKey, envelope.message.test)
@@ -110,7 +147,7 @@ object LcpSdk {
                 node.put("idempotency_key", item.idempotencyKey)
                 node.set("payload", MAPPER.readTree(item.payloadJson))
             }
-            val response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false))
+            val response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false, maxRetries = 0))
             val results = response.path("results")
             check(results.isArray) { "batch response missing results" }
             val order = items.withIndex().associate { it.value.itemId to it.index }

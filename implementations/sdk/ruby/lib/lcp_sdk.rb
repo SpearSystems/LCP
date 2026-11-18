@@ -64,6 +64,9 @@ module LcpSdk
     end
 
     def verify(secret, signature, timestamp, idempotency_key, body, max_skew_seconds: 300, now: Time.now.utc)
+      # Time.iso8601 reads an unzoned value as local time; the Python reference
+      # verifier rejects it, so the timestamp must name its zone.
+      raise ArgumentError, "X-LCP-Timestamp must include a timezone" unless Date._xmlschema(timestamp).key?(:offset)
       signed_at = Time.iso8601(timestamp)
       raise ArgumentError, "timestamp outside replay window" if (now - signed_at).abs > max_skew_seconds
       expected = sign(secret, timestamp, idempotency_key, body)
@@ -138,8 +141,21 @@ module LcpSdk
   end
 
   class Client
-    def initialize(endpoint, sender_id: nil, api_key: nil, hmac_secret: nil, max_retries: 2)
-      @endpoint = endpoint.delete_suffix("/"); @sender_id = sender_id; @api_key = api_key; @hmac_secret = hmac_secret; @max_retries = max_retries
+    RETRYABLE_STATUSES = [429, 500, 502, 503, 504].freeze
+    TRANSPORT_ERRORS = [Timeout::Error, SystemCallError, SocketError, IOError].freeze
+
+    # timeout bounds the connect and each read (seconds). max_retries is how
+    # many times a 429, 500, 502, 503 or 504 response, or a transport failure,
+    # is retried after the first attempt; the wait honours a delta-seconds
+    # Retry-After and otherwise backs off 1 s, 2 s, 4 s, ... (the Python SDK policy).
+    def initialize(endpoint, sender_id: nil, api_key: nil, hmac_secret: nil, max_retries: 2, timeout: 30)
+      @endpoint = endpoint.delete_suffix("/"); @sender_id = sender_id; @api_key = api_key; @hmac_secret = hmac_secret; @max_retries = max_retries; @timeout = timeout
+    end
+
+    # Wait before retry attempt (0-based): a delta-seconds Retry-After wins; an
+    # absent, HTTP-date or malformed value falls back to backoff.
+    def self.retry_delay(retry_after, attempt)
+      retry_after.to_s.match?(/\A[0-9]+\z/) ? Integer(retry_after, 10) : 2**[attempt, 30].min
     end
 
     def request(method, path, payload: nil, test: false, max_retries: @max_retries)
@@ -150,11 +166,17 @@ module LcpSdk
         request["Content-Type"] = "application/json"; request["Accept"] = "application/json"; request["X-LCP-Sender-Id"] = @sender_id if @sender_id; request["Authorization"] = "Bearer #{@api_key}" if @api_key; request["X-LCP-Idempotency-Key"] = key if key; request["X-LCP-Test"] = "true" if test
         if @hmac_secret; timestamp = Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"); request["X-LCP-Timestamp"] = timestamp; request["X-LCP-Signature"] = Signing.sign(@hmac_secret, timestamp, key, body); end
         request.body = body unless body.empty?
-        response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(request) }
+        begin
+          response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: @timeout, read_timeout: @timeout, write_timeout: @timeout) { |http| http.request(request) }
+        rescue *TRANSPORT_ERRORS
+          raise if attempt >= max_retries
+          sleep(Client.retry_delay(nil, attempt))
+          next
+        end
         data = response.body.nil? || response.body.empty? ? {} : JSON.parse(response.body)
         return data if response.is_a?(Net::HTTPSuccess)
-        raise "LCP HTTP #{response.code}: #{data}" unless [429, 500, 502, 503, 504].include?(response.code.to_i) && attempt < max_retries
-        sleep(2**attempt)
+        raise "LCP HTTP #{response.code}: #{data}" unless RETRYABLE_STATUSES.include?(response.code.to_i) && attempt < max_retries
+        sleep(Client.retry_delay(response["Retry-After"], attempt))
       end
       raise "LCP request failed"
     end

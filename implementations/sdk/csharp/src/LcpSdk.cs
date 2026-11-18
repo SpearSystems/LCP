@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace LcpSdk;
 
@@ -104,13 +106,19 @@ public static class LcpSigning
         return HmacHex(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(NormalizeContact(value, domain)));
     }
 
+    // The timestamp must name its zone: DateTimeOffset.TryParse alone reads an
+    // unzoned value as local time, which the Python reference verifier rejects.
+    private static readonly Regex ZonedTimestamp = new("(?:[Zz]|[+-][0-9]{2}:?[0-9]{2}| (?:GMT|UTC?))$", RegexOptions.CultureInvariant);
+
     public static void VerifyHmac(string secret, string signature, string timestamp, string? idempotencyKey, ReadOnlySpan<byte> body, TimeSpan? maxSkew = null, DateTimeOffset? now = null)
     {
-        if (!DateTimeOffset.TryParse(timestamp, out var signedAt)) throw new ArgumentException("Invalid X-LCP-Timestamp");
+        if (!ZonedTimestamp.IsMatch(timestamp) || !DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out var signedAt)) throw new ArgumentException("Invalid X-LCP-Timestamp");
         var skew = maxSkew ?? TimeSpan.FromMinutes(5);
         if (Math.Abs(((now ?? DateTimeOffset.UtcNow) - signedAt).TotalSeconds) > skew.TotalSeconds) throw new ArgumentException("X-LCP-Timestamp is outside the replay window");
         var expected = Convert.FromHexString(SignHmac(secret, timestamp, idempotencyKey, body));
-        var actual = Convert.FromHexString(signature);
+        byte[] actual;
+        try { actual = Convert.FromHexString(signature); }
+        catch (FormatException) { throw new ArgumentException("Invalid X-LCP-Signature"); }
         if (!CryptographicOperations.FixedTimeEquals(expected, actual)) throw new ArgumentException("Invalid X-LCP-Signature");
     }
 
@@ -130,9 +138,24 @@ public sealed class LcpHttpException(int statusCode, string body) : Exception($"
 /// <summary>One lead in a batch: per-item identifiers plus the lead payload (schemas/batch.json).</summary>
 public sealed record LcpBatchItem(string ItemId, string IdempotencyKey, object Payload);
 
+/// <summary>
+/// LCP HTTP client. The injected <see cref="HttpClient"/> owns the per-attempt
+/// timeout (<see cref="HttpClient.Timeout"/>; set it to 30 s to match the other
+/// SDKs). <paramref name="maxRetries"/> is how many times a 429,
+/// 500, 502, 503 or 504 response, a transport failure, or a timeout is retried
+/// after the first attempt; the wait honours a delta-seconds Retry-After and
+/// otherwise backs off 1 s, 2 s, 4 s, ... — the Python SDK policy.
+/// </summary>
 public sealed class LcpClient(HttpClient httpClient, string endpoint, string? senderId = null, string? apiKey = null, string? hmacSecret = null, int maxRetries = 2)
 {
+    private static readonly HashSet<int> RetryableStatuses = [429, 500, 502, 503, 504];
     private readonly int defaultMaxRetries = maxRetries;
+
+    /// <summary>Wait before retry <paramref name="attempt"/> (0-based): a delta-seconds Retry-After wins, else 1 s, 2 s, 4 s, ... backoff.</summary>
+    private static TimeSpan RetryDelay(TimeSpan? retryAfter, int attempt) =>
+        retryAfter is { } delay
+            ? (delay > TimeSpan.FromMilliseconds(int.MaxValue) ? TimeSpan.FromMilliseconds(int.MaxValue) : delay)
+            : TimeSpan.FromSeconds(1 << Math.Min(attempt, 30));
 
     public async Task<JsonElement> RequestAsync(string method, string path, object? payload = null, bool test = false, CancellationToken cancellationToken = default, int? maxRetries = null)
     {
@@ -150,6 +173,7 @@ public sealed class LcpClient(HttpClient httpClient, string endpoint, string? se
             if (!string.IsNullOrEmpty(idempotencyKey)) request.Headers.Add("X-LCP-Idempotency-Key", idempotencyKey);
             if (test) request.Headers.Add("X-LCP-Test", "true");
             if (!string.IsNullOrEmpty(hmacSecret)) { var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"); request.Headers.Add("X-LCP-Timestamp", timestamp); request.Headers.Add("X-LCP-Signature", LcpSigning.SignHmac(hmacSecret, timestamp, idempotencyKey, body)); }
+            TimeSpan? retryAfter = null;
             try
             {
                 using var response = await httpClient.SendAsync(request, cancellationToken);
@@ -159,10 +183,12 @@ public sealed class LcpClient(HttpClient httpClient, string endpoint, string? se
                     using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody);
                     return document.RootElement.Clone();
                 }
-                if (!(response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500) || attempt == retryLimit) throw new LcpHttpException((int)response.StatusCode, responseBody);
+                if (!RetryableStatuses.Contains((int)response.StatusCode) || attempt == retryLimit) throw new LcpHttpException((int)response.StatusCode, responseBody);
+                retryAfter = response.Headers.RetryAfter?.Delta;
             }
             catch (HttpRequestException) when (attempt < retryLimit) { }
-            await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
+            catch (TaskCanceledException timeout) when (timeout.InnerException is TimeoutException && attempt < retryLimit) { }
+            await Task.Delay(RetryDelay(retryAfter, attempt), cancellationToken);
         }
         throw new InvalidOperationException("LCP request failed");
     }

@@ -108,6 +108,50 @@ using (var http = new HttpClient(new StubHistoryHandler(errorQueries, 400)))
 }
 Console.WriteLine("C# SDK history error path passed");
 
+// Verify parity with the Python reference verifier: fractional seconds verify;
+// an unzoned timestamp or a non-hex signature is refused.
+var verifyNow = DateTimeOffset.Parse("2026-08-15T10:20:01Z", System.Globalization.CultureInfo.InvariantCulture);
+var fractional = "2026-08-15T10:20:00.250Z";
+LcpSigning.VerifyHmac("sdk-shared-secret", LcpSigning.SignHmac("sdk-shared-secret", fractional, "sdk-vector-001", body), fractional, "sdk-vector-001", body, TimeSpan.FromMinutes(5), verifyNow);
+var unzoned = "2026-08-15T10:20:00";
+foreach (var (badTimestamp, badSignature) in new[] { (unzoned, LcpSigning.SignHmac("sdk-shared-secret", unzoned, "sdk-vector-001", body)), (timestamp, signature[..^2] + "zz"), (timestamp, signature[..^1]) })
+{
+    try
+    {
+        LcpSigning.VerifyHmac("sdk-shared-secret", badSignature, badTimestamp, "sdk-vector-001", body, TimeSpan.FromMinutes(5), verifyNow);
+        throw new Exception($"{badTimestamp} / {badSignature} was accepted");
+    }
+    catch (ArgumentException) { }
+}
+Console.WriteLine("C# SDK verify parity passed");
+
+// Retry parity with the Python SDK: 429/5xx retry up to maxRetries, a
+// delta-seconds Retry-After sets the wait, other statuses fail at once, and a
+// batch is never retried.
+async Task<(int Hits, int? Status, TimeSpan Elapsed)> RunRetry(int[] statuses, int maxRetries, bool batch = false)
+{
+    var handler = new StubRetryHandler(statuses);
+    using var http = new HttpClient(handler);
+    var client = new LcpClient(http, "http://stub.invalid", maxRetries: maxRetries);
+    var started = System.Diagnostics.Stopwatch.StartNew();
+    try
+    {
+        if (batch) await client.SubmitLeadsBatchAsync([new LcpBatchItem("a", "k", new { })]);
+        else await client.GetCapabilitiesAsync();
+        return (handler.Hits, null, started.Elapsed);
+    }
+    catch (LcpHttpException error) { return (handler.Hits, error.StatusCode, started.Elapsed); }
+}
+var retried = await RunRetry([429, 503, 200], 2);
+if (retried.Hits != 3 || retried.Status != null || retried.Elapsed > TimeSpan.FromMilliseconds(900)) throw new Exception($"Retry-After retry failed: {retried}");
+var exhausted = await RunRetry([503], 1);
+if (exhausted.Hits != 2 || exhausted.Status != 503) throw new Exception($"maxRetries not honoured: {exhausted}");
+var notRetried = await RunRetry([501], 2);
+if (notRetried.Hits != 1 || notRetried.Status != 501) throw new Exception($"501 must not be retried: {notRetried}");
+var batchOnce = await RunRetry([503], 2, batch: true);
+if (batchOnce.Hits != 1 || batchOnce.Status != 503) throw new Exception($"a batch is never retried as a whole: {batchOnce}");
+Console.WriteLine("C# SDK retry parity passed");
+
 sealed class StubBatchHandler(List<string> requests) : HttpMessageHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -137,5 +181,21 @@ sealed class StubHistoryHandler(List<string> queries, int status = 200) : HttpMe
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
         });
+    }
+}
+
+sealed class StubRetryHandler(int[] statuses) : HttpMessageHandler
+{
+    public int Hits { get; private set; }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var status = statuses[Math.Min(Hits++, statuses.Length - 1)];
+        var response = new HttpResponseMessage((HttpStatusCode)status)
+        {
+            Content = new StringContent(status == 200 ? "{\"ok\":true,\"results\":[]}" : "{\"errors\":[{\"code\":\"LCP-011\"}]}", Encoding.UTF8, "application/json"),
+        };
+        response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.Zero);
+        return Task.FromResult(response);
     }
 }

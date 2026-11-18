@@ -98,6 +98,44 @@
       },
       "expect": { "outcome": "accept", "error_code": null, "error_name": null },
       "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-006",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 Canonical timestamp generation (verifiers keep lenient clock parsing)",
+      "description": "Control: a correctly signed request whose timestamp carries fractional seconds ('2026-08-15T10:20:00.250Z', 0.75 s old) must verify. Signers never emit this form (LEP-0002), but SPEC.md §9 keeps verifier parsing lenient; a verifier that only parses whole seconds rejects a valid request.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "433d194cef862d0d4ff82f9c8d5aecb2ccc9e0d178064aac2aac534402ce3df3",
+        "timestamp": "2026-08-15T10:20:00.250Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "accept", "error_code": null, "error_name": null },
+      "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-replay-007",
+      "invariant": 5,
+      "spec_ref": "SPEC.md §9 X-LCP-Timestamp (unambiguous instant required); SPEC.md §5 LCP-012",
+      "description": "Timestamp '2026-08-15T10:20:00' without a timezone, with a signature that is valid over that exact string, must be rejected. Unlike lcp-neg-replay-004 (all-zero signature) the signature cannot cause the rejection, so a verifier that reads the value as local time passes under a UTC clock and fails this vector.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "446dfeff7c6e2bd432b164e6a08d405faafdf6c73abe1a4f9a3b51e7c69e2d49",
+        "timestamp": "2026-08-15T10:20:00",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
     }
   ]
 }
