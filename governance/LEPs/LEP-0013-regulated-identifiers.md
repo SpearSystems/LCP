@@ -3,15 +3,14 @@
 - **Title:** Regulated identifiers: a capability-gated, never-persisted lane for government ID and bank account fields in allowlisted lending verticals
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Draft**. Not accepted. A candidate implementation is on
+- **Status:** **Review** — public review open until 2026-12-03. Not accepted. A candidate implementation is on
   branch `lep/0012-0013-sale-lifecycle`; it does not merge until this
   record is Accepted (LEP.md stage 5).
 - **Target version:** v1.3.0 (additive MINOR: one schema annotation
   keyword, one capability feature, and a bounded exception to the
   `prohibited` list. No class is added, so the change is not MAJOR under
   LEP-0011.)
-- **Discussion:** none yet. A `[LEP]` issue opens when this record moves to
-  Review.
+- **Discussion:** [#255](https://github.com/SpearSystems/LCP/issues/255)
 - **Reviewers needed at Review:** **a named human security/privacy reviewer
   is required.** This record relaxes a PII boundary, and LEP-0011 requires
   an LEP with a security/privacy co-sign for any less-protective class

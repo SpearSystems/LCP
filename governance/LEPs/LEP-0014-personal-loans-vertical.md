@@ -3,14 +3,13 @@
 - **Title:** `personal_loans` vertical 2.0.0: an interoperable personal-loan vertical with whole-unit applicant amounts and an LEP-0013 identity container
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Draft**. Not accepted. A candidate implementation is on
+- **Status:** **Review** — public review open until 2026-12-03. Not accepted. A candidate implementation is on
   branch `lep/0012-0013-sale-lifecycle`; it does not merge until this
   record is Accepted (LEP.md stage 5).
 - **Target version:** v1.3.0 (a new vertical file is additive. The file's
   own `schema_version` is `2.0.0`, so it can never be confused with the
   adopter's unpublished 1.0.0.)
-- **Discussion:** none yet. A `[LEP]` issue opens when this record moves to
-  Review.
+- **Discussion:** [#256](https://github.com/SpearSystems/LCP/issues/256)
 - **Schema:** [`verticals/personal_loans.json`](../../verticals/personal_loans.json).
 - **Depends on:** [LEP-0013](LEP-0013-regulated-identifiers.md) for the
   `us_details` container. If LEP-0013 is rejected, this vertical ships
