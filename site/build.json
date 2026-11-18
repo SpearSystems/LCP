@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "d4b0690e3f99",
+  "build_hash": "611a953dbc46",
   "pages": [
     {
       "path": "assets/site.css",
@@ -81,6 +81,16 @@
       "path": "leps/LEP-0014-personal-loans-vertical.html",
       "source": "governance/LEPs/LEP-0014-personal-loans-vertical.md",
       "title": "LEP-0014 — personal_loans vertical 2.0.0: whole-unit applicant amounts and a regulated identity container"
+    },
+    {
+      "path": "leps/LEP-0015-buyer-delivery-mapping.html",
+      "source": "governance/LEPs/LEP-0015-buyer-delivery-mapping.md",
+      "title": "LEP-0015 — Buyer delivery mapping: declarative outbound adapters and buyer-reported dispositions"
+    },
+    {
+      "path": "leps/LEP-0016-mortgage-vertical-2.html",
+      "source": "governance/LEPs/LEP-0016-mortgage-vertical-2.md",
+      "title": "LEP-0016 — mortgage vertical 2.0.0: whole-unit applicant amounts, a declared currency, and side-by-side vertical versions"
     },
     {
       "path": "leps/index.html",
@@ -247,6 +257,7 @@
     "LICENSE",
     "docs/DECISIONS-v1.2.md",
     "docs/PII-CLASSES.md",
+    "docs/PUBLISHER-MAPPING.md",
     "docs/RELEASE.md",
     "docs/V1.2-EXECUTION-PLAN.md",
     "governance",

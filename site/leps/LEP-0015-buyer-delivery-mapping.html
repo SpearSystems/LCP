@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0015-buyer-delivery-mapping.md">
+<meta name="lcp-build" content="611a953dbc46">
+<title>LEP-0015 — Buyer delivery mapping: declarative outbound adapters and buyer-reported dispositions — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0015--buyer-delivery-mapping-declarative-outbound-adapters-and-buyer-reported-dispositions">LEP-0015 — Buyer delivery mapping: declarative outbound adapters and buyer-reported dispositions</h1>
+<ul>
+<li><strong>Title:</strong> Buyer delivery mapping: a declarative document that turns an LCP post into a buyer API request and the buyer's response into an LEP-0012 disposition</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
+<li><strong>Date:</strong> 2026-11-19</li>
+<li><strong>Status:</strong> <strong>Draft</strong>. Not accepted. No implementation is authorized (LEP.md stage 5). This record carries no candidate implementation.</li>
+<li><strong>Target version:</strong> v1.4.0 (additive: a new platform document format, conformance vectors and an optional buyer-side ack read)</li>
+<li><strong>Discussion:</strong> none yet. A <code>[LEP]</code> issue opens when this record moves to Review.</li>
+<li><strong>Depends on:</strong> <a href="LEP-0012-sale-lifecycle.html">LEP-0012</a> for the disposition vocabulary and <a href="LEP-0013-regulated-identifiers.html">LEP-0013</a> for regulated-field forwarding. Neither has been Accepted. If LEP-0012 is rejected, this record is withdrawn with it.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><strong>Most buyers do not speak LCP.</strong> A platform that routes leads delivers to buyer APIs that each have their own JSON or form body, field names, units, authentication header and response format. LCP defines the inbound side declaratively (<span class="unpublished" title="Not published in the specification site: docs/PUBLISHER-MAPPING.md">PUBLISHER-MAPPING (<code>docs/PUBLISHER-MAPPING.md</code>)</span>), but has nothing for the outbound side. The reference platform can deliver only an LCP envelope to <code>webhook_url</code>, and it discards the buyer's response body.</p>
+<p><strong>The buyer's verdict is lost.</strong> LEP-0012 gives the sender a disposition: sold, unsold, pending or price_rejected. For live traffic, the platform can only learn that result from the buyer. A buyer that answers "rejected: duplicate" with HTTP 200 is currently recorded as delivered and payable.</p>
+<p><strong>Adopter evidence (SpearPointX).</strong> The first non-LCP buyer the adopter integrated needed:</p>
+<ul>
+<li>request field renames, nesting and a static source constant;</li>
+<li>unit conversion: the buyer takes whole dollars, while the platform holds integer cents;</li>
+<li>an API key in a header, resolved from a secret store;</li>
+<li>a test flag, plus a rule that test leads never reach the live endpoint;</li>
+<li>response decoding into accepted, rejected, invalid and price-rejected, with a counter price, a buyer lead reference and a consumer redirect URL.</li>
+</ul>
+<p>The adopter's existing mechanism renames keys and nothing else. Everything else would be hand-written code for that one buyer. Each later buyer would add another one-off adapter, and the adapter could not be tested against anything shared.</p>
+<p><strong>LEP-0012's re-post trigger is met on the buyer leg.</strong> LEP-0012 deferred re-posting at the counter price until a buyer API with price-reject semantics appeared. The adopter's buyer has those semantics. This record covers only the platform-to-buyer re-post. A sender-side floor stays deferred.</p>
+<h2 id="scope">Scope</h2>
+<ol>
+<li><strong>Buyer mapping document.</strong> A versioned JSON document format (<code>format_version</code> <code>1.0</code>, schema <code>schemas/buyer-mapping.json</code>) and normative execution rules. A mapping is data, not code. It has no expressions, a closed transform set and a closed rule language.</li>
+<li><strong>Native buyer disposition.</strong> A platform MAY post <code>lcp.version</code> <code>1.3.0</code> to a buyer that declares it, and read <code>ack.disposition</code> from the response. Native LCP buyers need no mapping.</li>
+<li><strong>Buyer-leg counter re-post.</strong> One bounded re-post to the same buyer at its counter price, decided by platform policy.</li>
+<li><strong>Conformance vectors.</strong> Language-neutral golden vectors: given a post and a mapping, the exact request; given a response and a mapping, the exact decoded result. Any platform's executor, in any language, can run them.</li>
+<li><strong>Reference platform</strong>, after Acceptance: an executor behind <code>LCP_FEATURE_BUYER_MAPPING</code>, off by default, plus <code>lcp-platform-admin buyer-mapping upsert|list|deactivate</code>.</li>
+</ol>
+<p><strong>Not in scope:</strong></p>
+<ul>
+<li>code adapters for protocols a mapping cannot express (SOAP or XML, multi-step sessions, OAuth token exchange);</li>
+<li>the ping leg of buyer ping-post APIs;</li>
+<li>asynchronous buyer callbacks that report a result later;</li>
+<li>a sender-side price floor on <code>lead</code>;</li>
+<li>a public catalog of buyer mappings.</li>
+</ul>
+<p>Each of these is a deferred question below.</p>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-document">1. Document</h3>
+<pre class="code-block"><code class="language-json">{
+  "format_version": "1.0",
+  "mapping_id": "example-loans-direct-v2",
+  "buyer_id": "buyer_example_loans",
+  "version": "2.0.0",
+  "active": true,
+  "vertical": "personal_loans",
+  "schema_versions": ["2.0.0"],
+  "request": {
+    "method": "POST",
+    "url": "https://api.buyer.example/v2/leads",
+    "test_url": "https://sandbox.buyer.example/v2/leads",
+    "encoding": "json",
+    "timeout_ms": 10000,
+    "headers": {
+      "X-Api-Key": { "secret": "example_loans_api_key" },
+      "X-Source": { "const": "lcp" }
+    },
+    "idempotency": { "header": "Idempotency-Key", "from": "message.idempotency_key" }
+  },
+  "body": {
+    "source.reference": { "from": "message.id" },
+    "source.test": { "from": "message.test", "default": false },
+    "applicant.first_name": { "from": "payload.consumer.first_name", "transform": ["trim"], "required": true },
+    "applicant.last_name": { "from": "payload.consumer.last_name", "transform": ["trim"], "required": true },
+    "applicant.phone": { "from": "payload.consumer.phone", "transform": ["phone_national"], "required": true },
+    "applicant.email": { "from": "payload.consumer.email", "transform": ["lower"] },
+    "applicant.zip": { "from": "payload.location.postal_code", "transform": ["trim"] },
+    "loan.amount": { "from": "payload.attributes.loan_amount", "required": true },
+    "loan.purpose": {
+      "from": "payload.attributes.loan_purpose",
+      "map": { "debt_consolidation": "DEBT", "home_improvement": "HOME" },
+      "map_default": "OTHER"
+    },
+    "pricing.min_price": { "from": "payload.price_cents", "transform": ["cents_to_units"] },
+    "tracking.sub_id": { "from": "payload.extensions[\"lcp.affiliate.tracking\"].sub_id" }
+  },
+  "response": {
+    "encoding": "json",
+    "max_bytes": 65536,
+    "rules": [
+      { "when": { "status": [200, 201], "path": "result", "in": ["accepted"] }, "outcome": "sold" },
+      { "when": { "path": "result", "equals": "price_rejected" }, "outcome": "price_rejected" },
+      { "when": { "path": "result", "in": ["rejected", "invalid", "duplicate"] }, "outcome": "unsold" },
+      { "when": { "status": [409] }, "outcome": "unsold", "reason": "duplicate" }
+    ],
+    "default": "pending",
+    "fields": {
+      "price": { "path": "price", "unit": "units" },
+      "counter_price": { "path": "min_price", "unit": "units" },
+      "redirect_url": { "path": "redirect_url" },
+      "buyer_reference": { "path": "lead_id" },
+      "reason": {
+        "path": "reason",
+        "map": { "dup": "duplicate", "low_credit": "credit_too_low", "bad_phone": "invalid_phone" },
+        "map_default": "other"
+      }
+    },
+    "retry_on_status": [429, 502, 503, 504]
+  },
+  "counter": { "repost": true, "max_reposts": 1, "price_from": "counter_price" }
+}</code></pre>
+<p>All objects are closed (<code>additionalProperties: false</code>). A platform MUST refuse at upsert any unknown key, unknown transform, unknown rule operator or path outside the grammar below. It MUST NOT activate a document that fails validation.</p>
+<h3 id="2-paths">2. Paths</h3>
+<ul>
+<li>Source paths are rooted at the <code>lcp</code> object of the post: <code>message.&lt;field&gt;</code> or <code>payload.&lt;field&gt;</code>. No other roots exist.</li>
+<li>A segment is a property name, or <code>["..."]</code> for a key that contains a dot (extension names). <code>[n]</code>, a non-negative integer, indexes an array.</li>
+<li>There are no wildcards, filters or functions.</li>
+<li>Every <code>payload.attributes.*</code> path MUST exist in the declared vertical's schema at every listed <code>schema_versions</code> entry. This is checked at upsert.</li>
+</ul>
+<p>Target keys in <code>body</code> are dotted paths in the buyer's body. With <code>encoding: json</code>, dots build nested objects. With <code>encoding: form</code> (<code>application/x-www-form-urlencoded</code>), the key is sent as written, dots included, and values MUST be scalar.</p>
+<h3 id="3-values">3. Values</h3>
+<p>Each target takes exactly one of three value sources:</p>
+<ul>
+<li><p><code>{"from": path}</code>. Optional <code>transform</code> (an ordered list), <code>map</code> (exact string match after transforms), <code>map_default</code>, <code>default</code> and <code>required</code>.</p>
+<ul>
+<li>A missing source with no <code>default</code> omits the target.</li>
+<li>A missing <code>required</code> target stops the delivery before any bytes are sent (see §6).</li>
+</ul></li>
+<li><code>{"const": value}</code>. A JSON scalar.</li>
+<li><p><code>{"secret": name}</code>, with an optional <code>prefix</code> (for example <code>"Bearer "</code>).</p>
+<ul>
+<li>The value is resolved from the platform secret store at send time.</li>
+<li>Secret values never appear in a mapping, a vector, a log or an audit record.</li>
+</ul></li>
+</ul>
+<p><strong>Transforms</strong>, a closed set applied in order:</p>
+<ul>
+<li>string: <code>trim</code>, <code>lower</code>, <code>upper</code>, <code>string</code>;</li>
+<li>type: <code>integer</code>, <code>boolean</code>;</li>
+<li>phone: <code>e164</code>, and <code>phone_national</code> (E.164 <code>+1</code> numbers only, giving 10 digits);</li>
+<li>time: <code>date</code> (<code>YYYY-MM-DD</code> from an RFC 3339 date-time), <code>date_time_utc</code>;</li>
+<li><p>money:</p>
+<ul>
+<li><code>cents_to_units</code> divides by the currency's ISO 4217 minor-unit factor. It fails, and never rounds, if the result would not be a whole number.</li>
+<li><code>units_to_cents</code> multiplies by that factor.</li>
+</ul></li>
+</ul>
+<p>A transform that cannot apply, such as <code>integer</code> on <code>"abc"</code>, is a mapping failure (§6). It is never coerced and never silently dropped.</p>
+<h3 id="4-request">4. Request</h3>
+<ul>
+<li><strong>Method:</strong> <code>POST</code> only. The URL is static. It has no macros and no query values taken from the lead, so PII is never in a URL.</li>
+<li><strong><code>url</code> and <code>test_url</code></strong> MUST pass the platform's egress rules: <code>https</code>, the same SSRF checks as <code>webhook_url</code>, and no redirects followed.</li>
+<li><strong>Test traffic:</strong> a post with <code>message.test: true</code> goes only to <code>test_url</code>. If <code>test_url</code> is absent, the post is not delivered, and the platform applies the LEP-0012 test outcome. A test post MUST never reach <code>url</code>.</li>
+<li><strong>Idempotency:</strong> with <code>idempotency</code> declared, the platform sends the stable key on every attempt, and a retry after the request was sent is allowed. Without it, the platform retries only failures where no request bytes were sent (DNS, connect or TLS errors). An ambiguous failure after sending becomes <code>pending</code> (§5). This avoids double-selling to a buyer that cannot deduplicate.</li>
+</ul>
+<h3 id="5-response">5. Response</h3>
+<p>The body is read up to <code>max_bytes</code>, capped by the platform's own limit. It is decoded per <code>encoding</code> (<code>json</code> or <code>form</code>) and then discarded. Only the decoded fields persist.</p>
+<p><strong>Rules</strong> are evaluated in order, and the first match wins.</p>
+<ul>
+<li><p>A <code>when</code> clause holds when all of its tests hold:</p>
+<ul>
+<li><code>status</code> is a list of HTTP codes;</li>
+<li><code>path</code> plus one of <code>equals</code>, <code>in</code> or <code>exists</code> tests a value in the body.</li>
+</ul></li>
+<li><code>outcome</code> is an LEP-0012 outcome. An optional <code>reason</code> sets a known <code>rejection_reason</code> constant.</li>
+<li><code>default</code> applies when no rule matches. It MUST be <code>pending</code> or <code>unsold</code>, never <code>sold</code>.</li>
+</ul>
+<p>A mapping cannot make an unrecognised response into a sale.</p>
+<p><strong>Decoded fields:</strong></p>
+<ul>
+<li><p><strong><code>price</code></strong> and <strong><code>counter_price</code>.</strong> <code>unit</code> is <code>units</code> or <code>cents</code>; the platform converts both to integer minor units of the post's currency.</p>
+<ul>
+<li>A value outside <code>1</code>–<code>100000000</code> minor units is a decode failure.</li>
+<li>A float with a fractional minor unit is a decode failure.</li>
+</ul></li>
+<li><strong><code>redirect_url</code>.</strong> It MUST match <code>^https://</code>, with at most 2048 characters. Otherwise it is dropped. It is handled as LEP-0012 §2 requires: relayed to the sender, never fetched and never logged.</li>
+<li><strong><code>buyer_reference</code>.</strong> At most 128 characters. It is stored for reconciliation.</li>
+<li><strong><code>reason</code>.</strong> It is mapped onto the known <code>rejection_reason</code> values. An unmapped value becomes <code>map_default</code>, or <code>other</code> if none is set. Free text from the buyer is never retained.</li>
+</ul>
+<p><strong>Money is never invented.</strong> When the outcome is <code>sold</code>, the payable price is the decoded <code>price</code>. If <code>fields.price</code> is not declared, the payable price is the posted <code>payload.price_cents</code>. If <code>price</code> is declared but fails to decode on a <code>sold</code> response, the result is <code>pending</code> and enters operator review. It is not <code>sold</code> at the posted price.</p>
+<p><strong>Ambiguity is <code>pending</code>.</strong> All of these resolve to <code>pending</code>:</p>
+<ul>
+<li>a timeout after sending;</li>
+<li>a 2xx response whose body fails to decode;</li>
+<li>a match on <code>default: pending</code>.</li>
+</ul>
+<p>The platform resolves a <code>pending</code> result by reconciliation: an operator, using <code>buyer_reference</code> and the buyer's report, before the LEP-0012 <code>final_by</code>. If it is still unresolved at <code>final_by</code>, the result is <code>REJECTED</code> with <code>rejection_reason</code> <code>buyer_unconfirmed</code>, a new known value.</p>
+<p><code>retry_on_status</code> lists the statuses that re-enter the delivery retry queue, subject to §4. Any other non-matching status falls through to the rules and then to <code>default</code>.</p>
+<h3 id="6-failures-before-sending">6. Failures before sending</h3>
+<p>A missing <code>required</code> target, a failed transform or a regulated path the buyer is not enrolled for (§Privacy) stops the delivery before any bytes are sent. The platform then:</p>
+<ul>
+<li>records the delivery as <code>FAILED</code> with reason <code>mapping_failed</code>;</li>
+<li>records the target key in the audit, but never the value;</li>
+<li>dead-letters the delivery;</li>
+<li>gives the lead the same outcome as an undelivered post under SPEC §9.</li>
+</ul>
+<h3 id="7-native-buyers-no-mapping">7. Native buyers (no mapping)</h3>
+<ul>
+<li>A buyer whose profile declares <code>lcp_versions</code> including <code>1.3.0</code> receives posts at <code>lcp.version</code> <code>1.3.0</code>.</li>
+<li>The platform reads the response body, bounded by <code>max_webhook_response_bytes</code>, as an LCP <code>ack</code>. It validates the body against <code>schemas/ack.json</code> and retains only <code>status</code>, <code>rejection_reason</code> and <code>disposition</code>.</li>
+<li>A 2xx response without a valid ack keeps today's behaviour: delivered, with payable rules as configured.</li>
+<li>A buyer disposition is the buyer's statement to the platform. The sender-facing disposition is computed by the platform's own payout policy, and the buyer's price and the sender's payout are never conflated.</li>
+</ul>
+<h3 id="8-counter-re-post">8. Counter re-post</h3>
+<p>On a decoded <code>price_rejected</code> with a valid <code>counter_price</code>, the platform MAY re-post once (<code>max_reposts</code> cap <code>1</code> in format <code>1.0</code>) to the same buyer at the counter price. All of these conditions must hold:</p>
+<ul>
+<li>the counter is at or above the platform's floor for this lead and offer. The floor is platform policy and is never sent to the buyer.</li>
+<li>the post-response deadline (SPEC §9) has not passed;</li>
+<li>the re-post uses a new <code>message.id</code> and the same <code>message.idempotency_key</code> suffixed <code>:r1</code>.</li>
+</ul>
+<p>If no re-post is made, or the re-post is refused, the buyer result is <code>unsold</code>. The sender sees one final disposition for the lead. A buyer-leg <code>price_rejected</code> is never forwarded to the sender as-is.</p>
+<h4 id="valid-1--rendered-request-vector-bmap-r-001">Valid 1 — rendered request (vector <code>BMAP-R-001</code>)</h4>
+<p>Post <code>payload.attributes.loan_amount</code> <code>1000</code>, <code>payload.price_cents</code> <code>5000</code> in USD, <code>message.test</code> <code>false</code>, with the mapping above. The request goes to <code>url</code>:</p>
+<pre class="code-block"><code class="language-json">{
+  "source": { "reference": "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10", "test": false },
+  "applicant": { "first_name": "Test", "last_name": "Applicant", "phone": "2025550143", "email": "test@example.com", "zip": "20001" },
+  "loan": { "amount": 1000, "purpose": "DEBT" },
+  "pricing": { "min_price": 50 },
+  "tracking": { "sub_id": "s-42" }
+}</code></pre>
+<p>It carries the header <code>Idempotency-Key: &lt;message.idempotency_key&gt;</code>. In vectors, <code>X-Api-Key</code> is the placeholder <code>&lt;secret:example_loans_api_key&gt;</code>.</p>
+<h4 id="valid-2--decoded-responses-vectors-bmap-d-001005">Valid 2 — decoded responses (vectors <code>BMAP-D-001</code>…<code>005</code>)</h4>
+<table>
+<thead>
+<tr>
+<th>HTTP</th>
+<th>Body</th>
+<th>Decoded</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td><code>{"result":"accepted","price":42,"lead_id":"B-9","redirect_url":"https://buyer.example/offer/abc"}</code></td>
+<td><code>sold</code>, price 4200, reference <code>B-9</code>, redirect relayed</td>
+</tr>
+<tr>
+<td>200</td>
+<td><code>{"result":"price_rejected","min_price":30}</code></td>
+<td><code>price_rejected</code>, counter 3000, re-post allowed if 3000 is at or above the floor</td>
+</tr>
+<tr>
+<td>200</td>
+<td><code>{"result":"rejected","reason":"dup"}</code></td>
+<td><code>unsold</code>, <code>duplicate</code></td>
+</tr>
+<tr>
+<td>409</td>
+<td>empty</td>
+<td><code>unsold</code>, <code>duplicate</code></td>
+</tr>
+<tr>
+<td>200</td>
+<td><code>{"result":"queued"}</code></td>
+<td><code>pending</code> (default)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="invalid-a--default-sold">Invalid A — <code>default: sold</code></h4>
+<p>The mapping is refused at upsert. A default can never make a sale.</p>
+<h4 id="invalid-b--url-macro">Invalid B — URL macro</h4>
+<p><code>"url": "https://api.buyer.example/leads?phone={phone}"</code> is refused at upsert, because URLs are static.</p>
+<h4 id="invalid-c--regulated-path-without-enrolment">Invalid C — regulated path without enrolment</h4>
+<p><code>payload.attributes.us_details.ssn</code> in <code>body</code>, for a buyer not enrolled under LEP-0013, is refused at upsert. At send time it would be dropped and the delivery failed (§6).</p>
+<h4 id="invalid-d--inexact-unit-conversion">Invalid D — inexact unit conversion</h4>
+<p><code>payload.price_cents</code> <code>5050</code> through <code>cents_to_units</code> is a mapping failure. It is not rounded to <code>50</code> or <code>51</code>.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>Not executable.</strong> There are no expressions, templates or scripts, and the transform and rule sets are closed. A mapping cannot reach anything outside the post it is given.</li>
+<li><strong>Egress:</strong> static <code>https</code> URLs under the existing SSRF and no-redirect rules. Lead data is never in a URL.</li>
+<li><strong>Secrets by reference only.</strong> Values are resolved at send time and redacted from logs, audits, errors and vectors.</li>
+<li><p><strong>Restricted and regulated fields:</strong></p>
+<ul>
+<li>A mapping may read a <code>restricted</code> path only if the buyer's requirement profile allows that field.</li>
+<li>It may read an <code>x-lcp-regulated</code> path only if the buyer is enrolled and names that field (LEP-0013).</li>
+<li>Both rules are checked at upsert and again at send, fail closed.</li>
+</ul></li>
+<li><strong>Response bodies are never stored.</strong> Buyer free text is never retained. <code>redirect_url</code> follows LEP-0012 §2.</li>
+<li><strong>Test isolation:</strong> test posts reach only <code>test_url</code> (§4).</li>
+<li><strong>Universal core:</strong> no envelope change. §7 uses the existing <code>ack</code> schema. The mapping format is a platform document, not a message type.</li>
+</ul>
+<p>A named human security/privacy reviewer is needed at Review, because the record adds egress to arbitrary buyer hosts and forwards restricted data.</p>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>Additive.</strong> Senders see no change. Buyers without a mapping or a declared <code>lcp_versions</code> keep today's delivery.</li>
+<li><strong><code>format_version</code></strong> versions the document. A platform MUST refuse a <code>format_version</code> it does not implement.</li>
+<li><strong><code>buyer_unconfirmed</code></strong> is a new known value on the open <code>rejection_reason</code> enumeration.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>SDKs:</strong> no client API change. Mappings are executed by platforms, not senders. An optional Python validator for mapping documents may ship with the reference platform.</li>
+<li><strong>Conformance:</strong> a new <code>BMAP</code> tier with:</p>
+<ul>
+<li>render vectors (post plus mapping gives exact headers, with placeholders, and body);</li>
+<li>decode vectors (status plus body plus mapping gives the exact decoded result);</li>
+<li>refusal vectors for every Invalid case.</li>
+</ul>
+<p>The vectors are plain JSON, so a PHP or TypeScript platform runs them without the Python runner.</li>
+<li><strong>OpenAPI and MCP:</strong> none. Admin is platform-local.</li>
+<li><strong>Operations:</strong> per-mapping counters for each outcome, the rate of decodes that fell to <code>default</code> (a drift alarm when a buyer changes its response), <code>mapping_failed</code> counts by target key, and re-post counts and acceptance.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>A code adapter per buyer.</strong> This is the status quo. Each one is a one-off, cannot be tested against shared vectors and grows with the buyer count. Rejected as the default. Code adapters stay the escape hatch for protocols a mapping cannot express.</li>
+<li><strong>An expression language</strong> (JSONata, JMESPath, Jinja). Expressive, but executable, hard to bound, and implementations disagree on edge cases. The closed transform set covers the adopter evidence. Rejected.</li>
+<li><strong>Require buyers to speak LCP.</strong> Unrealistic for existing buyer APIs. §7 supports native buyers, and the mapping covers the rest.</li>
+<li><strong>Extend the inbound publisher mapping.</strong> The transforms overlap, and the two should share one transform registry. Outbound also needs secrets, test routing, idempotency and response decoding, so it gets its own document. Partially adopted: shared transforms.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>LCP:</strong> schema, vectors and documentation, then the reference executor behind <code>LCP_FEATURE_BUYER_MAPPING</code>, off by default.</li>
+<li><p><strong>Adopter (SpearPointX):</strong></p>
+<ul>
+<li>grows its key-rename mapping into this format;</li>
+<li>runs the <code>BMAP</code> vectors against its PHP executor;</li>
+<li>writes its first buyer mapping as a private document. The buyer stays unnamed in this repository.</li>
+<li>Routing, money and deadlines stay in the adopter's router core.</li>
+</ul></li>
+<li><strong>Activation:</strong> upsert a new version, send synthetic test posts to <code>test_url</code>, compare the decoded results, then mark the old version inactive. This matches PUBLISHER-MAPPING.</li>
+<li><strong>Rollback:</strong> deactivate the version, and the previous version resumes. Turning the flag off reverts to LCP-envelope webhook delivery.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Ping leg of buyer ping-post APIs.</strong> Trigger: a buyer that requires a ping before the post.</li>
+<li><strong>Asynchronous buyer callbacks</strong> (the buyer reports funded, returned or rejected later). The decode rules would apply to an inbound callback. Trigger: a buyer whose final result arrives after the response.</li>
+<li><strong>OAuth2 client-credentials tokens.</strong> Trigger: a buyer that will not accept a static key.</li>
+<li><strong>XML and SOAP bodies.</strong> Trigger: a buyer that offers no JSON or form endpoint.</li>
+<li><strong>Sender-side floor on <code>lead</code></strong> (LEP-0012's deferral). Trigger: a sender asking to automate re-posts.</li>
+<li><strong>A shared catalog of buyer mappings.</strong> Trigger: two platforms delivering to the same buyer API.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-document">1. Document</a></li><li class="depth-3"><a href="#2-paths">2. Paths</a></li><li class="depth-3"><a href="#3-values">3. Values</a></li><li class="depth-3"><a href="#4-request">4. Request</a></li><li class="depth-3"><a href="#5-response">5. Response</a></li><li class="depth-3"><a href="#6-failures-before-sending">6. Failures before sending</a></li><li class="depth-3"><a href="#7-native-buyers-no-mapping">7. Native buyers (no mapping)</a></li><li class="depth-3"><a href="#8-counter-re-post">8. Counter re-post</a></li><li class="depth-4"><a href="#valid-1--rendered-request-vector-bmap-r-001">Valid 1 — rendered request (vector BMAP-R-001)</a></li><li class="depth-4"><a href="#valid-2--decoded-responses-vectors-bmap-d-001005">Valid 2 — decoded responses (vectors BMAP-D-001…005)</a></li><li class="depth-4"><a href="#invalid-a--default-sold">Invalid A — default: sold</a></li><li class="depth-4"><a href="#invalid-b--url-macro">Invalid B — URL macro</a></li><li class="depth-4"><a href="#invalid-c--regulated-path-without-enrolment">Invalid C — regulated path without enrolment</a></li><li class="depth-4"><a href="#invalid-d--inexact-unit-conversion">Invalid D — inexact unit conversion</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0015-buyer-delivery-mapping.md</code> · build <code>611a953dbc46</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>
