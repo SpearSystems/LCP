@@ -3,12 +3,11 @@
 - **Title:** Buyer delivery mapping: a declarative document that turns an LCP post into a buyer API request and the buyer's response into an LEP-0012 disposition
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Draft**. Not accepted. No implementation is authorized
+- **Status:** **Review** — public review open until 2026-12-03. Not accepted. No implementation is authorized
   (LEP.md stage 5). This record carries no candidate implementation.
 - **Target version:** v1.4.0 (additive: a new platform document format,
   conformance vectors and an optional buyer-side ack read)
-- **Discussion:** none yet. A `[LEP]` issue opens when this record moves to
-  Review.
+- **Discussion:** [#257](https://github.com/SpearSystems/LCP/issues/257)
 - **Depends on:** [LEP-0012](LEP-0012-sale-lifecycle.md) for the
   disposition vocabulary and [LEP-0013](LEP-0013-regulated-identifiers.md)
   for regulated-field forwarding. Neither has been Accepted. If LEP-0012 is

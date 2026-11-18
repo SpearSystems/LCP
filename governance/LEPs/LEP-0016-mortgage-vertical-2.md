@@ -3,12 +3,11 @@
 - **Title:** `mortgage` vertical 2.0.0: whole-unit applicant amounts with a declared `amount_currency`, bounded values, and a rule for receivers that serve two versions of one vertical at once
 - **Author(s):** LCP maintainers
 - **Date:** 2026-11-19
-- **Status:** **Draft**. Not accepted. No implementation is authorized
+- **Status:** **Review** — public review open until 2026-12-03. Not accepted. No implementation is authorized
   (LEP.md stage 5).
 - **Target version:** v1.4.0. The vertical file gains a `2.0.0` schema
   alongside a frozen `1.0.0`.
-- **Discussion:** none yet. A `[LEP]` issue opens when this record moves to
-  Review.
+- **Discussion:** [#258](https://github.com/SpearSystems/LCP/issues/258)
 - **Depends on:** [LEP-0014](LEP-0014-personal-loans-vertical.md), for the
   whole-unit authoring rule. If LEP-0014 is rejected, this record is
   withdrawn with it.
