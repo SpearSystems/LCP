@@ -9,36 +9,93 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Path filtering happens here, not in `on.pull_request.paths`: the SDK jobs
+  # are required checks, and a workflow skipped by a path filter leaves them
+  # pending forever. A job skipped by `if:` reports as passing instead.
+  changes:
+    name: Detect SDK-relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sdk: ${{ steps.filter.outputs.sdk }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          sdk=true
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            # The pull_request checkout is the merge commit; parent 1 is the base.
+            changed="$(git diff --name-only HEAD^1 HEAD)"
+            sdk=false
+            while IFS= read -r path; do
+              case "${path}" in
+                docs/*|site/*) ;;
+                implementations/*|test-vectors/*) sdk=true ;;
+                *.md) ;;
+                *) sdk=true ;;
+              esac
+            done <<< "${changed}"
+          fi
+          echo "sdk=${sdk}" | tee -a "${GITHUB_OUTPUT}"
+
   schema-contract:
     name: Canonical schemas and generated models
+    needs: changes
+    # Docs-only pull requests skip this job and every SDK job that needs it.
+    # If the detector itself fails, the output is empty and the SDKs still run.
+    if: ${{ !cancelled() && needs.changes.outputs.sdk != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
       - run: python -m pip install --disable-pip-version-check --constraint requirements-ci.txt jsonschema referencing
       - run: python tools/check_sdk_versions.py --check
       - run: python tools/check_sdk_schema_sync.py --check
       - run: python tools/check_sdk_surface.py --fail-on-gap
-      - run: python test-vectors/conformance.py
+      - name: Generated SDK models match the committed tree
+        run: |
+          python tools/generate_sdk_models.py --write
+          git diff --exit-code
 
   python:
     name: Python SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-ci.txt
+            implementations/sdk/python/pyproject.toml
+            implementations/mcp-server/pyproject.toml
       - run: python -m pip install --constraint requirements-ci.txt jsonschema referencing httpx 'mcp>=1.28.1,<2.4.0'
-      - run: python tools/generate_sdk_models.py --write
       - run: python -m pip install -e implementations/sdk/python
       # The MCP adapter is intentionally installed without dependencies here: its
       # published lcp-sdk dependency is satisfied by the editable SDK above.
       - run: python -m pip install --no-deps -e implementations/mcp-server
+      # The canonical Python SDK unit-test run (negative vectors included).
       - run: PYTHONPATH=implementations/sdk/python python -m unittest discover -s implementations/sdk/python/tests -v
       # Run the MCP adapter suite (receiver config, traversal guard, URL
       # encoding, endpoint-error vs local-fallback, pre-send validation).
@@ -56,6 +113,7 @@ jobs:
     name: TypeScript SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - working-directory: implementations/sdk/typescript
@@ -68,6 +126,7 @@ jobs:
     name: Go SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - working-directory: implementations/sdk/go
@@ -80,11 +139,18 @@ jobs:
     name: C# SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "8.x"
+      # setup-dotnet's own cache needs packages.lock.json, which this SDK does
+      # not commit; the PackageReference versions live in the project files.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('implementations/sdk/csharp/**/*.csproj') }}
       - working-directory: implementations/sdk/csharp
         run: dotnet run --project tests/LcpSdk.Tests.csproj
       - name: Build NuGet package
@@ -95,21 +161,35 @@ jobs:
     name: Java SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - working-directory: implementations/sdk/java
-        run: mvn --batch-mode --no-transfer-progress test
-      - name: Build Maven jar
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: implementations/sdk/java/pom.xml
+      - name: Test and build Maven jars
+        # verify runs test and package in one reactor pass. Signing is bound to
+        # verify for releases (sdk-release.yml deploys with a key); skip it here.
         working-directory: implementations/sdk/java
-        run: mvn --batch-mode --no-transfer-progress package -DskipTests
+        run: mvn --batch-mode --no-transfer-progress -Dgpg.skip=true verify
 
   php:
     name: PHP SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/composer-cache
+          key: composer-${{ runner.os }}-${{ hashFiles('implementations/sdk/php/composer.lock') }}
       - working-directory: implementations/sdk/php
+        env:
+          COMPOSER_CACHE_DIR: ${{ runner.temp }}/composer-cache
         run: composer install --no-interaction --no-progress --prefer-dist && php tests/shared_vector.php && php tests/negative_vectors.php
       - name: Archive Composer package
         working-directory: implementations/sdk/php
@@ -119,8 +199,18 @@ jobs:
     name: Rust SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            implementations/sdk/rust/target/
+          key: cargo-sdk-${{ runner.os }}-${{ hashFiles('implementations/sdk/rust/Cargo.lock') }}
+          restore-keys: cargo-sdk-${{ runner.os }}-
       - working-directory: implementations/sdk/rust
         run: cargo test --locked
       - name: Build crates.io package
@@ -133,13 +223,17 @@ jobs:
     name: Ruby SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Same install path as sdk-release.yml: Bundler from the committed lockfile.
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: "3.3"
-      - run: gem install json_schemer --version 2.5.0 --no-document
-      - run: ruby implementations/sdk/ruby/test/shared_vector_test.rb
+          working-directory: implementations/sdk/ruby
+          bundler-cache: true
+      - working-directory: implementations/sdk/ruby
+        run: bundle exec ruby test/shared_vector_test.rb
       - name: Build Ruby gem
         working-directory: implementations/sdk/ruby
         run: gem build lcp_sdk.gemspec --output "$RUNNER_TEMP/lcp-sdk.gem"
@@ -148,18 +242,25 @@ jobs:
     name: Kotlin SDK
     needs: schema-contract
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - working-directory: implementations/sdk/kotlin
-        run: gradle --no-daemon test
-      - name: Build Kotlin jar
+      # Caches Gradle User Home (plugin and dependency resolution) so a run does
+      # not depend on a live Gradle Plugin Portal fetch; pins the Gradle version
+      # the runner image previously supplied.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: "9.9.1"
+          cache-provider: basic
+      - name: Test and build Kotlin jar
         working-directory: implementations/sdk/kotlin
-        run: gradle --no-daemon jar
+        run: gradle --no-daemon test jar
 
   swift:
     name: Swift SDK
     needs: schema-contract
     runs-on: macos-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - working-directory: implementations/sdk/swift

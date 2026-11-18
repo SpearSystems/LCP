@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    # The name is a required-check context in the main ruleset, so it is kept.
+    # Conformance vectors run once, in negative-vectors.yml; the Python SDK unit
+    # tests run once, in sdk.yml's Python SDK job.
     name: Conformance, SDK, platform, and Postgres integration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16@sha256:e4842c8a99ca99339e1693e6fe5fe62c7becb31991f066f989047dfb2fbf47af
@@ -32,12 +40,10 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
       - name: Install test dependencies
         run: python -m pip install --constraint requirements-ci.txt jsonschema referencing httpx cryptography 'psycopg[binary]'
-      - name: Run conformance vectors
-        run: python test-vectors/conformance.py --verbose
-      - name: Run SDK tests
-        run: PYTHONPATH=implementations/sdk/python python -m unittest discover -s implementations/sdk/python/tests -v
       - name: Run reference platform tests and Postgres integration
         env:
           LCP_TEST_POSTGRES_URL: postgresql://lcp_test:lcp_test@localhost:5432/lcp_test
@@ -46,6 +52,7 @@ jobs:
   tooling:
     name: Supply-chain tooling and Kyverno fixtures
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -53,6 +60,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
       - name: Install tooling test dependencies
         # cryptography: tools/tests/test_lep_wire_examples.py (T1) validates
         # LEP wire examples through the reference platform's own
@@ -98,6 +107,8 @@ jobs:
   admission:
     name: Ephemeral Kyverno admission enforcement
     runs-on: ubuntu-latest
+    # Up to three kind-cluster attempts at roughly two to three minutes each.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

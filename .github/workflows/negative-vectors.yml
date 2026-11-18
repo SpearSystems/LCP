@@ -8,18 +8,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python-negative-vectors:
+    # The name is a required-check context in the main ruleset, so it is kept.
+    # This job is the one place the conformance vectors (L1/L2/L3/NEG) run; the
+    # Python SDK negative-vector unit tests run with the rest of the Python SDK
+    # suite in sdk.yml's Python SDK job.
     name: Python SDK negative security vectors + conformance
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
       - name: Install test dependencies
         run: python -m pip install --constraint requirements-ci.txt jsonschema referencing httpx
       - name: Run conformance vectors
         run: python test-vectors/conformance.py --verbose
-      - name: Run negative security vectors (format lint + outcome assertions)
-        run: PYTHONPATH=implementations/sdk/python python -m unittest discover -s implementations/sdk/python/tests -p 'test_negative_vectors.py' -v
