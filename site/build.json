@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "d43c05461a0f",
+  "build_hash": "4cb84d4aa480",
   "pages": [
     {
       "path": "assets/site.css",
@@ -246,6 +246,7 @@
   "out_of_scope_links": [
     "LICENSE",
     "docs/DECISIONS-v1.2.md",
+    "docs/DECISIONS-v1.3.md",
     "docs/PII-CLASSES.md",
     "docs/RELEASE.md",
     "docs/V1.2-EXECUTION-PLAN.md",
