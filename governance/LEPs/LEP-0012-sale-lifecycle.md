@@ -3,9 +3,11 @@
 - **Title:** Sale lifecycle: synchronous lead disposition, money-bearing lifecycle events, URL-template postbacks, tracking passthrough, and defined test outcomes
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Review** — public review open until 2026-12-03. Not accepted. A candidate implementation is on
-  branch `lep/0012-0013-sale-lifecycle`; it does not merge until this
-  record is Accepted (LEP.md stage 5).
+- **Status:** **Accepted** — 2026-11-19 (maintainer;
+  [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
+  window and independent review waived, maintainer security/privacy
+  sign-off under D3). Implementation: PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
 - **Target version:** v1.3.0 (additive MINOR: one optional object on the
   closed `ack` payload, one optional property on `subscription`, documented
   `details` shapes on three existing event names, two registered extensions;
@@ -18,6 +20,23 @@
   (regulated identifiers) and
   [LEP-0014](LEP-0014-personal-loans-vertical.md) (`personal_loans`
   vertical). Each is decidable on its own.
+
+## Decision (maintainer, 2026-11-19)
+
+**Accepted** under [D1–D4](../../docs/DECISIONS-v1.3.md) of the v1.3 decision
+record. The review window closed early with no comments, and no reviewer
+independent of the author took part (D1, D2). The maintainer signed off on
+the outbound postback surface and the session-bearing `redirect_url` (D3).
+
+Conditions:
+
+- `ack.disposition`, URL postbacks and test outcomes ship **off** in the
+  reference platform (`LCP_FEATURE_SALE_DISPOSITION`,
+  `LCP_FEATURE_URL_POSTBACKS`, `LCP_FEATURE_TEST_OUTCOMES`) and are
+  advertised only when enabled.
+- Any comment with new evidence on
+  [#254](https://github.com/SpearSystems/LCP/issues/254) reopens this record.
+  Re-evaluation: 2027-05-19.
 
 ## Problem statement and evidence
 
