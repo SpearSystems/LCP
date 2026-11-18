@@ -5,9 +5,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import threading
+import time
 import unittest
 from urllib.parse import parse_qs, urlparse
 
+from lcp_sdk.client import retry_delay
 from lcp_sdk import (
     LCPClient,
     LCPHTTPError,
@@ -189,6 +191,45 @@ class HTTPErrorHygieneTests(unittest.TestCase):
         self.assertLessEqual(len(dict_error.body["preview"]), MAX_BODY_CHARS + 64)
         small = {"errors": [{"code": "LCP-002", "message": "Unknown sender"}]}
         self.assertEqual(LCPHTTPError(401, small).body, small)
+
+    def test_retry_after_and_max_retries(self) -> None:
+        """429/5xx retry up to max_retries, Retry-After: 0 replaces the backoff,
+        other statuses fail at once, and a batch is never retried."""
+        cases = [
+            ([429, 503, 200], {}, lambda c: c.get_capabilities(), 3, None),
+            ([503, 503], {"max_retries": 1}, lambda c: c.get_capabilities(), 2, 503),
+            ([400], {}, lambda c: c.get_capabilities(), 1, 400),
+            ([503], {}, lambda c: c.submit_leads_batch([{"item_id": "a", "idempotency_key": "k", "payload": {}}]), 1, 503),
+        ]
+        for statuses, options, call, want_hits, want_status in cases:
+            with self.subTest(statuses=statuses):
+                _StatusSequenceHandler.statuses = list(statuses)
+                _StatusSequenceHandler.hits = 0
+                server = ThreadingHTTPServer(("127.0.0.1", 0), _StatusSequenceHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    client = LCPClient(f"http://127.0.0.1:{server.server_address[1]}", **options)
+                    started = time.monotonic()
+                    if want_status is None:
+                        self.assertEqual(call(client), {"ok": True, "results": []})
+                        self.assertLess(time.monotonic() - started, 0.9)
+                    else:
+                        with self.assertRaises(LCPHTTPError) as caught:
+                            call(client)
+                        self.assertEqual(caught.exception.status_code, want_status)
+                    self.assertEqual(_StatusSequenceHandler.hits, want_hits)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+    def test_retry_delay_policy(self) -> None:
+        self.assertEqual(retry_delay("0", 1), 0)
+        self.assertEqual(retry_delay("7", 0), 7)
+        self.assertEqual(retry_delay(None, 0), 1)
+        self.assertEqual(retry_delay("Wed, 21 Oct 2026 07:28:00 GMT", 1), 2)
+        self.assertEqual(retry_delay("1.5", 2), 4)
+        self.assertEqual(retry_delay("\u00b2", 0), 1)
 
     def test_client_error_carries_server_request_id_and_hides_body(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), _RefusingHandler)
@@ -424,3 +465,29 @@ class HistoryReadTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _StatusSequenceHandler(BaseHTTPRequestHandler):
+    """Answers each request with the next status, always with Retry-After: 0."""
+
+    statuses: list[int] = []
+    hits = 0
+
+    def _respond(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        self.rfile.read(length)
+        status = self.statuses[min(type(self).hits, len(self.statuses) - 1)]
+        type(self).hits += 1
+        body = json.dumps({"ok": True, "results": []} if status == 200 else {"errors": [{"code": "LCP-011"}]}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Retry-After", "0")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = _respond
+    do_POST = _respond
+
+    def log_message(self, *args: object) -> None:
+        pass

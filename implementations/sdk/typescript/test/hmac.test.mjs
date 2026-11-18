@@ -100,3 +100,66 @@ try {
   await new Promise((resolve) => historyServer.close(resolve));
 }
 console.log("TypeScript SDK history read passed");
+
+// Verify parity with the Python reference verifier: fractional seconds and
+// numeric offsets verify; an unzoned timestamp, a non-RFC 3339 form, an
+// impossible date, and a non-hex signature are refused.
+const verifyNow = new Date("2026-08-15T10:20:01Z");
+const signedFor = (timestamp) => signHmac(vector.secret, timestamp, vector.idempotency_key, body);
+for (const timestamp of ["2026-08-15T10:20:00.250Z", "2026-08-15T12:20:00+02:00", "2026-08-15T10:20:00.123456789Z"]) {
+  await verifyHmac(vector.secret, await signedFor(timestamp), timestamp, vector.idempotency_key, body, 300, verifyNow);
+}
+await verifyHmac(vector.secret, signature.toUpperCase(), vector.timestamp, vector.idempotency_key, body, 300, verifyNow);
+for (const timestamp of ["2026-08-15T10:20:00", "Sat, 15 Aug 2026 10:20:00 GMT", "2026-08-15", "2026-02-30T10:20:00Z", "2026-08-15T10:20:00+24:00"]) {
+  await assert.rejects(
+    async () => verifyHmac(vector.secret, await signedFor(timestamp), timestamp, vector.idempotency_key, body, 86_400 * 400, verifyNow),
+    /X-LCP-Timestamp/,
+    `${timestamp} must be refused`,
+  );
+}
+// "0a" -> "az" used to parse back to 0x0a; any non-hex byte used to become 0x00.
+const zeroByte = signature.match(/../g).findIndex((pair) => pair.startsWith("0"));
+assert.ok(zeroByte >= 0, "the shared vector has a byte below 0x10");
+const smuggled = signature.slice(0, zeroByte * 2) + signature[zeroByte * 2 + 1] + "z" + signature.slice(zeroByte * 2 + 2);
+for (const bad of [smuggled, `${signature.slice(0, -2)}zz`, signature.slice(0, -1), `${signature}00`, ""]) {
+  await assert.rejects(() => verifyHmac(vector.secret, bad, vector.timestamp, vector.idempotency_key, body, 300, verifyNow), /Invalid X-LCP-Signature/);
+}
+console.log("TypeScript SDK verify parity passed");
+
+// Retry parity with the Python SDK: 429/5xx retry up to maxRetries, a
+// delta-seconds Retry-After sets the wait, and a batch is never retried.
+let retryStatuses = [];
+let retryHits = 0;
+const retryServer = createServer((request, response) => {
+  request.resume();
+  request.on("end", () => {
+    const status = retryStatuses[Math.min(retryHits, retryStatuses.length - 1)];
+    retryHits += 1;
+    response.writeHead(status, { "Content-Type": "application/json", "Retry-After": "0" });
+    response.end(JSON.stringify(status === 200 ? { results: [], ok: true } : { errors: [{ code: "LCP-011" }] }));
+  });
+});
+await new Promise((resolve) => retryServer.listen(0, "127.0.0.1", resolve));
+try {
+  const retryUrl = `http://127.0.0.1:${retryServer.address().port}`;
+  retryStatuses = [429, 503, 200]; retryHits = 0;
+  const started = Date.now();
+  assert.deepEqual(await new LcpClient(retryUrl).getCapabilities(), { results: [], ok: true });
+  assert.equal(retryHits, 3);
+  assert.ok(Date.now() - started < 900, "Retry-After: 0 must replace the 1 s / 2 s backoff");
+
+  retryStatuses = [503]; retryHits = 0;
+  await assert.rejects(() => new LcpClient(retryUrl, { maxRetries: 1 }).getCapabilities(), (error) => error instanceof LcpHttpError && error.status === 503);
+  assert.equal(retryHits, 2);
+
+  retryStatuses = [400]; retryHits = 0;
+  await assert.rejects(() => new LcpClient(retryUrl).getCapabilities(), (error) => error instanceof LcpHttpError && error.status === 400);
+  assert.equal(retryHits, 1);
+
+  retryStatuses = [503]; retryHits = 0;
+  await assert.rejects(() => new LcpClient(retryUrl).submitLeadsBatch([{ item_id: "a", idempotency_key: "k", payload: {} }]));
+  assert.equal(retryHits, 1, "a batch is never retried as a whole");
+} finally {
+  await new Promise((resolve) => retryServer.close(resolve));
+}
+console.log("TypeScript SDK retry parity passed");

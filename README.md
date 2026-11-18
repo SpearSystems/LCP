@@ -77,7 +77,8 @@ Kyverno's public test-image registry. Use the badges above for the current
 
 | Area | Workflow | What it proves |
 |---|---|---|
-| Conformance and platform | [Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) | Schemas, SDKs, reference platform, Postgres, and live Kyverno admission |
+| Conformance | [Negative vectors](https://github.com/SpearSystems/LCP/actions/workflows/negative-vectors.yml) | Schema and conformance vectors (L1/L2/L3/NEG) |
+| Platform | [Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) | Reference platform, Postgres, supply-chain tooling, and live Kyverno admission |
 | Performance | [Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) | Indexed-offer reduction and synthetic PostgreSQL 18.4 intake/delivery thresholds; never publishes artifacts |
 | Security and supply chain | [Security](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) | Dependency audit, CodeQL, SBOM, Trivy, and hardened image runtime |
 | SDK compatibility | [SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) | Cross-language generated-model and runtime compatibility |

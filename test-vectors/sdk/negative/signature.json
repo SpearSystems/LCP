@@ -81,6 +81,25 @@
       },
       "expect": { "outcome": "accept", "error_code": null, "error_name": null },
       "sdk_exercisable": true
+    },
+    {
+      "id": "lcp-neg-sig-005",
+      "invariant": 1,
+      "spec_ref": "SPEC.md §9 Authentication (lowercase hexadecimal HMAC-SHA256 digest); SPEC.md §5 LCP-012",
+      "description": "Non-hex signature: the lcp-neg-sig-002 signature with byte 11 ('09') rewritten as '9z'. A decoder that parses each pair leniently (parseInt('9z', 16) is 0x09) or maps a non-hex pair to zero rebuilds the real MAC and accepts a value that is not the hex digest. Verifiers must reject any non-hex signature.",
+      "applies_to": ["*"],
+      "check": "verify_hmac",
+      "inputs": {
+        "secret": "neg-vector-secret",
+        "signature": "4cc333974ad77b9edab4e79zef733023d2bef20a12b50db29dd1f08771a6c468",
+        "timestamp": "2026-08-15T10:20:00Z",
+        "idempotency_key": "neg-key-001",
+        "body": "{\"lead_id\":\"ld-9f2c7\",\"note\":\"exact bytes\"}",
+        "now": "2026-08-15T10:20:01Z",
+        "replay_window_seconds": 300
+      },
+      "expect": { "outcome": "reject", "error_code": "LCP-012", "error_name": "SIGNATURE_INVALID" },
+      "sdk_exercisable": true
     }
   ]
 }

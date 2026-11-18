@@ -14,6 +14,7 @@ jobs:
   attribution:
     name: Attribution policy
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # pull_request_target executes this workflow from the base branch. Do not
       # check out or execute pull-request code in this workflow.

@@ -166,6 +166,7 @@ class SurfaceCheckTests(unittest.TestCase):
         self.assertEqual(code, 0, output)
         data = json.loads(output)
         self.assertEqual(data["operations"], ["submit_lead"])
+        self.assertEqual(data["behaviours"], [])
         self.assertEqual(data["sdks"], ["python", "typescript"])
         self.assertEqual(
             data["counts"], {"present": 1, "gap": 1, "missing": 0, "total": 2}
@@ -182,6 +183,83 @@ class SurfaceCheckTests(unittest.TestCase):
         code, output = built.run("--json")
         self.assertEqual(code, 2)
         self.assertIn("error", json.loads(output))
+
+
+class BehaviourCheckTests(unittest.TestCase):
+    """Behaviour rows: every evidence substring must be present in its file."""
+
+    def fixture(self, typescript: dict[str, Any] | None = None) -> Fixture:
+        built = Fixture()
+        self.addCleanup(built.cleanup)
+        built.write("python", "lcp/client.py", PY_SOURCE + "RETRY = 'Retry-After'\n")
+        built.write("python", "tests/test_client.py", "def test_retry_after(): ...\n")
+        built.write("typescript", TS_FILE, TS_SOURCE + "headers.get('Retry-After');\n")
+        built.manifest["behaviours"] = [
+            {
+                "id": "retry",
+                "members": {
+                    "python": {
+                        "evidence": [
+                            {"file": "lcp/client.py", "contains": ["Retry-After"]},
+                            {"file": "tests/test_client.py", "contains": ["test_retry_after"]},
+                        ]
+                    },
+                    "typescript": typescript
+                    or {"evidence": [{"file": TS_FILE, "contains": ["Retry-After"]}]},
+                },
+            }
+        ]
+        built.write_manifest()
+        return built
+
+    def test_present_evidence_passes(self):
+        code, output = self.fixture().run("--fail-on-gap")
+        self.assertEqual(code, 0, output)
+        self.assertIn("retry", output)
+        self.assertIn("1 behaviours", output)
+
+    def test_missing_substring_fails_and_names_it(self):
+        built = self.fixture()
+        built.write("python", "tests/test_client.py", "def test_other(): ...\n")
+        code, output = built.run()
+        self.assertEqual(code, 1, output)
+        self.assertIn("python retry: 'test_retry_after' not found in tests/test_client.py", output)
+
+    def test_missing_evidence_file_fails(self):
+        built = self.fixture()
+        built.path("python", "tests/test_client.py").unlink()
+        code, output = built.run()
+        self.assertEqual(code, 1, output)
+        self.assertIn("tests/test_client.py", output)
+
+    def test_null_evidence_is_a_gap(self):
+        built = self.fixture({"evidence": None, "note": "no retries yet"})
+        code, output = built.run()
+        self.assertEqual(code, 0, output)
+        self.assertIn("no retries yet", output)
+        code, _ = built.run("--fail-on-gap")
+        self.assertEqual(code, 1)
+
+    def test_behaviour_must_cover_every_sdk(self):
+        built = self.fixture()
+        del built.manifest["behaviours"][0]["members"]["typescript"]
+        built.write_manifest()
+        code, output = built.run()
+        self.assertEqual(code, 2, output)
+        self.assertIn("behaviour 'retry'", output)
+
+    def test_malformed_evidence_is_a_manifest_error(self):
+        built = self.fixture({"evidence": [{"file": TS_FILE, "contains": []}]})
+        code, output = built.run()
+        self.assertEqual(code, 2, output)
+
+    def test_behaviour_id_must_not_repeat_an_operation(self):
+        built = self.fixture()
+        built.manifest["behaviours"][0]["id"] = "submit_lead"
+        built.write_manifest()
+        code, output = built.run()
+        self.assertEqual(code, 2, output)
+        self.assertIn("duplicate", output)
 
 
 class RepositoryManifestTests(unittest.TestCase):
@@ -204,12 +282,18 @@ class RepositoryManifestTests(unittest.TestCase):
 
     def test_repository_matrix_is_complete(self):
         _code, data = self._repository_report()
+        rows = data["operations"] + data["behaviours"]
+        self.assertEqual(data["counts"]["total"], len(data["sdks"]) * len(rows))
+        for row in rows:
+            self.assertEqual(sorted(data["cells"][row]), sorted(data["sdks"]))
+
+    def test_repository_declares_the_parity_behaviours(self):
+        _code, data = self._repository_report()
         self.assertEqual(
-            data["counts"]["total"],
-            len(data["sdks"]) * len(data["operations"]),
+            data["behaviours"],
+            ["retry", "timeout", "constant_time_verify", "contact_hash"],
         )
-        for operation in data["operations"]:
-            self.assertEqual(sorted(data["cells"][operation]), sorted(data["sdks"]))
+        self.assertEqual(data["gaps"], [])
 
 
 if __name__ == "__main__":

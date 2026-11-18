@@ -11,11 +11,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -26,6 +31,7 @@ jobs:
   committed-secrets:
     name: Committed secrets scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -64,15 +70,24 @@ jobs:
   pip-audit:
     name: Python dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-ci.txt
+            implementations/sdk/python/pyproject.toml
+            implementations/mcp-server/pyproject.toml
+            implementations/reference-platform/pyproject.toml
       - name: Install published package dependencies
+        # The generated SDK models are committed and checked in sdk.yml, so the
+        # audit installs the tree as committed. pip-audit itself is pinned by
+        # requirements-ci.txt; the audited packages resolve as users get them.
         run: |
-          python tools/generate_sdk_models.py --write
-          python -m pip install --upgrade pip pip-audit
+          python -m pip install --upgrade --constraint requirements-ci.txt pip pip-audit
           python -m pip install \
             -e implementations/sdk/python \
             -e implementations/mcp-server \
@@ -87,6 +102,7 @@ jobs:
   osv-scan:
     name: SDK dependency vulnerability scan (OSV)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
@@ -157,13 +173,14 @@ jobs:
           PY
       - name: Upload OSV SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: osv-results.sarif
 
   source-sbom:
     name: Generate source SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Generate CycloneDX SBOM
@@ -177,6 +194,7 @@ jobs:
   container-scan:
     name: Build and scan reference image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -249,13 +267,14 @@ jobs:
           retention-days: 90
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-results.sarif
 
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -263,8 +282,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: python
       - name: Analyze with CodeQL
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4

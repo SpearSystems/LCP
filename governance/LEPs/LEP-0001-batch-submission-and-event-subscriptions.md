@@ -3,7 +3,7 @@
 - **Title:** Bounded batch submission and event subscriptions
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-08-18
-- **Status:** **Accepted** — accepted 2026-11-04 (maintainer, `docs/DECISIONS-v1.2.md` D1); both tracks
+- **Status:** **Implemented** — shipped in v1.2.0 (PR #232, released 2026-11-04); accepted 2026-11-04 (maintainer, `docs/DECISIONS-v1.2.md` D1); both tracks
 - **Target version:** v1.2.0 (MINOR; see Compatibility and versioning)
 - **Last revised:** 2026-11-04 (2026-11-03 Deferral superseded by maintainer
   waiver D1 — accepted, not re-evidenced; F1–F5 dispositioned and
@@ -12,6 +12,8 @@
   (`[LEP] Bounded batch submission and event subscriptions`)
 
 ## Decision (maintainer, 2026-11-04)
+
+Implementation: PR #232 (release v1.2.0): `POST /v1/lcp/leads/batch` (W2) and event subscriptions (W3), capability-gated and off by default.
 
 **Accepted — both tracks.** Recorded by the maintainer (randybeno) under the
 per-decision sign-off model. Basis: `docs/DECISIONS-v1.2.md` **D1** (trigger
