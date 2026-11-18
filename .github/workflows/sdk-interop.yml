@@ -136,7 +136,7 @@ jobs:
             implementations/sdk/python/pyproject.toml
       - name: Set up .NET
         if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'csharp' }}
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "8.x"
       - name: Cache NuGet packages
@@ -147,7 +147,7 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('implementations/sdk/csharp/**/*.csproj') }}
       - name: Set up Java
         if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'java' }}
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
@@ -205,7 +205,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: probe-*
           path: probes
