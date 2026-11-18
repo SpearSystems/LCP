@@ -3,9 +3,11 @@
 - **Title:** `personal_loans` vertical 2.0.0: an interoperable personal-loan vertical with whole-unit applicant amounts and an LEP-0013 identity container
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Review** — public review open until 2026-12-03. Not accepted. A candidate implementation is on
-  branch `lep/0012-0013-sale-lifecycle`; it does not merge until this
-  record is Accepted (LEP.md stage 5).
+- **Status:** **Accepted** — 2026-11-19 (maintainer;
+  [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
+  window and independent review waived, maintainer security/privacy
+  sign-off under D3). Implementation: PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
 - **Target version:** v1.3.0 (a new vertical file is additive. The file's
   own `schema_version` is `2.0.0`, so it can never be confused with the
   adopter's unpublished 1.0.0.)
@@ -14,6 +16,17 @@
 - **Depends on:** [LEP-0013](LEP-0013-regulated-identifiers.md) for the
   `us_details` container. If LEP-0013 is rejected, this vertical ships
   without `us_details`. Every other field stands alone.
+
+## Decision (maintainer, 2026-11-19)
+
+**Accepted** under [D1–D4](../../docs/DECISIONS-v1.3.md) of the v1.3 decision
+record. The review window closed early with no comments, and no reviewer
+independent of the author took part (D1, D2). LEP-0013 is accepted in the
+same record, so `us_details` ships with the vertical.
+
+Any comment with new evidence on
+[#256](https://github.com/SpearSystems/LCP/issues/256) reopens this record.
+Re-evaluation: 2027-05-19.
 
 ## Problem statement and evidence
 

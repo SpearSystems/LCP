@@ -21,7 +21,7 @@ module LcpSdk
       gaps = []
       ran = 0
       files.each do |file|
-        suite = JSON.parse(File.read(file))
+        suite = JSON.parse(File.read(file, encoding: "UTF-8"))
         suite.fetch("vectors", []).each do |vector|
           if vector["sdk_exercisable"] == false
             gaps << "#{vector.fetch("id")}: #{vector["gap_note"]}"

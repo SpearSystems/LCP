@@ -105,6 +105,26 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
+## v1.3.0 release block
+
+**State: prepared 2026-11-19.** The version files carry `1.3.0`. The record
+is [RELEASE-TICKET-1.3.0.md](RELEASE-TICKET-1.3.0.md) and the decisions are
+in [DECISIONS-v1.3.md](DECISIONS-v1.3.md).
+
+`v1.3.0` is an additive MINOR over `v1.2.0`: LEP-0012 (sale lifecycle),
+LEP-0013 (regulated identifiers) and LEP-0014 (`personal_loans` 2.0.0). The
+reference container ships the sale-lifecycle surfaces **off**
+(`LCP_FEATURE_SALE_DISPOSITION`, `LCP_FEATURE_URL_POSTBACKS`,
+`LCP_FEATURE_TEST_OUTCOMES`) and never advertises
+`features.regulated_identifiers`.
+
+The steps are those of the v1.2.0 checklist below, with `1.3.0` in place of
+`1.2.0`: gates from the merge commit, both tags (Go module tag first), the
+container public-pull pre-flight, the Packagist mirror, approval of the
+protected jobs, and registry read-back into the release record. The host
+used on 2026-11-19 has no .NET SDK, no JDK 17 toolchain for Gradle, and no
+XCTest, so C#, Kotlin and Swift are covered by CI only.
+
 ## v1.2.0 release block (published 2026-11-05)
 
 **State: released 2026-11-05.** The version files carry `1.2.0`; the tag,

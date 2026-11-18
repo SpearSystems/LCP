@@ -11,7 +11,7 @@ module LcpSdk
     ROOT = File.expand_path("../../../..", __dir__)
 
     def self.run!
-      vectors = JSON.parse(File.read(File.join(ROOT, "test-vectors", "sdk", "contact-hash.json")))["vectors"]
+      vectors = JSON.parse(File.read(File.join(ROOT, "test-vectors", "sdk", "contact-hash.json"), encoding: "UTF-8"))["vectors"]
       raise "contact-hash.json exposed no vectors" if vectors.empty?
 
       failures = vectors.map do |vector|
@@ -41,7 +41,7 @@ module LcpSdk
 
       validator = LcpSdk::SchemaValidator.from_directory(File.join(ROOT, "schemas"))
       envelopes = %w[ping-slots bid-slots post-contacted event-contacted].to_h do |name|
-        [name, JSON.parse(File.read(File.join(ROOT, "examples", "#{name}.json")))]
+        [name, JSON.parse(File.read(File.join(ROOT, "examples", "#{name}.json"), encoding: "UTF-8"))]
       end
 
       # Slot-bearing ping/bid/post/event validate through the SDK schema path.

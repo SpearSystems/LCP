@@ -10,8 +10,8 @@
 - **Discussion:** [#257](https://github.com/SpearSystems/LCP/issues/257)
 - **Depends on:** [LEP-0012](LEP-0012-sale-lifecycle.md) for the
   disposition vocabulary and [LEP-0013](LEP-0013-regulated-identifiers.md)
-  for regulated-field forwarding. Neither has been Accepted. If LEP-0012 is
-  rejected, this record is withdrawn with it.
+  for regulated-field forwarding. Both were Accepted on 2026-11-19 and
+  ship in v1.3.0.
 
 ## Problem statement and evidence
 

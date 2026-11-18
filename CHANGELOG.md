@@ -6,9 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Candidate v1.3.0 (additive MINOR) on branch `lep/0012-0013-sale-lifecycle`.
-It merges only after LEP-0012, LEP-0013, and LEP-0014 are Accepted. Every
-behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
+## [1.3.0] — 2026-11-19
+
+Additive MINOR. A sender can learn at post time whether a lead sold, for how
+much, and where to send the consumer. Postbacks can be plain URL templates,
+test leads can force an outcome, lending verticals get a gated lane for
+regulated identifiers, and `personal_loans` ships at 2.0.0. Every new
+surface is advertised through `capabilities()` and ships off in the
+reference platform, so a 1.0–1.2 peer sees no changed byte. LEP-0012,
+LEP-0013 and LEP-0014 were accepted on 2026-11-19 under the
+[v1.3 decision record](docs/DECISIONS-v1.3.md).
 
 ### Added
 
@@ -76,6 +83,26 @@ behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
   envelope, so a 1.2 buyer never receives a newer version.
 - `rejection_reason` covers leads that were not bought, and gains the known
   value `no_buyer`.
+
+### Fixed
+
+- **SDK verify and retry parity.** One verification rule and one retry
+  policy across all ten SDKs: constant-time comparison in Swift, strict
+  RFC 3339 timestamps and 64-hex signatures everywhere, retry with backoff
+  in Java, Kotlin and Swift, and a delta-seconds `Retry-After` honoured by
+  every SDK. A batch is never retried.
+- **Ruby SDK without a UTF-8 locale.** Schemas and vectors are read as
+  UTF-8, so `SchemaValidator.from_directory` no longer raises
+  `Encoding::InvalidByteSequenceError` when `LANG` is unset.
+- `__version__` in `lcp_sdk` and `lcp_platform` reported `1.0.2`; it now
+  matches the release.
+
+### Security
+
+- The reference image runs `apk upgrade` before install, picking up the
+  Alpine `krb5-libs` 1.22.3 fixes for 16 HIGH CVEs. The Rust lockfile bumps
+  `quinn`.
+- Dependency and pinned-action updates across the SDKs and CI.
 
 ## [1.2.0] — 2026-11-04
 

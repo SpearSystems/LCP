@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="governance/LEPs/LEP-0014-personal-loans-vertical.md">
-<meta name="lcp-build" content="18dd43e71506">
+<meta name="lcp-build" content="ca343d9323b2">
 <title>LEP-0014 — personal_loans vertical 2.0.0: whole-unit applicant amounts and a regulated identity container — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -21,12 +21,15 @@
 <li><strong>Title:</strong> <code>personal_loans</code> vertical 2.0.0: an interoperable personal-loan vertical with whole-unit applicant amounts and an LEP-0013 identity container</li>
 <li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
 <li><strong>Date:</strong> 2026-11-19</li>
-<li><strong>Status:</strong> <strong>Review</strong> — public review open until 2026-12-03. Not accepted. A candidate implementation is on branch <code>lep/0012-0013-sale-lifecycle</code>; it does not merge until this record is Accepted (LEP.md stage 5).</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — 2026-11-19 (maintainer; <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.3.md">v1.3 decision record (<code>docs/DECISIONS-v1.3.md</code>)</span> D1–D4: review window and independent review waived, maintainer security/privacy sign-off under D3). Implementation: PR <a href="https://github.com/SpearSystems/LCP/pull/249" rel="noopener">#249</a>, for v1.3.0.</li>
 <li><strong>Target version:</strong> v1.3.0 (a new vertical file is additive. The file's own <code>schema_version</code> is <code>2.0.0</code>, so it can never be confused with the adopter's unpublished 1.0.0.)</li>
 <li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/256" rel="noopener">#256</a></li>
 <li><strong>Schema:</strong> <a href="../verticals/personal_loans.html"><code>verticals/personal_loans.json</code></a>.</li>
 <li><strong>Depends on:</strong> <a href="LEP-0013-regulated-identifiers.html">LEP-0013</a> for the <code>us_details</code> container. If LEP-0013 is rejected, this vertical ships without <code>us_details</code>. Every other field stands alone.</li>
 </ul>
+<h2 id="decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</h2>
+<p><strong>Accepted</strong> under <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.3.md">D1–D4 (<code>docs/DECISIONS-v1.3.md</code>)</span> of the v1.3 decision record. The review window closed early with no comments, and no reviewer independent of the author took part (D1, D2). LEP-0013 is accepted in the same record, so <code>us_details</code> ships with the vertical.</p>
+<p>Any comment with new evidence on <a href="https://github.com/SpearSystems/LCP/issues/256" rel="noopener">#256</a> reopens this record. Re-evaluation: 2027-05-19.</p>
 <h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
 <p><strong>No personal-loans vertical exists in LCP.</strong> The shipped verticals are <code>home_services</code>, <code>insurance</code>, <code>legal</code>, <code>mortgage</code>, <code>mva</code> and <code>solar</code>. SpearPointX registered its own <code>personal_loans</code> 1.0.0 to onboard a publisher, and published a schema URL under <code>lcp.dev</code> that LCP does not serve.</p>
 <p><strong>Unit conversion caused a real defect.</strong> Version 1.0.0 carries applicant-declared amounts as cents (<code>loan_amount_cents</code>, <code>monthly_income_cents</code>). Applicants type whole dollars, so every integration has to multiply by 100. In practice that failed in three ways:</p>
@@ -167,12 +170,12 @@
 <aside class="toc" aria-label="On this page">
 <h2>On this page</h2>
 <ul>
-<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--full-lead-with-regulated-identifiers">Valid 2 — full lead with regulated identifiers</a></li><li class="depth-4"><a href="#invalid-a--cents-sent-by-mistake">Invalid A — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-b--float-amount">Invalid B — float amount</a></li><li class="depth-4"><a href="#invalid-c--100-field-name-on-200">Invalid C — 1.0.0 field name on 2.0.0</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--full-lead-with-regulated-identifiers">Valid 2 — full lead with regulated identifiers</a></li><li class="depth-4"><a href="#invalid-a--cents-sent-by-mistake">Invalid A — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-b--float-amount">Invalid B — float amount</a></li><li class="depth-4"><a href="#invalid-c--100-field-name-on-200">Invalid C — 1.0.0 field name on 2.0.0</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
 </ul>
 </aside>
 </div>
 <footer class="page">
-Source: <code>governance/LEPs/LEP-0014-personal-loans-vertical.md</code> · build <code>18dd43e71506</code> ·
+Source: <code>governance/LEPs/LEP-0014-personal-loans-vertical.md</code> · build <code>ca343d9323b2</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

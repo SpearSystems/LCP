@@ -3,9 +3,11 @@
 - **Title:** Regulated identifiers: a capability-gated, never-persisted lane for government ID and bank account fields in allowlisted lending verticals
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Review** — public review open until 2026-12-03. Not accepted. A candidate implementation is on
-  branch `lep/0012-0013-sale-lifecycle`; it does not merge until this
-  record is Accepted (LEP.md stage 5).
+- **Status:** **Accepted** — 2026-11-19 (maintainer;
+  [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
+  window and independent review waived, maintainer security/privacy
+  sign-off under D3). Implementation: PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
 - **Target version:** v1.3.0 (additive MINOR: one schema annotation
   keyword, one capability feature, and a bounded exception to the
   `prohibited` list. No class is added, so the change is not MAJOR under
@@ -20,6 +22,26 @@
 - **Companion records:** [LEP-0012](LEP-0012-sale-lifecycle.md) and
   [LEP-0014](LEP-0014-personal-loans-vertical.md). LEP-0014 is the first
   and only vertical this record admits.
+
+## Decision (maintainer, 2026-11-19)
+
+**Accepted** under [D1–D4](../../docs/DECISIONS-v1.3.md) of the v1.3 decision
+record. The review window closed early with no comments, and no reviewer
+independent of the author took part (D1, D2).
+
+Conditions (D3):
+
+- The reference platform implements only the fail-closed side. It refuses
+  every regulated value with `LCP-100` and never advertises
+  `features.regulated_identifiers`.
+- A deployment that enables the lane MUST first record a sign-off from a
+  **named human** security/privacy reviewer for that deployment
+  ([Rollout](#rollout-migration-observability-and-rollback) step 2). This
+  record certifies consistency with the specification, not legality or
+  privacy fitness.
+- Any comment with new evidence on
+  [#255](https://github.com/SpearSystems/LCP/issues/255) reopens this record.
+  Re-evaluation: 2027-05-19.
 
 ## Problem statement and evidence
 
