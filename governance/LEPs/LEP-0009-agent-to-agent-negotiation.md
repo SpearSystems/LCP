@@ -4,7 +4,7 @@
   as core message types
 - **Author(s):** LCP maintainers
 - **Date:** 2026-11-04
-- **Status:** **Accepted** — accepted 2026-11-04 by the maintainer (D8 of
+- **Status:** **Implemented** — shipped in v1.2.0 (PR #232, released 2026-11-04); accepted 2026-11-04 by the maintainer (D8 of
   [`docs/DECISIONS-v1.2.md`](../../docs/DECISIONS-v1.2.md)); built under the D1
   trigger waiver, so **no adopter evidence is claimed** (see "Problem statement
   and evidence")
@@ -22,6 +22,8 @@
   tool, or vector exists for this surface as of this record.
 
 ## Decision (maintainer, 2026-11-04)
+
+Implementation: PR #232 (release v1.2.0): `quote` and `counter` message types behind `LCP_FEATURE_NEGOTIATION`, off by default (W5).
 
 **Accepted** as a MINOR, additive, capability-gated surface, on the terms of
 D8:

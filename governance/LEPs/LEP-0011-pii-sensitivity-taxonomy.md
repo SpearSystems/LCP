@@ -3,12 +3,14 @@
 - **Title:** PII sensitivity taxonomy and schema-level classification (`x-lcp-pii`)
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-04
-- **Status:** **Accepted** — Accepted 2026-11-04 (maintainer; [D9](../../docs/DECISIONS-v1.2.md#d9--pii-sensitivity-taxonomy) of the signed v1.2 decision record, under the [D1](../../docs/DECISIONS-v1.2.md#d1--trigger-waiver-batch-of-2026-11-04) trigger waiver)
+- **Status:** **Implemented** — shipped in v1.2.0 (PR #232, released 2026-11-04); Accepted 2026-11-04 (maintainer; [D9](../../docs/DECISIONS-v1.2.md#d9--pii-sensitivity-taxonomy) of the signed v1.2 decision record, under the [D1](../../docs/DECISIONS-v1.2.md#d1--trigger-waiver-batch-of-2026-11-04) trigger waiver)
 - **Target version:** v1.2.0 (additive MINOR; **zero wire change** — schema annotations, a load-time validator, and one normative document)
 - **Discussion:** maintained in [DECISIONS-v1.2.md](../../docs/DECISIONS-v1.2.md) D9 (the maintainer signed the decision at the M0 pass; no separate `[LEP]` discussion issue was opened)
 - **Roadmap / work items:** [`docs/V1.2-EXECUTION-PLAN.md`](../../docs/V1.2-EXECUTION-PLAN.md) W0-02 (this record) and W6-04 (taxonomy, annotations, validator, per-class vectors)
 
 ## Decision (maintainer, 2026-11-04)
+
+Implementation: PR #232 (release v1.2.0): `x-lcp-pii` on every schema property, the load-time class validator and `docs/PII-CLASSES.md` (W6-04).
 
 **Accepted.** [`docs/PII-CLASSES.md`](../../docs/PII-CLASSES.md) is adopted as
 the normative taxonomy, and every schema property is annotated with

@@ -3,7 +3,7 @@
 - **Title:** Outbound call-center outreach: registered `{org}.outbound.call_request` event-value extension
 - **Author(s):** LCP maintainers (draft for adopter review)
 - **Date:** 2026-11-03
-- **Status:** **Accepted** (maintainer, 2026-11-04) — accepted under waiver D1 after the 2026-11-03 deferral; number and record permanent
+- **Status:** **Implemented** — shipped in v1.2.0 (PR #232, released 2026-11-04); accepted under waiver D1 after the 2026-11-03 deferral; number and record permanent
 - **Target version:** v1.2.0 (additive MINOR; **zero schema change** — the entire surface rides open enumerations and open objects already governed by SPEC.md §6)
 - **Discussion:** [#186](https://github.com/SpearSystems/LCP/issues/186)
   (`[LEP] Outbound call-center outreach: registered {org}.outbound.call_request extension`)
@@ -12,6 +12,8 @@
   including its reference pattern, design constraints, and the
   "distinct declined/ignored outcome" clause)
 ## Decision (maintainer, 2026-11-04)
+
+Implementation: PR #232 (release v1.2.0): registered `{org}.outbound.call_request` extension and `rejection_reason: "ignored"` (W1-08).
 
 **Accepted.** Recorded by the maintainer (randybeno) under waiver **D1** in
 [`docs/DECISIONS-v1.2.md`](../../docs/DECISIONS-v1.2.md), signed
