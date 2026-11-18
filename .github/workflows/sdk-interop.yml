@@ -17,10 +17,57 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Same classifier as sdk.yml's `changes` job; keep the two in step.
+  changes:
+    name: Detect SDK-relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sdk: ${{ steps.filter.outputs.sdk }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          sdk=true
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            # The pull_request checkout is the merge commit; parent 1 is the base.
+            changed="$(git diff --name-only HEAD^1 HEAD)"
+            sdk=false
+            while IFS= read -r path; do
+              case "${path}" in
+                docs/*|site/*) ;;
+                implementations/*|test-vectors/*) sdk=true ;;
+                *.md) ;;
+                *) sdk=true ;;
+              esac
+            done <<< "${changed}"
+          fi
+          echo "sdk=${sdk}" | tee -a "${GITHUB_OUTPUT}"
+
   probe:
     name: Interop probe (${{ matrix.sdk }})
+    needs: changes
+    # The probes are required checks. A job-level `if:` is evaluated before the
+    # matrix expands, so a skipped matrix never reports the per-SDK names; the
+    # docs-only skip is therefore per step, and the job always runs.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      RUN_PROBE: ${{ needs.changes.outputs.sdk != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -72,19 +119,62 @@ jobs:
             setup: ""
             probe: dotnet run --project implementations/sdk/csharp/examples-internal/InteropProbe -- --vector test-vectors/sdk/hmac.json
     steps:
+      - name: Report docs-only skip
+        if: ${{ env.RUN_PROBE != 'true' }}
+        run: echo "Docs-only pull request; the ${{ matrix.sdk }} probe is skipped."
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ env.RUN_PROBE == 'true' }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: ${{ env.RUN_PROBE == 'true' }}
         with:
           python-version: "3.12"
+          # setup-python fails its post step when the pip cache directory was
+          # never created, so only the probe that installs packages caches.
+          cache: ${{ matrix.sdk == 'python' && 'pip' || '' }}
+          cache-dependency-path: |
+            requirements-ci.txt
+            implementations/sdk/python/pyproject.toml
       - name: Set up .NET
-        if: ${{ matrix.sdk == 'csharp' }}
+        if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'csharp' }}
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "8.x"
+      - name: Cache NuGet packages
+        if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'csharp' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('implementations/sdk/csharp/**/*.csproj') }}
+      - name: Set up Java
+        if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'java' }}
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: implementations/sdk/java/pom.xml
+      - name: Set up Gradle
+        if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'kotlin' }}
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: "9.9.1"
+          cache-provider: basic
+      - name: Cache Cargo
+        if: ${{ env.RUN_PROBE == 'true' && matrix.sdk == 'rust' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            implementations/sdk/rust/target/
+          key: cargo-interop-${{ runner.os }}-${{ hashFiles('implementations/sdk/rust/Cargo.lock') }}
+          restore-keys: cargo-interop-${{ runner.os }}-
       - name: Set up toolchain
-        if: ${{ matrix.setup != '' }}
+        if: ${{ env.RUN_PROBE == 'true' && matrix.setup != '' }}
         run: ${{ matrix.setup }}
       - name: Run probe
+        if: ${{ env.RUN_PROBE == 'true' }}
         # LCP_INTEROP_OUT is the machine-readable channel every probe supports;
         # the stdout line is the same payload for human log readers.
         env:
@@ -92,11 +182,13 @@ jobs:
           LCP_REPO_ROOT: ${{ github.workspace }}
         run: ${{ matrix.probe }}
       - name: Validate and normalize probe output
+        if: ${{ env.RUN_PROBE == 'true' }}
         shell: bash
         run: |
           cat "$RUNNER_TEMP/raw.json" | python tools/sdk_interop_matrix.py extract \
             --sdk "${{ matrix.sdk }}" --out "probe-${{ matrix.sdk }}.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ env.RUN_PROBE == 'true' }}
         with:
           name: probe-${{ matrix.sdk }}
           path: probe-${{ matrix.sdk }}.json
@@ -104,11 +196,13 @@ jobs:
 
   matrix:
     name: Signature identity + generation-shape matrix
-    needs: probe
+    needs: [changes, probe]
+    if: ${{ needs.changes.outputs.sdk != 'false' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

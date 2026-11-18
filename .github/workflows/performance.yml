@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   postgres-scale:
     name: PostgreSQL 18.4 scale and candidate-index regression
@@ -25,6 +29,7 @@ jobs:
     # >4x headroom under the slower shared CI runner, so they are unchanged by
     # that measurement; see docs/OPERATIONS.md § "CI capacity thresholds".
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
@@ -44,6 +49,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
       - name: Install benchmark dependencies
         run: python -m pip install --constraint requirements-ci.txt jsonschema referencing httpx cryptography 'psycopg[binary]'
       - name: Verify indexed candidate reduction

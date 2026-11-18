@@ -12,7 +12,8 @@ always rejects cannot pass).
 
 Every SDK lane implements a runner over these same files (Python reference:
 [`implementations/sdk/python/tests/test_negative_vectors.py`](../../../implementations/sdk/python/tests/test_negative_vectors.py)).
-CI job: [`.github/workflows/negative-vectors.yml`](../../../.github/workflows/negative-vectors.yml).
+CI: each SDK's job in [`.github/workflows/sdk.yml`](../../../.github/workflows/sdk.yml)
+(Python: the `Python SDK` job).
 
 ## Layout
 
