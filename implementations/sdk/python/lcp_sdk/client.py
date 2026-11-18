@@ -20,6 +20,22 @@ _TRUNCATION_SUFFIX = "…[truncated]"
 _REQUEST_ID_MAX_CHARS = 64  # request ids are server-supplied; bound the echo
 
 
+RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+
+def retry_delay(retry_after: str | None, attempt: int) -> float:
+    """Seconds to wait before retry ``attempt`` (0-based).
+
+    The cross-SDK client policy: a delta-seconds ``Retry-After`` wins; an
+    absent, HTTP-date or malformed value falls back to 1 s, 2 s, 4 s, ...
+    backoff. Only ASCII digits count, so a header such as ``"²"`` (which
+    ``str.isdigit`` accepts but ``float`` rejects) cannot raise.
+    """
+    if retry_after and retry_after.isascii() and retry_after.isdigit():
+        return float(retry_after)
+    return float(2**attempt)
+
+
 def _bounded_body(body: Any) -> Any:
     """Cap the error body retained on the exception (see LCPHTTPError)."""
     if isinstance(body, str):
@@ -201,7 +217,7 @@ class LCPClient:
                 last_error = exc
                 if not retryable or attempt >= retries:
                     raise
-                time.sleep(2**attempt)
+                time.sleep(retry_delay(None, attempt))
                 continue
 
             try:
@@ -210,14 +226,8 @@ class LCPClient:
                 data = {"raw": response.text}
             if response.is_success:
                 return data, response.headers
-            if response.status_code in {429, 500, 502, 503, 504} and attempt < retries:
-                retry_after = response.headers.get("Retry-After")
-                delay = (
-                    float(retry_after)
-                    if retry_after and retry_after.isdigit()
-                    else 2**attempt
-                )
-                time.sleep(delay)
+            if response.status_code in RETRYABLE_STATUSES and attempt < retries:
+                time.sleep(retry_delay(response.headers.get("Retry-After"), attempt))
                 continue
             raise LCPHTTPError(
                 response.status_code,

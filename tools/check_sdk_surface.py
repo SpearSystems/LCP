@@ -9,6 +9,13 @@ public member name and the file that must define it.
 For every declared member this gate asserts the name occurs in the declared
 file, case-sensitively, and prints a per-operation x per-SDK matrix.
 
+Method names alone cannot show that an SDK retries, bounds its requests, or
+verifies in constant time, so the optional ``behaviours`` section adds one row
+per cross-SDK behaviour. Each SDK lists ``evidence``: files and the exact
+substrings each must contain (the primitive in the source and the test that
+exercises it). Every substring must be present; a missing one fails the run
+just like a missing operation member.
+
 Members declared as ``null`` are *recorded gaps*: the protocol operation exists
 but that SDK does not expose it yet. Gaps are counted and listed but do not fail
 the run (``--fail-on-gap`` flips that, like ``check_coverage_matrix.py``), so the
@@ -77,83 +84,139 @@ def sdk_directories(root: Path, sdk_root: str) -> list[str]:
     return sorted(entry.name for entry in base.iterdir() if entry.is_dir())
 
 
+def _require_coverage(
+    kind: str, item_id: str, members: Any, known_sdks: list[str], sdk_root: str
+) -> None:
+    if not isinstance(members, dict):
+        raise SurfaceError(f"{kind} {item_id!r} has no 'members' object")
+    declared = sorted(members)
+    if declared != known_sdks:
+        missing = sorted(set(known_sdks) - set(members))
+        extra = sorted(set(members) - set(known_sdks))
+        detail = []
+        if missing:
+            detail.append(f"no entry for {', '.join(missing)}")
+        if extra:
+            detail.append(f"unknown SDK {', '.join(extra)}")
+        raise SurfaceError(
+            f"{kind} {item_id!r} does not cover the SDK directories "
+            f"under {sdk_root}: {'; '.join(detail)}"
+        )
+
+
+def _note(item_id: str, sdk: str, spec: dict[str, Any]) -> str:
+    note = spec.get("note") or ""
+    if not isinstance(note, str):
+        raise SurfaceError(f"{item_id!r} / {sdk}: 'note' must be a string")
+    return note
+
+
+def _operation_entry(
+    op_id: str, sdk: str, spec: Any, sdk_dir: Path
+) -> Entry:
+    if not isinstance(spec, dict):
+        raise SurfaceError(f"operation {op_id!r} / {sdk}: entry must be an object")
+    rel = spec.get("file")
+    if not isinstance(rel, str) or not rel:
+        raise SurfaceError(f"operation {op_id!r} / {sdk}: no 'file'")
+    member = spec.get("name")
+    if member is not None and (not isinstance(member, str) or not member):
+        raise SurfaceError(
+            f"operation {op_id!r} / {sdk}: 'name' must be a non-empty string or null"
+        )
+    note = _note(op_id, sdk, spec)
+    if member is None:
+        return Entry(op_id, sdk, member, rel, STATUS_GAP, note)
+    try:
+        text = (sdk_dir / rel).read_text(encoding="utf-8")
+    except OSError:
+        return Entry(op_id, sdk, member, rel, STATUS_MISSING, note)
+    status = STATUS_PRESENT if member in text else STATUS_MISSING
+    return Entry(op_id, sdk, member, rel, status, note)
+
+
+def _behaviour_entry(
+    behaviour_id: str, sdk: str, spec: Any, sdk_dir: Path
+) -> Entry:
+    """Resolve one SDK's evidence list; the first absent substring is reported."""
+    if not isinstance(spec, dict):
+        raise SurfaceError(
+            f"behaviour {behaviour_id!r} / {sdk}: entry must be an object"
+        )
+    note = _note(behaviour_id, sdk, spec)
+    evidence = spec.get("evidence")
+    if evidence is None:
+        return Entry(behaviour_id, sdk, None, "-", STATUS_GAP, note)
+    if not isinstance(evidence, list) or not evidence:
+        raise SurfaceError(
+            f"behaviour {behaviour_id!r} / {sdk}: 'evidence' must be a non-empty "
+            "list or null"
+        )
+    for item in evidence:
+        rel = item.get("file") if isinstance(item, dict) else None
+        needles = item.get("contains") if isinstance(item, dict) else None
+        if (
+            not isinstance(rel, str)
+            or not rel
+            or not isinstance(needles, list)
+            or not needles
+            or not all(isinstance(n, str) and n for n in needles)
+        ):
+            raise SurfaceError(
+                f"behaviour {behaviour_id!r} / {sdk}: each evidence item needs a "
+                "'file' and a non-empty 'contains' list of strings"
+            )
+        try:
+            text = (sdk_dir / rel).read_text(encoding="utf-8")
+        except OSError:
+            return Entry(behaviour_id, sdk, needles[0], rel, STATUS_MISSING, note)
+        for needle in needles:
+            if needle not in text:
+                return Entry(behaviour_id, sdk, needle, rel, STATUS_MISSING, note)
+    first = evidence[0]
+    return Entry(behaviour_id, sdk, first["contains"][0], first["file"], STATUS_PRESENT, note)
+
+
 def build_entries(
     manifest: dict[str, Any], root: Path
-) -> tuple[list[Entry], list[str]]:
-    """Resolve every declared member against the tree.
+) -> tuple[list[Entry], list[str], list[str]]:
+    """Resolve every declared member and behaviour against the tree.
 
-    Returns the entries and the operation ids, in manifest order. Raises
-    SurfaceError when the manifest is structurally wrong or does not cover
-    exactly the SDK directories that exist.
+    Returns the entries, the operation ids and the behaviour ids, in manifest
+    order. Raises SurfaceError when the manifest is structurally wrong or does
+    not cover exactly the SDK directories that exist.
     """
     sdk_root = manifest.get("sdk_root", "implementations/sdk")
     if not isinstance(sdk_root, str):
         raise SurfaceError("manifest 'sdk_root' must be a string")
     known_sdks = sdk_directories(root, sdk_root)
 
+    behaviours = manifest.get("behaviours", [])
+    if not isinstance(behaviours, list):
+        raise SurfaceError("manifest 'behaviours' must be a list")
+
     entries: list[Entry] = []
     operation_ids: list[str] = []
-    for operation in manifest["operations"]:
-        if not isinstance(operation, dict):
-            raise SurfaceError(f"operation entry is not an object: {operation!r}")
-        op_id = operation.get("id")
-        if not isinstance(op_id, str) or not op_id:
-            raise SurfaceError(f"operation entry has no 'id': {operation!r}")
-        if op_id in operation_ids:
-            raise SurfaceError(f"duplicate operation id {op_id!r}")
-        operation_ids.append(op_id)
+    behaviour_ids: list[str] = []
+    for kind, items, ids, resolve in (
+        ("operation", manifest["operations"], operation_ids, _operation_entry),
+        ("behaviour", behaviours, behaviour_ids, _behaviour_entry),
+    ):
+        for item in items:
+            if not isinstance(item, dict):
+                raise SurfaceError(f"{kind} entry is not an object: {item!r}")
+            item_id = item.get("id")
+            if not isinstance(item_id, str) or not item_id:
+                raise SurfaceError(f"{kind} entry has no 'id': {item!r}")
+            if item_id in operation_ids or item_id in behaviour_ids:
+                raise SurfaceError(f"duplicate {kind} id {item_id!r}")
+            ids.append(item_id)
+            members = item.get("members")
+            _require_coverage(kind, item_id, members, known_sdks, sdk_root)
+            for sdk in known_sdks:
+                entries.append(resolve(item_id, sdk, members[sdk], root / sdk_root / sdk))
 
-        members = operation.get("members")
-        if not isinstance(members, dict):
-            raise SurfaceError(f"operation {op_id!r} has no 'members' object")
-        declared = sorted(members)
-        if declared != known_sdks:
-            missing = sorted(set(known_sdks) - set(members))
-            extra = sorted(set(members) - set(known_sdks))
-            detail = []
-            if missing:
-                detail.append(f"no entry for {', '.join(missing)}")
-            if extra:
-                detail.append(f"unknown SDK {', '.join(extra)}")
-            raise SurfaceError(
-                f"operation {op_id!r} does not cover the SDK directories "
-                f"under {sdk_root}: {'; '.join(detail)}"
-            )
-
-        for sdk in known_sdks:
-            spec = members[sdk]
-            if not isinstance(spec, dict):
-                raise SurfaceError(
-                    f"operation {op_id!r} / {sdk}: entry must be an object"
-                )
-            rel = spec.get("file")
-            if not isinstance(rel, str) or not rel:
-                raise SurfaceError(f"operation {op_id!r} / {sdk}: no 'file'")
-            member = spec.get("name")
-            if member is not None and (not isinstance(member, str) or not member):
-                raise SurfaceError(
-                    f"operation {op_id!r} / {sdk}: 'name' must be a non-empty "
-                    "string or null"
-                )
-            note = spec.get("note") or ""
-            if not isinstance(note, str):
-                raise SurfaceError(
-                    f"operation {op_id!r} / {sdk}: 'note' must be a string"
-                )
-
-            path = root / sdk_root / sdk / rel
-            if member is None:
-                status = STATUS_GAP
-            else:
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError:
-                    status = STATUS_MISSING
-                else:
-                    status = STATUS_PRESENT if member in text else STATUS_MISSING
-            entries.append(Entry(op_id, sdk, member, rel, status, note))
-
-    return entries, operation_ids
+    return entries, operation_ids, behaviour_ids
 
 
 def counts(entries: list[Entry]) -> dict[str, int]:
@@ -187,6 +250,7 @@ def report(
     entries: list[Entry],
     cells: dict[str, dict[str, str]],
     operation_ids: list[str],
+    behaviour_ids: list[str],
     sdks: list[str],
 ) -> dict[str, Any]:
     missing = [
@@ -201,6 +265,7 @@ def report(
     ]
     return {
         "operations": operation_ids,
+        "behaviours": behaviour_ids,
         "sdks": sdks,
         "counts": {**counts(entries), "total": len(entries)},
         "per_sdk": {
@@ -247,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         manifest = load_manifest(manifest_path)
-        entries, operation_ids = build_entries(manifest, root)
+        entries, operation_ids, behaviour_ids = build_entries(manifest, root)
     except SurfaceError as exc:
         if options.json:
             print(json.dumps({"error": str(exc)}, indent=2))
@@ -257,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sdks = sdk_directories(root, manifest.get("sdk_root", "implementations/sdk"))
     cells = cell_map(entries)
-    data = report(entries, cells, operation_ids, sdks)
+    data = report(entries, cells, operation_ids, behaviour_ids, sdks)
     tally = data["counts"]
 
     if options.json:
@@ -273,16 +338,16 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         print(
-            f"{len(operation_ids)} operations x {len(sdks)} SDKs = {tally['total']} cells — "
+            f"({len(operation_ids)} operations + {len(behaviour_ids)} behaviours) x {len(sdks)} SDKs = {tally['total']} cells — "
             f"{tally[STATUS_PRESENT]} present, {tally[STATUS_GAP]} gap, {tally[STATUS_MISSING]} missing"
         )
         if data["gaps"]:
-            print("\nrecorded gaps (protocol operation, no SDK member yet):")
+            print("\nrecorded gaps (protocol operation or behaviour the SDK does not ship yet):")
             for gap in data["gaps"]:
                 note = f" — {gap['note']}" if gap["note"] else ""
                 print(f"- {gap['sdk']} {gap['operation']} ({gap['file']}){note}")
         if data["missing"]:
-            print("\nmissing members:")
+            print("\nmissing members or behaviour evidence:")
             for item in data["missing"]:
                 print(
                     f"- {item['sdk']} {item['operation']}: {item['member']!r} not found in {item['file']}"

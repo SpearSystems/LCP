@@ -314,3 +314,115 @@ final class SingleOperationTests: XCTestCase {
         XCTAssertEqual(value, try decoded(body), "getSchema body was reshaped: \(value)")
     }
 }
+
+/// Verify parity with the Python reference verifier: fractional seconds and
+/// RFC 2822 dates verify, a timestamp without a timezone or a non-hex
+/// signature is refused, and each failure is a typed `LCPError` that still
+/// bridges to the historical `NSError` codes.
+final class VerifyParityTests: XCTestCase {
+    private let secret = "sdk-shared-secret"
+    private let body = Data("{\"hello\":\"world\"}".utf8)
+    private let now = ISO8601DateFormatter().date(from: "2026-08-15T10:20:01Z")!
+
+    private func verify(_ timestamp: String, signature: String? = nil) throws {
+        let signed = signature ?? LCPSigning.sign(secret: secret, timestamp: timestamp, idempotencyKey: "sdk-vector-001", body: body)
+        try LCPSigning.verify(secret: secret, signature: signed, timestamp: timestamp, idempotencyKey: "sdk-vector-001", body: body, now: now)
+    }
+
+    func testAcceptsFractionalSecondsOffsetsAndRfc2822() throws {
+        try verify("2026-08-15T10:20:00.250Z")
+        try verify("2026-08-15T12:20:00+02:00")
+        try verify("Sat, 15 Aug 2026 10:20:00 GMT")
+        let upper = LCPSigning.sign(secret: secret, timestamp: "2026-08-15T10:20:00Z", idempotencyKey: "sdk-vector-001", body: body).uppercased()
+        try verify("2026-08-15T10:20:00Z", signature: upper)
+    }
+
+    func testRejectsTimestampWithoutTimezone() {
+        XCTAssertThrowsError(try verify("2026-08-15T10:20:00")) { error in
+            XCTAssertEqual(error as? LCPError, .invalidTimestamp)
+            XCTAssertEqual((error as NSError).domain, "LCP")
+            XCTAssertEqual((error as NSError).code, 400)
+        }
+    }
+
+    func testRejectsStaleTimestampAndNonHexSignature() {
+        XCTAssertThrowsError(try verify("2026-08-15T10:00:00Z")) { XCTAssertEqual($0 as? LCPError, .timestampOutsideReplayWindow) }
+        let valid = LCPSigning.sign(secret: secret, timestamp: "2026-08-15T10:20:00Z", idempotencyKey: "sdk-vector-001", body: body)
+        for bad in [String(valid.dropLast(2)) + "zz", String(valid.dropLast()), valid + "00", ""] {
+            XCTAssertThrowsError(try verify("2026-08-15T10:20:00Z", signature: bad)) { error in
+                XCTAssertEqual(error as? LCPError, .invalidSignature)
+                XCTAssertEqual((error as NSError).code, 401)
+            }
+        }
+    }
+}
+
+/// Client retry parity with the Python SDK: 429/500/502/503/504 and transport
+/// failures retry up to `maxRetries` (default 2), a delta-seconds `Retry-After`
+/// sets the wait, other statuses fail at once, and a batch is never retried.
+final class RetryTests: XCTestCase {
+    private func client(statuses: [Int], retryAfter: String? = "0", timeout: TimeInterval = 30, maxRetries: Int = 2) -> (LCPClient, URLSession) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BatchURLProtocol.self]
+        BatchURLProtocol.requests = []
+        BatchURLProtocol.handler = { request in
+            let status = statuses[min(BatchURLProtocol.requests.count, statuses.count) - 1]
+            var headers = ["Content-Type": "application/json"]
+            if let retryAfter { headers["Retry-After"] = retryAfter }
+            let body = status == 200 ? #"{"results":[],"status":"ok"}"# : #"{"errors":[{"code":"LCP-011"}]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!, Data(body.utf8))
+        }
+        let session = URLSession(configuration: configuration)
+        return (LCPClient(endpoint: URL(string: "https://lcp.invalid")!, session: session, timeout: timeout, maxRetries: maxRetries), session)
+    }
+
+    func testRetriesRetryableStatusesHonouringRetryAfter() async throws {
+        let (client, session) = client(statuses: [429, 503, 200], timeout: 7)
+        defer { session.invalidateAndCancel() }
+        let started = Date()
+        let value = try await client.getCapabilities()
+        XCTAssertEqual(value, .object(["results": .array([]), "status": .string("ok")]))
+        XCTAssertEqual(BatchURLProtocol.requests.count, 3)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "Retry-After: 0 must replace the 1 s / 2 s backoff")
+        XCTAssertEqual(BatchURLProtocol.requests.map(\.timeoutInterval), [7, 7, 7])
+    }
+
+    func testRetriesStopAtMaxRetriesWithTypedError() async throws {
+        let (client, session) = client(statuses: [503], maxRetries: 1)
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await client.getCapabilities()
+            XCTFail("503 after the last retry was accepted")
+        } catch let error as LCPError {
+            guard case .http(let status, let body) = error else { return XCTFail("unexpected error \(error)") }
+            XCTAssertEqual(status, 503)
+            XCTAssertTrue(body.contains("LCP-011"))
+            XCTAssertEqual((error as NSError).code, 503)
+        }
+        XCTAssertEqual(BatchURLProtocol.requests.count, 2)
+    }
+
+    func testNonRetryableStatusAndBatchAreSentOnce() async throws {
+        let (client, session) = client(statuses: [400])
+        defer { session.invalidateAndCancel() }
+        do { _ = try await client.getCapabilities(); XCTFail("400 was accepted") } catch {}
+        XCTAssertEqual(BatchURLProtocol.requests.count, 1)
+
+        let (batchClient, batchSession) = self.client(statuses: [503])
+        defer { batchSession.invalidateAndCancel() }
+        do {
+            _ = try await batchClient.submitLeadsBatch([LCPBatchItem(itemId: "a", idempotencyKey: "k", payload: [:])])
+            XCTFail("503 batch was accepted")
+        } catch {}
+        XCTAssertEqual(BatchURLProtocol.requests.count, 1, "a batch is never retried as a whole")
+    }
+
+    func testRetryDelayPolicy() {
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: "0", attempt: 1), 0)
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: "7", attempt: 0), 7)
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: nil, attempt: 0), 1)
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT", attempt: 1), 2)
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: "1.5", attempt: 2), 4)
+        XCTAssertEqual(LCPClient.retryDelay(retryAfter: "-1", attempt: 0), 1)
+    }
+}

@@ -7,7 +7,11 @@
     "`members.<sdk>.name` is the exact, case-sensitive identifier in `file`; `null`",
     "records a shipped gap: the operation exists in the protocol but that SDK does not",
     "expose it yet. Gaps are reported, not failed, unless --fail-on-gap is passed.",
-    "Paths are relative to the SDK root; `file` is relative to implementations/sdk/<sdk>/."
+    "Paths are relative to the SDK root; `file` is relative to implementations/sdk/<sdk>/.",
+    "`behaviours` rows cover what a method name cannot show (retry, timeout, constant-time",
+    "verify, contact hash). Each SDK lists `evidence`: files and the exact, case-sensitive",
+    "substrings each must contain, the source primitive and the test that exercises it.",
+    "`\"evidence\": null` records a gap, as `name: null` does for an operation."
   ],
   "operations": [
     {
@@ -161,6 +165,72 @@
         "rust": { "file": "src/lib.rs", "name": "request_history" },
         "swift": { "file": "Sources/LCP/Lcp.swift", "name": "requestHistory" },
         "typescript": { "file": "src/index.ts", "name": "requestHistory" }
+      }
+    }
+  ],
+  "behaviours": [
+    {
+      "id": "retry",
+      "summary": "Retry 429/500/502/503/504 and transport failures up to maxRetries (default 2); a delta-seconds Retry-After sets the wait, else 1 s, 2 s, 4 s backoff; a batch is never retried.",
+      "members": {
+        "csharp": { "evidence": [{ "file": "src/LcpSdk.cs", "contains": ["RetryableStatuses = [429, 500, 502, 503, 504]", "response.Headers.RetryAfter?.Delta", "int maxRetries = 2"] }, { "file": "tests/Program.cs", "contains": ["StubRetryHandler", "C# SDK retry parity passed"] }] },
+        "go": { "evidence": [{ "file": "lcp.go", "contains": ["429, 500, 502, 503, 504", "retryDelay(response.Header.Get(\"Retry-After\")", "MaxRetries: 2"] }, { "file": "retry_test.go", "contains": ["TestRetryHonoursRetryAfter", "TestRetryDelayPolicy"] }] },
+        "java": { "evidence": [{ "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "contains": ["Set.of(429, 500, 502, 503, 504)", "firstValue(\"Retry-After\")", "Duration.ofSeconds(30), 2)"] }, { "file": "src/test/java/com/spearsystems/lcp/RetryTest.java", "contains": ["retriesRetryableStatusesHonouringRetryAfter", "batchIsNeverRetried"] }] },
+        "kotlin": { "evidence": [{ "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "contains": ["setOf(429, 500, 502, 503, 504)", "firstValue(\"Retry-After\")", "maxRetries: Int = 2"] }, { "file": "src/test/kotlin/com/spearsystems/lcp/RetryTest.kt", "contains": ["retriesRetryableStatusesHonouringRetryAfter", "batchIsNeverRetried"] }] },
+        "php": { "evidence": [{ "file": "src/LcpSdk.php", "contains": ["RETRYABLE_STATUSES = [429, 500, 502, 503, 504]", "'retry-after:'", "int $maxRetries = 2"] }, { "file": "tests/shared_vector.php", "contains": ["Retry-After: 0", "PHP SDK retry parity passed"] }] },
+        "python": { "evidence": [{ "file": "lcp_sdk/client.py", "contains": ["RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})", "retry_delay(response.headers.get(\"Retry-After\")", "max_retries: int = 2"] }, { "file": "tests/test_sdk.py", "contains": ["test_retry_after_and_max_retries", "test_retry_delay_policy"] }] },
+        "ruby": { "evidence": [{ "file": "lib/lcp_sdk.rb", "contains": ["RETRYABLE_STATUSES = [429, 500, 502, 503, 504]", "retry_delay(response[\"Retry-After\"]", "max_retries: 2"] }, { "file": "test/shared_vector_test.rb", "contains": ["Retry-After: 0", "Ruby SDK retry parity passed"] }] },
+        "rust": { "evidence": [{ "file": "src/lib.rs", "contains": ["429 | 500 | 502 | 503 | 504", "retry_delay(retry_after.as_deref(), attempt)", "max_retries: 2", "fn retries_honour_retry_after_and_max_retries", "fn retry_delay_policy"] }] },
+        "swift": { "evidence": [{ "file": "Sources/LCP/Lcp.swift", "contains": ["retryableStatuses: Set<Int> = [429, 500, 502, 503, 504]", "forHTTPHeaderField: \"Retry-After\"", "maxRetries: Int = 2"] }, { "file": "Tests/LCPTests/SharedVectorTests.swift", "contains": ["testRetriesRetryableStatusesHonouringRetryAfter", "testRetryDelayPolicy"] }] },
+        "typescript": { "evidence": [{ "file": "src/index.ts", "contains": ["[429, 500, 502, 503, 504]", "retryDelayMs(response.headers.get(\"Retry-After\")", "maxRetries: 2"] }, { "file": "test/hmac.test.mjs", "contains": ["\"Retry-After\": \"0\"", "TypeScript SDK retry parity passed"] }] }
+      }
+    },
+    {
+      "id": "timeout",
+      "summary": "Bound each request attempt by a timeout (30 s default; C# takes it from the injected HttpClient) and retry a timed-out attempt like a transport failure.",
+      "members": {
+        "csharp": { "evidence": [{ "file": "src/LcpSdk.cs", "contains": ["HttpClient.Timeout", "catch (TaskCanceledException timeout) when (timeout.InnerException is TimeoutException"] }] },
+        "go": { "evidence": [{ "file": "lcp.go", "contains": ["&http.Client{Timeout: 30 * time.Second}"] }] },
+        "java": { "evidence": [{ "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "contains": ["Duration.ofSeconds(30), 2)", ".timeout(timeout)"] }, { "file": "src/test/java/com/spearsystems/lcp/RetryTest.java", "contains": ["timeoutBoundsEachAttempt"] }] },
+        "kotlin": { "evidence": [{ "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "contains": ["timeout: Duration = Duration.ofSeconds(30)", ".timeout(timeout)"] }, { "file": "src/test/kotlin/com/spearsystems/lcp/RetryTest.kt", "contains": ["timeoutBoundsEachAttempt"] }] },
+        "php": { "evidence": [{ "file": "src/LcpSdk.php", "contains": ["int $timeoutSeconds = 30", "CURLOPT_TIMEOUT => $this->timeoutSeconds"] }] },
+        "python": { "evidence": [{ "file": "lcp_sdk/client.py", "contains": ["timeout: float = 30.0", "httpx.Client(timeout=self.timeout)"] }] },
+        "ruby": { "evidence": [{ "file": "lib/lcp_sdk.rb", "contains": ["timeout: 30", "read_timeout: @timeout"] }] },
+        "rust": { "evidence": [{ "file": "src/lib.rs", "contains": ["timeout(Duration::from_secs(30))", "pub fn timeout(mut self, value: Duration)"] }] },
+        "swift": { "evidence": [{ "file": "Sources/LCP/Lcp.swift", "contains": ["timeout: TimeInterval = 30", "request.timeoutInterval = timeout"] }, { "file": "Tests/LCPTests/SharedVectorTests.swift", "contains": ["timeoutInterval"] }] },
+        "typescript": { "evidence": [{ "file": "src/index.ts", "contains": ["timeoutMs: 30_000", "controller.abort()"] }] }
+      }
+    },
+    {
+      "id": "constant_time_verify",
+      "summary": "Compare HMAC signatures in constant time, reject non-hex signatures and unzoned timestamps, and run the shared verify_hmac negative vectors (test-vectors/sdk/negative/).",
+      "members": {
+        "csharp": { "evidence": [{ "file": "src/LcpSdk.cs", "contains": ["CryptographicOperations.FixedTimeEquals", "catch (FormatException)", "ZonedTimestamp"] }, { "file": "tests/NegativeVectors.cs", "contains": ["verify_hmac"] }] },
+        "go": { "evidence": [{ "file": "lcp.go", "contains": ["subtle.ConstantTimeCompare", "time.Parse(time.RFC3339, timestamp)"] }, { "file": "negative_vectors_test.go", "contains": ["verify_hmac"] }] },
+        "java": { "evidence": [{ "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "contains": ["MessageDigest.isEqual", "Instant.parse(timestamp)"] }, { "file": "src/test/java/com/spearsystems/lcp/NegativeVectorsTest.java", "contains": ["verify_hmac"] }] },
+        "kotlin": { "evidence": [{ "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "contains": ["MessageDigest.isEqual", "Instant.parse(timestamp)"] }, { "file": "src/test/kotlin/com/spearsystems/lcp/NegativeVectorsTest.kt", "contains": ["verify_hmac"] }] },
+        "php": { "evidence": [{ "file": "src/LcpSdk.php", "contains": ["hash_equals", "date_parse($timestamp)['zone_type']"] }, { "file": "tests/negative_vectors.php", "contains": ["verify_hmac"] }] },
+        "python": { "evidence": [{ "file": "lcp_sdk/signing.py", "contains": ["hmac.compare_digest", "must include a timezone"] }, { "file": "tests/test_negative_vectors.py", "contains": ["verify_hmac"] }] },
+        "ruby": { "evidence": [{ "file": "lib/lcp_sdk.rb", "contains": ["secure_equal?", "Date._xmlschema(timestamp).key?(:offset)"] }, { "file": "test/negative_vector_test.rb", "contains": ["verify_hmac"] }] },
+        "rust": { "evidence": [{ "file": "src/lib.rs", "contains": ["ct_eq", "OffsetDateTime::parse(timestamp, &Rfc3339)"] }, { "file": "tests/negative_vectors.rs", "contains": ["verify_hmac"] }] },
+        "swift": { "evidence": [{ "file": "Sources/LCP/Lcp.swift", "contains": ["HMAC<SHA256>.isValidAuthenticationCode", "hexBytes(signature)"] }, { "file": "Tests/LCPTests/NegativeVectorsTests.swift", "contains": ["verify_hmac"] }] },
+        "typescript": { "evidence": [{ "file": "src/index.ts", "contains": ["crypto.subtle.verify", "/^[0-9a-f]{64}$/i", "parseRfc3339(timestamp)"] }, { "file": "test/negative-vectors.test.mjs", "contains": ["verify_hmac"] }] }
+      }
+    },
+    {
+      "id": "contact_hash",
+      "summary": "Expose the SPEC.md §9 per-pair contact hash and reproduce every test-vectors/sdk/contact-hash.json row in the SDK's own tests.",
+      "members": {
+        "csharp": { "evidence": [{ "file": "src/LcpSdk.cs", "contains": ["public static string ContactHash("] }, { "file": "tests/Lep0003Slots.cs", "contains": ["contact-hash.json"] }] },
+        "go": { "evidence": [{ "file": "lcp.go", "contains": ["func ContactHash("] }, { "file": "lep0003_slots_test.go", "contains": ["contact-hash.json", "func TestContactHashVectors"] }] },
+        "java": { "evidence": [{ "file": "src/main/java/com/spearsystems/lcp/LcpSdk.java", "contains": ["public static String contactHash("] }, { "file": "src/test/java/com/spearsystems/lcp/Lep0003SlotsTest.java", "contains": ["contact-hash.json", "everyPinnedContactHashVectorReproduces"] }] },
+        "kotlin": { "evidence": [{ "file": "src/main/kotlin/com/spearsystems/lcp/LcpSdk.kt", "contains": ["fun contactHash("] }, { "file": "src/test/kotlin/com/spearsystems/lcp/Lep0003SlotsTest.kt", "contains": ["contact-hash.json"] }] },
+        "php": { "evidence": [{ "file": "src/LcpSdk.php", "contains": ["public static function contactHash("] }, { "file": "tests/lep0003_slots.php", "contains": ["contact-hash.json"] }] },
+        "python": { "evidence": [{ "file": "lcp_sdk/signing.py", "contains": ["def contact_hash("] }, { "file": "tests/test_lep0003_slots.py", "contains": ["contact-hash.json"] }] },
+        "ruby": { "evidence": [{ "file": "lib/lcp_sdk.rb", "contains": ["def contact_hash("] }, { "file": "test/lep0003_slots_test.rb", "contains": ["contact-hash.json"] }] },
+        "rust": { "evidence": [{ "file": "src/lib.rs", "contains": ["pub fn contact_hash("] }, { "file": "tests/lep0003_slots.rs", "contains": ["contact-hash.json"] }] },
+        "swift": { "evidence": [{ "file": "Sources/LCP/Lcp.swift", "contains": ["public static func contactHash("] }, { "file": "Tests/LCPTests/Lep0003SlotsTests.swift", "contains": ["contact-hash.json"] }] },
+        "typescript": { "evidence": [{ "file": "src/index.ts", "contains": ["export async function contactHash("] }, { "file": "test/lep0003-slots.test.mjs", "contains": ["contact-hash.json"] }] }
       }
     }
   ]

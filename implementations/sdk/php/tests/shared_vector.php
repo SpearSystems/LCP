@@ -157,3 +157,69 @@ unlink($schemaCapture);
 if ($schemaBody['title'] !== 'Lead' || $schemaBody['type'] !== 'object') throw new RuntimeException('schema body lost');
 if ($schemaTarget !== '/v1/lcp/schemas/verticals/mortgage%3Fx%3D1') throw new RuntimeException('schema path: ' . $schemaTarget);
 echo "PHP SDK schema fetch passed\n";
+
+// Verify parity with the Python reference verifier: fractional seconds verify;
+// an unzoned timestamp (read in the default timezone by DateTimeImmutable) or a
+// non-hex signature is refused.
+$verifyNow = new DateTimeImmutable('2026-08-15T10:20:01Z');
+$fractional = '2026-08-15T10:20:00.250Z';
+Lcp\Signing::verify('sdk-shared-secret', Lcp\Signing::sign('sdk-shared-secret', $fractional, 'sdk-vector-001', $body), $fractional, 'sdk-vector-001', $body, 300, $verifyNow);
+$unzoned = '2026-08-15T10:20:00';
+foreach ([[$unzoned, Lcp\Signing::sign('sdk-shared-secret', $unzoned, 'sdk-vector-001', $body)], ['2026-08-15T10:20:00Z', substr($signature, 0, -2) . 'zz']] as [$badTimestamp, $badSignature]) {
+    try {
+        Lcp\Signing::verify('sdk-shared-secret', $badSignature, $badTimestamp, 'sdk-vector-001', $body, 300, $verifyNow);
+        throw new LogicException("$badTimestamp / $badSignature was accepted");
+    } catch (RuntimeException) { }
+}
+echo "PHP SDK verify parity passed\n";
+
+// Retry parity with the Python SDK: 429/5xx retry up to maxRetries, a
+// delta-seconds Retry-After sets the wait, other statuses fail at once, and a
+// batch is never retried.
+$serveStatuses = static function (array $statuses): array {
+    $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if ($server === false) throw new RuntimeException("socket: $errstr");
+    $port = (int) substr(strrchr(stream_socket_get_name($server, false), ':'), 1);
+    $hitsFile = tempnam(sys_get_temp_dir(), 'lcp-retry-');
+    $pid = pcntl_fork();
+    if ($pid === -1) throw new RuntimeException('fork failed');
+    if ($pid === 0) {
+        foreach ($statuses as $hits => $status) {
+            $connection = @stream_socket_accept($server, 3);
+            if ($connection === false) break;
+            file_put_contents($hitsFile, (string) ($hits + 1));
+            $raw = '';
+            while (strpos($raw, "\r\n\r\n") === false) $raw .= fread($connection, 8192);
+            [$headers, $rest] = explode("\r\n\r\n", $raw, 2);
+            $length = preg_match('/Content-Length:\s*(\d+)/i', $headers, $match) === 1 ? (int) $match[1] : 0;
+            while (strlen($rest) < $length) $rest .= fread($connection, $length - strlen($rest));
+            $responseBody = $status === 200 ? '{"ok":true,"results":[]}' : '{"errors":[{"code":"LCP-011"}]}';
+            fwrite($connection, "HTTP/1.1 $status X\r\nContent-Type: application/json\r\nRetry-After: 0\r\nContent-Length: " . strlen($responseBody) . "\r\nConnection: close\r\n\r\n" . $responseBody);
+            fclose($connection);
+        }
+        exit(0);
+    }
+    fclose($server);
+    return [$port, static function () use ($pid, $hitsFile): int { pcntl_waitpid($pid, $status); $hits = (int) file_get_contents($hitsFile); unlink($hitsFile); return $hits; }];
+};
+[$port, $hits] = $serveStatuses([429, 503, 200]);
+$started = microtime(true);
+$retried = (new Lcp\Client("http://127.0.0.1:$port"))->getCapabilities();
+if (($retried['ok'] ?? false) !== true) throw new RuntimeException('retry body lost');
+if (($count = $hits()) !== 3) throw new RuntimeException("retry hits $count, want 3");
+if (microtime(true) - $started >= 0.9) throw new RuntimeException('Retry-After: 0 must replace the 1 s / 2 s backoff');
+foreach ([[[503, 503], 1, 2, false], [[400], 2, 1, false], [[503], 2, 1, true]] as [$statuses, $maxRetries, $want, $batch]) {
+    [$port, $hits] = $serveStatuses($statuses);
+    $client = new Lcp\Client("http://127.0.0.1:$port", null, null, null, $maxRetries);
+    try {
+        $batch ? $client->submitLeadsBatch([['item_id' => 'a', 'idempotency_key' => 'k', 'payload' => []]]) : $client->getCapabilities();
+        throw new LogicException(json_encode($statuses) . ' was accepted');
+    } catch (RuntimeException $error) {
+        if (!str_starts_with($error->getMessage(), "LCP HTTP {$statuses[0]}")) throw $error;
+    }
+    if (($count = $hits()) !== $want) throw new RuntimeException(json_encode($statuses) . " hits $count, want $want");
+}
+foreach ([['0', 1, 0], ['7', 0, 7], [null, 0, 1], ['Wed, 21 Oct 2026 07:28:00 GMT', 1, 2], ['1.5', 2, 4]] as [$retryAfter, $attempt, $want]) {
+    if (($got = Lcp\Client::retryDelay($retryAfter, $attempt)) !== $want) throw new RuntimeException("retryDelay($retryAfter, $attempt) = $got, want $want");
+}
+echo "PHP SDK retry parity passed\n";
