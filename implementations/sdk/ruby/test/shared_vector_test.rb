@@ -131,3 +131,68 @@ schema_thread.join
 raise "schema body lost" unless schema_body["title"] == "Lead" && schema_body["type"] == "object"
 raise "schema path: #{schema_target}" unless schema_target == "/v1/lcp/schemas/verticals/mortgage%3Fx%3D1"
 puts "Ruby SDK schema fetch passed"
+
+# Verify parity with the Python reference verifier: fractional seconds verify;
+# an unzoned timestamp (read as local time by Time.iso8601) or a non-hex
+# signature is refused.
+verify_now = Time.utc(2026, 8, 15, 10, 20, 1)
+fractional = "2026-08-15T10:20:00.250Z"
+LcpSdk::Signing.verify("sdk-shared-secret", LcpSdk::Signing.sign("sdk-shared-secret", fractional, "sdk-vector-001", body), fractional, "sdk-vector-001", body, now: verify_now)
+unzoned = "2026-08-15T10:20:00"
+[[unzoned, LcpSdk::Signing.sign("sdk-shared-secret", unzoned, "sdk-vector-001", body)], ["2026-08-15T10:20:00Z", "#{signature[0..-3]}zz"]].each do |bad_timestamp, bad_signature|
+  begin
+    LcpSdk::Signing.verify("sdk-shared-secret", bad_signature, bad_timestamp, "sdk-vector-001", body, now: verify_now)
+    raise "#{bad_timestamp} / #{bad_signature} was accepted"
+  rescue ArgumentError
+    nil
+  end
+end
+puts "Ruby SDK verify parity passed"
+
+# Retry parity with the Python SDK: 429/5xx retry up to max_retries, a
+# delta-seconds Retry-After sets the wait, other statuses fail at once, and a
+# batch is never retried.
+def serve_statuses(statuses)
+  server = TCPServer.new("127.0.0.1", 0)
+  hits = 0
+  thread = Thread.new do
+    statuses.each do |status|
+      socket = server.accept
+      hits += 1
+      raw = +""
+      raw << socket.readpartial(4096) until raw.include?("\r\n\r\n")
+      headers, rest = raw.split("\r\n\r\n", 2)
+      length = headers[/content-length:\s*(\d+)/i, 1].to_i
+      rest << socket.readpartial(length - rest.bytesize) while rest.bytesize < length
+      response = status == 200 ? '{"ok":true,"results":[]}' : '{"errors":[{"code":"LCP-011"}]}'
+      socket.write("HTTP/1.1 #{status} X\r\nContent-Type: application/json\r\nRetry-After: 0\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+      socket.close
+    end
+  end
+  [server.addr[1], thread, -> { hits }]
+end
+
+port, thread, hits = serve_statuses([429, 503, 200])
+started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+raise "retry body lost" unless LcpSdk::Client.new("http://127.0.0.1:#{port}").get_capabilities["ok"] == true
+thread.join
+raise "retry hits #{hits.call}, want 3" unless hits.call == 3
+raise "Retry-After: 0 must replace the 1 s / 2 s backoff" unless Process.clock_gettime(Process::CLOCK_MONOTONIC) - started < 0.9
+
+[[[503, 503], 1, 2, false], [[400], 2, 1, false], [[503], 2, 1, true]].each do |statuses, max_retries, want, batch|
+  port, thread, hits = serve_statuses(statuses)
+  client = LcpSdk::Client.new("http://127.0.0.1:#{port}", max_retries: max_retries)
+  begin
+    batch ? client.submit_leads_batch([{ "item_id" => "a", "idempotency_key" => "k", "payload" => {} }]) : client.get_capabilities
+    raise "#{statuses} was accepted"
+  rescue RuntimeError => error
+    raise error unless error.message.start_with?("LCP HTTP #{statuses.first}")
+  end
+  thread.join(1)
+  raise "#{statuses} hits #{hits.call}, want #{want}" unless hits.call == want
+end
+{ ["0", 1] => 0, ["7", 0] => 7, [nil, 0] => 1, ["Wed, 21 Oct 2026 07:28:00 GMT", 1] => 2, ["1.5", 2] => 4 }.each do |(retry_after, attempt), want|
+  got = LcpSdk::Client.retry_delay(retry_after, attempt)
+  raise "retry_delay(#{retry_after.inspect}, #{attempt}) = #{got}, want #{want}" unless got == want
+end
+puts "Ruby SDK retry parity passed"

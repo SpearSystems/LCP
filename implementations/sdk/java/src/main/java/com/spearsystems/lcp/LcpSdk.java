@@ -2,6 +2,7 @@ package com.spearsystems.lcp;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -18,6 +19,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import tools.jackson.databind.JsonNode;
@@ -115,13 +117,48 @@ public final class LcpSdk {
     }
 
     public static final class Client {
-        private final HttpClient http; private final String endpoint; private final String senderId; private final String apiKey; private final String hmacSecret;
-        public Client(String endpoint, String senderId, String apiKey, String hmacSecret) { this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build(); this.endpoint = endpoint.replaceAll("/$", ""); this.senderId = senderId; this.apiKey = apiKey; this.hmacSecret = hmacSecret; }
-        public String request(String method, String path, String body, String idempotencyKey, boolean test) throws Exception {
-            var raw = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8); var builder = HttpRequest.newBuilder(URI.create(endpoint + "/" + path.replaceFirst("^/", ""))).timeout(Duration.ofSeconds(30)).header("Accept", "application/json").header("Content-Type", "application/json");
-            if (senderId != null) builder.header("X-LCP-Sender-Id", senderId); if (apiKey != null) builder.header("Authorization", "Bearer " + apiKey); if (idempotencyKey != null) builder.header("X-LCP-Idempotency-Key", idempotencyKey); if (test) builder.header("X-LCP-Test", "true");
-            if (hmacSecret != null) { var timestamp = nowIsoUtc(); builder.header("X-LCP-Timestamp", timestamp); builder.header("X-LCP-Signature", signHmac(hmacSecret, timestamp, idempotencyKey, raw)); }
-            builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(raw)); var response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString()); if (response.statusCode() / 100 != 2) throw new IllegalStateException("LCP HTTP " + response.statusCode() + ": " + response.body()); return response.body();
+        /** Statuses retried with backoff, matching the Python SDK. */
+        private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 500, 502, 503, 504);
+        private final HttpClient http; private final String endpoint; private final String senderId; private final String apiKey; private final String hmacSecret; private final Duration timeout; private final int maxRetries;
+        public Client(String endpoint, String senderId, String apiKey, String hmacSecret) { this(endpoint, senderId, apiKey, hmacSecret, Duration.ofSeconds(30), 2); }
+
+        /**
+         * {@code timeout} bounds the connection and each attempt. {@code maxRetries}
+         * is how many times a 429, 500, 502, 503 or 504 response, or an I/O
+         * failure, is retried after the first attempt; the wait honours a
+         * delta-seconds {@code Retry-After} and otherwise backs off 1 s, 2 s, 4 s,
+         * ... — the Python SDK policy. Each attempt is signed afresh with the same
+         * idempotency key and body.
+         */
+        public Client(String endpoint, String senderId, String apiKey, String hmacSecret, Duration timeout, int maxRetries) { this.http = HttpClient.newBuilder().connectTimeout(timeout).build(); this.endpoint = endpoint.replaceAll("/$", ""); this.senderId = senderId; this.apiKey = apiKey; this.hmacSecret = hmacSecret; this.timeout = timeout; this.maxRetries = Math.max(0, maxRetries); }
+        public String request(String method, String path, String body, String idempotencyKey, boolean test) throws Exception { return request(method, path, body, idempotencyKey, test, maxRetries); }
+
+        private String request(String method, String path, String body, String idempotencyKey, boolean test, int retries) throws Exception {
+            var raw = body == null ? new byte[0] : body.getBytes(StandardCharsets.UTF_8);
+            for (int attempt = 0; ; attempt++) {
+                var builder = HttpRequest.newBuilder(URI.create(endpoint + "/" + path.replaceFirst("^/", ""))).timeout(timeout).header("Accept", "application/json").header("Content-Type", "application/json");
+                if (senderId != null) builder.header("X-LCP-Sender-Id", senderId); if (apiKey != null) builder.header("Authorization", "Bearer " + apiKey); if (idempotencyKey != null) builder.header("X-LCP-Idempotency-Key", idempotencyKey); if (test) builder.header("X-LCP-Test", "true");
+                if (hmacSecret != null) { var timestamp = nowIsoUtc(); builder.header("X-LCP-Timestamp", timestamp); builder.header("X-LCP-Signature", signHmac(hmacSecret, timestamp, idempotencyKey, raw)); }
+                builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(raw));
+                HttpResponse<String> response;
+                try { response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString()); }
+                catch (IOException error) { if (attempt >= retries) throw error; Thread.sleep(retryDelayMillis(null, attempt)); continue; }
+                if (response.statusCode() / 100 == 2) return response.body();
+                if (!RETRYABLE_STATUSES.contains(response.statusCode()) || attempt >= retries) throw new IllegalStateException("LCP HTTP " + response.statusCode() + ": " + response.body());
+                Thread.sleep(retryDelayMillis(response.headers().firstValue("Retry-After").orElse(null), attempt));
+            }
+        }
+
+        /**
+         * Wait before retry {@code attempt} (0-based): a delta-seconds
+         * {@code Retry-After} wins; an absent, HTTP-date or malformed value falls
+         * back to 1 s, 2 s, 4 s, ... backoff.
+         */
+        static long retryDelayMillis(String retryAfter, int attempt) {
+            if (retryAfter != null && retryAfter.matches("[0-9]+")) {
+                try { return Math.multiplyExact(Long.parseLong(retryAfter), 1000L); } catch (ArithmeticException | NumberFormatException tooLarge) { /* fall back to backoff */ }
+            }
+            return 1000L << Math.min(attempt, 30);
         }
         public String submitLead(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/leads", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
         public String submitCall(Envelope envelope) throws Exception { return request("POST", "/v1/lcp/calls", envelope.json(), envelope.message().idempotencyKey(), envelope.message().test()); }
@@ -151,7 +188,7 @@ public final class LcpSdk {
                 node.put("idempotency_key", item.idempotencyKey());
                 node.set("payload", MAPPER.readTree(item.payloadJson()));
             }
-            var response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false));
+            var response = MAPPER.readTree(request("POST", "/v1/lcp/leads/batch", MAPPER.writeValueAsString(root), null, false, 0));
             var results = response.path("results");
             if (!results.isArray()) throw new IllegalStateException("batch response missing results");
             var order = new HashMap<String, Integer>();

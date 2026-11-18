@@ -115,13 +115,41 @@ export async function contactHash(secret: string | Uint8Array, value: string, do
   return hmacHex(secret, toBytes(normalizeContact(value, domain)));
 }
 
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:([Zz])|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * Epoch milliseconds of an RFC 3339 date-time that carries `Z` or a numeric
+ * offset, or undefined. `new Date()` is not used: it reads an unzoned
+ * timestamp as local time and accepts non-RFC 3339 forms.
+ */
+function parseRfc3339(value: string): number | undefined {
+  const match = RFC3339.exec(value);
+  if (!match) return undefined;
+  const [, year, month, day, hour, minute, second, fraction = "", zulu, sign, offsetHour, offsetMinute] = match;
+  const local = Date.UTC(+year, +month - 1, +day, +hour, +minute, +second, Number(fraction.slice(0, 3).padEnd(3, "0")));
+  const check = new Date(local);
+  if (check.getUTCFullYear() !== +year || check.getUTCMonth() !== +month - 1 || check.getUTCDate() !== +day
+    || check.getUTCHours() !== +hour || check.getUTCMinutes() !== +minute || check.getUTCSeconds() !== +second) return undefined;
+  if (zulu) return local;
+  if (+offsetHour > 23 || +offsetMinute > 59) return undefined;
+  const offset = (+offsetHour * 60 + +offsetMinute) * 60_000;
+  return sign === "+" ? local - offset : local + offset;
+}
+
+/**
+ * Verify an LCP HMAC signature and its replay window (SPEC.md §9). The
+ * timestamp must be RFC 3339 with `Z` or a numeric offset (fractional seconds
+ * allowed); the signature must be 64 hex characters, compared in constant
+ * time by WebCrypto.
+ */
 export async function verifyHmac(secret: string | Uint8Array, signature: string, timestamp: string, idempotencyKey: string | undefined, body: Uint8Array, maxSkewSeconds = 300, now = new Date()): Promise<void> {
-  const signedAt = new Date(timestamp);
-  if (Number.isNaN(signedAt.valueOf()) || Math.abs(now.getTime() - signedAt.getTime()) / 1000 > maxSkewSeconds) {
+  const signedAt = parseRfc3339(timestamp);
+  if (signedAt === undefined || Math.abs(now.getTime() - signedAt) / 1000 > maxSkewSeconds) {
     throw new Error("X-LCP-Timestamp is invalid or outside the replay window");
   }
+  if (!/^[0-9a-f]{64}$/i.test(signature)) throw new Error("Invalid X-LCP-Signature");
   const key = await globalThis.crypto.subtle.importKey("raw", asBufferSource(toBytes(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-  const signatureBytes = new Uint8Array(signature.match(/.{1,2}/g)?.map((pair) => Number.parseInt(pair, 16)) ?? []);
+  const signatureBytes = new Uint8Array(signature.match(/../g)!.map((pair) => Number.parseInt(pair, 16)));
   if (!(await globalThis.crypto.subtle.verify("HMAC", key, asBufferSource(signatureBytes), asBufferSource(canonicalSigningBytes(timestamp, idempotencyKey, body))))) {
     throw new Error("Invalid X-LCP-Signature");
   }
@@ -187,6 +215,17 @@ export interface LcpHistoryParams {
   to?: string;
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Wait before retry `attempt` (0-based), matching the Python SDK: a
+ * delta-seconds `Retry-After` wins; an absent, HTTP-date or malformed value
+ * falls back to 1 s, 2 s, 4 s, ... backoff.
+ */
+function retryDelayMs(retryAfter: string | null, attempt: number): number {
+  return retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : 2 ** attempt * 1000;
+}
+
 export class LcpClient {
   private readonly endpoint: string;
   private readonly options: Required<Pick<LcpClientOptions, "timeoutMs" | "maxRetries">> & LcpClientOptions;
@@ -221,11 +260,11 @@ export class LcpClient {
         try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
         if (response.ok) return data as T;
         if (![429, 500, 502, 503, 504].includes(response.status) || attempt === maxRetries) throw new LcpHttpError(response.status, data);
-        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
+        await sleep(retryDelayMs(response.headers.get("Retry-After"), attempt));
       } catch (error) {
         lastError = error;
         if (error instanceof LcpHttpError || attempt === maxRetries) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
+        await sleep(retryDelayMs(null, attempt));
       } finally { clearTimeout(timer); }
     }
     throw lastError ?? new Error("LCP request failed");
