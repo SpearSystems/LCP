@@ -6,6 +6,9 @@ jsonschema==4.26.0
 mcp==2.2.0
 # Installed only by security.yml's Python dependency audit job.
 pip-audit==2.10.1
+# Pinned so OSV's transitive resolution of pip-audit (pip-api -> pip) does not
+# fall back to an ancient pip; 26.3 has no open high or critical advisories.
+pip==26.3
 # Pinned transitively (mcp -> httpx2 -> httpcore2): 2.12.0 fixes
 # CVE-2026-84378/-84379/-84380/-84381 (httpx2 and httpcore2) and CVE-2026-84382.
 httpx2==2.12.0
