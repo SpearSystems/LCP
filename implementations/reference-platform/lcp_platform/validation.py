@@ -371,7 +371,10 @@ URL_TEMPLATE_MACROS = frozenset(
         "timestamp",
     }
 )
-_URL_TEMPLATE_MACRO_RE = re.compile(r"\{([^{}]*)\}")
+URL_TEMPLATE_MACRO_RE = re.compile(r"\{([^{}]*)\}")
+# LEP-0012 §4: the registered template, before expansion. The expanded URL
+# has its own 4096-byte delivery limit.
+URL_TEMPLATE_MAX_BYTES = 2048
 
 
 def validate_url_template(url: Any, *, allow_private: bool = False) -> str:
@@ -388,6 +391,12 @@ def validate_url_template(url: Any, *, allow_private: bool = False) -> str:
             reason="callback_url_invalid",
         )
     url = url.strip()
+    if len(url.encode("utf-8")) > URL_TEMPLATE_MAX_BYTES:
+        raise SubscriptionValidationError(
+            f"url_template exceeds {URL_TEMPLATE_MAX_BYTES} bytes",
+            field="callback_url",
+            reason="url_template_invalid",
+        )
     base, _, query = url.partition("?")
     if "{" in base or "}" in base:
         raise SubscriptionValidationError(
@@ -396,7 +405,7 @@ def validate_url_template(url: Any, *, allow_private: bool = False) -> str:
             reason="url_template_invalid",
         )
     unknown = sorted(
-        set(_URL_TEMPLATE_MACRO_RE.findall(query)) - URL_TEMPLATE_MACROS
+        set(URL_TEMPLATE_MACRO_RE.findall(query)) - URL_TEMPLATE_MACROS
     )
     if unknown:
         raise SubscriptionValidationError(
@@ -405,7 +414,7 @@ def validate_url_template(url: Any, *, allow_private: bool = False) -> str:
             field="callback_url",
             reason="url_template_invalid",
         )
-    stripped = _URL_TEMPLATE_MACRO_RE.sub("", query)
+    stripped = URL_TEMPLATE_MACRO_RE.sub("", query)
     if "{" in stripped or "}" in stripped:
         raise SubscriptionValidationError(
             "url_template has an unbalanced brace",
@@ -737,34 +746,86 @@ def _regulated_load_errors(
     ]
 
 
+def _local_ref(root: Any, ref: str) -> Any:
+    """Resolve a same-document ``$ref`` JSON Pointer, or ``None``."""
+    node = root
+    for token in ref.removeprefix("#").split("/")[1:]:
+        token = token.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, dict):
+            node = node.get(token)
+        elif isinstance(node, list) and token.isdigit() and int(token) < len(node):
+            node = node[int(token)]
+        else:
+            return None
+    return node
+
+
+def _applicable_schemas(definition: Any, root: Any, seen: set[int]) -> list[dict[str, Any]]:
+    """The node plus every subschema that also applies to the same value.
+
+    Follows same-document ``$ref`` and ``allOf``/``oneOf``/``anyOf``. A
+    cross-document ``$ref`` is not followed: LEP-0013 §1 load rules allow
+    ``x-lcp-regulated`` only inside an allowlisted vertical's own document.
+    """
+    if not isinstance(definition, dict) or id(definition) in seen:
+        return []
+    seen.add(id(definition))
+    nodes = [definition]
+    ref = definition.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#"):
+        nodes.extend(_applicable_schemas(_local_ref(root, ref), root, seen))
+    for keyword in ("allOf", "oneOf", "anyOf"):
+        branches = definition.get(keyword)
+        if isinstance(branches, list):
+            for branch in branches:
+                nodes.extend(_applicable_schemas(branch, root, seen))
+    return nodes
+
+
+def _regulated_walk(value: Any, definitions: list[Any], path: str, root: Any) -> list[str]:
+    nodes = [node for item in definitions for node in _applicable_schemas(item, root, set())]
+    if any(REGULATED_KEY in node for node in nodes):
+        if value is None:
+            return []
+        return [
+            f"LCP-100 VALIDATION_ERROR: {path} carries a regulated identifier; "
+            "this receiver does not advertise features.regulated_identifiers "
+            f"(LEP-0013 §2) (field {path})"
+        ]
+    errors: list[str] = []
+    if isinstance(value, dict):
+        for name, child in sorted(value.items()):
+            child_definitions = [
+                node["properties"][name]
+                for node in nodes
+                if isinstance(node.get("properties"), dict) and name in node["properties"]
+            ]
+            errors.extend(_regulated_walk(child, child_definitions, f"{path}.{name}", root))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            item_definitions = []
+            for node in nodes:
+                prefix = node.get("prefixItems")
+                if isinstance(prefix, list) and index < len(prefix):
+                    item_definitions.append(prefix[index])
+                elif "items" in node:
+                    item_definitions.append(node["items"])
+            errors.extend(_regulated_walk(item, item_definitions, f"{path}[{index}]", root))
+    return errors
+
+
 def regulated_value_errors(value: Any, definition: Any, path: str) -> list[str]:
     """LEP-0013 §2, fail-closed: refuse every value in a regulated field.
 
     This receiver never advertises ``features.regulated_identifiers`` (it has
     no in-memory delivery lane that meets §4), so a regulated value is refused
-    exactly like a prohibited one. Errors name the path, never the value.
+    exactly like a prohibited one. The walk follows the value through
+    ``properties``, ``items``/``prefixItems``, ``allOf``/``oneOf``/``anyOf``
+    and same-document ``$ref``, so a schema refactor cannot hide a field from
+    the gate. Errors name the path, never the value.
     """
 
-    if not isinstance(value, dict) or not isinstance(definition, dict):
-        return []
-    properties = definition.get("properties")
-    if not isinstance(properties, dict):
-        return []
-    errors: list[str] = []
-    for name, child in sorted(value.items()):
-        child_definition = properties.get(name)
-        child_path = f"{path}.{name}"
-        if isinstance(child_definition, dict) and REGULATED_KEY in child_definition:
-            if child is not None:
-                errors.append(
-                    f"LCP-100 VALIDATION_ERROR: {child_path} carries a regulated "
-                    "identifier; this receiver does not advertise "
-                    "features.regulated_identifiers (LEP-0013 §2) "
-                    f"(field {child_path})"
-                )
-            continue
-        errors.extend(regulated_value_errors(child, child_definition, child_path))
-    return errors
+    return list(dict.fromkeys(_regulated_walk(value, [definition], path, definition)))
 
 
 def pii_load_errors(

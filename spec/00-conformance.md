@@ -48,6 +48,19 @@ state, not the payment's state.
 - **L3:** full + dedup fingerprints + capability discovery + published
   JSON Schemas + agent binding (attestation verification).
 
+**Feature suites.** A feature suite is not a tier. It tests one optional
+surface and is claimed next to a tier, for example "L2 + SALE". An
+endpoint that advertises a suite's `features` key (§8) MUST pass that
+suite. An endpoint that does not advertise the key need not run it.
+
+| Suite | Vectors | Surface | `features` keys |
+|---|---|---|---|
+| `NEG` | `test-vectors/negotiation.json` | LEP-0009 quote/counter negotiation | `negotiation` |
+| `SALE` | `test-vectors/sale-lifecycle.json` | LEP-0012 (v1.3): ack disposition and its version gate, money-bearing sale events and revisions, URL-template postbacks (macro expansion, the 4096-byte limit, the GET signature), the tracking and test-outcome extensions | `sale_disposition`, `url_postbacks`, `test_outcomes` |
+| `REG` | `test-vectors/regulated-identifiers.json` | LEP-0013 (v1.3): the regulated-identifier intake gate and the test SSN range, plus LEP-0014 `personal_loans` 2.0.0 shapes | `regulated_identifiers` |
+
+Run one suite with `python3 test-vectors/conformance.py --tier SALE`.
+
 ## 11. Governance
 
 - Apache 2.0 (patent retaliation clause rationale).

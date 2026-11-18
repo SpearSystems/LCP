@@ -3,6 +3,27 @@
     "$id": "https://lcp.dev/schemas/ack.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "required": [
+            "disposition"
+          ]
+        },
+        "then": {
+          "properties": {
+            "status": {
+              "enum": [
+                "RECEIVED",
+                "ACCEPTED",
+                "DUPLICATE"
+              ],
+              "x-lcp-pii": "public"
+            }
+          }
+        }
+      }
+    ],
     "description": "Response to any message. Uses errors[] array \u2014 a single message can fail multiple field validations. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
       "disposition": {
@@ -62,22 +83,19 @@
             }
           },
           {
-            "else": {
-              "not": {
-                "required": [
-                  "final_by"
-                ]
-              }
-            },
             "if": {
+              "required": [
+                "final_by"
+              ]
+            },
+            "then": {
               "properties": {
                 "outcome": {
                   "const": "pending",
                   "x-lcp-pii": "internal"
                 }
               }
-            },
-            "then": true
+            }
           }
         ],
         "dependentRequired": {
@@ -91,7 +109,7 @@
             "redirect_url"
           ]
         },
-        "description": "v1.3 (LEP-0012 \u00a71): the commercial result of the acknowledged lead or post. A lead is sold if, and only if, outcome = sold. Sent only when the acknowledged message's lcp.version is 1.3.0 or later; a DUPLICATE ack repeats the original disposition. Classed restricted because redirect_url is session-bearing.",
+        "description": "v1.3 (LEP-0012 \u00a71): the commercial result of the acknowledged lead or post. A lead is sold if, and only if, outcome = sold. Sent only when the acknowledged message's lcp.version is 1.3.0 or later, and only on an ack whose status is RECEIVED, ACCEPTED or DUPLICATE; a DUPLICATE ack repeats the original disposition. Classed restricted because redirect_url is session-bearing.",
         "properties": {
           "counter_price_cents": {
             "description": "price_rejected only: the lowest price the receiver would pay. Informational in v1.3.",

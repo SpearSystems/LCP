@@ -37,7 +37,9 @@ filter test traffic without parsing the JSON body.
 `features.test_outcomes` answers a `1.3.0`+ test `lead` or `post` that
 carries the registered extension `lcp.test.outcome`
 (`{"outcome": "sold", "payout_cents": 4450}`) with exactly that
-`disposition`. It never routes, bills, or counts such a lead. A forced
+`disposition`. When `payout_cents` is absent, a forced `sold` or `pending`
+pays the fixed synthetic `1000` minor units of `USD`, and a forced
+`price_rejected` counters at `1000` `USD`. It never routes, bills, or counts such a lead. A forced
 `pending` is resolved by an `ACCEPTED` event within 60 seconds, and every
 event the test produces carries `message.test` = `true`. The extension is
 legal only on test traffic: on a live message it is refused with
@@ -217,7 +219,7 @@ message can fail multiple field validations.
 | Field | Type | Notes |
 |---|---|---|
 | `original_message_id` | string | ID of the message being acknowledged. |
-| `status` | string | `RECEIVED` \| `VALIDATED` \| `ACCEPTED` \| `REJECTED` \| `DUPLICATE` \| `ERROR` |
+| `status` | string | `RECEIVED` \| `VALIDATED` \| `ACCEPTED` \| `PROCESSED` \| `REJECTED` \| `DUPLICATE` \| `ERROR`. `PROCESSED` (v1.2, `features.processed_ack`) acknowledges a `post` the buyer received and is sent only to a peer whose `lcp_versions` has a `1.2.0`-or-higher minor. |
 | `errors` | array\<error\> | Zero or more error objects (see §5). |
 | `lead_id` | string | Assigned lead ID, if applicable. |
 | `request_id` | string | Server-side request ID for tracing. |
@@ -277,7 +279,7 @@ these shapes. All values are `internal`; the class rule above still holds.
 | Event | Meaning | `details` |
 |---|---|---|
 | `ACCEPTED` | Sold, including a sale already reported in the ack. | `payout_cents` (> 0), `currency`, `revision`, `sold_at` |
-| `REJECTED` | Unsold after `pending`. | `revision`, optional `rejection_reason` |
+| `REJECTED` | Unsold after `pending`. Also emitted for an unsold result already reported synchronously, so a postback subscriber learns of it. | `revision`, optional `rejection_reason` |
 | `REFUNDED` | Returned or reversed after a sale. | `payout_cents` (< 0), `currency`, `revision`, `returned_at`, optional `return_reason` |
 
 `payout_cents` is a signed delta (`-100000000`–`100000000`, never `0`):
