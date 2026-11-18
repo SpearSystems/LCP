@@ -6,6 +6,62 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Candidate v1.3.0 (additive MINOR) on branch `lep/0012-0013-sale-lifecycle`.
+It merges only after LEP-0012, LEP-0013, and LEP-0014 are Accepted. Every
+behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
+
+### Added
+
+- **Sale disposition (LEP-0012 §1–§2).** `ack.disposition` reports the
+  commercial result of a `lead` or `post`: `outcome` (`sold`, `unsold`,
+  `pending`, `price_rejected`), `payout_cents` and `currency` when sold, an
+  optional consumer `redirect_url` (browser top-level navigation only, classed
+  `restricted`), `counter_price_cents` on a price rejection, and `final_by`
+  on a pending result. Sent only when the acknowledged message is `1.3.0` or
+  later; a `DUPLICATE` ack repeats it. Reference platform:
+  `LCP_FEATURE_SALE_DISPOSITION`, advertised as `features.sale_disposition`.
+- **Sale result events (LEP-0012 §3).** `ACCEPTED`, `REJECTED`, and
+  `REFUNDED` to the lead's sender carry a signed `payout_cents` delta,
+  `currency`, and a strictly increasing `revision`. The reference platform
+  reconciles payable records against reported deltas, so a sale, a dispute,
+  and a refund each produce at most one event, and an unroutable or expired
+  lead produces one `REJECTED` with `rejection_reason` `no_buyer`.
+- **URL-template postbacks (LEP-0012 §4).** `subscription.delivery`
+  (`json` | `url_template`). A template is a signed `GET` with macros only in
+  the query, from a closed set (`{click_id}`, `{sub1}`–`{sub5}`, `{event}`,
+  `{payout}`, `{payout_cents}`, `{currency}`, `{revision}`, `{test}`, and
+  others). It fires only for events the platform addresses to the
+  subscriber, and its expanded URL is never logged.
+  `LCP_FEATURE_URL_POSTBACKS` (needs `LCP_FEATURE_EVENTS`).
+- **Registered extensions `lcp.affiliate.tracking` and `lcp.test.outcome`
+  (LEP-0012 §5–§6).** Click and sub-ID passthrough, and a forced test
+  outcome that a sandbox honours without routing, billing, or counting the
+  lead. `lcp.test.outcome` on live traffic is `LCP-013`. Neither namespace
+  is forwarded to a buyer. `LCP_FEATURE_TEST_OUTCOMES` (sandbox only).
+- **Regulated identifiers (LEP-0013).** The `x-lcp-regulated` vertical
+  annotation (`government_id`: `ssn`, `license_number`; `bank_account`:
+  `account_number`, `routing_number`) with load-time rules, the receiver
+  intake gate, per-buyer `regulated_fields` forwarding, no-persistence
+  handling, and the test SSN range `987654320`–`987654329`. The reference
+  platform implements the fail-closed side only: it refuses every regulated
+  value with `LCP-100` by field name and never advertises
+  `features.regulated_identifiers`.
+- **`personal_loans` vertical 2.0.0 (LEP-0014).** Applicant-declared
+  amounts are whole units (`loan_amount` 100–50000, `monthly_income`
+  0–50000); the `us_details` container is `restricted` and declares its
+  regulated identifiers; four required fields (`vertical`, `schema_version`,
+  `amount_currency`, `loan_amount`). The currency attribute is
+  `amount_currency` because core schemas own `currency` (SPEC §12).
+- **Conformance tiers `SALE` and `REG`** (`test-vectors/sale-lifecycle.json`,
+  `test-vectors/regulated-identifiers.json`).
+
+### Changed
+
+- `lcp_versions` advertises `1.3.0`. The `PROCESSED` ack stays a `1.2.0`
+  envelope, so a 1.2 buyer never receives a newer version.
+- `rejection_reason` covers leads that were not bought, and gains the known
+  value `no_buyer`.
+
 ## [1.2.0] — 2026-11-04
 
 Additive MINOR. Four new wire surfaces — batch submission, event

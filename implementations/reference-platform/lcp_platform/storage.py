@@ -994,6 +994,7 @@ class Store:
                     active INTEGER NOT NULL DEFAULT 1,
                     replay_from TEXT,
                     cursor_sequence INTEGER NOT NULL DEFAULT 0,
+                    delivery TEXT NOT NULL DEFAULT 'json',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     UNIQUE(subscriber_id, idempotency_key)
@@ -1419,6 +1420,15 @@ class Store:
             )
             """
         )
+        subscription_columns = {
+            row[1]
+            for row in db.execute("PRAGMA table_info(event_subscriptions)").fetchall()
+        }
+        if "delivery" not in subscription_columns:
+            # LEP-0012 §4: json (LEP-0001 POST) or url_template (signed GET).
+            db.execute(
+                "ALTER TABLE event_subscriptions ADD COLUMN delivery TEXT NOT NULL DEFAULT 'json'"
+            )
 
     # ─── Credentials ──────────────────────────────────────────────────────
 
@@ -4032,6 +4042,7 @@ class Store:
         secret: str,
         replay_from: str | None,
         cursor_sequence: int,
+        delivery: str = "json",
     ) -> dict[str, Any]:
         timestamp = now_iso()
         with self.transaction() as db:
@@ -4040,9 +4051,9 @@ class Store:
                 INSERT INTO event_subscriptions
                     (subscription_id, tenant_id, subscriber_id, idempotency_key,
                      event_types_json, callback_url, filter_json, secret_cipher,
-                     active, replay_from, cursor_sequence,
+                     active, replay_from, cursor_sequence, delivery,
                      created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (
                     subscription_id,
@@ -4055,6 +4066,7 @@ class Store:
                     self._cipher.encode({"secret": secret}),
                     replay_from,
                     cursor_sequence,
+                    delivery,
                     timestamp,
                     timestamp,
                 ),

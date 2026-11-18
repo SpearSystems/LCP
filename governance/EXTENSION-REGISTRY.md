@@ -60,6 +60,8 @@ No editorial veto. No fees. No mandatory review period.
 | `lcp.platform.assessment` | LCP reference platform | Platform quality score for a lead: bounded 0–100 score, model edition and version, and explainability fields; no consumer PII. Admitted on `post` always, and on `ping` only because the registration declares it `ping_safe` (no contact or restricted fields). | v1.2 |
 | `lcp.buyer.criteria` | LCP reference platform | Vertical-specific buyer criteria carried on an offer, expressed with the allowlisted predicate operators and typed paths; never on a ping; evaluated by the platform matcher with explainable failures. | v1.2 |
 | `lcp.intake.raw_form` | LCP reference platform | Verbatim intake question/answer pairs for dispute evidence on a `post`; bounded array (≤ 8 KiB), post-only, never ping_safe, classed `restricted` under the PII taxonomy. | v1.2 |
+| `lcp.affiliate.tracking` | LCP reference platform | Sender click and sub-ID passthrough on a `lead` or `post`: keys `click_id` and `sub1`–`sub5`, each a string matching `^[A-Za-z0-9._~:-]{0,255}$`; any other key refused. Classed `internal`, never ping_safe, never forwarded to a downstream buyer; echoed back only through URL-template postback macros (LEP-0012 §4–§5). | v1.3 |
+| `lcp.test.outcome` | LCP reference platform | Forced test outcome on a test `lead` or `post`: `outcome` (`sold` \| `unsold` \| `pending` \| `price_rejected`) and optional `payout_cents` (1–100000000). Legal only with `message.test` = `true`; refused on live traffic with `LCP-013`. Never forwarded downstream (LEP-0012 §6). | v1.3 |
 
 ## Extension payload location
 

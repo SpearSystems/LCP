@@ -108,6 +108,14 @@ class PlatformConfig:
     # REFUSED rather than recorded under a `source_type` the platform did not
     # observe — fail closed, never a fabricated provenance.
     feature_email_form_entry: bool = False
+    # LEP-0012 (v1.3): sale disposition on the lead ack plus ACCEPTED /
+    # REJECTED / REFUNDED sale events to the publisher, URL-template
+    # postbacks (needs feature_events), and forced test outcomes. Each ships
+    # OFF by default and is advertised in capabilities().features only when
+    # on; off leaves every ack and subscription exactly as in v1.2.
+    feature_sale_disposition: bool = False
+    feature_url_postbacks: bool = False
+    feature_test_outcomes: bool = False
     # The entry-surface declaration: sender ids whose leads arrive through an
     # email/form relay. Only these can receive a platform-recorded entry, so an
     # empty list keeps intake bit-for-bit v1.2 whatever the flag says.
@@ -312,6 +320,9 @@ class PlatformConfig:
             feature_negotiation=_bool("LCP_FEATURE_NEGOTIATION", False),
             feature_events=_bool("LCP_FEATURE_EVENTS", False),
             feature_email_form_entry=_bool("LCP_FEATURE_EMAIL_FORM_ENTRY", False),
+            feature_sale_disposition=_bool("LCP_FEATURE_SALE_DISPOSITION", False),
+            feature_url_postbacks=_bool("LCP_FEATURE_URL_POSTBACKS", False),
+            feature_test_outcomes=_bool("LCP_FEATURE_TEST_OUTCOMES", False),
             email_form_publisher_ids=_csv("LCP_EMAIL_FORM_PUBLISHER_IDS"),
             event_cursor_ttl_seconds=int(
                 os.environ.get("LCP_EVENT_CURSOR_TTL_SECONDS", "86400")

@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
 from typing import Any, NoReturn
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 from uuid import NAMESPACE_URL, uuid4, uuid5
 import hashlib
 import re
@@ -31,7 +31,14 @@ from .attestation import (
 )
 from .auth import Authenticator, header, signature_for
 from .crypto import EnvelopeCipher
-from .extensions import extension_problems, redact_extension_pii
+from .extensions import (
+    AFFILIATE_TRACKING,
+    AFFILIATE_TRACKING_KEYS,
+    PAIR_SCOPED_EXTENSIONS,
+    TEST_OUTCOME,
+    extension_problems,
+    redact_extension_pii,
+)
 from .mapping import MappingError, MappingRegistry, PublisherNormalizer, source_digest
 from .config import PlatformConfig
 from .database import create_store
@@ -138,6 +145,23 @@ _EVENT_STATUS_TARGETS = {
 def _semver_tuple(value: str) -> tuple[int, int, int]:
     major, minor, patch = value.split(".")
     return int(major), int(minor), int(patch)
+
+
+def _is_v13(envelope: dict[str, Any]) -> bool:
+    """LEP-0012 §1 version gate, compared parsed, never as a string."""
+    try:
+        return _semver_tuple(str(envelope["lcp"]["version"]))[:2] >= (1, 3)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+# LEP-0012 §3/§6: the platform's own sale events to a publisher, and the
+# fixed synthetic amount a forced test outcome uses when it names none.
+SALE_EVENTS = frozenset({"ACCEPTED", "REJECTED", "REFUNDED"})
+TEST_OUTCOME_PAYOUT_CENTS = 1000
+TEST_OUTCOME_CURRENCY = "USD"  # platform-priced, like offers; never read from lead attributes
+POSTBACK_URL_MAX_BYTES = 4096
+_URL_MACRO_RE = re.compile(r"\{([^{}]*)\}")
 
 
 def _lcp_version_supported(version: str) -> bool:
@@ -253,6 +277,14 @@ _FX_DEFAULT_MINOR_UNIT_EXPONENT = 2
 def _minor_unit_exponent(currency: str) -> int:
     """ISO 4217 minor-unit exponent for a validated alpha-3 code."""
     return _FX_MINOR_UNIT_EXPONENTS.get(currency, _FX_DEFAULT_MINOR_UNIT_EXPONENT)
+
+
+def _format_payout(cents: int, currency: str) -> str:
+    """LEP-0012 §4 ``{payout}``: signed major units at the ISO 4217 exponent."""
+    exponent = _minor_unit_exponent(currency)
+    whole, fraction = divmod(abs(cents), 10**exponent)
+    sign = "-" if cents < 0 else ""
+    return f"{sign}{whole}.{fraction:0{exponent}d}" if exponent else f"{sign}{whole}"
 
 
 def _read_sdk_version() -> str:
@@ -620,6 +652,7 @@ class Platform:
                 sender_id=self.config.platform_id,
                 status="DUPLICATE",
                 lead_id=existing["lead_id"],
+                disposition=self._lead_disposition(existing_envelope),
             )
 
         # LEP-0008 §5 pinned intake slot: after auth/rate-limit and BOTH
@@ -633,6 +666,17 @@ class Platform:
         # rules, before matching or persistence — a rejected lead stores
         # nothing and creates no pings/posts.
         self._validate_extension_policy(payload)
+        if TEST_OUTCOME in (payload.get("extensions") or {}) and not message.get(
+            "test", False
+        ):
+            raise RequestError(
+                "lcp.test.outcome is legal only on test traffic (LEP-0012 §6)",
+                "LCP-013",
+                400,
+            )
+        forced = self._forced_test_outcome(envelope)
+        if forced is not None:
+            return self._ingest_forced_test_lead(envelope, forced, sender_id=sender_id)
         lead_expired = is_expired(envelope_expiry(envelope))
         offers = (
             []
@@ -689,6 +733,7 @@ class Platform:
                 sender_id=self.config.platform_id,
                 status="DUPLICATE",
                 lead_id=existing["lead_id"] if existing else payload["lead_id"],
+                disposition=self._lead_disposition(envelope),
             )
 
         for offer, result in matches:
@@ -726,12 +771,253 @@ class Platform:
                 "post_count": created_direct_posts,
             },
         )
+        if lead_expired or not (created_pings or created_direct_posts):
+            # No buyer can take it: the pending lead resolves unsold now.
+            self._sync_sale_result(payload["lead_id"], final=True)
 
         return build_ack(
             envelope,
             sender_id=self.config.platform_id,
             status="RECEIVED",
             lead_id=payload["lead_id"],
+            disposition=self._lead_disposition(envelope),
+        )
+
+    # ─── Sale lifecycle (LEP-0012, v1.3) ───────────────────────────────────
+
+    def _forced_test_outcome(self, envelope: dict[str, Any]) -> dict[str, Any] | None:
+        """LEP-0012 §6: the forced outcome this receiver honours, if any.
+
+        Only on a 1.3.0+ test message, because the result is reported in the
+        disposition, and only when ``features.test_outcomes`` is on. Test
+        traffic itself reaches only a sandbox (LCP-013), so a production
+        deployment never takes this path.
+        """
+        if not self.config.feature_test_outcomes or not _is_v13(envelope):
+            return None
+        if not envelope["lcp"]["message"].get("test", False):
+            return None
+        forced = (envelope["lcp"]["payload"].get("extensions") or {}).get(TEST_OUTCOME)
+        return forced if isinstance(forced, dict) else None
+
+    def _lead_disposition(self, envelope: dict[str, Any]) -> dict[str, Any] | None:
+        """LEP-0012 §1: the disposition on a lead's ack (``None`` = omit).
+
+        A pure function of the stored envelope and this build's flags, so a
+        DUPLICATE ack repeats the original byte for byte. This platform routes
+        asynchronously, so a live lead is ``pending`` and its result follows
+        as an ACCEPTED or REJECTED event (§3).
+        """
+        if not _is_v13(envelope):
+            return None
+        forced = self._forced_test_outcome(envelope)
+        if forced is None:
+            if not self.config.feature_sale_disposition:
+                return None
+            return {"outcome": "pending"}
+        outcome = str(forced["outcome"])
+        currency = TEST_OUTCOME_CURRENCY
+        if outcome == "sold":
+            return {
+                "outcome": "sold",
+                "payout_cents": int(forced.get("payout_cents", TEST_OUTCOME_PAYOUT_CENTS)),
+                "currency": currency,
+            }
+        if outcome == "price_rejected":
+            return {
+                "outcome": "price_rejected",
+                "counter_price_cents": TEST_OUTCOME_PAYOUT_CENTS,
+                "currency": currency,
+            }
+        return {"outcome": outcome}
+
+    def _ingest_forced_test_lead(
+        self, envelope: dict[str, Any], forced: dict[str, Any], *, sender_id: str
+    ) -> dict[str, Any]:
+        """LEP-0012 §6: answer a test lead with its forced outcome.
+
+        The lead is stored for the integrator's own reads and events, but it
+        is never matched, routed, billed, or counted: its status is terminal
+        at insert. A forced ``pending`` resolves at once (§6 allows 60 s).
+        """
+        message = envelope["lcp"]["message"]
+        lead_id = envelope["lcp"]["payload"]["lead_id"]
+        sold = forced["outcome"] in {"sold", "pending"}
+        tenant = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        if not self.store.insert_lead(
+            envelope, status="ACCEPTED" if sold else "REJECTED", tenant_id=tenant
+        ):
+            existing = self.store.get_lead_by_idempotency(
+                sender_id, message["idempotency_key"]
+            )
+            return build_ack(
+                envelope,
+                sender_id=self.config.platform_id,
+                status="DUPLICATE",
+                lead_id=existing["lead_id"] if existing else lead_id,
+                disposition=self._lead_disposition(envelope),
+            )
+        self.store.complete_routing_job(lead_id)
+        if sold:
+            self._emit_sale_event(
+                envelope,
+                "ACCEPTED",
+                {
+                    "payout_cents": int(
+                        forced.get("payout_cents", TEST_OUTCOME_PAYOUT_CENTS)
+                    ),
+                    "currency": TEST_OUTCOME_CURRENCY,
+                    "sold_at": now_iso(),
+                },
+                prior=[],
+            )
+        self._enqueue_audit(
+            tenant_id=tenant,
+            actor_id=sender_id,
+            action="lead.test_outcome",
+            resource_type="lead",
+            resource_id=lead_id,
+            metadata={"outcome": str(forced["outcome"])},
+        )
+        return build_ack(
+            envelope,
+            sender_id=self.config.platform_id,
+            status="RECEIVED",
+            lead_id=lead_id,
+            disposition=self._lead_disposition(envelope),
+        )
+
+    def _sale_events(self, lead_id: str) -> list[dict[str, Any]]:
+        """Earlier §3 events this platform sent about the lead, oldest first."""
+        return [
+            event["lcp"]["payload"]
+            for event in self.store.list_events(lead_id)
+            if event["lcp"]["message"]["sender_id"] == self.config.platform_id
+            and event["lcp"]["payload"].get("event") in SALE_EVENTS
+            and "revision" in (event["lcp"]["payload"].get("details") or {})
+        ]
+
+    def _emit_sale_event(
+        self,
+        lead_envelope: dict[str, Any],
+        event_name: str,
+        details: dict[str, Any],
+        *,
+        prior: list[dict[str, Any]],
+    ) -> None:
+        """Send one §3 event to the lead's publisher with the next revision."""
+        message = lead_envelope["lcp"]["message"]
+        lead_id = lead_envelope["lcp"]["payload"]["lead_id"]
+        event = build_event(
+            lead_id,
+            event_name,
+            platform_id=self.config.platform_id,
+            receiver_id=message["sender_id"],
+            correlation_id=message["id"],
+            details={**details, "revision": len(prior) + 1},
+            test=bool(message.get("test", False)),
+        )
+        self.validator.require_valid_envelope(event)
+        self.store.insert_event(
+            lead_id, event_name, event, record_stream=self.config.feature_events
+        )
+
+    def _sync_sale_result(self, lead_id: str, *, final: bool = False) -> None:
+        """LEP-0012 §3: report the lead's sale result to its publisher.
+
+        Reconciles what the platform owes for the lead (payable and disputed
+        records) against the signed deltas earlier events reported, and emits
+        only the difference: ACCEPTED for a positive delta, REFUNDED for a
+        negative one. ``final`` marks a terminal unsold state, reported once
+        as REJECTED when nothing was ever sold. Idempotent, so every payable
+        or terminal change can call it. The reference platform reports the
+        buyer price as the payout (it takes no fee); a deployment applies its
+        own.
+        """
+        # ponytail: concurrent workers could race to the same revision; add a
+        # per-lead lock if two workers ever settle one lead at once.
+        if not self.config.feature_sale_disposition:
+            return
+        row = self.store.get_lead(lead_id)
+        if row is None:
+            return
+        envelope = self.store.decode_envelope(row["envelope_json"])
+        if not _is_v13(envelope) or self._forced_test_outcome(envelope) is not None:
+            return
+        prior = self._sale_events(lead_id)
+        reported = sum(
+            int((event.get("details") or {}).get("payout_cents", 0)) for event in prior
+        )
+        owed_rows = [
+            record
+            for record in self.store.payable_for_lead(lead_id)
+            if record["status"] in {"payable", "disputed"}
+        ]
+        delta = sum(int(record["price_cents"]) for record in owed_rows) - reported
+        currency = next(
+            (str(record["currency"]) for record in owed_rows if record["currency"]),
+            next(
+                (
+                    str(event["details"]["currency"])
+                    for event in prior
+                    if event["details"].get("currency")
+                ),
+                "",
+            ),
+        )
+        money = {"payout_cents": delta, **({"currency": currency} if currency else {})}
+        if delta > 0:
+            self._emit_sale_event(
+                envelope, "ACCEPTED", {**money, "sold_at": now_iso()}, prior=prior
+            )
+        elif delta < 0:
+            self._emit_sale_event(
+                envelope, "REFUNDED", {**money, "returned_at": now_iso()}, prior=prior
+            )
+        elif final and not prior:
+            self._emit_sale_event(
+                envelope, "REJECTED", {"rejection_reason": "no_buyer"}, prior=prior
+            )
+
+    def _expire_lead(self, lead_id: str) -> bool:
+        expired = self.store.expire_lead(lead_id)
+        if expired:
+            self._sync_sale_result(lead_id, final=True)
+        return expired
+
+    def _expand_postback(self, template: str, event: dict[str, Any]) -> str:
+        """LEP-0012 §4: expand the closed macro set for one event.
+
+        Every value comes from a public or internal source and is
+        percent-encoded (RFC 3986 unreserved characters kept).
+        """
+        message = event["lcp"]["message"]
+        payload = event["lcp"]["payload"]
+        details = payload.get("details") or {}
+        lead_row = self.store.get_lead(str(payload["lead_id"]))
+        lead = (
+            self.store.decode_envelope(lead_row["envelope_json"])["lcp"]["payload"]
+            if lead_row is not None
+            else {}
+        )
+        tracking = (lead.get("extensions") or {}).get(AFFILIATE_TRACKING) or {}
+        cents = details.get("payout_cents")
+        currency = details.get("currency")
+        has_money = isinstance(cents, int) and isinstance(currency, str)
+        values = {
+            "lead_id": str(payload["lead_id"]),
+            "external_id": str(lead.get("external_id") or ""),
+            **{key: str(tracking.get(key) or "") for key in AFFILIATE_TRACKING_KEYS},
+            "event": str(payload["event"]),
+            "payout": _format_payout(cents, currency) if has_money else "",
+            "payout_cents": str(cents) if isinstance(cents, int) else "",
+            "currency": currency if isinstance(currency, str) else "",
+            "revision": str(details.get("revision", "")),
+            "test": "1" if message.get("test") else "0",
+            "timestamp": str(payload["timestamp"]),
+        }
+        return _URL_MACRO_RE.sub(
+            lambda match: quote(values.get(match.group(1), ""), safe=""), template
         )
 
     # ─── Batch intake (LEP-0001, execution plan W2) ────────────────────────
@@ -2395,7 +2681,9 @@ class Platform:
         message_id = str(uuid5(NAMESPACE_URL, f"lcp:processed:{post_message['id']}"))
         return {
             "lcp": {
-                "version": SUPPORTED_LCP_VERSIONS[-1],
+                # The PROCESSED ack is a 1.2.0 shape (features.processed_ack);
+                # pinned so a 1.2 buyer never receives a newer envelope.
+                "version": "1.2.0",
                 "message": {
                     "id": message_id,
                     "type": "ack",
@@ -2439,7 +2727,7 @@ class Platform:
         if self.store.is_lead_suppressed(lead_id):
             return
         if is_expired(parse_iso_datetime(row["expires_at"])):
-            self.store.expire_lead(lead_id)
+            self._expire_lead(lead_id)
             return
         if is_expired(parse_iso_datetime(row["consent_expires_at"])):
             self.store.suppress_lead(
@@ -2513,7 +2801,7 @@ class Platform:
         # W4-06: batched, interval-gated envelope redaction + history deletion.
         self.store.sweep_retention()
         for lead in self.store.list_expired_leads():
-            self.store.expire_lead(lead["lead_id"])
+            self._expire_lead(lead["lead_id"])
         for lead in self.store.list_consent_expired_leads():
             self.store.suppress_lead(
                 lead["lead_id"],
@@ -2564,6 +2852,13 @@ class Platform:
           backstop the record requires, never a per-recipient exception.
         """
         extensions = lead_payload.get("extensions")
+        if isinstance(extensions, dict):
+            # LEP-0012 §5/§6: pair-scoped namespaces never reach a buyer.
+            extensions = {
+                key: value
+                for key, value in extensions.items()
+                if key not in PAIR_SCOPED_EXTENSIONS
+            }
         if not isinstance(extensions, dict) or not extensions:
             return None
         if not self.auth.advertises_slot_protocol(buyer_id):
@@ -2992,7 +3287,7 @@ class Platform:
         if self.store.is_lead_suppressed(lead_id):
             return
         if is_expired(parse_iso_datetime(row["expires_at"])):
-            self.store.expire_lead(lead_id)
+            self._expire_lead(lead_id)
             return
         if is_expired(parse_iso_datetime(row["consent_expires_at"])):
             self.store.suppress_lead(
@@ -3103,6 +3398,7 @@ class Platform:
         ) == "exclusive"
         if not candidates:
             self.store.update_lead_status(lead_id, "EXPIRED")
+            self._sync_sale_result(lead_id, final=True)
             return
 
         lead_envelope = self.store.decode_envelope(row["envelope_json"])
@@ -3173,6 +3469,8 @@ class Platform:
                 if exclusive:
                     break
         self.store.update_lead_status(lead_id, "POSTED" if delivered else "EXPIRED")
+        if not delivered:
+            self._sync_sale_result(lead_id, final=True)
 
     def _process_attachment_deletions(self) -> None:
         for job in self.store.list_due_attachment_deletions():
@@ -3332,7 +3630,7 @@ class Platform:
                 attempts=attempts,
                 last_error="Post response timeout",
             )
-            if not self.store.expire_lead(lead_id):
+            if not self._expire_lead(lead_id):
                 continue
             self.store.insert_audit(
                 tenant_id=self.config.routing_tenant_id,
@@ -3400,6 +3698,7 @@ class Platform:
             reason=reason,
             call_seconds=seconds,
         )
+        self._sync_sale_result(delivery["lead_id"])
 
     def _evaluate_call_outcome(
         self,
@@ -3756,6 +4055,7 @@ class Platform:
                         reason=reason,
                         call_seconds=seconds,
                     )
+                    self._sync_sale_result(payload["lead_id"])
         return build_ack(
             envelope,
             sender_id=self.config.platform_id,
@@ -3816,6 +4116,7 @@ class Platform:
                 platform_id=self.config.platform_id,
                 advertised_events=set(self._advertised_event_names()),
                 allow_private=self.config.allow_insecure_webhooks,
+                allow_url_templates=self.config.feature_url_postbacks,
             )
         except SubscriptionValidationError as exc:
             raise self._subscription_error(exc) from exc
@@ -3862,6 +4163,7 @@ class Platform:
                 json.loads(existing["event_types_json"]) == normalized["event_types"]
                 and existing["callback_url"] == normalized["callback_url"]
                 and json.loads(existing["filter_json"]) == normalized["filter"]
+                and existing["delivery"] == normalized["delivery"]
                 and existing["replay_from"] == replay_from
             )
             if not same:
@@ -3885,6 +4187,7 @@ class Platform:
             secret=secret,
             replay_from=replay_from if isinstance(replay_from, str) else None,
             cursor_sequence=cursor_sequence,
+            delivery=normalized["delivery"],
         )
         self.store.insert_audit(
             tenant_id=tenant_id,
@@ -4045,6 +4348,8 @@ class Platform:
             "replay_from": row["replay_from"],
             "created_at": row["created_at"],
         }
+        if row["delivery"] != "json":
+            view["delivery"] = row["delivery"]
         if secret is not None:
             view["secret"] = secret
         return view
@@ -4093,6 +4398,18 @@ class Platform:
                 filters=filters,
             ):
                 continue
+            if subscription["delivery"] == "url_template":
+                # LEP-0012 §4.7: a postback fires only for events this
+                # platform addresses to the subscriber, never for an event a
+                # buyer reported about its post.
+                sent = self.store.decode_envelope(str(row["envelope_json"]))["lcp"][
+                    "message"
+                ]
+                if (
+                    sent["sender_id"] != self.config.platform_id
+                    or sent["receiver_id"] != subscription["subscriber_id"]
+                ):
+                    continue
             self.store.insert_event_delivery(
                 subscription_id=str(subscription["subscription_id"]),
                 event_id=str(row["event_id"]),
@@ -4157,24 +4474,36 @@ class Platform:
                 last_error=error,
             )
             return
+        url_template = subscription["delivery"] == "url_template"
         try:
-            validate_webhook_url(str(subscription["callback_url"]), self.config)
-            validate_egress_host(
-                urlsplit(str(subscription["callback_url"])).hostname or "",
-                self.config,
-            )
             envelope = self.store.decode_envelope(str(event["envelope_json"]))
-            body = json.dumps(
-                envelope, separators=(",", ":"), ensure_ascii=False
-            ).encode("utf-8")
+            if url_template:
+                # LEP-0012 §4: a signed GET to the expanded template; the
+                # expanded URL takes the body's place in the signature.
+                target = self._expand_postback(str(subscription["callback_url"]), envelope)
+                body = target.encode("utf-8")
+                if len(body) > POSTBACK_URL_MAX_BYTES:
+                    raise SecurityPolicyError("Expanded postback URL is too long")
+                method, content, framing = "GET", None, {}
+            else:
+                target = str(subscription["callback_url"])
+                body = json.dumps(
+                    envelope, separators=(",", ":"), ensure_ascii=False
+                ).encode("utf-8")
+                method, content = "POST", body
+                framing = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                }
+            validate_webhook_url(target, self.config)
+            validate_egress_host(urlsplit(target).hostname or "", self.config)
             timestamp = now_iso()
             event_id = str(event["event_id"])
             # LEP-0002 canonical input over the exact bytes above:
             # <timestamp>\n<event_id>\n<body>. The timestamp signed is the one
             # emitted on X-LCP-Timestamp, never a normalized value.
             headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
+                **framing,
                 "X-LCP-Sender-Id": self.config.platform_id,
                 "X-LCP-Event-Id": event_id,
                 "X-LCP-Subscription-Id": str(subscription["subscription_id"]),
@@ -4190,9 +4519,9 @@ class Platform:
                 trust_env=False,
             ) as client:
                 with client.stream(
-                    "POST",
-                    str(subscription["callback_url"]),
-                    content=body,
+                    method,
+                    target,
+                    content=content,
                     headers=headers,
                 ) as response:
                     response_bytes = 0
@@ -4216,7 +4545,11 @@ class Platform:
             # contain PII and are attacker-controlled.
             error = f"HTTP {response_status} from subscriber callback"
         except Exception as exc:  # delivery failures must enter the retry queue
-            error = f"{type(exc).__name__}: {exc}"
+            # LEP-0012 §4.6: a template may embed the tracker's own token, so a
+            # postback failure never records the expanded URL.
+            error = (
+                type(exc).__name__ if url_template else f"{type(exc).__name__}: {exc}"
+            )
 
         if attempts >= self.config.max_delivery_attempts:
             status = "FAILED"
@@ -4652,6 +4985,24 @@ class Platform:
                     {"email_form_entry": "1.2.0"}
                     if self.config.feature_email_form_entry
                     and self.config.email_form_publisher_ids
+                    else {}
+                ),
+                # LEP-0012: each advertised only when enabled. URL postbacks
+                # ride event subscriptions; forced outcomes ride test traffic,
+                # which only a sandbox accepts (LCP-013).
+                **(
+                    {"sale_disposition": "1.3.0"}
+                    if self.config.feature_sale_disposition
+                    else {}
+                ),
+                **(
+                    {"url_postbacks": "1.3.0"}
+                    if self.config.feature_url_postbacks and self.config.feature_events
+                    else {}
+                ),
+                **(
+                    {"test_outcomes": "1.3.0"}
+                    if self.config.feature_test_outcomes and self.config.test_mode
                     else {}
                 ),
             },

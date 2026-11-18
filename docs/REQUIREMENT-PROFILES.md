@@ -71,6 +71,21 @@ Allowed paths are deliberately limited to one field below `attributes`,
 unregistered nested paths are not evaluated. Predicates are ANDed together;
 invalid profiles fail closed with an explainable match reason.
 
+**Regulated fields (v1.3, LEP-0013 §3).** A profile MAY name the
+regulated identifiers a buyer needs, field by field:
+
+```json
+"regulated_fields": { "us_details.ssn": "required", "us_details.routing_number": "required", "us_details.license_number": "optional" }
+```
+
+A platform forwards a regulated field only to a buyer that advertises
+`features.regulated_identifiers`, is enrolled for the vertical, and names
+the field here. A `required` field absent from the lead makes the offer
+non-matching with reason `regulated_field_missing`; an `optional` field
+is forwarded when present. Every other buyer receives the post without
+regulated fields. The reference platform does not advertise the feature,
+so it refuses regulated values at intake and never evaluates this key.
+
 ## Named service-area shape
 
 ```json

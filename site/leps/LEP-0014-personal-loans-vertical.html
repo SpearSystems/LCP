@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0014-personal-loans-vertical.md">
+<meta name="lcp-build" content="6b4111a944d3">
+<title>LEP-0014 — personal_loans vertical 2.0.0: whole-unit applicant amounts and a regulated identity container — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0014--personal_loans-vertical-200-whole-unit-applicant-amounts-and-a-regulated-identity-container">LEP-0014 — <code>personal_loans</code> vertical 2.0.0: whole-unit applicant amounts and a regulated identity container</h1>
+<ul>
+<li><strong>Title:</strong> <code>personal_loans</code> vertical 2.0.0: an interoperable personal-loan vertical with whole-unit applicant amounts and an LEP-0013 identity container</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
+<li><strong>Date:</strong> 2026-11-19</li>
+<li><strong>Status:</strong> <strong>Draft</strong>. Not accepted. A candidate implementation is on branch <code>lep/0012-0013-sale-lifecycle</code>; it does not merge until this record is Accepted (LEP.md stage 5).</li>
+<li><strong>Target version:</strong> v1.3.0 (a new vertical file is additive. The file's own <code>schema_version</code> is <code>2.0.0</code>, so it can never be confused with the adopter's unpublished 1.0.0.)</li>
+<li><strong>Discussion:</strong> none yet. A <code>[LEP]</code> issue opens when this record moves to Review.</li>
+<li><strong>Schema:</strong> <a href="../verticals/personal_loans.html"><code>verticals/personal_loans.json</code></a>.</li>
+<li><strong>Depends on:</strong> <a href="LEP-0013-regulated-identifiers.html">LEP-0013</a> for the <code>us_details</code> container. If LEP-0013 is rejected, this vertical ships without <code>us_details</code>. Every other field stands alone.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><strong>No personal-loans vertical exists in LCP.</strong> The shipped verticals are <code>home_services</code>, <code>insurance</code>, <code>legal</code>, <code>mortgage</code>, <code>mva</code> and <code>solar</code>. SpearPointX registered its own <code>personal_loans</code> 1.0.0 to onboard a publisher, and published a schema URL under <code>lcp.dev</code> that LCP does not serve.</p>
+<p><strong>Unit conversion caused a real defect.</strong> Version 1.0.0 carries applicant-declared amounts as cents (<code>loan_amount_cents</code>, <code>monthly_income_cents</code>). Applicants type whole dollars, so every integration has to multiply by 100. In practice that failed in three ways:</p>
+<ul>
+<li>The adopter's own integration guide multiplied twice. A $1,000 request went out as $100,000, and the schema accepted it.</li>
+<li>No-code form tools (GoHighLevel, Heyflow) cannot multiply a field value. The guide had to send those publishers through a separate automation service just to add two zeros.</li>
+<li>The buyer API the adopter delivers to takes whole dollars. Its adapter divides by 100 again.</li>
+</ul>
+<p><strong>The 1.0.0 identity container cannot validate.</strong> Its <code>us_details</code> lists <code>ssn</code>, <code>license_number</code> and <code>routing_number</code> as required but declares no such properties (see LEP-0013, evidence item 2).</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><strong>Vertical (additive):</strong> a new <code>verticals/personal_loans.json</code> at <code>schema_version</code> <code>2.0.0</code>, as proposed in the linked schema.</li>
+<li><strong>Vertical-authoring rule</strong> (documentation, <code>docs/VERTICALS.md</code> or equivalent): applicant-declared amounts may be whole units of a declared vertical attribute such as <code>amount_currency</code>, named without a <code>_cents</code> suffix and bounded. The attribute is not named <code>currency</code>: core schemas own that name (SPEC §12, <code>tools/check_universal_core.py</code>). Platform-priced money stays integer minor units with <code>_cents</code>.</li>
+<li><p><strong>Not in scope:</strong></p>
+<ul>
+<li>changing existing verticals (<code>mortgage.loan_amount_cents</code> and others);</li>
+<li>core money fields;</li>
+<li>non-US personal loans.</li>
+</ul></li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<p>The full schema is in the linked file. Differences from the adopter's 1.0.0:</p>
+<table>
+<thead>
+<tr>
+<th>1.0.0</th>
+<th>2.0.0</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>loan_amount_cents</code> (integer, multiple of 100)</td>
+<td><code>loan_amount</code> (integer, <code>100</code>–<code>50000</code>, whole units)</td>
+<td>The form value passes straight through, with no conversion step. The bound rejects most wrong-unit values.</td>
+</tr>
+<tr>
+<td><code>monthly_income_cents</code> (integer, multiple of 100)</td>
+<td><code>monthly_income</code> (integer, <code>0</code>–<code>50000</code>, whole units)</td>
+<td>Same reason.</td>
+</tr>
+<tr>
+<td><code>account_number</code> at top level</td>
+<td><code>us_details.account_number</code>, regulated</td>
+<td>Account and routing numbers together are LEP-0013 <code>bank_account</code> identifiers and sit in one container.</td>
+</tr>
+<tr>
+<td><code>us_details</code> classed <code>contact</code>; <code>ssn</code>, <code>license_number</code>, <code>routing_number</code> required but undeclared</td>
+<td><code>us_details</code> classed <code>restricted</code>; all five identifiers declared with patterns and <code>x-lcp-regulated</code>; only <code>country_code</code> required</td>
+<td>Fixes the unvalidatable container and aligns it with LEP-0013.</td>
+</tr>
+<tr>
+<td>20 required fields</td>
+<td>4 required: <code>vertical</code>, <code>schema_version</code>, <code>amount_currency</code>, <code>loan_amount</code></td>
+<td>What a given buyer needs belongs in its requirement profile (<code>regulated_fields</code> and the existing predicates), not in the interoperable schema.</td>
+</tr>
+<tr>
+<td><code>street_address</code> in <code>attributes</code></td>
+<td>core <code>location.street_address</code></td>
+<td>SPEC §3: a vertical MUST NOT redefine a core field name (<code>tools/check_reserved_fields.py</code>).</td>
+</tr>
+<tr>
+<td><code>schema_version</code> <code>1.0.0</code></td>
+<td><code>2.0.0</code></td>
+<td>A breaking change for 1.0.0 senders.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Unchanged:</strong></p>
+<ul>
+<li>every other field, its class and its <code>ping_safe</code> flag;</li>
+<li>the platform-derived bands (<code>loan_amount_band</code>, <code>monthly_income_band</code>), which remain the only amount data a ping may carry.</li>
+</ul>
+<p><strong>The rule a publisher reads.</strong> Type what the applicant typed. <code>1000</code> means $1,000. Prices and payouts the platform reports back stay in cents (<code>payout_cents</code>, LEP-0012), because machines produce those.</p>
+<h4 id="valid-1--minimal-lead">Valid 1 — minimal lead</h4>
+<pre class="code-block"><code class="language-json">{ "vertical": "personal_loans", "schema_version": "2.0.0", "amount_currency": "USD", "loan_amount": 1000 }</code></pre>
+<h4 id="valid-2--full-lead-with-regulated-identifiers">Valid 2 — full lead with regulated identifiers</h4>
+<p>See <a href="LEP-0013-regulated-identifiers.html#valid-1--enrolled-sender-test-lead-v130-shape-personal_loans-200">LEP-0013 Valid 1</a>.</p>
+<h4 id="invalid-a--cents-sent-by-mistake">Invalid A — cents sent by mistake</h4>
+<p><code>"loan_amount": 100000</code> (meant as $1,000 in cents) is refused with <code>LCP-100</code>, <code>field</code> = <code>attributes.loan_amount</code>, because it exceeds <code>50000</code>.</p>
+<p><strong>Known limit:</strong> cents for requests of $500 or less (<code>50000</code> and below) pass the bound. Requirement profiles and the platform's band derivation surface those as out-of-pattern requests. Bounds alone cannot close the gap.</p>
+<h4 id="invalid-b--float-amount">Invalid B — float amount</h4>
+<p><code>"loan_amount": 1000.5</code> is refused, because the type is integer.</p>
+<h4 id="invalid-c--100-field-name-on-200">Invalid C — 1.0.0 field name on 2.0.0</h4>
+<p><code>"loan_amount_cents": 100000</code> with <code>schema_version</code> <code>2.0.0</code> is refused, because <code>additionalProperties</code> is <code>false</code>.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>Classes</strong> are carried over from 1.0.0 field by field, with no downgrade. <code>us_details</code> moves from <code>contact</code> to <code>restricted</code>, which is more protective and matches LEP-0011's container rule: a container takes the maximum of its children.</li>
+<li><strong>Regulated identifiers</strong> follow LEP-0013 in full. Without that record accepted, <code>us_details</code> is removed from this file.</li>
+<li><p><strong>Ping:</strong> only <code>public</code>, <code>ping_safe: true</code> fields:</p>
+<ul>
+<li>bands;</li>
+<li><code>loan_purpose</code>, <code>income_source</code>, <code>income_frequency</code>;</li>
+<li><code>direct_deposit</code>, <code>owns_vehicle</code>, <code>is_homeowner</code>.</li>
+</ul></li>
+<li><strong>Universal core:</strong> untouched. Everything here is in <code>attributes</code>.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>LCP release:</strong> additive (a new vertical file).</li>
+<li><strong>For the adopter's 1.0.0 senders:</strong> breaking. The migration is below.</li>
+<li><strong>Precedent.</strong> Whole-unit applicant amounts differ from <code>mortgage</code>'s <code>loan_amount_cents</code>. The vertical-authoring rule makes this an explicit, per-vertical choice. Converting other verticals is a deferred question, not part of this record.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>Schemas and SDKs:</strong> new vertical models in ten SDKs, with bundles and manifests regenerated. A <code>personal_loans</code> builder takes whole units and never multiplies.</li>
+<li><strong>Conformance:</strong> <code>test-vectors/verticals/personal_loans.json</code> covers every Valid and Invalid example, ping eligibility per field, and the <code>us_details</code> gate vectors (LEP-0013).</li>
+<li><strong>OpenAPI and MCP:</strong> vertical examples are regenerated with reserved test identifiers only.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Keep cents and add bounds.</strong> This catches the double conversion but keeps the multiply step that no-code publishers cannot do and that buyers undo. Rejected.</li>
+<li><strong>Decimal strings (<code>"1000.00"</code>).</strong> These parse in every stack, but publishers still have to format them, and they add a third numeric form to the protocol. Rejected.</li>
+<li><strong>A <code>_dollars</code> suffix.</strong> It is currency-specific, so a future GBP or AUD personal-loans market would carry a lie in the field name. Whole units of the declared <code>amount_currency</code> stay correct everywhere. Rejected.</li>
+<li><strong>Keep the 20 required fields.</strong> That encodes one buyer's requirements as everyone's schema. Rejected, in favour of requirement profiles.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>LCP:</strong> the vertical lands with LEP-0013's gate. If LEP-0013 has not been accepted, it lands without <code>us_details</code>.</li>
+<li><p><strong>Adopter migration (SpearPointX):</strong></p>
+<ul>
+<li>accept <code>schema_version</code> <code>1.0.0</code> and <code>2.0.0</code> side by side for 90 days;</li>
+<li>normalise 1.0.0 at intake (<code>loan_amount = loan_amount_cents / 100</code>);</li>
+<li>log per-sender 1.0.0 counts;</li>
+<li>remove 1.0.0 once the counts reach zero.</li>
+</ul></li>
+<li><strong>Publisher change:</strong> a publisher moves in one edit. Rename two fields, drop the ×100 conversion, move <code>account_number</code> into <code>us_details</code>, and set <code>schema_version</code> to <code>2.0.0</code>.</li>
+<li><strong>Rollback:</strong> the adopter keeps accepting 1.0.0. The LCP file is additive and can be withdrawn before release without affecting other verticals.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Whole-unit amounts in other verticals</strong> (<code>mortgage.loan_amount_cents</code>, <code>property_value_cents</code>). Trigger: a no-code integration defect or support burden in another vertical, or a second adopter asking.</li>
+<li><strong>Bound values.</strong> <code>50000</code> is set for short-term and mid-size installment loans. Trigger: a buyer with larger products, or refusal metrics showing legitimate requests above the bound.</li>
+<li><strong>Non-US personal loans.</strong> Trigger: buyer evidence outside the US. That needs a country container and, for identifiers, its own LEP-0013 successor.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--full-lead-with-regulated-identifiers">Valid 2 — full lead with regulated identifiers</a></li><li class="depth-4"><a href="#invalid-a--cents-sent-by-mistake">Invalid A — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-b--float-amount">Invalid B — float amount</a></li><li class="depth-4"><a href="#invalid-c--100-field-name-on-200">Invalid C — 1.0.0 field name on 2.0.0</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0014-personal-loans-vertical.md</code> · build <code>6b4111a944d3</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

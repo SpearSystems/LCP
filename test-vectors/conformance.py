@@ -1582,6 +1582,193 @@ def _check_subscription_filter_closed(
     return problems
 
 
+# --- LEP-0012 (v1.3): sale lifecycle ------------------------------------------
+
+_SALE_OUTCOMES = {"sold", "unsold", "pending", "price_rejected"}
+_URL_TEMPLATE_MACROS = {
+    "lead_id", "external_id", "click_id", "sub1", "sub2", "sub3", "sub4",
+    "sub5", "event", "payout", "payout_cents", "currency", "revision",
+    "test", "timestamp",
+}
+_URL_MACRO_RE = re.compile(r"\{([^{}]*)\}")
+_TRACKING_KEYS = {"click_id", "sub1", "sub2", "sub3", "sub4", "sub5"}
+_TRACKING_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:-]{0,255}$")
+_PHONE_RUN_RE = re.compile(r"\d{7,15}")
+_MAX_CENTS = 100_000_000
+
+
+def _parsed_minor(version: Any) -> Optional[Tuple[int, int]]:
+    match = _FULL_SEMVER_RE.match(str(version))
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def _check_disposition_version_gate(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §1: disposition only toward a 1.3.0+ sender, on a live ack."""
+    payload = _payload_of(envelope)
+    if "disposition" not in payload:
+        return []
+    acknowledged = _parsed_minor(vector.get("acknowledged_lcp_version"))
+    if acknowledged is None or acknowledged[0] != 1 or acknowledged[1] < 3:
+        return [
+            "DISPOSITION_GATE: disposition on an ack of a "
+            f"{vector.get('acknowledged_lcp_version')!r} message; LEP-0012 §1 "
+            "requires the acknowledged lcp.version to be 1.3.0 or later"
+        ]
+    if payload.get("status") not in {"RECEIVED", "ACCEPTED", "DUPLICATE"}:
+        return [
+            "DISPOSITION_GATE: disposition rides only a RECEIVED, ACCEPTED, or "
+            "DUPLICATE ack (LEP-0012 §1)"
+        ]
+    return []
+
+
+def _check_sale_event_details(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §3: signed integer deltas, per-event sign, revision >= 1."""
+    payload = _payload_of(envelope)
+    event = payload.get("event")
+    details = payload.get("details") or {}
+    problems: List[str] = []
+    revision = details.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        problems.append("SALE_EVENT: details.revision must be an integer >= 1")
+    cents = details.get("payout_cents")
+    if event == "REJECTED":
+        if cents is not None:
+            problems.append("SALE_EVENT: REJECTED carries no payout_cents")
+        return problems
+    if event not in {"ACCEPTED", "REFUNDED"}:
+        return problems + [f"SALE_EVENT: {event!r} is not a sale result event"]
+    if not isinstance(cents, int) or isinstance(cents, bool):
+        return problems + [
+            "SALE_EVENT: details.payout_cents must be integer minor units; "
+            "float major units are never valid"
+        ]
+    if event == "ACCEPTED" and not 0 < cents <= _MAX_CENTS:
+        problems.append("SALE_EVENT: ACCEPTED payout_cents must be 1-100000000")
+    if event == "REFUNDED" and not -_MAX_CENTS <= cents < 0:
+        problems.append("SALE_EVENT: REFUNDED payout_cents must be -100000000 to -1")
+    if not isinstance(details.get("currency"), str):
+        problems.append("SALE_EVENT: payout_cents requires currency")
+    return problems
+
+
+def _check_url_template(vector: dict, envelope: dict, errors: List[str]) -> List[str]:
+    """LEP-0012 §4: literal destination, macros only in the query, closed set."""
+    payload = _payload_of(envelope)
+    if payload.get("delivery") != "url_template":
+        return []
+    base, _, query = str(payload.get("callback_url", "")).partition("?")
+    problems: List[str] = []
+    if "{" in base or "}" in base:
+        problems.append(
+            "URL_TEMPLATE: LCP-100 field callback_url — macros are legal only "
+            "in the query component"
+        )
+    unknown = sorted(set(_URL_MACRO_RE.findall(query)) - _URL_TEMPLATE_MACROS)
+    if unknown:
+        problems.append(
+            "URL_TEMPLATE: LCP-100 field callback_url — macros outside the "
+            "closed set: " + ", ".join("{" + name + "}" for name in unknown)
+        )
+    return problems
+
+
+def _check_sale_extensions(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §5/§6 registered shapes and the live-traffic refusal."""
+    message = envelope.get("lcp", {}).get("message", {})
+    extensions = _payload_of(envelope).get("extensions") or {}
+    problems: List[str] = []
+    tracking = extensions.get("lcp.affiliate.tracking")
+    if tracking is not None:
+        root = "extensions.lcp.affiliate.tracking"
+        if not isinstance(tracking, dict):
+            return [f"SALE_EXTENSION: LCP-100 field {root} must be an object"]
+        for key, value in sorted(tracking.items()):
+            if key not in _TRACKING_KEYS:
+                problems.append(f"SALE_EXTENSION: LCP-100 field {root}.{key} is not registered")
+            elif not (isinstance(value, str) and _TRACKING_VALUE_RE.match(value)):
+                problems.append(f"SALE_EXTENSION: LCP-100 field {root}.{key} fails the value pattern")
+            elif _PHONE_RUN_RE.search(value):
+                problems.append(
+                    f"SALE_EXTENSION: LCP-100 field {root}.{key} carries a "
+                    "phone-shaped digit run (LEP-0006 B.3.4)"
+                )
+    outcome = extensions.get("lcp.test.outcome")
+    if outcome is not None:
+        if not message.get("test", False):
+            problems.append(
+                "SALE_EXTENSION: LCP-013 TEST_TRAFFIC_POLICY — lcp.test.outcome "
+                "is legal only on test traffic (LEP-0012 §6)"
+            )
+        if not isinstance(outcome, dict) or outcome.get("outcome") not in _SALE_OUTCOMES:
+            problems.append("SALE_EXTENSION: LCP-100 lcp.test.outcome.outcome is not a §1 outcome")
+    return problems
+
+
+# --- LEP-0013 (v1.3): regulated identifiers -----------------------------------
+
+_TEST_SSN_RANGE = range(987654320, 987654330)
+
+
+def _regulated_values(value: Any, definition: Any, path: str) -> List[Tuple[str, Any]]:
+    if not isinstance(value, dict) or not isinstance(definition, dict):
+        return []
+    properties = definition.get("properties") or {}
+    found: List[Tuple[str, Any]] = []
+    for name, child in value.items():
+        child_definition = properties.get(name)
+        child_path = f"{path}.{name}"
+        if isinstance(child_definition, dict) and "x-lcp-regulated" in child_definition:
+            if child is not None:
+                found.append((child_path, child))
+        else:
+            found.extend(_regulated_values(child, child_definition, child_path))
+    return found
+
+
+def _check_regulated_identifiers(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0013 §2/§5: the receiver intake gate and the test SSN range."""
+    lcp = envelope.get("lcp", {})
+    message = lcp.get("message", {})
+    attributes = _payload_of(envelope).get("attributes") or {}
+    schema = _vertical_schemas.get(str(attributes.get("vertical")))
+    found = _regulated_values(attributes, schema, "attributes")
+    if not found:
+        return []
+    problems: List[str] = []
+    first = found[0][0]
+    features = vector.get("receiver_features") or {}
+    version = _parsed_minor(lcp.get("version"))
+    if "regulated_identifiers" not in features:
+        problems.append(
+            f"REGULATED: LCP-100 field {first} — receiver does not advertise "
+            "features.regulated_identifiers"
+        )
+    if message.get("type") not in {"lead", "post"}:
+        problems.append(f"REGULATED: LCP-100 field {first} — only a lead or post may carry it")
+    if version is None or version[0] != 1 or version[1] < 3:
+        problems.append(f"REGULATED: LCP-100 field {first} — message is below 1.3.0")
+    if vector.get("sender_enrolled") is not True:
+        problems.append(f"REGULATED: LCP-100 field {first} — sender is not enrolled")
+    for path, value in found:
+        if not path.endswith(".ssn") or not str(value).isdigit():
+            continue
+        in_range = int(value) in _TEST_SSN_RANGE
+        if message.get("test", False) and not in_range:
+            problems.append(f"REGULATED: LCP-013 field {path} — test ssn outside 987654320-987654329")
+        if not message.get("test", False) and in_range:
+            problems.append(f"REGULATED: LCP-013 field {path} — live ssn inside the test range")
+    return problems
+
+
 CHECKS = {
     "envelope_schema": _schema_check("envelope"),
     "lead_schema": _schema_check("lead"),
@@ -1650,6 +1837,13 @@ CHECKS = {
     "negotiation_no_pii": _check_negotiation_no_pii,
     "negotiation_binding_token": _check_negotiation_token,
     "negotiation_tenant": _check_negotiation_tenant,
+    # LEP-0012 / LEP-0013 (v1.3):
+    "disposition_version_gate": _check_disposition_version_gate,
+    "sale_event_details": _check_sale_event_details,
+    "url_template": _check_url_template,
+    "sale_extensions": _check_sale_extensions,
+    "regulated_identifiers": _check_regulated_identifiers,
+    "vertical_schema": _schema_check("vertical"),
 }
 
 
@@ -1796,7 +1990,9 @@ def run_contract_checks() -> TestResult:
 def main() -> None:
     parser = argparse.ArgumentParser(description="LCP Conformance Runner")
     parser.add_argument(
-        "--tier", choices=["L1", "L2", "L3", "NEG", "all"], default="all"
+        "--tier",
+        choices=["L1", "L2", "L3", "NEG", "SALE", "REG", "all"],
+        default="all",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
@@ -1808,6 +2004,9 @@ def main() -> None:
         # LEP-0009: its own registered tier (id prefix NEG), loaded exactly
         # like the others so a missing/renamed file is a visible warning.
         "NEG": "negotiation.json",
+        # LEP-0012 (id prefix SALE) and LEP-0013/0014 (id prefix REG).
+        "SALE": "sale-lifecycle.json",
+        "REG": "regulated-identifiers.json",
     }
 
     if args.tier != "all":

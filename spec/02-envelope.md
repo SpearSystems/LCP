@@ -33,6 +33,17 @@ The `test` field is canonical in the envelope. For the HTTP binding,
 `X-LCP-Test: true` MUST also be sent as a header so infrastructure can
 filter test traffic without parsing the JSON body.
 
+**Test outcomes (v1.3, LEP-0012 §6).** A receiver that advertises
+`features.test_outcomes` answers a `1.3.0`+ test `lead` or `post` that
+carries the registered extension `lcp.test.outcome`
+(`{"outcome": "sold", "payout_cents": 4450}`) with exactly that
+`disposition`. It never routes, bills, or counts such a lead. A forced
+`pending` is resolved by an `ACCEPTED` event within 60 seconds, and every
+event the test produces carries `message.test` = `true`. The extension is
+legal only on test traffic: on a live message it is refused with
+`LCP-013`. A test lead without the extension follows the receiver's
+ordinary test policy.
+
 Schema: [schemas/envelope.json](../schemas/envelope.json)
 
 ## 4. Message types
@@ -210,7 +221,37 @@ message can fail multiple field validations.
 | `errors` | array\<error\> | Zero or more error objects (see §5). |
 | `lead_id` | string | Assigned lead ID, if applicable. |
 | `request_id` | string | Server-side request ID for tracing. |
-| `rejection_reason` | string | Structured rejection reason (open enum: `invalid_phone`, `duplicate`, `out_of_geography`, `credit_too_low`, `already_customer`, `compliance_fail`, `capacity_exceeded`, etc.). Enables publisher automation. |
+| `rejection_reason` | string | Structured reason the lead was refused or not bought (open enum: `invalid_phone`, `duplicate`, `out_of_geography`, `credit_too_low`, `already_customer`, `compliance_fail`, `capacity_exceeded`, `no_buyer`, etc.). Enables publisher automation. |
+| `disposition` | object | v1.3 (LEP-0012 §1). The commercial result of an acknowledged `lead` or `post`; see below. |
+
+**Sale disposition (v1.3, LEP-0012).** `disposition.outcome` is `sold`,
+`unsold`, `pending`, or `price_rejected`. A `sold` disposition carries
+`payout_cents` (integer minor units, `1`–`100000000`, what the receiver
+pays the sender after any receiver fee) and `currency`, and MAY carry
+`redirect_url` and `redirect_expires_at`. A `price_rejected` disposition
+carries `counter_price_cents` and `currency`. A `pending` disposition MAY
+carry `final_by`. The schema enforces these pairings.
+
+- A receiver includes `disposition` only on an ack with `status`
+  `RECEIVED`, `ACCEPTED`, or `DUPLICATE`, and only when the acknowledged
+  message's `lcp.version` is `1.3.0` or later (parsed semver). `ack` is a
+  closed object, so a 1.2 sender never receives it.
+- A `DUPLICATE` ack repeats the original disposition byte for byte.
+- **Sender rule:** a lead is sold if, and only if, `disposition.outcome`
+  = `sold`. HTTP 2xx and `status` = `ACCEPTED` alone never mean sold.
+  `status` = `REJECTED` without a disposition means unsold.
+- A `pending` lead resolves by an `ACCEPTED` or `REJECTED` event (below).
+  After `final_by` with no event, the sender treats it as unsold until a
+  later event says otherwise.
+- **Consumer redirect.** `redirect_url` is session-bearing and classed
+  `restricted`. The sender MUST deliver it to the consumer's browser as a
+  top-level navigation (an HTTP `302`/`303` or a script navigation) and
+  MUST NOT fetch, prefetch, preload, iframe, or link-preview it from a
+  server: the receiver measures the redirect from the consumer's own
+  client. A relay hop MUST use an opaque, unguessable token, HTTPS, and
+  `404` for an unknown token, and MUST NOT add consumer data to the URL.
+  `redirect_url` is never logged, never copied into an event, and never a
+  postback macro.
 
 ### event
 
@@ -228,6 +269,26 @@ anywhere in `details` (a phone-number-shaped run of 7-15 digits, or an
 email address) as a validation rejection (`LCP-100`), not a store.
 `LCP-008 PII_IN_PING` stays the ping-allowlist code; the event class has
 no allowlist to violate.
+
+**Sale result events (v1.3, LEP-0012 §3).** When the receiver of a lead
+reports that lead's commercial fate to its sender, `details` SHOULD use
+these shapes. All values are `internal`; the class rule above still holds.
+
+| Event | Meaning | `details` |
+|---|---|---|
+| `ACCEPTED` | Sold, including a sale already reported in the ack. | `payout_cents` (> 0), `currency`, `revision`, `sold_at` |
+| `REJECTED` | Unsold after `pending`. | `revision`, optional `rejection_reason` |
+| `REFUNDED` | Returned or reversed after a sale. | `payout_cents` (< 0), `currency`, `revision`, `returned_at`, optional `return_reason` |
+
+`payout_cents` is a signed delta (`-100000000`–`100000000`, never `0`):
+the change this event makes to what the receiver owes the sender for the
+lead, so the sum over a lead's events is the net amount. `revision` is an
+integer ≥ 1 that strictly increases per `lead_id` for one sender–receiver
+pair; a sender keeps the highest revision it has seen and ignores a lower
+or equal one. `return_reason` is an open enum (`invalid_contact`,
+`duplicate`, `compliance_fail`, `fraud`, `consumer_dispute`,
+`buyer_error`). These shapes report; they do not invoice, and
+`post.pricing` remains the platform–buyer billing record.
 
 For `CONVERTED` events, `details` SHOULD include:
 

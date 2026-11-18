@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0013-regulated-identifiers.md">
+<meta name="lcp-build" content="6b4111a944d3">
+<title>LEP-0013 — Regulated identifiers: a gated lane for government ID and bank account data — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0013--regulated-identifiers-a-gated-lane-for-government-id-and-bank-account-data">LEP-0013 — Regulated identifiers: a gated lane for government ID and bank account data</h1>
+<ul>
+<li><strong>Title:</strong> Regulated identifiers: a capability-gated, never-persisted lane for government ID and bank account fields in allowlisted lending verticals</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
+<li><strong>Date:</strong> 2026-11-19</li>
+<li><strong>Status:</strong> <strong>Draft</strong>. Not accepted. A candidate implementation is on branch <code>lep/0012-0013-sale-lifecycle</code>; it does not merge until this record is Accepted (LEP.md stage 5).</li>
+<li><strong>Target version:</strong> v1.3.0 (additive MINOR: one schema annotation keyword, one capability feature, and a bounded exception to the <code>prohibited</code> list. No class is added, so the change is not MAJOR under LEP-0011.)</li>
+<li><strong>Discussion:</strong> none yet. A <code>[LEP]</code> issue opens when this record moves to Review.</li>
+<li><strong>Reviewers needed at Review:</strong> <strong>a named human security/privacy reviewer is required.</strong> This record relaxes a PII boundary, and LEP-0011 requires an LEP with a security/privacy co-sign for any less-protective class change. Legal review by the adopting deployment (GLBA safeguards, state privacy law, FCRA permissible purpose) is recommended. It is out of this protocol's scope.</li>
+<li><strong>Companion records:</strong> <a href="LEP-0012-sale-lifecycle.html">LEP-0012</a> and <a href="LEP-0014-personal-loans-vertical.html">LEP-0014</a>. LEP-0014 is the first and only vertical this record admits.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><strong>Lending buyers need these values at post time.</strong> US short-term personal-loan buyers underwrite, verify identity and fund by direct deposit within the consumer's session. The buyer API used by the reference deployment requires all of these on every post:</p>
+<ul>
+<li>Social Security number;</li>
+<li>driver's licence number and state;</li>
+<li>bank account number;</li>
+<li>ABA routing number.</li>
+</ul>
+<p>A lead without them is unsellable to that buyer.</p>
+<p><strong>LCP 1.2 forbids them outright.</strong> <code>docs/PII-CLASSES.md</code> lists government identifiers and "full bank account number with routing/sort data" as <code>prohibited</code>: "in any message, in any extension, at any version". So a lending lead cannot be both LCP-conformant and sellable.</p>
+<p><strong>What that has cost, measured in the first adopter:</strong></p>
+<ol>
+<li><strong>A silent fork.</strong> SpearPointX classes SSN, licence and routing number <code>restricted</code> in its own code and vertical, against the published taxonomy.</li>
+<li><strong>A broken schema.</strong> Its <code>personal_loans</code> vertical v1.0.0 later had the SSN, licence and routing properties removed to match LCP 1.2. They were still listed as <code>required</code> inside an <code>additionalProperties: false</code> object. Run through the adopter's own validator, every possible <code>us_details</code> value is refused, either for <code>attributes.us_details.ssn is not an allowed field</code> or for <code>attributes.us_details.ssn is required</code>. No personal-loans lead can validate.</li>
+<li><strong>Pressure toward worse flows.</strong> With no sanctioned lane, the values travel in bespoke side channels or open containers (free-text answers, extensions), where detection is weakest.</li>
+</ol>
+<p>A bounded, explicit lane with stricter handling than ordinary <code>restricted</code> data is more protective in practice than a prohibition the market routes around.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><p><strong>Core (additive MINOR):</strong></p>
+<ul>
+<li>the schema annotation <code>x-lcp-regulated</code> (§1);</li>
+<li>the runtime gate (§2);</li>
+<li>forwarding rules (§3);</li>
+<li>handling rules (§4);</li>
+<li>test-traffic rules (§5);</li>
+<li>capability <code>features.regulated_identifiers</code> = <code>"1.3.0"</code>.</li>
+</ul></li>
+<li><p><strong><code>docs/PII-CLASSES.md</code>:</strong></p>
+<ul>
+<li>an exception paragraph under Prohibited values naming this record;</li>
+<li>a new row in the emission matrix.</li>
+</ul></li>
+<li><strong><code>docs/REQUIREMENT-PROFILES.md</code>:</strong> one profile key, <code>regulated_fields</code> (§3).</li>
+<li><strong>Vertical allowlist:</strong> <code>personal_loans</code> only, via LEP-0014. Adding a vertical requires its own LEP with a security/privacy co-sign.</li>
+<li><p><strong>Not in scope. These stay <code>prohibited</code> with no exception:</strong></p>
+<ul>
+<li>payment card data (PAN, CVV, track data, PIN block);</li>
+<li>biometric templates;</li>
+<li>authentication secrets;</li>
+<li>passport, immigration and visa numbers;</li>
+<li>every non-US identifier (deferred).</li>
+</ul></li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-the-x-lcp-regulated-annotation">1. The <code>x-lcp-regulated</code> annotation</h3>
+<p>The annotation goes on a vertical property and names the kind of identifier.</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Admitted fields (closed list)</th>
+<th>Format</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>government_id</code></td>
+<td><code>ssn</code></td>
+<td>US SSN or ITIN, <code>^\d{9}$</code>, no separators</td>
+</tr>
+<tr>
+<td><code>government_id</code></td>
+<td><code>license_number</code></td>
+<td>US driver's licence number, <code>^[A-Za-z0-9*-]{1,20}$</code></td>
+</tr>
+<tr>
+<td><code>bank_account</code></td>
+<td><code>account_number</code></td>
+<td><code>^\d{4,17}$</code></td>
+</tr>
+<tr>
+<td><code>bank_account</code></td>
+<td><code>routing_number</code></td>
+<td>US ABA routing number, <code>^\d{9}$</code> with a valid ABA checksum</td>
+</tr>
+</tbody>
+</table>
+<p><code>license_state</code> and <code>account_type</code> are ordinary <code>restricted</code> fields, not regulated ones.</p>
+<p><strong>Load-time rules.</strong> A schema that breaks one is refused at load, like a class downgrade:</p>
+<ul>
+<li>the property is classed <code>x-lcp-pii: "restricted"</code> and <code>ping_safe: false</code>;</li>
+<li>it sits inside a country-scoped container (<code>us_details</code>), and that container is classed <code>restricted</code>;</li>
+<li>the property name and kind appear together in the table above;</li>
+<li>the vertical is on the allowlist (§Scope).</li>
+</ul>
+<p><code>x-lcp-regulated</code> is an annotation. Validators that do not know it ignore it, which is why §2 is a receiver obligation, not a schema property.</p>
+<h3 id="2-the-intake-gate-receiver">2. The intake gate (receiver)</h3>
+<p>A value in an <code>x-lcp-regulated</code> field is accepted only when <strong>all</strong> of the following hold. Otherwise the message is refused with <code>LCP-100</code>, <code>field</code> naming the path, and is not stored. This is exactly the treatment of a prohibited value today.</p>
+<ol>
+<li>The receiver advertises <code>features.regulated_identifiers</code>.</li>
+<li>The message is a <code>lead</code> or a <code>post</code>, including a batch item of either. It never appears in a <code>ping</code>, <code>bid</code>, <code>quote</code>, <code>counter</code>, <code>event</code>, <code>ack</code>, <code>subscription</code>, or history row.</li>
+<li>The message's <code>lcp.version</code> is <code>1.3.0</code> or later.</li>
+<li>The sender's credential is <strong>enrolled</strong> for regulated identifiers in this vertical. Enrollment is a deployment record created after the deployment's own due diligence. The protocol requires that it exists and is checked, not what it contains.</li>
+<li>The value sits in an annotated field. Anywhere else (an extension, <code>lcp.intake.raw_form</code>, event <code>details</code>, a free-text attribute) the value is still <code>prohibited</code> and refused.</li>
+</ol>
+<h3 id="3-forwarding-platform-to-buyer">3. Forwarding (platform to buyer)</h3>
+<p>A platform forwards the regulated container only to a buyer that:</p>
+<ol>
+<li>advertises <code>features.regulated_identifiers</code>;</li>
+<li>is enrolled for regulated identifiers in this vertical; and</li>
+<li>names the field in the matched requirement profile's <code>regulated_fields</code>.</li>
+</ol>
+<pre class="code-block"><code class="language-json">"lcp.platform.requirements": {
+  "profile_id": "pl-buyer-us",
+  "version": "3",
+  "regulated_fields": { "us_details.ssn": "required", "us_details.routing_number": "required", "us_details.account_number": "required", "us_details.license_number": "optional" }
+}</code></pre>
+<ul>
+<li><strong>Required and optional.</strong> A <code>required</code> regulated field absent from the lead makes the offer non-matching, with reason <code>regulated_field_missing</code>. An <code>optional</code> field is forwarded when present.</li>
+<li><strong>Minimum necessary.</strong> Every other buyer receives the post <strong>without</strong> the regulated fields, and only the fields a buyer names are forwarded. This is per-buyer projection, not a scrub: the inbound message was accepted whole.</li>
+<li><p><strong>The on/off switches, all off by default:</strong></p>
+<ul>
+<li>the deployment feature;</li>
+<li>sender enrollment;</li>
+<li>buyer enrollment;</li>
+<li>the buyer's profile, field by field.</li>
+</ul></li>
+</ul>
+<h3 id="4-handling-normative">4. Handling (normative)</h3>
+<ul>
+<li><strong>Transport.</strong> TLS 1.2 or later on every hop. Regulated values are never carried in a URL, query string, header, cookie or redirect.</li>
+<li><p><strong>No durable storage.</strong> A receiver MUST NOT write a regulated value to durable storage, including databases, queues, retry stores, backups, caches that outlive the process, and attachment stores.</p>
+<ul>
+<li>A delivery retry that needs the value holds it in memory.</li>
+<li>A retry that outlives the process fails as undeliverable and is reported as such. Persisting the value to retry is not allowed.</li>
+</ul></li>
+<li><strong>No observability leakage.</strong> Never in logs, traces, metrics, error <code>message</code> or <code>details</code>, history rows, events, postbacks, or analytics. Errors name the field path only.</li>
+<li><strong>Audit by name, not value.</strong> A delivery record MAY list which regulated field names were forwarded, and to which buyer.</li>
+<li><strong>No hashing route.</strong> Hashing does not make a regulated value emittable, as with every <code>restricted</code> value.</li>
+<li><p><strong>Sender obligations:</strong></p>
+<ul>
+<li>collect over HTTPS;</li>
+<li>post server-to-server;</li>
+<li>never place the values in browser storage, page URLs, analytics or tag-manager data layers;</li>
+<li>keep them out of logs.</li>
+</ul></li>
+</ul>
+<h3 id="5-test-traffic">5. Test traffic</h3>
+<ul>
+<li>A test message (<code>message.test</code> = <code>true</code>) that carries <code>ssn</code> MUST use the SSA advertising-reserved range <code>987654320</code>–<code>987654329</code>.</li>
+<li><p>A receiver refuses, with <code>LCP-013 TEST_TRAFFIC_POLICY</code>:</p>
+<ul>
+<li>a test message whose <code>ssn</code> is outside that range;</li>
+<li>a live message whose <code>ssn</code> is inside it.</li>
+</ul></li>
+<li>Other regulated fields in test traffic MUST be synthetic. A receiver MAY refuse values it recognises as real.</li>
+</ul>
+<h4 id="valid-1--enrolled-sender-test-lead-v130-shape-personal_loans-200">Valid 1 — enrolled sender, test lead (v1.3.0 shape, <code>personal_loans</code> 2.0.0)</h4>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.3.0",
+    "message": {
+      "id": "d1300000-0000-4000-8000-000000001301",
+      "type": "lead",
+      "timestamp": "2026-11-19T10:00:00Z",
+      "sender_id": "pub_example",
+      "receiver_id": "platform_001",
+      "idempotency_key": "pub-example-lead-1301",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_1301",
+      "submitted_at": "2026-11-19T09:59:58Z",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": { "first_name": "Test", "last_name": "Applicant", "email": "test.applicant@example.com", "phone": "+12025550143", "dob": "1990-01-15" },
+      "location": { "country_code": "US", "state_region": "TX", "postal_code": "75001" },
+      "compliance": { "consent_timestamp": "2026-11-19T09:59:50Z", "consent_source_url": "https://lp.example.com/apply", "consent_text_version": "consent-v1" },
+      "attributes": {
+        "vertical": "personal_loans", "schema_version": "2.0.0", "amount_currency": "USD",
+        "loan_amount": 1000, "monthly_income": 3000, "income_source": "employment", "income_frequency": "biweekly",
+        "account_type": "checking",
+        "us_details": { "country_code": "US", "ssn": "987654321", "license_number": "TEST1234", "license_state": "TX",
+                        "account_number": "000123456789", "routing_number": "123456780" }
+      }
+    }
+  }
+}</code></pre>
+<h4 id="invalid-a--receiver-does-not-advertise-the-feature">Invalid A — receiver does not advertise the feature</h4>
+<p>The same message sent to a receiver without <code>features.regulated_identifiers</code> is refused with <code>LCP-100</code>, <code>field</code> = <code>attributes.us_details.ssn</code>, and is not stored.</p>
+<h4 id="invalid-b--ssn-in-a-free-text-container">Invalid B — SSN in a free-text container</h4>
+<p><code>extensions["lcp.intake.raw_form"]</code> contains an answer whose value is a 9-digit SSN. It is refused with <code>LCP-100</code>, <code>field</code> = <code>extensions.lcp.intake.raw_form</code>. The exception covers annotated fields only.</p>
+<h4 id="invalid-c--regulated-field-in-a-ping">Invalid C — regulated field in a ping</h4>
+<p>A <code>ping</code> carrying <code>attributes.us_details</code> is refused with <code>LCP-008 PII_IN_PING</code> (and <code>LCP-100</code>), as for every <code>restricted</code> value.</p>
+<h4 id="invalid-d--real-looking-ssn-in-test-traffic">Invalid D — real-looking SSN in test traffic</h4>
+<p>Valid 1 with <code>"ssn": "123456789"</code> is refused with <code>LCP-013 TEST_TRAFFIC_POLICY</code>.</p>
+<h4 id="invalid-e--vertical-not-on-the-allowlist">Invalid E — vertical not on the allowlist</h4>
+<p><code>verticals/insurance.json</code> declaring <code>"x-lcp-regulated": "government_id"</code> is refused at load time.</p>
+<h4 id="invalid-f--regulated-value-in-an-event">Invalid F — regulated value in an event</h4>
+<p><code>event.details.routing_number</code> is refused with <code>LCP-100</code>. Events never carry regulated values.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>This record widens disclosure, and says so.</strong> Values LCP refused at any version become carriable in one vertical, under a gate. It is a less-protective class change in the sense of LEP-0011, and it requires the security/privacy co-sign named in the header.</p>
+<p><strong>Why the widening is bounded:</strong></p>
+<ul>
+<li><strong>Off four ways by default:</strong> deployment, sender, buyer, and per-field profile.</li>
+<li><p><strong>Narrow scope:</strong></p>
+<ul>
+<li>one vertical;</li>
+<li>four named fields of two kinds;</li>
+<li>one country container;</li>
+<li><code>lead</code>/<code>post</code> only.</li>
+</ul></li>
+<li><strong>Stricter than <code>restricted</code> on handling:</strong> no durable storage at all, and no URL or header carriage.</li>
+<li><strong>Refusal semantics unchanged everywhere else:</strong> the same value in any unannotated place is still <code>prohibited</code>, refused, never scrubbed.</li>
+<li><strong>Test-range enforcement</strong> stops real identifiers leaking through test traffic and sandboxes.</li>
+</ul>
+<p><strong>Threat-model rows affected:</strong></p>
+<ul>
+<li>PII in non-PII messages: unchanged, because regulated values never appear in non-PII messages.</li>
+<li>Logging leakage: tightened, because regulated values are named in the "never" column.</li>
+<li>Insider and storage compromise: tightened, because nothing persists.</li>
+<li>Mis-routing to an unenrolled buyer: new row. It is mitigated by the three-condition forwarding rule and a conformance vector.</li>
+</ul>
+<p><strong>Legal position.</strong> The protocol makes no claim that carrying these values is lawful in a given flow. Permissible purpose, consent disclosures and safeguards programmes belong to the deployment and its buyers. Enrollment (§2.4, §3.2) is the hook where a deployment records that diligence.</p>
+<p><strong>Universal-core audit (SPEC §12).</strong></p>
+<ul>
+<li>No field enters the core: the regulated fields live in a vertical's country container.</li>
+<li>The annotation is vertical-neutral and the allowlist is the control.</li>
+<li>Ping is untouched.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><p><strong>MINOR.</strong></p>
+<ul>
+<li>An unknown annotation keyword is ignored by schema validators.</li>
+<li>The capability is additive.</li>
+<li>No class is added, removed or reordered, which would be MAJOR under LEP-0011.</li>
+</ul></li>
+<li><p><strong>Fail-closed toward old peers.</strong> A 1.2 receiver refuses these fields, because they are prohibited or undeclared. That is correct.</p>
+<ul>
+<li>A sender MUST NOT send regulated fields to a receiver that does not advertise the feature.</li>
+<li>SDKs enforce this from <code>capabilities()</code>.</li>
+</ul></li>
+<li><strong>Deprecation:</strong> none.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><p><strong>SDKs:</strong></p>
+<ul>
+<li>typed fields only in the <code>personal_loans</code> models;</li>
+<li>redaction of annotated fields in every SDK logger and <code>repr</code>;</li>
+<li>a pre-send capability check that refuses locally;</li>
+<li>a <code>regulated_fields(schema)</code> helper.</li>
+</ul></li>
+<li><strong>OpenAPI:</strong> the vertical's schema carries the annotation. Example payloads use reserved test values only.</li>
+<li><strong>MCP:</strong> MCP tools MUST NOT accept or return regulated fields. Agent surfaces are out of scope for this lane, and a deferred question covers revisiting that.</li>
+<li><strong>Conformance:</strong> suite <code>test-vectors/regulated-identifiers.json</code> (<code>REG-001</code>…). It covers every Invalid example, the forwarding rule (enrolled versus unenrolled buyer), the no-persistence assertion (storage inspected after delivery) and the test-range rule.</li>
+<li><strong>Validator:</strong> the load-time checks in §1, beside LEP-0011's downgrade check.</li>
+<li><p><strong>Operations:</strong></p>
+<ul>
+<li>metrics count regulated messages accepted and refused, by reason, never values;</li>
+<li><code>lcp-doctor</code> warns when the feature is on without any enrolled sender or buyer;</li>
+<li>flag <code>LCP_FEATURE_REGULATED_IDENTIFIERS</code>, off by default.</li>
+</ul></li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Keep them prohibited.</strong> Rejected on the evidence: it produced a fork and a broken vertical in the first lending adopter, and it pushes values into weaker channels.</li>
+<li><strong>A sixth class, <code>regulated</code>.</strong> Rejected: adding a class is MAJOR under LEP-0011. An annotation on <code>restricted</code> gives the same control without a version break.</li>
+<li><strong>Tokenisation through a vault.</strong> The sender posts a token, and the enrolled buyer redeems it from a vault. This has the strongest privacy property, but it needs a vault service, a redemption API and every buyer's integration. <strong>Deferred as the long-term direction.</strong> This lane is shaped so a token field can later replace the value without moving the gate.</li>
+<li><strong>Hashes.</strong> Rejected. Underwriting and funding need the value.</li>
+<li><strong>Extension-only</strong> (<code>{org}.lending.identifiers</code>). Rejected. It places the values in an open container, where the protocol's detection is weakest.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>Validator annotation checks and vectors land with the feature off.</strong> The reference platform implements the fail-closed side only: it validates the annotation at load, refuses every regulated value with <code>LCP-100</code>, and never advertises <code>features.regulated_identifiers</code>, because it has no in-memory delivery lane that satisfies §4. The enabled lane (§2.4 enrollment, §3 projection, §4 handling) is a deployment implementation; SpearPointX is the first.</li>
+<li><strong>The reference deployment (SpearPointX) enables it</strong> for <code>personal_loans</code> after the security/privacy co-sign. It starts with one enrolled publisher and one enrolled buyer, and replaces its fork (local <code>restricted</code> classing and per-buyer flag) with this gate.</li>
+<li><strong>Migration for the adopter's v1.0.0 vertical</strong> is covered by LEP-0014.</li>
+<li><strong>Observability:</strong> accepted and refused counts by reason, and forwarded field names per buyer. There are no values anywhere.</li>
+<li><strong>Rollback:</strong> turning the feature off makes every regulated value refused again, as prohibited. Nothing is stored, so nothing needs purging.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Encrypted, short-lived retry state.</strong> A strict no-persistence rule turns transient buyer outages into lost sales. Trigger: a measured loss rate from process restarts that a deployment cannot accept, plus a security reviewer's sign-off on a bounded encrypted store.</li>
+<li><strong>Vault tokenisation.</strong> Trigger: a second lending adopter, or a buyer that can redeem tokens.</li>
+<li><strong>Non-US identifiers</strong> (TFN, SIN, NI number). Trigger: a lending vertical outside the US with buyer evidence. Each country needs its own LEP.</li>
+<li><strong>Agent and MCP surfaces.</strong> Trigger: an agent-submitted lending lead with a verified attestation (LEP-0008) and a buyer requesting it.</li>
+<li><strong>Standard enrollment attestation format.</strong> Trigger: two deployments needing to exchange enrollment evidence.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-the-x-lcp-regulated-annotation">1. The x-lcp-regulated annotation</a></li><li class="depth-3"><a href="#2-the-intake-gate-receiver">2. The intake gate (receiver)</a></li><li class="depth-3"><a href="#3-forwarding-platform-to-buyer">3. Forwarding (platform to buyer)</a></li><li class="depth-3"><a href="#4-handling-normative">4. Handling (normative)</a></li><li class="depth-3"><a href="#5-test-traffic">5. Test traffic</a></li><li class="depth-4"><a href="#valid-1--enrolled-sender-test-lead-v130-shape-personal_loans-200">Valid 1 — enrolled sender, test lead (v1.3.0 shape, personal_loans 2.0.0)</a></li><li class="depth-4"><a href="#invalid-a--receiver-does-not-advertise-the-feature">Invalid A — receiver does not advertise the feature</a></li><li class="depth-4"><a href="#invalid-b--ssn-in-a-free-text-container">Invalid B — SSN in a free-text container</a></li><li class="depth-4"><a href="#invalid-c--regulated-field-in-a-ping">Invalid C — regulated field in a ping</a></li><li class="depth-4"><a href="#invalid-d--real-looking-ssn-in-test-traffic">Invalid D — real-looking SSN in test traffic</a></li><li class="depth-4"><a href="#invalid-e--vertical-not-on-the-allowlist">Invalid E — vertical not on the allowlist</a></li><li class="depth-4"><a href="#invalid-f--regulated-value-in-an-event">Invalid F — regulated value in an event</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0013-regulated-identifiers.md</code> · build <code>6b4111a944d3</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

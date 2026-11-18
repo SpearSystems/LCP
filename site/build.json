@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "1f47d086a297",
+  "build_hash": "6b4111a944d3",
   "pages": [
     {
       "path": "assets/site.css",
@@ -66,6 +66,21 @@
       "path": "leps/LEP-0011-pii-sensitivity-taxonomy.html",
       "source": "governance/LEPs/LEP-0011-pii-sensitivity-taxonomy.md",
       "title": "LEP-0011 — PII sensitivity taxonomy and schema-level classification"
+    },
+    {
+      "path": "leps/LEP-0012-sale-lifecycle.html",
+      "source": "governance/LEPs/LEP-0012-sale-lifecycle.md",
+      "title": "LEP-0012 — Sale lifecycle: lead disposition, money events, URL postbacks, and test outcomes"
+    },
+    {
+      "path": "leps/LEP-0013-regulated-identifiers.html",
+      "source": "governance/LEPs/LEP-0013-regulated-identifiers.md",
+      "title": "LEP-0013 — Regulated identifiers: a gated lane for government ID and bank account data"
+    },
+    {
+      "path": "leps/LEP-0014-personal-loans-vertical.html",
+      "source": "governance/LEPs/LEP-0014-personal-loans-vertical.md",
+      "title": "LEP-0014 — personal_loans vertical 2.0.0: whole-unit applicant amounts and a regulated identity container"
     },
     {
       "path": "leps/index.html",
@@ -216,6 +231,11 @@
       "path": "verticals/mva.html",
       "source": "verticals/mva.json",
       "title": "LCP Motor Vehicle Accident Vertical Schema"
+    },
+    {
+      "path": "verticals/personal_loans.html",
+      "source": "verticals/personal_loans.json",
+      "title": "LCP Personal Loans Vertical Schema"
     },
     {
       "path": "verticals/solar.html",

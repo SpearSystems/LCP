@@ -47,6 +47,18 @@ FORM_QUESTION_TEXT_MAX = 300
 FORM_ANSWER_TEXT_MAX = 1000
 FORM_QUESTION_KEYS = frozenset({"question_id", "question_text", "answer_text"})
 
+# LEP-0012 §5/§6 registered shapes. Both namespaces belong to the
+# sender-receiver pair that carried them, so neither is forwarded downstream.
+AFFILIATE_TRACKING = "lcp.affiliate.tracking"
+TEST_OUTCOME = "lcp.test.outcome"
+PAIR_SCOPED_EXTENSIONS = frozenset({AFFILIATE_TRACKING, TEST_OUTCOME})
+AFFILIATE_TRACKING_KEYS = frozenset(
+    {"click_id", "sub1", "sub2", "sub3", "sub4", "sub5"}
+)
+AFFILIATE_VALUE_RE = re.compile(r"\A[A-Za-z0-9._~:-]{0,255}\Z")
+SALE_OUTCOMES = ("sold", "unsold", "pending", "price_rejected")
+MAX_PAYOUT_CENTS = 100_000_000
+
 
 def extension_bytes(extensions: Mapping[str, Any]) -> int:
     """Compact UTF-8 bytes of the extension object (the canonical wire form)."""
@@ -127,6 +139,47 @@ def _form_questions_problems(namespace: str, value: Any) -> list[str]:
     return problems
 
 
+def _affiliate_tracking_problems(value: Any) -> list[str]:
+    path = f"extensions.{AFFILIATE_TRACKING}"
+    if not isinstance(value, Mapping):
+        return [f"{path} must be an object (LEP-0012 §5)"]
+    problems = [
+        f"{path}.{key} is not a registered key (click_id, sub1-sub5)"
+        for key in sorted(set(value) - AFFILIATE_TRACKING_KEYS)
+    ]
+    for key in sorted(set(value) & AFFILIATE_TRACKING_KEYS):
+        if not (isinstance(value[key], str) and AFFILIATE_VALUE_RE.match(value[key])):
+            problems.append(
+                f"{path}.{key} must match ^[A-Za-z0-9._~:-]{{0,255}}$ (LEP-0012 §5)"
+            )
+    return problems
+
+
+def _test_outcome_problems(value: Any) -> list[str]:
+    path = f"extensions.{TEST_OUTCOME}"
+    if not isinstance(value, Mapping):
+        return [f"{path} must be an object (LEP-0012 §6)"]
+    problems = [
+        f"{path}.{key} is not a registered key (outcome, payout_cents)"
+        for key in sorted(set(value) - {"outcome", "payout_cents"})
+    ]
+    if value.get("outcome") not in SALE_OUTCOMES:
+        problems.append(f"{path}.outcome must be one of {', '.join(SALE_OUTCOMES)}")
+    if "payout_cents" in value:
+        payout = value["payout_cents"]
+        if value.get("outcome") != "sold":
+            problems.append(f"{path}.payout_cents is legal only with outcome sold")
+        elif (
+            not isinstance(payout, int)
+            or isinstance(payout, bool)
+            or not 1 <= payout <= MAX_PAYOUT_CENTS
+        ):
+            problems.append(
+                f"{path}.payout_cents must be an integer 1-{MAX_PAYOUT_CENTS}"
+            )
+    return problems
+
+
 def extension_problems(
     extensions: Mapping[str, Any], *, max_total_bytes: int
 ) -> list[str]:
@@ -148,6 +201,10 @@ def extension_problems(
     for namespace, value in sorted(extensions.items()):
         if namespace.endswith(FORM_QUESTIONS_SUFFIX):
             problems.extend(_form_questions_problems(namespace, value))
+        elif namespace == AFFILIATE_TRACKING:
+            problems.extend(_affiliate_tracking_problems(value))
+        elif namespace == TEST_OUTCOME:
+            problems.extend(_test_outcome_problems(value))
     for path, value in _iter_string_values(extensions, "extensions"):
         if has_plaintext_contact(value):
             problems.append(

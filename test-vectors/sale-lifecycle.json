@@ -1,0 +1,763 @@
+{
+  "suite": "SALE",
+  "description": "LEP-0012 (v1.3) sale lifecycle: ack disposition and its version gate, money-bearing sale events, URL-template postback registration, and the affiliate-tracking and test-outcome extensions.",
+  "vectors": [
+    {
+      "id": "SALE-001",
+      "name": "test_lead_forcing_sale_with_tracking",
+      "expect": "pass",
+      "description": "LEP-0012 §5/§6: a 1.3.0 test lead carries a forced sale and click/sub-ID passthrough.",
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "required_fields",
+        "idempotency_key",
+        "iso_timestamp",
+        "sale_extensions"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000201",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-201",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1201",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "external_id": "sess_8f3a2b",
+            "extensions": {
+              "lcp.affiliate.tracking": {
+                "click_id": "cl_8f3a2b",
+                "sub1": "fb",
+                "sub2": "adset_44"
+              },
+              "lcp.test.outcome": {
+                "outcome": "sold",
+                "payout_cents": 4450
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-002",
+      "name": "sold_ack_with_redirect",
+      "expect": "pass",
+      "description": "LEP-0012 §1/§2: a sold disposition with payout, currency, and a consumer redirect, to a 1.3.0 sender.",
+      "acknowledged_lcp_version": "1.3.0",
+      "checks": [
+        "envelope_schema",
+        "ack_schema",
+        "disposition_version_gate"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000301",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000201",
+            "idempotency_key": "platform_001-ack-301",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000201",
+            "status": "ACCEPTED",
+            "lead_id": "lead_301",
+            "disposition": {
+              "outcome": "sold",
+              "payout_cents": 4450,
+              "currency": "USD",
+              "redirect_url": "https://platform.example/r/Zk3pQ8vN2mT6",
+              "redirect_expires_at": "2026-11-19T10:30:01Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-003",
+      "name": "pending_ack_on_received",
+      "expect": "pass",
+      "description": "LEP-0012 §1: an asynchronous receiver answers RECEIVED with a pending disposition and a final_by bound.",
+      "acknowledged_lcp_version": "1.3.0",
+      "checks": [
+        "envelope_schema",
+        "ack_schema",
+        "disposition_version_gate"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000302",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000202",
+            "idempotency_key": "platform_001-ack-302",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000202",
+            "status": "RECEIVED",
+            "lead_id": "lead_302",
+            "disposition": {
+              "outcome": "pending",
+              "final_by": "2026-11-19T10:05:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-004",
+      "name": "price_rejected_ack",
+      "expect": "pass",
+      "description": "LEP-0012 §1: price_rejected carries counter_price_cents with currency and may carry rejection_reason.",
+      "acknowledged_lcp_version": "1.3.0",
+      "checks": [
+        "envelope_schema",
+        "ack_schema",
+        "disposition_version_gate"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000303",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000203",
+            "idempotency_key": "platform_001-ack-303",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000203",
+            "status": "ACCEPTED",
+            "lead_id": "lead_303",
+            "rejection_reason": "price_too_high",
+            "disposition": {
+              "outcome": "price_rejected",
+              "counter_price_cents": 5010,
+              "currency": "USD"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-005",
+      "name": "sold_without_payout",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid A: a sold disposition requires payout_cents.",
+      "error_contains": "payout_cents",
+      "checks": [
+        "ack_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000304",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000204",
+            "idempotency_key": "platform_001-ack-304",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000204",
+            "status": "ACCEPTED",
+            "lead_id": "lead_304",
+            "disposition": {
+              "outcome": "sold",
+              "currency": "USD"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-006",
+      "name": "unsold_with_redirect",
+      "expect": "fail",
+      "description": "LEP-0012 §1: payout_cents and redirect_url are sold-only.",
+      "checks": [
+        "ack_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000305",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000205",
+            "idempotency_key": "platform_001-ack-305",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000205",
+            "status": "ACCEPTED",
+            "lead_id": "lead_305",
+            "disposition": {
+              "outcome": "unsold",
+              "redirect_url": "https://platform.example/r/x"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-007",
+      "name": "disposition_to_v12_sender",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid E: ack.json is closed, so a 1.2.0 sender never receives a disposition.",
+      "acknowledged_lcp_version": "1.2.0",
+      "error_contains": "DISPOSITION_GATE",
+      "checks": [
+        "disposition_version_gate"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000306",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000206",
+            "idempotency_key": "platform_001-ack-306",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000206",
+            "status": "RECEIVED",
+            "lead_id": "lead_306",
+            "disposition": {
+              "outcome": "pending"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-008",
+      "name": "disposition_on_rejected_ack",
+      "expect": "fail",
+      "description": "LEP-0012 §1: a REJECTED ack carries no disposition; it already means unsold.",
+      "acknowledged_lcp_version": "1.3.0",
+      "error_contains": "DISPOSITION_GATE",
+      "checks": [
+        "disposition_version_gate"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000307",
+            "type": "ack",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": "d1200000-0000-4000-8000-000000000207",
+            "idempotency_key": "platform_001-ack-307",
+            "test": true
+          },
+          "payload": {
+            "original_message_id": "d1200000-0000-4000-8000-000000000207",
+            "status": "REJECTED",
+            "lead_id": "lead_307",
+            "disposition": {
+              "outcome": "unsold"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-009",
+      "name": "accepted_sale_event",
+      "expect": "pass",
+      "description": "LEP-0012 §3 Valid 3: the pending lead resolves sold with a positive delta and revision 1.",
+      "checks": [
+        "envelope_schema",
+        "event_schema",
+        "sale_event_details"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000401",
+            "type": "event",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": null,
+            "idempotency_key": "platform_001-event-401",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1201",
+            "event": "ACCEPTED",
+            "timestamp": "2026-11-19T10:01:12Z",
+            "details": {
+              "payout_cents": 3900,
+              "currency": "USD",
+              "revision": 1,
+              "sold_at": "2026-11-19T10:01:12Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-010",
+      "name": "refunded_sale_event",
+      "expect": "pass",
+      "description": "LEP-0012 §3 Valid 4: a return is a negative delta with a higher revision.",
+      "checks": [
+        "envelope_schema",
+        "event_schema",
+        "sale_event_details"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000402",
+            "type": "event",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": null,
+            "idempotency_key": "platform_001-event-402",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1201",
+            "event": "REFUNDED",
+            "timestamp": "2026-11-19T10:01:12Z",
+            "details": {
+              "payout_cents": -4450,
+              "currency": "USD",
+              "revision": 2,
+              "returned_at": "2026-12-02T03:00:00Z",
+              "return_reason": "invalid_contact"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-011",
+      "name": "refund_with_positive_delta",
+      "expect": "fail",
+      "description": "LEP-0012 §3: REFUNDED payout_cents is negative.",
+      "error_contains": "SALE_EVENT",
+      "checks": [
+        "sale_event_details"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000403",
+            "type": "event",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": null,
+            "idempotency_key": "platform_001-event-403",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1201",
+            "event": "REFUNDED",
+            "timestamp": "2026-11-19T10:01:12Z",
+            "details": {
+              "payout_cents": 4450,
+              "currency": "USD",
+              "revision": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-012",
+      "name": "float_payout",
+      "expect": "fail",
+      "description": "LEP-0012 §3: float major units are never valid.",
+      "error_contains": "SALE_EVENT",
+      "checks": [
+        "sale_event_details"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000404",
+            "type": "event",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "pub_example",
+            "correlation_id": null,
+            "idempotency_key": "platform_001-event-404",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1201",
+            "event": "ACCEPTED",
+            "timestamp": "2026-11-19T10:01:12Z",
+            "details": {
+              "payout_cents": 44.5,
+              "currency": "USD",
+              "revision": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-013",
+      "name": "url_template_subscription",
+      "expect": "pass",
+      "description": "LEP-0012 §4 Valid 6: a GET postback template with macros only in the query.",
+      "checks": [
+        "envelope_schema",
+        "subscription_schema",
+        "url_template"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000501",
+            "type": "subscription",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-subscription-501",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "ACCEPTED",
+              "REFUNDED"
+            ],
+            "delivery": "url_template",
+            "callback_url": "https://track.example.com/postback?cid={click_id}&event={event}&payout={payout}&cur={currency}&rev={revision}&test={test}"
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-014",
+      "name": "macro_in_host",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid B: macros are legal only in the query component.",
+      "error_contains": "URL_TEMPLATE",
+      "checks": [
+        "url_template"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000502",
+            "type": "subscription",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-subscription-502",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "ACCEPTED"
+            ],
+            "delivery": "url_template",
+            "callback_url": "https://{sub1}.track.example.com/pb?e={event}"
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-015",
+      "name": "unknown_macro",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid C: {email} is not in the closed macro set.",
+      "error_contains": "{email}",
+      "checks": [
+        "url_template"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000503",
+            "type": "subscription",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-subscription-503",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "ACCEPTED"
+            ],
+            "delivery": "url_template",
+            "callback_url": "https://track.example.com/pb?e={event}&m={email}"
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-016",
+      "name": "forced_outcome_on_live_traffic",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid D: lcp.test.outcome on a live message is LCP-013.",
+      "error_contains": "LCP-013",
+      "checks": [
+        "sale_extensions"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000204",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-204",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1204",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "extensions": {
+              "lcp.test.outcome": {
+                "outcome": "sold"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-017",
+      "name": "email_in_sub_id",
+      "expect": "fail",
+      "description": "LEP-0012 Invalid F: contact data in a sub-ID fails the value pattern.",
+      "error_contains": "extensions.lcp.affiliate.tracking.sub1",
+      "checks": [
+        "sale_extensions"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000205",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-205",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1205",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "extensions": {
+              "lcp.affiliate.tracking": {
+                "sub1": "jane@example.com"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-018",
+      "name": "bare_numeric_click_id",
+      "expect": "fail",
+      "description": "LEP-0012 §5: a 7-15 digit run reads as a phone number (LEP-0006 B.3.4); numeric click ids need a prefix.",
+      "error_contains": "phone-shaped",
+      "checks": [
+        "sale_extensions"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000206",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-206",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1206",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "home_services",
+              "schema_version": "1.0.0"
+            },
+            "extensions": {
+              "lcp.affiliate.tracking": {
+                "click_id": "2025550143"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SALE-019",
+      "name": "unknown_delivery_mode",
+      "expect": "fail",
+      "description": "LEP-0012 §4: delivery is the closed enum json | url_template.",
+      "checks": [
+        "subscription_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000000504",
+            "type": "subscription",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-subscription-504",
+            "test": true
+          },
+          "payload": {
+            "event_types": [
+              "ACCEPTED"
+            ],
+            "delivery": "xml",
+            "callback_url": "https://track.example.com/pb"
+          }
+        }
+      }
+    }
+  ]
+}

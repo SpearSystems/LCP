@@ -46,7 +46,7 @@ NEGOTIATION_MESSAGE_TYPES = ("quote", "counter")
 # negotiation (§5 LCP-007 SCHEMA_VERSION_UNSUPPORTED ↔ 422, issue #181) so
 # what the wire endpoint accepts can never drift from what it advertises.
 # Every element is a full major.minor.patch semver (§8).
-SUPPORTED_LCP_VERSIONS = ("1.0.0", "1.1.0", "1.2.0")
+SUPPORTED_LCP_VERSIONS = ("1.0.0", "1.1.0", "1.2.0", "1.3.0")
 
 # §3 "phone | string | E.164 format." — mirrors the published
 # schemas/core.json $defs/consumer pattern (^\+[1-9]\d{1,14}$) so the
@@ -134,6 +134,8 @@ EXTENSION_REGISTRY: dict[str, bool] = {
     "lcp.platform.assessment": True,
     "lcp.buyer.criteria": False,
     "lcp.intake.raw_form": False,
+    "lcp.affiliate.tracking": False,
+    "lcp.test.outcome": False,
 }
 
 
@@ -348,11 +350,78 @@ def validate_event_filter(
     return normalized
 
 
+# LEP-0012 §4: the closed URL-template macro set. Every macro resolves from a
+# public or internal source; adding one needs an LEP.
+URL_TEMPLATE_MACROS = frozenset(
+    {
+        "lead_id",
+        "external_id",
+        "click_id",
+        "sub1",
+        "sub2",
+        "sub3",
+        "sub4",
+        "sub5",
+        "event",
+        "payout",
+        "payout_cents",
+        "currency",
+        "revision",
+        "test",
+        "timestamp",
+    }
+)
+_URL_TEMPLATE_MACRO_RE = re.compile(r"\{([^{}]*)\}")
+
+
+def validate_url_template(url: Any, *, allow_private: bool = False) -> str:
+    """LEP-0012 §4: a literal destination with macros only in the query.
+
+    The scheme, host, port, and path are literal, so the SSRF rule runs on the
+    real host at registration (and again before every delivery); any token
+    outside the closed macro set, or a stray brace, is refused.
+    """
+    if not isinstance(url, str) or not url.strip():
+        raise SubscriptionValidationError(
+            "callback_url must be a non-empty string",
+            field="callback_url",
+            reason="callback_url_invalid",
+        )
+    url = url.strip()
+    base, _, query = url.partition("?")
+    if "{" in base or "}" in base:
+        raise SubscriptionValidationError(
+            "url_template macros are legal only in the query component",
+            field="callback_url",
+            reason="url_template_invalid",
+        )
+    unknown = sorted(
+        set(_URL_TEMPLATE_MACRO_RE.findall(query)) - URL_TEMPLATE_MACROS
+    )
+    if unknown:
+        raise SubscriptionValidationError(
+            "url_template uses macros outside the closed set: "
+            + ", ".join("{" + name + "}" for name in unknown),
+            field="callback_url",
+            reason="url_template_invalid",
+        )
+    stripped = _URL_TEMPLATE_MACRO_RE.sub("", query)
+    if "{" in stripped or "}" in stripped:
+        raise SubscriptionValidationError(
+            "url_template has an unbalanced brace",
+            field="callback_url",
+            reason="url_template_invalid",
+        )
+    validate_callback_url(base, allow_private=allow_private)
+    return url
+
+
 def validate_subscription_payload(
     payload: Any,
     *,
     advertised_events: set[str] | frozenset[str],
     allow_private: bool = False,
+    allow_url_templates: bool = False,
 ) -> dict[str, Any]:
     """Validate and normalize the ``subscription`` payload.
 
@@ -395,8 +464,26 @@ def validate_subscription_payload(
             )
         if event_type not in normalized_types:
             normalized_types.append(event_type)
-    callback_url = validate_callback_url(
-        payload.get("callback_url"), allow_private=allow_private
+    delivery = payload.get("delivery", "json")
+    if delivery not in {"json", "url_template"}:
+        raise SubscriptionValidationError(
+            "delivery must be json or url_template",
+            field="delivery",
+            reason="delivery_invalid",
+        )
+    if delivery == "url_template" and not allow_url_templates:
+        raise SubscriptionValidationError(
+            "delivery url_template is not advertised by this receiver "
+            "(features.url_postbacks)",
+            field="delivery",
+            reason="delivery_unadvertised",
+        )
+    callback_url = (
+        validate_url_template(payload.get("callback_url"), allow_private=allow_private)
+        if delivery == "url_template"
+        else validate_callback_url(
+            payload.get("callback_url"), allow_private=allow_private
+        )
     )
     return {
         "event_types": normalized_types,
@@ -404,6 +491,7 @@ def validate_subscription_payload(
         "filter": validate_event_filter(
             payload.get("filter"), advertised_events=advertised_events
         ),
+        "delivery": delivery,
     }
 
 
@@ -436,6 +524,7 @@ def validate_subscription_envelope(
     platform_id: str,
     advertised_events: set[str] | frozenset[str],
     allow_private: bool = False,
+    allow_url_templates: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Validate the registration envelope without the payload schema.
 
@@ -493,6 +582,7 @@ def validate_subscription_envelope(
         lcp.get("payload"),
         advertised_events=advertised_events,
         allow_private=allow_private,
+        allow_url_templates=allow_url_templates,
     )
 
 
@@ -601,6 +691,82 @@ def _pii_source_words(kind: str, source: str) -> str:
     return f"schema '{Path(source).stem}'"
 
 
+# LEP-0013 §1: the closed regulated-identifier table and vertical allowlist.
+REGULATED_KEY = "x-lcp-regulated"
+REGULATED_FIELDS = {
+    "ssn": "government_id",
+    "license_number": "government_id",
+    "account_number": "bank_account",
+    "routing_number": "bank_account",
+}
+REGULATED_VERTICALS = frozenset({"personal_loans"})
+_COUNTRY_CONTAINER_RE = re.compile(r"\A[a-z]{2}_details\Z")
+
+
+def _regulated_load_errors(
+    kind: str,
+    source: str,
+    path: str,
+    definition: dict[str, Any],
+    by_path: dict[str, Any],
+) -> list[str]:
+    """LEP-0013 §1 load-time rules for one ``x-lcp-regulated`` property."""
+
+    container_path, _, name = path.rpartition(".")
+    container = by_path.get(container_path)
+    problems: list[str] = []
+    if kind != "vertical" or Path(source).stem not in REGULATED_VERTICALS:
+        problems.append("only an allowlisted vertical may declare it")
+    if REGULATED_FIELDS.get(name) != definition.get(REGULATED_KEY):
+        problems.append(
+            f"field {name!r} with kind {definition.get(REGULATED_KEY)!r} is not "
+            "in the LEP-0013 table"
+        )
+    if definition.get(PII_KEY) != "restricted" or definition.get("ping_safe") is not False:
+        problems.append("it must be x-lcp-pii restricted and ping_safe: false")
+    if not (
+        _COUNTRY_CONTAINER_RE.match(container_path)
+        and isinstance(container, dict)
+        and container.get(PII_KEY) == "restricted"
+    ):
+        problems.append("it must sit in a restricted country-scoped container")
+    return [
+        f"LCP-100 VALIDATION_ERROR: {source}: {path} declares {REGULATED_KEY} "
+        f"but {problem} (LEP-0013 §1)"
+        for problem in problems
+    ]
+
+
+def regulated_value_errors(value: Any, definition: Any, path: str) -> list[str]:
+    """LEP-0013 §2, fail-closed: refuse every value in a regulated field.
+
+    This receiver never advertises ``features.regulated_identifiers`` (it has
+    no in-memory delivery lane that meets §4), so a regulated value is refused
+    exactly like a prohibited one. Errors name the path, never the value.
+    """
+
+    if not isinstance(value, dict) or not isinstance(definition, dict):
+        return []
+    properties = definition.get("properties")
+    if not isinstance(properties, dict):
+        return []
+    errors: list[str] = []
+    for name, child in sorted(value.items()):
+        child_definition = properties.get(name)
+        child_path = f"{path}.{name}"
+        if isinstance(child_definition, dict) and REGULATED_KEY in child_definition:
+            if child is not None:
+                errors.append(
+                    f"LCP-100 VALIDATION_ERROR: {child_path} carries a regulated "
+                    "identifier; this receiver does not advertise "
+                    "features.regulated_identifiers (LEP-0013 §2) "
+                    f"(field {child_path})"
+                )
+            continue
+        errors.extend(regulated_value_errors(child, child_definition, child_path))
+    return errors
+
+
 def pii_load_errors(
     documents: list[tuple[str, str, dict[str, Any]]],
 ) -> list[str]:
@@ -628,7 +794,13 @@ def pii_load_errors(
     floors = core_pii_classes(core)
     errors: list[str] = []
     for kind, source, document in documents:
-        for path, definition in pii_definitions(document):
+        definitions = pii_definitions(document)
+        by_path = dict(definitions)
+        for path, definition in definitions:
+            if isinstance(definition, dict) and REGULATED_KEY in definition:
+                errors.extend(
+                    _regulated_load_errors(kind, source, path, definition, by_path)
+                )
             if not isinstance(definition, dict):
                 errors.append(
                     f"{source}: {path} is a boolean schema with no x-lcp-pii "
@@ -919,6 +1091,14 @@ class SchemaValidator:
             vertical_attributes.setdefault(
                 "schema_version", version_schema.get("const", "1.0.0")
             )
+        if message_type != "ping":
+            # LEP-0013 §2/§4: refuse regulated values first and alone, so no
+            # schema message (which can echo the instance) carries one.
+            regulated = regulated_value_errors(
+                vertical_attributes, validator.schema, "attributes"
+            )
+            if regulated:
+                return regulated
         errors = [
             self._format(error) for error in validator.iter_errors(vertical_attributes)
         ]

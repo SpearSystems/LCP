@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0012-sale-lifecycle.md">
+<meta name="lcp-build" content="6b4111a944d3">
+<title>LEP-0012 — Sale lifecycle: lead disposition, money events, URL postbacks, and test outcomes — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0012--sale-lifecycle-lead-disposition-money-events-url-postbacks-and-test-outcomes">LEP-0012 — Sale lifecycle: lead disposition, money events, URL postbacks, and test outcomes</h1>
+<ul>
+<li><strong>Title:</strong> Sale lifecycle: synchronous lead disposition, money-bearing lifecycle events, URL-template postbacks, tracking passthrough, and defined test outcomes</li>
+<li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
+<li><strong>Date:</strong> 2026-11-19</li>
+<li><strong>Status:</strong> <strong>Draft</strong>. Not accepted. A candidate implementation is on branch <code>lep/0012-0013-sale-lifecycle</code>; it does not merge until this record is Accepted (LEP.md stage 5).</li>
+<li><strong>Target version:</strong> v1.3.0 (additive MINOR: one optional object on the closed <code>ack</code> payload, one optional property on <code>subscription</code>, documented <code>details</code> shapes on three existing event names, two registered extensions; no new message type, no new error code)</li>
+<li><strong>Discussion:</strong> none yet. A <code>[LEP]</code> issue opens when this record moves to Review.</li>
+<li><strong>Reviewers needed at Review:</strong> at least one publisher, one buyer, and one lead network (domain); a named human security/privacy reviewer, because §4 adds an outbound HTTP surface and §1 carries a session-bearing URL.</li>
+<li><strong>Companion records:</strong> <a href="LEP-0013-regulated-identifiers.html">LEP-0013</a> (regulated identifiers) and <a href="LEP-0014-personal-loans-vertical.html">LEP-0014</a> (<code>personal_loans</code> vertical). Each is decidable on its own.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<h3 id="what-senders-need-back-from-a-lead-post">What senders need back from a lead post</h3>
+<p>A publisher or network that posts a lead needs four facts, at post time:</p>
+<ol>
+<li><strong>Did it sell?</strong></li>
+<li><strong>For how much,</strong> so ad spend can be optimised on revenue rather than on form fills.</li>
+<li><strong>Where to send the consumer next,</strong> when the buyer requires a browser handoff.</li>
+<li><strong>What changed later:</strong> a pending lead resolving, or a sold lead returned.</li>
+</ol>
+<p>Real buyer APIs already answer the first three synchronously. A US personal-loans buyer's v2 lead API, used by the reference deployment, answers every post with:</p>
+<ul>
+<li>a status: accepted, rejected, or rejected on price with an alternative price;</li>
+<li>the price, as a decimal string;</li>
+<li>a consumer <code>redirect_url</code> that the buyer measures as a redirect rate.</li>
+</ul>
+<p>Ping-tree buyers and lead networks commonly do the same.</p>
+<h3 id="what-lcp-has-today">What LCP has today</h3>
+<ul>
+<li><strong><code>ack.status</code> is message-level only.</strong> It reports <code>ACCEPTED</code>, <code>REJECTED</code> and so on for the message. It has no sale outcome, no price, and no redirect. <code>ack.json</code> is closed (<code>additionalProperties: false</code>), so a receiver cannot add them without breaking strict validators.</li>
+<li><strong>Events carry no money for a sale or a return.</strong> <code>CONVERTED</code> and <code>FINAL_PRICING</code> have money shapes. <code>ACCEPTED</code>, <code>REJECTED</code> and <code>REFUNDED</code> have none, so a sender cannot reconcile a return against an earlier sale.</li>
+<li><strong>Subscriptions are JSON webhooks only</strong> (LEP-0001). Publishers optimise ads through affiliate trackers. Those trackers accept server-to-server postbacks as an HTTPS GET with values substituted into a URL template. They do not run an HMAC-verifying JSON receiver, and nor do no-code form stacks.</li>
+<li><strong>The test flag has a traffic policy (<code>LCP-013</code>) but no defined outcome.</strong> An integrator cannot make a test post come back sold, unsold or pending, so the branches that matter most go untested until live traffic.</li>
+</ul>
+<h3 id="what-it-costs-measured-in-the-reference-deployment">What it costs, measured in the reference deployment</h3>
+<ul>
+<li>SpearPointX had to plan a non-LCP response body (outcome, payout, redirect) for publishers. That is a protocol fork in the first adopter.</li>
+<li>A publisher integration guide converted dollars to cents twice. Nothing in the response told the publisher what the lead earned, so the error could only surface at statement time.</li>
+<li>Publisher test posts can only prove that the request validates, not that the integration handles a sale.</li>
+</ul>
+<h3 id="evidence-status">Evidence status</h3>
+<p>There is one adopter deployment, one documented buyer API, and the industry-standard S2S postback convention. The two-adopter rule in <code>LEP.md</code> applies to new message types. This record adds none: every change is an optional field, a documented <code>details</code> shape, or a registered extension.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li><p><strong>Core protocol (additive MINOR):</strong></p>
+<ul>
+<li><code>ack.disposition</code>: an optional object on the ack of a <code>lead</code> or <code>post</code> (§1);</li>
+<li><code>subscription.delivery</code>: an optional property selecting JSON or URL-template delivery (§4).</li>
+</ul></li>
+<li><strong>Documented event shapes:</strong> <code>details</code> for <code>ACCEPTED</code>, <code>REJECTED</code> and <code>REFUNDED</code> when they report a sale result to the sender of the lead (§3).</li>
+<li><p><strong>Registered extensions:</strong></p>
+<ul>
+<li><code>lcp.affiliate.tracking</code>: click and sub-ID passthrough (§5);</li>
+<li><code>lcp.test.outcome</code>: a forced test outcome (§6).</li>
+</ul></li>
+<li><strong>Capability advertisement:</strong> <code>features.sale_disposition</code>, <code>features.url_postbacks</code> and <code>features.test_outcomes</code>, each naming <code>1.3.0</code>.</li>
+<li><strong>Normative text:</strong> consumer redirect handling (§2) and test-outcome behaviour (§6).</li>
+<li><p><strong>Not in scope:</strong></p>
+<ul>
+<li>settlement, invoicing, or the publisher statement of account;</li>
+<li>pricing strategy;</li>
+<li>a price floor on a direct lead post (deferred, see Deferred questions);</li>
+<li>consumer-facing redirect pages;</li>
+<li>shared-lead (LEP-0003) multi-buyer dispositions.</li>
+</ul></li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<h3 id="1-ackdisposition">1. <code>ack.disposition</code></h3>
+<p><code>disposition</code> is an optional object on the payload of an <code>ack</code> whose <code>original_message_id</code> names a <code>lead</code> or <code>post</code>. It reports the commercial result. <code>ack.status</code> keeps reporting message processing.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>outcome</code></td>
+<td>string, closed enum</td>
+<td><code>sold</code>, <code>unsold</code>, <code>pending</code>, <code>price_rejected</code>. Required.</td>
+</tr>
+<tr>
+<td><code>payout_cents</code></td>
+<td>integer, <code>1</code>–<code>100000000</code></td>
+<td>Amount the receiver will pay the sender for this lead, in minor units of <code>currency</code>, after any receiver fee. Required when <code>outcome</code> = <code>sold</code>; absent otherwise. Same typo guard as <code>FINAL_PRICING.winning_price_cents</code>.</td>
+</tr>
+<tr>
+<td><code>currency</code></td>
+<td>string, ISO 4217</td>
+<td>Required when <code>payout_cents</code> or <code>counter_price_cents</code> is present.</td>
+</tr>
+<tr>
+<td><code>counter_price_cents</code></td>
+<td>integer, <code>1</code>–<code>100000000</code></td>
+<td><code>price_rejected</code> only: the lowest price the receiver would pay. Informational in v1.3.0 (see Deferred questions).</td>
+</tr>
+<tr>
+<td><code>redirect_url</code></td>
+<td>string, <code>^https://</code>, ≤ 2048</td>
+<td><code>sold</code> only, optional. The consumer's next page. Classed <code>restricted</code> (§2).</td>
+</tr>
+<tr>
+<td><code>redirect_expires_at</code></td>
+<td>string, date-time</td>
+<td>Optional, with <code>redirect_url</code> only.</td>
+</tr>
+<tr>
+<td><code>final_by</code></td>
+<td>string, date-time</td>
+<td><code>pending</code> only, optional: the latest time the final event will be sent.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Status and disposition together (normative):</strong></p>
+<ul>
+<li>A receiver includes <code>disposition</code> only on an ack with <code>status</code> = <code>RECEIVED</code>, <code>ACCEPTED</code> or <code>DUPLICATE</code>. A receiver that routes asynchronously answers <code>RECEIVED</code> with <code>outcome</code> = <code>pending</code> (or with a forced test outcome, §6).</li>
+<li>A <code>DUPLICATE</code> ack for an idempotent replay MUST repeat the disposition of the original ack, byte for byte, when one was issued. Retries then learn the result instead of losing it.</li>
+<li><code>rejection_reason</code>, the existing open enum, MAY accompany <code>outcome</code> = <code>unsold</code> or <code>price_rejected</code>. Its description widens from "when status = REJECTED" to "when the lead was refused or not bought".</li>
+<li>An ack with <code>status</code> = <code>REJECTED</code> and no <code>disposition</code> means the receiver refused the lead. A sender treats it as unsold.</li>
+<li><strong>Sender rule:</strong> a lead is sold if, and only if, <code>disposition.outcome</code> = <code>sold</code>. A sender MUST NOT infer a sale from HTTP 2xx or from <code>status</code> = <code>ACCEPTED</code> alone.</li>
+</ul>
+<p><strong>Pending.</strong> The final result arrives as an <code>ACCEPTED</code> (sold) or <code>REJECTED</code> (unsold) event (§3), by subscription or through <code>GET /v1/lcp/events</code>. <code>final_by</code> bounds the wait. After <code>final_by</code> with no event, the sender treats the lead as unsold, and a later <code>ACCEPTED</code> event still supersedes that by revision.</p>
+<p><strong>Version gate.</strong> <code>ack.json</code> is closed, so a strict 1.2 sender would reject an ack that carries <code>disposition</code>. A receiver MUST include <code>disposition</code> only when the acknowledged message's <code>lcp.version</code> is <code>1.3.0</code> or later, parsed as semver and never compared as a string. A 1.2 sender therefore never receives it.</p>
+<h3 id="2-consumer-redirect-normative">2. Consumer redirect (normative)</h3>
+<p>The receiver measures the redirect from the consumer's own client: their IP address, user agent and cookies. The rules below keep that measurement honest.</p>
+<ul>
+<li>The sender MUST deliver <code>redirect_url</code> to the consumer's browser as a top-level navigation: an HTTP <code>302</code>/<code>303</code> from the sender's page, or a script navigation. It SHOULD do so immediately after the ack.</li>
+<li>The sender MUST NOT request the URL from a server. It MUST NOT prefetch or preload it, render it in an iframe, or pass it to a link-preview service. A server-side request records a false redirect from the wrong client.</li>
+<li><p>A receiver MAY wrap a downstream receiver's URL in its own relay hop (<code>https://relay.example/r/{token}</code> → <code>302</code> → downstream URL), which lets it measure redirect rate per sender. A relay:</p>
+<ul>
+<li>MUST use an opaque, unguessable token with no consumer data;</li>
+<li>MUST be HTTPS;</li>
+<li>MUST answer <code>404</code> for an unknown token;</li>
+<li>SHOULD answer a repeat hit before <code>redirect_expires_at</code> with the same destination;</li>
+<li>MUST NOT add query parameters derived from consumer data.</li>
+</ul></li>
+<li><p><strong>Class.</strong> <code>redirect_url</code> is a session-bearing URL. A buyer's landing page may show the consumer's prefilled application. Following <code>docs/PII-CLASSES.md</code> it is <code>restricted</code>: never logged, never in an event, never in a postback macro.</p>
+<ul>
+<li>It is carried only on the ack back to the sender of the lead, which already holds the consumer record.</li>
+<li>The emission matrix gains an <code>ack</code> column. <code>restricted</code> is allowed only in <code>disposition.redirect_url</code>, and only to the sender of the acknowledged <code>lead</code>/<code>post</code>. Every other row matches <code>event</code>.</li>
+</ul></li>
+</ul>
+<h3 id="3-money-bearing-lifecycle-events">3. Money-bearing lifecycle events</h3>
+<p>When the receiver of a lead reports that lead's commercial fate to its sender, <code>details</code> SHOULD use these shapes. Examples are platform to publisher, or buyer to platform.</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Meaning</th>
+<th><code>details</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ACCEPTED</code></td>
+<td>Sold. Also emitted for a sale already reported synchronously, so a postback subscriber that is not the posting server learns of it.</td>
+<td><code>payout_cents</code> (&gt; 0), <code>currency</code>, <code>revision</code>, <code>sold_at</code></td>
+</tr>
+<tr>
+<td><code>REJECTED</code></td>
+<td>Unsold after <code>pending</code>.</td>
+<td><code>revision</code>, optional <code>rejection_reason</code></td>
+</tr>
+<tr>
+<td><code>REFUNDED</code></td>
+<td>Returned or reversed after a sale.</td>
+<td><code>payout_cents</code> (&lt; 0), <code>currency</code>, <code>revision</code>, <code>returned_at</code>, optional <code>return_reason</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Field rules:</strong></p>
+<ul>
+<li><strong><code>payout_cents</code> is a signed delta,</strong> within <code>-100000000</code>–<code>100000000</code> and never <code>0</code>. It is the change this event makes to what the receiver owes the sender for the lead. The sum over all events for one lead is the net amount reported. Float major units are never valid.</li>
+<li><strong><code>revision</code></strong> is an integer ≥ 1, strictly increasing per <code>lead_id</code> for one sender–receiver pair. A sender keeps the highest revision it has seen and ignores a lower or equal one. Retries and out-of-order delivery are then harmless.</li>
+<li><strong><code>return_reason</code></strong> is an open enum. Known values are <code>invalid_contact</code>, <code>duplicate</code>, <code>compliance_fail</code>, <code>fraud</code>, <code>consumer_dispute</code> and <code>buyer_error</code>.</li>
+<li><strong>All fields are <code>internal</code>.</strong> The event class rule still holds: no consumer data in <code>details</code>.</li>
+</ul>
+<p><strong>Settlement neutrality.</strong> These shapes report. They do not invoice. <code>post.pricing</code> remains the platform–buyer billing record, and the deployment's statement of account remains the publisher payable record.</p>
+<h3 id="4-url-template-postbacks">4. URL-template postbacks</h3>
+<p><code>subscription</code> gains one optional property:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>delivery</code></td>
+<td>string, enum <code>json</code> \</td>
+<td><code>url_template</code></td>
+<td>Default <code>json</code>, which is today's LEP-0001 behaviour, unchanged.</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>delivery</code> = <code>url_template</code>, <code>callback_url</code> is a template and these rules apply. A registration that breaks one is refused with <code>LCP-100</code> and <code>field</code> = <code>callback_url</code>, and no new code is added.</p>
+<ol>
+<li><p><strong>Literal destination.</strong></p>
+<ul>
+<li>The scheme, host, port and path are literal. Macros appear only in the query component, after <code>?</code>.</li>
+<li>The existing SSRF rule (no embedded credentials, valid port, public resolved addresses only) runs on the literal host at registration and again before every delivery.</li>
+<li>Redirects returned by the tracker are not followed.</li>
+</ul></li>
+<li><p><strong>Closed macro set.</strong> Any other <code>{…}</code> token is refused.</p>
+<table>
+<thead>
+<tr>
+<th>Macro</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{lead_id}</code></td>
+<td>Event <code>lead_id</code>.</td>
+</tr>
+<tr>
+<td><code>{external_id}</code></td>
+<td>The sender's <code>lead.external_id</code>, or empty.</td>
+</tr>
+<tr>
+<td><code>{click_id}</code>, <code>{sub1}</code>…<code>{sub5}</code></td>
+<td>From <code>lcp.affiliate.tracking</code> on the lead (§5), or empty.</td>
+</tr>
+<tr>
+<td><code>{event}</code></td>
+<td>The event name exactly as sent, for example <code>ACCEPTED</code>.</td>
+</tr>
+<tr>
+<td><code>{payout}</code></td>
+<td><code>details.payout_cents</code> as a decimal in major units. Uses the ISO 4217 exponent of <code>currency</code>, <code>.</code> as separator, no grouping, and a leading <code>-</code> when negative: <code>4450</code> USD → <code>44.50</code>; <code>-4450</code> USD → <code>-44.50</code>; <code>4450</code> JPY → <code>4450</code>. Empty when absent.</td>
+</tr>
+<tr>
+<td><code>{payout_cents}</code></td>
+<td><code>details.payout_cents</code> as an integer, or empty.</td>
+</tr>
+<tr>
+<td><code>{currency}</code></td>
+<td><code>details.currency</code>, or empty.</td>
+</tr>
+<tr>
+<td><code>{revision}</code></td>
+<td><code>details.revision</code>, or empty.</td>
+</tr>
+<tr>
+<td><code>{test}</code></td>
+<td><code>1</code> when the event is test traffic, else <code>0</code>.</td>
+</tr>
+<tr>
+<td><code>{timestamp}</code></td>
+<td>Event <code>timestamp</code>.</td>
+</tr>
+</tbody>
+</table></li>
+</ol>
+<ol start="3">
+<li><p><strong>Expansion.</strong></p>
+<ul>
+<li>Every value is percent-encoded (RFC 3986; unreserved characters kept).</li>
+<li>The expanded URL MUST NOT exceed 4096 bytes. A longer one is a delivery failure, not a truncation.</li>
+</ul></li>
+<li><p><strong>Request.</strong></p>
+<ul>
+<li><code>GET</code> with no body. Any <code>2xx</code> is success.</li>
+<li>Retries follow the subscription's existing delivery schedule.</li>
+<li>The <code>event_types</code> allowlist applies unchanged. A subscriber that needs different tracker URLs per event (a conversion URL for <code>ACCEPTED</code>, an adjustment URL for <code>REFUNDED</code>) registers one subscription per URL.</li>
+</ul></li>
+<li><strong>Signing.</strong> Deliveries carry the same headers as a JSON delivery: <code>X-LCP-Timestamp</code>, <code>X-LCP-Event-Id</code>, <code>X-LCP-Idempotency-Key</code> (the event id) and <code>X-LCP-Signature</code>. The signature is computed as in <code>spec/01-transport.md</code>, with the expanded URL in place of the raw request body: <code>&lt;timestamp&gt;\n&lt;idempotency-key&gt;\n&lt;expanded-url&gt;</code>. A tracker that cannot verify ignores the headers.</li>
+<li><p><strong>No consumer data, by construction.</strong></p>
+<ul>
+<li>No macro resolves to a <code>contact</code>, <code>restricted</code> or <code>prohibited</code> value.</li>
+<li>Adding a macro requires an LEP, and the new macro's source must be <code>public</code> or <code>internal</code>.</li>
+<li>Trackers often embed their own API token in the template, so receivers MUST NOT log the expanded query string. They log host, status, latency and delivery id.</li>
+</ul></li>
+<li><strong>Tenancy and addressing.</strong> A postback fires only for leads the subscriber sent, the same tenant rule LEP-0001 applies to JSON deliveries. It fires only for events the receiver addresses to the subscriber about its own lead's sale result: a buyer's own <code>ACCEPTED</code> or <code>REJECTED</code> event about a post, which the publisher never sees, does not expand a publisher's template.</li>
+</ol>
+<h3 id="5-registered-extension-lcpaffiliatetracking">5. Registered extension <code>lcp.affiliate.tracking</code></h3>
+<p>This carries the sender's own click and sub-ID values on a <code>lead</code> or <code>post</code> so they can be echoed back through postback macros.</p>
+<pre class="code-block"><code class="language-json">{ "lcp.affiliate.tracking": { "click_id": "cl_8f3a2b", "sub1": "fb", "sub2": "adset_44", "sub3": "", "sub4": "", "sub5": "" } }</code></pre>
+<ul>
+<li><strong>Keys</strong> are <code>click_id</code> and <code>sub1</code>–<code>sub5</code>, all optional. Any other key is refused.</li>
+<li><p><strong>Values</strong> are strings matching <code>^[A-Za-z0-9._~:-]{0,255}$</code>. The pattern excludes <code>@</code>, <code>+</code>, whitespace and <code>/</code>, so an email address or an E.164 number cannot appear.</p>
+<ul>
+<li>The LEP-0006 B.3.4 extension rule still applies: a run of 7–15 digits reads as a phone number and is refused with <code>LCP-100</code>. A sender with numeric click ids prefixes them (<code>c_1234567890</code>) or sends them in <code>click_id</code> with a letter.</li>
+<li>The no-consumer-data rule is normative on the sender. A receiver MAY refuse a value that its detector classes as contact data, with <code>LCP-100</code>.</li>
+</ul></li>
+<li><strong>Class</strong> <code>internal</code>. Not <code>ping_safe</code>. Never forwarded to a downstream buyer: these values belong to the sender–receiver pair that carried them.</li>
+</ul>
+<h3 id="6-test-outcomes">6. Test outcomes</h3>
+<p>This builds on the existing <code>test</code> envelope field, the <code>X-LCP-Test</code> header and <code>LCP-013</code>. A receiver that advertises <code>features.test_outcomes</code>:</p>
+<ul>
+<li>MUST answer a test <code>lead</code> or <code>post</code> that carries <code>lcp.test.outcome</code> with that outcome, and MUST NOT route it to a live counterparty, bill it, or count it in any payable or rate. A test lead without the extension follows the receiver's existing test policy (<code>LCP-013</code>), and is answered <code>pending</code> when routed asynchronously.</li>
+<li>When it relays downstream, it MUST use the downstream's own test mode or not relay at all.</li>
+<li><p>MUST honour the registered extension <code>lcp.test.outcome</code>:</p>
+<pre class="code-block"><code class="language-json">{ "lcp.test.outcome": { "outcome": "sold", "payout_cents": 4450 } }</code></pre>
+<ul>
+<li><code>outcome</code> is required and is one of the §1 values.</li>
+<li><code>payout_cents</code> is optional. When it is absent, the receiver picks a fixed synthetic amount.</li>
+<li>The extension is legal only when <code>message.test</code> is <code>true</code>. On live traffic it is refused with <code>LCP-013</code>.</li>
+<li>It takes effect only on a <code>1.3.0</code> or later message, because the forced result is reported in <code>disposition</code> (§1's version gate).</li>
+</ul></li>
+<li>On a forced <code>pending</code>, MUST send the final test event within 60 seconds, as <code>ACCEPTED</code> with revision 1, so the async path can be exercised.</li>
+<li>MUST emit the test's §3 events with <code>message.test</code> = <code>true</code>. JSON deliveries carry <code>X-LCP-Test: true</code>; URL-template deliveries expand <code>{test}</code> to <code>1</code>.</li>
+<li>SHOULD return, for a forced <code>sold</code>, a <code>redirect_url</code> on its own domain that serves a static confirmation page and records the hit. The integrator can then prove the browser redirect works before go-live.</li>
+</ul>
+<h3 id="valid-example-1--test-lead-forcing-a-sale-with-tracking-passthrough">Valid example 1 — test lead forcing a sale, with tracking passthrough</h3>
+<p>This validates against the v1.2.0 schemas today: <code>extensions</code> is an open namespaced object.</p>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.2.0",
+    "message": {
+      "id": "d1200000-0000-4000-8000-000000001201",
+      "type": "lead",
+      "timestamp": "2026-11-19T10:00:00Z",
+      "sender_id": "pub_example",
+      "receiver_id": "platform_001",
+      "idempotency_key": "pub-example-lead-1201",
+      "test": true
+    },
+    "payload": {
+      "lead_id": "lead_1201",
+      "external_id": "sess_8f3a2b",
+      "submitted_at": "2026-11-19T09:59:58Z",
+      "status": "NEW",
+      "channel": "form",
+      "consumer": {
+        "first_name": "Test",
+        "last_name": "Applicant",
+        "email": "test.applicant@example.com",
+        "phone": "+12025550143"
+      },
+      "location": { "country_code": "US", "state_region": "TX", "postal_code": "75001" },
+      "compliance": {
+        "consent_timestamp": "2026-11-19T09:59:50Z",
+        "consent_source_url": "https://lp.example.com/apply",
+        "consent_text_version": "consent-v1"
+      },
+      "attributes": { "vertical": "home_services", "schema_version": "1.0.0" },
+      "extensions": {
+        "lcp.affiliate.tracking": { "click_id": "cl_8f3a2b", "sub1": "fb", "sub2": "adset_44" },
+        "lcp.test.outcome": { "outcome": "sold", "payout_cents": 4450 }
+      }
+    }
+  }
+}</code></pre>
+<h4 id="valid-2--synchronous-sale-with-a-redirect-v130-shape">Valid 2 — synchronous sale with a redirect (v1.3.0 shape)</h4>
+<pre class="code-block"><code class="language-json">{
+  "lcp": {
+    "version": "1.3.0",
+    "message": {
+      "id": "d1200000-0000-4000-8000-000000001202",
+      "type": "ack",
+      "timestamp": "2026-11-19T10:00:01Z",
+      "sender_id": "platform_001",
+      "receiver_id": "pub_example",
+      "correlation_id": "d1200000-0000-4000-8000-000000001201",
+      "idempotency_key": "platform-001-ack-1201",
+      "test": true
+    },
+    "payload": {
+      "original_message_id": "d1200000-0000-4000-8000-000000001201",
+      "status": "ACCEPTED",
+      "lead_id": "lead_1201",
+      "disposition": {
+        "outcome": "sold",
+        "payout_cents": 4450,
+        "currency": "USD",
+        "redirect_url": "https://platform.example/r/Zk3pQ8vN2mT6",
+        "redirect_expires_at": "2026-11-19T10:30:01Z"
+      }
+    }
+  }
+}</code></pre>
+<h4 id="valid-3--pending-then-resolved-by-event">Valid 3 — pending, then resolved by event</h4>
+<p>The ack payload:</p>
+<pre class="code-block"><code class="language-json">{ "original_message_id": "d1200000-0000-4000-8000-000000001203", "status": "ACCEPTED", "lead_id": "lead_1203",
+  "disposition": { "outcome": "pending", "final_by": "2026-11-19T10:05:00Z" } }</code></pre>
+<p>The later event payload:</p>
+<pre class="code-block"><code class="language-json">{ "lead_id": "lead_1203", "event": "ACCEPTED", "timestamp": "2026-11-19T10:01:12Z",
+  "details": { "payout_cents": 3900, "currency": "USD", "revision": 1, "sold_at": "2026-11-19T10:01:12Z" } }</code></pre>
+<h4 id="valid-4--return-after-sale">Valid 4 — return after sale</h4>
+<pre class="code-block"><code class="language-json">{ "lead_id": "lead_1201", "event": "REFUNDED", "timestamp": "2026-12-02T03:00:00Z",
+  "details": { "payout_cents": -4450, "currency": "USD", "revision": 2, "returned_at": "2026-12-02T03:00:00Z", "return_reason": "invalid_contact" } }</code></pre>
+<h4 id="valid-5--price-rejection">Valid 5 — price rejection</h4>
+<pre class="code-block"><code class="language-json">{ "original_message_id": "d1200000-0000-4000-8000-000000001205", "status": "ACCEPTED", "lead_id": "lead_1205",
+  "rejection_reason": "price_too_high",
+  "disposition": { "outcome": "price_rejected", "counter_price_cents": 5010, "currency": "USD" } }</code></pre>
+<h4 id="valid-6--url-template-subscription">Valid 6 — URL-template subscription</h4>
+<pre class="code-block"><code class="language-json">{ "event_types": ["ACCEPTED", "REFUNDED"], "delivery": "url_template",
+  "callback_url": "https://track.example.com/postback?cid={click_id}&amp;event={event}&amp;payout={payout}&amp;cur={currency}&amp;rev={revision}&amp;test={test}" }</code></pre>
+<p>Expanded for Valid 4 (<code>click_id</code> = <code>cl_8f3a2b</code>): <code>https://track.example.com/postback?cid=cl_8f3a2b&amp;event=REFUNDED&amp;payout=-44.50&amp;cur=USD&amp;rev=2&amp;test=0</code></p>
+<h4 id="invalid-a--sold-without-a-payout">Invalid A — sold without a payout</h4>
+<p><code>{"outcome": "sold", "currency": "USD"}</code> is refused by schema: <code>payout_cents</code> is required when <code>outcome</code> = <code>sold</code>.</p>
+<h4 id="invalid-b--macro-in-the-host">Invalid B — macro in the host</h4>
+<p><code>"callback_url": "https://{sub1}.track.example.com/pb?e={event}"</code> is refused with <code>LCP-100</code>, <code>field</code> = <code>callback_url</code>, because macros are legal only in the query component.</p>
+<h4 id="invalid-c--unknown-macro">Invalid C — unknown macro</h4>
+<p><code>"callback_url": "https://track.example.com/pb?e={event}&amp;m={email}"</code> is refused with <code>LCP-100</code>: <code>{email}</code> is not in the closed macro set.</p>
+<h4 id="invalid-d--forced-outcome-on-live-traffic">Invalid D — forced outcome on live traffic</h4>
+<p>A lead with <code>message.test</code> = <code>false</code> and <code>extensions["lcp.test.outcome"]</code> is refused with <code>LCP-013 TEST_TRAFFIC_POLICY</code>.</p>
+<h4 id="invalid-e--disposition-to-a-12-sender">Invalid E — disposition to a 1.2 sender</h4>
+<p>A receiver acknowledging a message whose <code>lcp.version</code> is <code>1.2.0</code> with a <code>disposition</code> violates §1's version gate. Conformance vector <code>SALE-0xx</code> asserts that the 1.2-shaped ack omits it.</p>
+<h4 id="invalid-f--contact-data-in-a-sub-id">Invalid F — contact data in a sub-ID</h4>
+<p><code>"sub1": "jane@example.com"</code> fails the <code>lcp.affiliate.tracking</code> pattern and is refused with <code>LCP-100</code>, <code>field</code> = <code>extensions.lcp.affiliate.tracking.sub1</code>.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<p><strong>New consumer-data surfaces.</strong> There is one: <code>disposition.redirect_url</code>, classed <code>restricted</code> and carried only back to the sender of the lead, which already holds the record. Every other new field is <code>public</code> or <code>internal</code>. Postback macros resolve only from <code>internal</code> sources, so a tracker never receives consumer data.</p>
+<p><strong>Egress (§4).</strong></p>
+<ul>
+<li>URL-template delivery is a new outbound GET surface. It reuses LEP-0001's SSRF rule, adds a literal-host constraint and no-redirect-following, and bounds URL length.</li>
+<li>Trackers' own tokens in templates are protected by the no-query-logging rule.</li>
+<li><strong>Residual risk:</strong> a subscriber can point a template at any public host. That is the same as JSON delivery today, and is bounded by the per-tenant subscription limits.</li>
+</ul>
+<p><strong>Redirect integrity (§2).</strong></p>
+<ul>
+<li>Forbidding server-side fetches protects the downstream receiver's measurement and stops a sender from inflating redirect rate.</li>
+<li>Relay tokens are opaque and expire.</li>
+<li><strong>Open-redirect risk:</strong> a relay only redirects to destinations it received from a downstream ack, never to a URL taken from a request.</li>
+</ul>
+<p><strong>Money integrity.</strong></p>
+<ul>
+<li>All amounts are integer minor units with the existing typo guard.</li>
+<li>Signed deltas with revisions make returns reconcilable without mutable state on the sender.</li>
+<li>Nothing here changes a payable.</li>
+</ul>
+<p><strong>Test isolation (§6).</strong> Forced outcomes are refused on live traffic. Test leads never reach a live counterparty or a payable.</p>
+<p><strong>Universal-core audit (SPEC §12).</strong></p>
+<ul>
+<li>No vertical or market field enters the core. <code>disposition</code> and <code>delivery</code> are vertical-neutral.</li>
+<li>The affiliate sub-ID convention is market practice, so it is a registered extension, not a core field.</li>
+<li>Redirect handling applies to any vertical with a consumer handoff.</li>
+<li>Ping is untouched.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><p><strong>MINOR.</strong></p>
+<ul>
+<li>Optional property on a closed payload (<code>ack.disposition</code>), gated on the acknowledged message's version.</li>
+<li>Optional property with a default that preserves today's behaviour (<code>subscription.delivery</code>).</li>
+<li>Documented shapes inside an open object (<code>event.details</code>).</li>
+<li>Registered extensions.</li>
+</ul></li>
+<li><p><strong>No change for 1.0–1.2 peers.</strong></p>
+<ul>
+<li>A 1.2 sender never receives <code>disposition</code>.</li>
+<li>A JSON subscription is unchanged.</li>
+<li>Events without the new <code>details</code> keys stay valid.</li>
+</ul></li>
+<li><strong><code>rejection_reason</code> description widening</strong> is text-only. The field stays an open enum.</li>
+<li><strong>Deprecation:</strong> none.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<p><strong>Schemas (edited first at implementation):</strong></p>
+<ul>
+<li><code>schemas/ack.json</code>: <code>disposition</code>, with <code>if</code>/<code>then</code> for the per-outcome required fields.</li>
+<li><code>schemas/subscription.json</code>: <code>delivery</code>.</li>
+<li><code>governance/EXTENSION-REGISTRY.md</code>: two rows.</li>
+<li><code>docs/PII-CLASSES.md</code>: the <code>ack</code> column and the <code>disposition.redirect_url</code> mapping row.</li>
+<li>Bundles and SHA-256 manifests regenerate.</li>
+</ul>
+<p><strong>Ten SDKs:</strong> the generated models and schema bundles carry <code>disposition</code> and <code>delivery</code> at v1.3.0. Hand-written helpers (<code>is_sold</code>, <code>format_payout</code>, a URL-template validator, a <code>test_outcome</code> builder) are deferred: <code>check_sdk_surface</code> requires the same surface in all ten SDKs, and the helpers ship together in one later SDK release.</p>
+<p><strong>OpenAPI and MCP:</strong></p>
+<ul>
+<li>the ack response schema gains <code>disposition</code>;</li>
+<li>the subscription create schema gains <code>delivery</code>;</li>
+<li>MCP lead-submit tools return <code>disposition</code> unchanged.</li>
+</ul>
+<p><strong>Conformance:</strong> new suite <code>test-vectors/sale-lifecycle.json</code>, ids <code>SALE-001</code>…:</p>
+<ul>
+<li>per-outcome ack shapes;</li>
+<li>the version gate;</li>
+<li><code>DUPLICATE</code> repeating the disposition;</li>
+<li>signed-delta revision ordering;</li>
+<li>macro expansion, including the JPY exponent and negative payouts;</li>
+<li>every Invalid example above.</li>
+</ul>
+<p><strong>Operations:</strong></p>
+<ul>
+<li><code>GET /v1/lcp/metrics</code> gains counters for disposition outcome and for postback delivery success and failure by host;</li>
+<li>per-sender redirect-rate measurement is a SHOULD for relays;</li>
+<li>reference-platform flags <code>LCP_FEATURE_SALE_DISPOSITION</code>, <code>LCP_FEATURE_URL_POSTBACKS</code> and <code>LCP_FEATURE_TEST_OUTCOMES</code>, each off by default.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Decimal-string or float prices, the buyer API's own shape.</strong> Rejected. Floats round, and a decimal string in one field next to minor units everywhere else (LEP-0010) is worse than either alone. Human-readable decimals live in <code>{payout}</code> and SDK formatters instead.</li>
+<li><strong>A new <code>disposition</code> message type sent after the ack.</strong> Rejected. It doubles round trips for the common synchronous case, and the two-adopter rule applies to new message types. The async case is already covered by events.</li>
+<li><strong>New event names (<code>SOLD</code>, <code>UNSOLD</code>, <code>RETURNED</code>).</strong> Rejected for v1.3.0. <code>ACCEPTED</code>, <code>REJECTED</code> and <code>REFUNDED</code> already carry those meanings, and <code>subscription.event_types</code> is a closed enum. Friendlier names for trackers are a deferred question.</li>
+<li><strong>Extension-only (<code>lcp.sale.disposition</code> in an ack extension).</strong> Rejected. <code>ack</code> has no <code>extensions</code> container, and adding one is a larger core change than one optional object.</li>
+<li><strong>Keep it deployment-specific</strong>, as SpearPointX's planned response body would. Rejected, because every buyer, network and publisher re-invents it, and that is the fork this record exists to prevent.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>Schemas, vectors and the reference platform</strong> land behind three feature flags, off by default. <code>capabilities().features</code> advertises each flag only when it is on.</li>
+<li><strong>The reference deployment (SpearPointX)</strong> enables <code>sale_disposition</code> and <code>test_outcomes</code> for publishers on <code>1.3.0</code>, then <code>url_postbacks</code> after the security/privacy review signs off.</li>
+<li><strong>Publishers move by sending <code>lcp.version</code> <code>1.3.0</code>.</strong> A sender that stays on <code>1.2.0</code> keeps today's ack.</li>
+<li><strong>Observability:</strong> outcome counters, postback success rate by host, redirect rate per sender, and test-versus-live split.</li>
+<li><strong>Rollback:</strong> turning a flag off removes the advertisement and the behaviour. Acks to <code>1.3.0</code> senders omit <code>disposition</code>, which senders MUST tolerate because it is optional. URL-template subscriptions are disabled, not deleted, and resume when the flag returns.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Re-post at the counter price.</strong> <code>price_rejected</code> returns <code>counter_price_cents</code>, but a direct <code>lead</code> has no floor field to re-post with. Trigger: a second buyer API with price-reject semantics, or a sender asking to automate re-posts. Candidate: a <code>lead</code>-side floor reusing LEP-0009's bounds.</li>
+<li><strong>Friendly event aliases for trackers</strong> (<code>{event_alias}</code> → <code>sold</code>, <code>unsold</code>, <code>returned</code>). Trigger: tracker-integration feedback that raw names are a support burden.</li>
+<li><strong>Redirect completion reported downstream.</strong> A relay knows when the consumer arrived, and a buyer may want that as an event. Trigger: a buyer asking for it, or a dispute over redirect rate.</li>
+<li><strong>Shared-lead dispositions</strong> (LEP-0003, multiple buyers per lead). Trigger: the first shared-lead deployment that pays publishers per slot.</li>
+<li><strong>Postback signature for GET.</strong> §4.5 substitutes the expanded URL for the body. Review should confirm that this is sufficient against replay through a tracker, given the idempotency key is a header, not part of the URL.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-3"><a href="#what-senders-need-back-from-a-lead-post">What senders need back from a lead post</a></li><li class="depth-3"><a href="#what-lcp-has-today">What LCP has today</a></li><li class="depth-3"><a href="#what-it-costs-measured-in-the-reference-deployment">What it costs, measured in the reference deployment</a></li><li class="depth-3"><a href="#evidence-status">Evidence status</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-ackdisposition">1. ack.disposition</a></li><li class="depth-3"><a href="#2-consumer-redirect-normative">2. Consumer redirect (normative)</a></li><li class="depth-3"><a href="#3-money-bearing-lifecycle-events">3. Money-bearing lifecycle events</a></li><li class="depth-3"><a href="#4-url-template-postbacks">4. URL-template postbacks</a></li><li class="depth-3"><a href="#5-registered-extension-lcpaffiliatetracking">5. Registered extension lcp.affiliate.tracking</a></li><li class="depth-3"><a href="#6-test-outcomes">6. Test outcomes</a></li><li class="depth-3"><a href="#valid-example-1--test-lead-forcing-a-sale-with-tracking-passthrough">Valid example 1 — test lead forcing a sale, with tracking passthrough</a></li><li class="depth-4"><a href="#valid-2--synchronous-sale-with-a-redirect-v130-shape">Valid 2 — synchronous sale with a redirect (v1.3.0 shape)</a></li><li class="depth-4"><a href="#valid-3--pending-then-resolved-by-event">Valid 3 — pending, then resolved by event</a></li><li class="depth-4"><a href="#valid-4--return-after-sale">Valid 4 — return after sale</a></li><li class="depth-4"><a href="#valid-5--price-rejection">Valid 5 — price rejection</a></li><li class="depth-4"><a href="#valid-6--url-template-subscription">Valid 6 — URL-template subscription</a></li><li class="depth-4"><a href="#invalid-a--sold-without-a-payout">Invalid A — sold without a payout</a></li><li class="depth-4"><a href="#invalid-b--macro-in-the-host">Invalid B — macro in the host</a></li><li class="depth-4"><a href="#invalid-c--unknown-macro">Invalid C — unknown macro</a></li><li class="depth-4"><a href="#invalid-d--forced-outcome-on-live-traffic">Invalid D — forced outcome on live traffic</a></li><li class="depth-4"><a href="#invalid-e--disposition-to-a-12-sender">Invalid E — disposition to a 1.2 sender</a></li><li class="depth-4"><a href="#invalid-f--contact-data-in-a-sub-id">Invalid F — contact data in a sub-ID</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0012-sale-lifecycle.md</code> · build <code>6b4111a944d3</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

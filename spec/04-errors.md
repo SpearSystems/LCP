@@ -66,5 +66,9 @@ family as the other.
 `LCP-011 RATE_LIMITED` (429) pairs with the per-sender rate limits
 defined in §9. `LCP-013 TEST_TRAFFIC_POLICY` is used by the HTTP
 reference profile when the `test` envelope field and `X-LCP-Test` header
-disagree, when a sandbox receives non-test traffic, or when a production
-endpoint receives test traffic.
+disagree, when a sandbox receives non-test traffic, when a production
+endpoint receives test traffic, or (v1.3, LEP-0012 §6) when a live
+message carries the `lcp.test.outcome` extension. Under LEP-0013 §5 it
+also refuses a test message whose regulated `ssn` is outside the
+advertising-reserved range `987654320`–`987654329`, and a live message
+whose `ssn` is inside it.

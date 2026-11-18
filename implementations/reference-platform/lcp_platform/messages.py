@@ -101,6 +101,7 @@ def build_ack(
     rejection_reason: str | None = None,
     errors: list[dict[str, Any]] | None = None,
     negotiation: dict[str, Any] | None = None,
+    disposition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     original_message = original["lcp"]["message"]
     payload: dict[str, Any] = {
@@ -117,6 +118,10 @@ def build_ack(
         # LEP-0009 §5: present on every ack for a quote/counter (and on a
         # successful bid redemption), so a buyer never infers state from prose.
         payload["negotiation"] = negotiation
+    if disposition is not None:
+        # LEP-0012 §1: the caller has already applied the version gate (the
+        # acknowledged message is 1.3.0 or later), so the ack is a 1.3 shape.
+        payload["disposition"] = disposition
     return _envelope(
         "ack",
         sender_id,
@@ -124,6 +129,7 @@ def build_ack(
         payload,
         correlation_id=original_message["id"],
         test=original_message.get("test", False),
+        **({"version": "1.3.0"} if disposition is not None else {}),
     )
 
 

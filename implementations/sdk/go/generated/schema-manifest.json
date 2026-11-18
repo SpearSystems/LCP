@@ -1,7 +1,7 @@
 {
   "protocol_version": "1.0.0",
   "schema_files": {
-    "schemas/ack.json": "0770020643ee25fd39cd71e4fb86d4fe9611fb1dc91d60c039b8fab47b59ac5a",
+    "schemas/ack.json": "2ac39fd4db0aa36aae54507e8e292ec28273ffcde97c131b25375da06fb1fb60",
     "schemas/batch.json": "83937cb1ae04d74d78ee0efbb30df3f5bfb848766cf659d99ca1963d1cf13c2e",
     "schemas/bid.json": "f1b9bfd4185068915cf3cb9b9cabd7e93f74b71ad4d5bf8c53b48984023728fd",
     "schemas/call.json": "30ccf581dd1a501423e44ca08be5354a35c36a96d4a32802a3965b299015cbed",
@@ -14,12 +14,13 @@
     "schemas/ping.json": "d24e6bd5524bff0003a38bbc6f2e9b668ae0f2a29f277ac7441dfd85e028cae9",
     "schemas/post.json": "f28e987317916913609f4381a8f8aa447618ead4771efab57dd732658d8dba84",
     "schemas/quote.json": "88ef369befb305a7a8d20adbd77517744ba736cb5dbe3fe75935d938746863c3",
-    "schemas/subscription.json": "29a95d7a14cddac5bf0c8ad36a1d4f49031e415bd05edbd52f928d037225502e",
+    "schemas/subscription.json": "a39e65dcfded5a4db26d17d1478ad92b5a3e48f3079db8c5271c1ec4edb52c9a",
     "verticals/home_services.json": "b16dbc50c8dfe047b24e4c2b6cf32cc4269b6bd441ef423a2f5c547d263b0bad",
     "verticals/insurance.json": "42980acf4b264b15d56fc939245fb3ff7443371717cf8dbd85071f440b053d40",
     "verticals/legal.json": "e6423436fb4e2ccda02c1b55c380d575714d8e80a31512426c1f0ab46a6a9104",
     "verticals/mortgage.json": "7adae838c41cab93bea0014a17e34f206a436280e7138160d6057dbe4dc32510",
     "verticals/mva.json": "9c04754c9321d3c20b2602b235503a6dec6cbe307a3d2869a5b2d2f412767246",
+    "verticals/personal_loans.json": "f7729345014b1fcd70f993f553873ec353be35f30330397706dec73aa6392377",
     "verticals/solar.json": "422021fea85cd93da851d8bfc9a2ee15dbc4ff53591e37905f53a47eac5c8c6a"
   }
 }
