@@ -3,7 +3,7 @@
 - **Title:** Multi-currency pricing: settlement currency, FX metadata, and auction comparability
 - **Author(s):** LCP maintainers
 - **Date:** 2026-11-04
-- **Status:** **Accepted (maintainer, 2026-11-04)** — recorded under the
+- **Status:** **Implemented** — shipped in v1.2.0 (PR #232, released 2026-11-04); accepted by the maintainer 2026-11-04 and recorded under the
   [D1](../../docs/DECISIONS-v1.2.md#d1--trigger-waiver-batch-of-2026-11-04) trigger waiver;
   implementation is gated on the blocking tests in [Tests](#tests)
 - **Target version:** v1.2.0 (additive MINOR; optional fields on two existing
@@ -19,6 +19,8 @@
   **The trigger is not met** (see the waiver note below).
 
 ## Decision (maintainer, 2026-11-04)
+
+Implementation: PR #232 (release v1.2.0): optional `pricing` currency and FX fields, non-comparable offers excluded with an explainable reason (W1-09).
 
 **Accepted.** Recorded by the maintainer under D7 of the v1.2 decision
 record. The wire shape, the comparability rule, the exclusion reason

@@ -12,9 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -229,7 +231,7 @@ func (c *Client) request(method, path string, payload any, test bool, maxRetries
 			if attempt == maxRetries {
 				return nil, err
 			}
-			time.Sleep(time.Duration(1<<attempt) * time.Second)
+			time.Sleep(retryDelay("", attempt))
 			continue
 		}
 		responseBody, readErr := io.ReadAll(response.Body)
@@ -251,9 +253,21 @@ func (c *Client) request(method, path string, payload any, test bool, maxRetries
 		if !contains([]int{429, 500, 502, 503, 504}, response.StatusCode) || attempt == maxRetries {
 			return nil, &HTTPError{Status: response.StatusCode, Body: result}
 		}
-		time.Sleep(time.Duration(1<<attempt) * time.Second)
+		time.Sleep(retryDelay(response.Header.Get("Retry-After"), attempt))
 	}
 	return nil, errors.New("LCP request failed")
+}
+
+// retryDelay is the wait before retry attempt (0-based), matching the Python
+// SDK: a delta-seconds Retry-After wins; an absent, HTTP-date or malformed
+// value falls back to 1 s, 2 s, 4 s, ... backoff.
+func retryDelay(retryAfter string, attempt int) time.Duration {
+	if retryAfter != "" && strings.Trim(retryAfter, "0123456789") == "" {
+		if seconds, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && seconds <= math.MaxInt64/int64(time.Second) {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return time.Duration(1<<min(attempt, 30)) * time.Second
 }
 
 func contains(values []int, target int) bool {

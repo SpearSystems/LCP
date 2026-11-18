@@ -134,7 +134,16 @@ Surface parity is machine-checked: `tools/check_sdk_surface.py --fail-on-gap`
 compares every SDK against the same nine-operation manifest (submit lead, call,
 bid, batch, lead status, capabilities, schema fetch, offers, request history)
 and runs in `sdk.yml`. A helper that lands in nine languages now fails the
-build instead of shipping silently.
+build instead of shipping silently. The same manifest pins four behaviours by
+source evidence in every SDK: retry, per-attempt timeout, constant-time
+signature verify, and the shared contact-hash vectors.
+
+Every client shares one retry policy. It retries 429, 500, 502, 503, 504 and
+transport failures up to `maxRetries` times (default 2) and never retries a
+batch. A `Retry-After` of delta-seconds sets the wait; an HTTP-date or a
+malformed value falls back to exponential backoff of 1 s, 2 s, 4 s. Each
+attempt has a 30 s default timeout; the C# client takes its timeout from the
+injected `HttpClient`.
 
 ## Release gates
 

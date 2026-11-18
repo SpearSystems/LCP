@@ -70,7 +70,8 @@ The process adoption acceptance conditions are complete:
 - [x] Status lifecycle and decision-record requirements are documented.
 - [x] Traceability and implementation gates are documented.
 - [x] The roadmap carries LEP status.
-- [x] LEP-0001 is registered as a draft and remains unaccepted/unimplemented.
+- [x] LEP-0001 is registered as a draft and remains unaccepted/unimplemented
+  (true at adoption; it was later accepted under D1 and shipped in v1.2.0).
 
 Adoption of the process is separate from acceptance of any protocol proposal.
 
