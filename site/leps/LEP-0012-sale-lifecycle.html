@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="governance/LEPs/LEP-0012-sale-lifecycle.md">
-<meta name="lcp-build" content="6b4111a944d3">
+<meta name="lcp-build" content="d4b0690e3f99">
 <title>LEP-0012 — Sale lifecycle: lead disposition, money events, URL postbacks, and test outcomes — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -178,7 +178,7 @@
 </tr>
 <tr>
 <td><code>REJECTED</code></td>
-<td>Unsold after <code>pending</code>.</td>
+<td>Unsold after <code>pending</code>. Also emitted for an unsold result already reported synchronously, so a postback subscriber learns of it.</td>
 <td><code>revision</code>, optional <code>rejection_reason</code></td>
 </tr>
 <tr>
@@ -191,6 +191,8 @@
 <p><strong>Field rules:</strong></p>
 <ul>
 <li><strong><code>payout_cents</code> is a signed delta,</strong> within <code>-100000000</code>–<code>100000000</code> and never <code>0</code>. It is the change this event makes to what the receiver owes the sender for the lead. The sum over all events for one lead is the net amount reported. Float major units are never valid.</li>
+<li><strong>One currency per lead.</strong> Every money event for a lead carries the same <code>currency</code>. A receiver whose owed amount for a lead spans two currencies, or has none, MUST NOT report it under either label: it sends no money event and records the refusal for its operator.</li>
+<li><strong>A sale that owes nothing is not reported.</strong> When a buyer took the lead but the sender is owed <code>0</code> (a zero-price payable), there is no money event, because <code>payout_cents</code> is never <code>0</code>, and no <code>REJECTED</code>, because the lead was not unsold. A sender waiting on <code>pending</code> applies the <code>final_by</code> rule, which matches its payout.</li>
 <li><strong><code>revision</code></strong> is an integer ≥ 1, strictly increasing per <code>lead_id</code> for one sender–receiver pair. A sender keeps the highest revision it has seen and ignores a lower or equal one. Retries and out-of-order delivery are then harmless.</li>
 <li><strong><code>return_reason</code></strong> is an open enum. Known values are <code>invalid_contact</code>, <code>duplicate</code>, <code>compliance_fail</code>, <code>fraud</code>, <code>consumer_dispute</code> and <code>buyer_error</code>.</li>
 <li><strong>All fields are <code>internal</code>.</strong> The event class rule still holds: no consumer data in <code>details</code>.</li>
@@ -219,6 +221,7 @@
 <ol>
 <li><p><strong>Literal destination.</strong></p>
 <ul>
+<li>The template is at most 2048 bytes (UTF-8) before expansion, the <code>callback_url</code> limit.</li>
 <li>The scheme, host, port and path are literal. Macros appear only in the query component, after <code>?</code>.</li>
 <li>The existing SSRF rule (no embedded credentials, valid port, public resolved addresses only) runs on the literal host at registration and again before every delivery.</li>
 <li>Redirects returned by the tracker are not followed.</li>
@@ -317,7 +320,8 @@
 <pre class="code-block"><code class="language-json">{ "lcp.test.outcome": { "outcome": "sold", "payout_cents": 4450 } }</code></pre>
 <ul>
 <li><code>outcome</code> is required and is one of the §1 values.</li>
-<li><code>payout_cents</code> is optional. When it is absent, the receiver picks a fixed synthetic amount.</li>
+<li><code>payout_cents</code> is optional. When it is absent, the synthetic amount is fixed: <code>payout_cents</code> = <code>1000</code> with <code>currency</code> = <code>USD</code>, on the disposition and on the <code>ACCEPTED</code> event alike. A forced <code>price_rejected</code> answers <code>counter_price_cents</code> = <code>1000</code>, <code>USD</code>. An integrator's test therefore asserts the same values against every receiver.</li>
+<li>A forced <code>unsold</code> or <code>price_rejected</code> still produces its final event: <code>REJECTED</code> with revision 1 and <code>rejection_reason</code> <code>no_buyer</code> or <code>price_too_high</code>.</li>
 <li>The extension is legal only when <code>message.test</code> is <code>true</code>. On live traffic it is refused with <code>LCP-013</code>.</li>
 <li>It takes effect only on a <code>1.3.0</code> or later message, because the forced result is reported in <code>disposition</code> (§1's version gate).</li>
 </ul></li>
@@ -472,7 +476,7 @@
 <h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
 <p><strong>Schemas (edited first at implementation):</strong></p>
 <ul>
-<li><code>schemas/ack.json</code>: <code>disposition</code>, with <code>if</code>/<code>then</code> for the per-outcome required fields.</li>
+<li><code>schemas/ack.json</code>: <code>disposition</code>, with <code>if</code>/<code>then</code> for the per-outcome required fields, and legal only on an ack whose <code>status</code> is <code>RECEIVED</code>, <code>ACCEPTED</code> or <code>DUPLICATE</code>.</li>
 <li><code>schemas/subscription.json</code>: <code>delivery</code>.</li>
 <li><code>governance/EXTENSION-REGISTRY.md</code>: two rows.</li>
 <li><code>docs/PII-CLASSES.md</code>: the <code>ack</code> column and the <code>disposition.redirect_url</code> mapping row.</li>
@@ -492,6 +496,8 @@
 <li><code>DUPLICATE</code> repeating the disposition;</li>
 <li>signed-delta revision ordering;</li>
 <li>macro expansion, including the JPY exponent and negative payouts;</li>
+<li>the 4096-byte limit on the expanded URL;</li>
+<li>a golden HMAC signature for a URL-template GET;</li>
 <li>every Invalid example above.</li>
 </ul>
 <p><strong>Operations:</strong></p>
@@ -534,7 +540,7 @@
 </aside>
 </div>
 <footer class="page">
-Source: <code>governance/LEPs/LEP-0012-sale-lifecycle.md</code> · build <code>6b4111a944d3</code> ·
+Source: <code>governance/LEPs/LEP-0012-sale-lifecycle.md</code> · build <code>d4b0690e3f99</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

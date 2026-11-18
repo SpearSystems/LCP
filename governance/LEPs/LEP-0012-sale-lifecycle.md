@@ -193,7 +193,7 @@ publisher, or buyer to platform.
 | Event | Meaning | `details` |
 |---|---|---|
 | `ACCEPTED` | Sold. Also emitted for a sale already reported synchronously, so a postback subscriber that is not the posting server learns of it. | `payout_cents` (> 0), `currency`, `revision`, `sold_at` |
-| `REJECTED` | Unsold after `pending`. | `revision`, optional `rejection_reason` |
+| `REJECTED` | Unsold after `pending`. Also emitted for an unsold result already reported synchronously, so a postback subscriber learns of it. | `revision`, optional `rejection_reason` |
 | `REFUNDED` | Returned or reversed after a sale. | `payout_cents` (< 0), `currency`, `revision`, `returned_at`, optional `return_reason` |
 
 **Field rules:**
@@ -202,6 +202,15 @@ publisher, or buyer to platform.
   never `0`. It is the change this event makes to what the receiver owes the
   sender for the lead. The sum over all events for one lead is the net
   amount reported. Float major units are never valid.
+- **One currency per lead.** Every money event for a lead carries the same
+  `currency`. A receiver whose owed amount for a lead spans two currencies,
+  or has none, MUST NOT report it under either label: it sends no money
+  event and records the refusal for its operator.
+- **A sale that owes nothing is not reported.** When a buyer took the lead
+  but the sender is owed `0` (a zero-price payable), there is no money
+  event, because `payout_cents` is never `0`, and no `REJECTED`, because
+  the lead was not unsold. A sender waiting on `pending` applies the
+  `final_by` rule, which matches its payout.
 - **`revision`** is an integer ≥ 1, strictly increasing per `lead_id` for
   one sender–receiver pair. A sender keeps the highest revision it has seen
   and ignores a lower or equal one. Retries and out-of-order delivery are
@@ -229,6 +238,8 @@ rules apply. A registration that breaks one is refused with `LCP-100` and
 `field` = `callback_url`, and no new code is added.
 
 1. **Literal destination.**
+   - The template is at most 2048 bytes (UTF-8) before expansion, the
+     `callback_url` limit.
    - The scheme, host, port and path are literal. Macros appear only in the
      query component, after `?`.
    - The existing SSRF rule (no embedded credentials, valid port, public
@@ -324,8 +335,15 @@ and `LCP-013`. A receiver that advertises `features.test_outcomes`:
   ```
 
   - `outcome` is required and is one of the §1 values.
-  - `payout_cents` is optional. When it is absent, the receiver picks a
-    fixed synthetic amount.
+  - `payout_cents` is optional. When it is absent, the synthetic amount
+    is fixed: `payout_cents` = `1000` with `currency` = `USD`, on the
+    disposition and on the `ACCEPTED` event alike. A forced
+    `price_rejected` answers `counter_price_cents` = `1000`, `USD`. An
+    integrator's test therefore asserts the same values against every
+    receiver.
+  - A forced `unsold` or `price_rejected` still produces its final event:
+    `REJECTED` with revision 1 and `rejection_reason` `no_buyer` or
+    `price_too_high`.
   - The extension is legal only when `message.test` is `true`. On live
     traffic it is refused with `LCP-013`.
   - It takes effect only on a `1.3.0` or later message, because the
@@ -554,7 +572,8 @@ leads never reach a live counterparty or a payable.
 
 **Schemas (edited first at implementation):**
 - `schemas/ack.json`: `disposition`, with `if`/`then` for the per-outcome
-  required fields.
+  required fields, and legal only on an ack whose `status` is `RECEIVED`,
+  `ACCEPTED` or `DUPLICATE`.
 - `schemas/subscription.json`: `delivery`.
 - `governance/EXTENSION-REGISTRY.md`: two rows.
 - `docs/PII-CLASSES.md`: the `ack` column and the `disposition.redirect_url`
@@ -579,6 +598,8 @@ and the helpers ship together in one later SDK release.
 - `DUPLICATE` repeating the disposition;
 - signed-delta revision ordering;
 - macro expansion, including the JPY exponent and negative payouts;
+- the 4096-byte limit on the expanded URL;
+- a golden HMAC signature for a URL-template GET;
 - every Invalid example above.
 
 **Operations:**

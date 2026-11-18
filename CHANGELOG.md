@@ -18,17 +18,25 @@ behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
   optional consumer `redirect_url` (browser top-level navigation only, classed
   `restricted`), `counter_price_cents` on a price rejection, and `final_by`
   on a pending result. Sent only when the acknowledged message is `1.3.0` or
-  later; a `DUPLICATE` ack repeats it. Reference platform:
+  later, and only on a `RECEIVED`, `ACCEPTED`, or `DUPLICATE` ack (enforced
+  by `ack.json`); a `DUPLICATE` ack repeats the stored disposition byte for
+  byte. Reference platform:
   `LCP_FEATURE_SALE_DISPOSITION`, advertised as `features.sale_disposition`.
 - **Sale result events (LEP-0012 §3).** `ACCEPTED`, `REJECTED`, and
   `REFUNDED` to the lead's sender carry a signed `payout_cents` delta,
-  `currency`, and a strictly increasing `revision`. The reference platform
-  reconciles payable records against reported deltas, so a sale, a dispute,
-  and a refund each produce at most one event, and an unroutable or expired
-  lead produces one `REJECTED` with `rejection_reason` `no_buyer`.
+  `currency`, and a strictly increasing `revision`. One currency per lead: an
+  owed amount spanning two currencies is never reported under either label.
+  A zero-price sale sends no money event and no `REJECTED`. The reference
+  platform reconciles payable records against reported deltas, so a sale, a
+  dispute, and a refund each produce at most one event, and an unroutable or
+  expired lead produces one `REJECTED` with `rejection_reason` `no_buyer`.
+  Event ids derive from the lead and revision, so concurrent writers converge
+  on one event, and a write-ahead mark lets a reconcile pass finish a result
+  that a crash interrupted.
 - **URL-template postbacks (LEP-0012 §4).** `subscription.delivery`
   (`json` | `url_template`). A template is a signed `GET` with macros only in
-  the query, from a closed set (`{click_id}`, `{sub1}`–`{sub5}`, `{event}`,
+  the query, at most 2048 bytes before expansion and 4096 after, from a
+  closed set (`{click_id}`, `{sub1}`–`{sub5}`, `{event}`,
   `{payout}`, `{payout_cents}`, `{currency}`, `{revision}`, `{test}`, and
   others). It fires only for events the platform addresses to the
   subscriber, and its expanded URL is never logged.
@@ -36,7 +44,9 @@ behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
 - **Registered extensions `lcp.affiliate.tracking` and `lcp.test.outcome`
   (LEP-0012 §5–§6).** Click and sub-ID passthrough, and a forced test
   outcome that a sandbox honours without routing, billing, or counting the
-  lead. `lcp.test.outcome` on live traffic is `LCP-013`. Neither namespace
+  lead (without `payout_cents` the synthetic amount is `1000` `USD`; a forced
+  `unsold` or `price_rejected` also emits `REJECTED`). `lcp.test.outcome` on
+  live traffic is `LCP-013`. Neither namespace
   is forwarded to a buyer. `LCP_FEATURE_TEST_OUTCOMES` (sandbox only).
 - **Regulated identifiers (LEP-0013).** The `x-lcp-regulated` vertical
   annotation (`government_id`: `ssn`, `license_number`; `bank_account`:
@@ -52,8 +62,13 @@ behaviour ships off by default; a 1.0–1.2 peer sees no changed byte.
   regulated identifiers; four required fields (`vertical`, `schema_version`,
   `amount_currency`, `loan_amount`). The currency attribute is
   `amount_currency` because core schemas own `currency` (SPEC §12).
-- **Conformance tiers `SALE` and `REG`** (`test-vectors/sale-lifecycle.json`,
-  `test-vectors/regulated-identifiers.json`).
+- **Conformance feature suites `SALE` and `REG`**
+  (`test-vectors/sale-lifecycle.json`,
+  `test-vectors/regulated-identifiers.json`), claimed next to a tier by an
+  endpoint that advertises the matching `features` key (SPEC §7). `SALE`
+  includes golden URL-template expansions and a golden GET signature.
+- **`features` in capability discovery** is now specified in SPEC §8 and in
+  the OpenAPI `Capabilities` schema, with every registered key.
 
 ### Changed
 

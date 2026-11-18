@@ -151,6 +151,26 @@ class EventIdempotencyConflict(ValueError):
     """Raised when an event message ID is reused with different content."""
 
 
+def _redacted_payload_keys(message_type: Any) -> tuple[str, ...]:
+    """What envelope redaction (retention or erasure) keeps of a payload."""
+    if message_type in {"lead", "call", "post", "ping"}:
+        return ("lead_id", "ping_id", "event", "timestamp")
+    if message_type == "event":
+        return ("lead_id", "event", "timestamp")
+    return ()
+
+
+def is_redacted(envelope: dict[str, Any]) -> bool:
+    """True when the payload holds nothing beyond what redaction keeps.
+
+    An event that never had ``details`` also reads as redacted: a reader that
+    needs the details cannot use either one.
+    """
+    lcp = envelope.get("lcp") or {}
+    message_type = (lcp.get("message") or {}).get("type")
+    return set(lcp.get("payload") or {}) <= set(_redacted_payload_keys(message_type))
+
+
 class _NegotiationRedeemConflict(ValueError):
     """Internal: the conditional token/state UPDATE lost its single-use race."""
 
@@ -1031,6 +1051,10 @@ class Store:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS sale_result_jobs (
+                    lead_id TEXT PRIMARY KEY,
+                    due_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS rate_limits (
                     sender_id TEXT NOT NULL,
                     window_start TEXT NOT NULL,
@@ -1199,6 +1223,10 @@ class Store:
                     ON attachment_deletion_jobs(status, next_attempt_at);
                 CREATE INDEX IF NOT EXISTS idx_payable_offer_month
                     ON payable_records(offer_id, month_key, status);
+                CREATE INDEX IF NOT EXISTS idx_payable_lead
+                    ON payable_records(lead_id);
+                CREATE INDEX IF NOT EXISTS idx_sale_result_jobs_due
+                    ON sale_result_jobs(due_at);
                 """
             )
             self._migrate_sqlite_columns(db)
@@ -1856,8 +1884,20 @@ class Store:
             ).fetchone()
 
     def insert_lead(
-        self, envelope: dict[str, Any], *, status: str, tenant_id: str = "default"
+        self,
+        envelope: dict[str, Any],
+        *,
+        status: str,
+        tenant_id: str = "default",
+        routing_job: bool = True,
     ) -> bool:
+        """Store a lead and, unless ``routing_job`` is false, its routing job.
+
+        The job is written in the same transaction, so a lead is never stored
+        without the durable work that routes it. A lead that must never be
+        routed (a forced test outcome, LEP-0012 §6) passes ``routing_job=False``
+        and so is never claimable by a worker.
+        """
         message = envelope["lcp"]["message"]
         payload = envelope["lcp"]["payload"]
         lead_id = payload["lead_id"]
@@ -1896,14 +1936,15 @@ class Store:
                         timestamp,
                     ),
                 )
-                db.execute(
-                    """
-                    INSERT INTO routing_jobs(lead_id, status, attempts, created_at, updated_at)
-                    VALUES (?, 'PENDING', 0, ?, ?)
-                    ON CONFLICT(lead_id) DO NOTHING
-                    """,
-                    (lead_id, timestamp, timestamp),
-                )
+                if routing_job:
+                    db.execute(
+                        """
+                        INSERT INTO routing_jobs(lead_id, status, attempts, created_at, updated_at)
+                        VALUES (?, 'PENDING', 0, ?, ?)
+                        ON CONFLICT(lead_id) DO NOTHING
+                        """,
+                        (lead_id, timestamp, timestamp),
+                    )
             except sqlite3.IntegrityError:
                 return False
         return True
@@ -3572,6 +3613,42 @@ class Store:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    # ─── Sale results owed (LEP-0012 §3) ──────────────────────────────────
+
+    def mark_sale_result_due(self, lead_id: str) -> None:
+        """Write-ahead intent: this lead's sale result must be re-reported.
+
+        Written before the state change (expiry, payable) whose sale event
+        follows it, so a crash between that change and the event leaves a
+        mark for the reconcile pass. A re-mark moves ``due_at`` forward.
+        """
+        timestamp = now_iso()
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO sale_result_jobs (lead_id, due_at) VALUES (?, ?)
+                ON CONFLICT(lead_id) DO UPDATE SET due_at = excluded.due_at
+                """,
+                (lead_id, timestamp),
+            )
+
+    def list_sale_results_due(self, before: str, *, limit: int = 100) -> list[str]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT lead_id FROM sale_result_jobs WHERE due_at <= ? "
+                "ORDER BY due_at, lead_id LIMIT ?",
+                (before, limit),
+            ).fetchall()
+        return [str(row["lead_id"]) for row in rows]
+
+    def clear_sale_result_due(self, lead_id: str, before: str) -> None:
+        """Drop a mark the reconcile pass has settled; a newer mark stays."""
+        with self.transaction() as db:
+            db.execute(
+                "DELETE FROM sale_result_jobs WHERE lead_id = ? AND due_at <= ?",
+                (lead_id, before),
+            )
+
     def payable_summary(self, offer_id: str, month_key: str) -> dict[str, int]:
         with self._lock:
             rows = self._connection.execute(
@@ -3946,30 +4023,44 @@ class Store:
         payload = envelope["lcp"]["payload"]
         event_id = envelope["lcp"]["message"]["id"]
         encoded = self.encode_envelope(envelope)
-        with self.transaction() as db:
+
+        def stored_is_same() -> bool | None:
             existing = db.execute(
                 "SELECT lead_id, event_name, envelope_json FROM lifecycle_events WHERE event_id = ?",
                 (event_id,),
             ).fetchone()
-            if existing:
-                same_event = (
-                    existing["lead_id"] == lead_id
-                    and existing["event_name"] == event_name
-                    and self.decode_envelope(existing["envelope_json"]) == envelope
-                )
-                if not same_event:
-                    raise EventIdempotencyConflict(
-                        f"Event message ID was reused with different content: {event_id}"
-                    )
-                return False
-            db.execute(
-                """
-                INSERT INTO lifecycle_events
-                    (event_id, lead_id, event_name, timestamp, envelope_json)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (event_id, lead_id, event_name, payload["timestamp"], encoded),
+            if not existing:
+                return None
+            return (
+                existing["lead_id"] == lead_id
+                and existing["event_name"] == event_name
+                and self.decode_envelope(existing["envelope_json"]) == envelope
             )
+
+        with self.transaction() as db:
+            same_event = stored_is_same()
+            if same_event is None:
+                try:
+                    db.execute(
+                        """
+                        INSERT INTO lifecycle_events
+                            (event_id, lead_id, event_name, timestamp, envelope_json)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (event_id, lead_id, event_name, payload["timestamp"], encoded),
+                    )
+                except sqlite3.IntegrityError:
+                    # Postgres: a concurrent writer committed this id between
+                    # the check and the insert. Judge it like any reuse.
+                    same_event = stored_is_same()
+                    if same_event is None:
+                        raise
+            if same_event is False:
+                raise EventIdempotencyConflict(
+                    f"Event message ID was reused with different content: {event_id}"
+                )
+            if same_event:
+                return False
             # LEP-0001 W3: the durable, tenant-scoped event stream is written
             # in the same transaction as the lifecycle row, so a subscription
             # can never observe an event that was not accepted. The projection
@@ -4540,22 +4631,12 @@ class Store:
         envelope = self.decode_envelope(stored)
         message = dict(envelope["lcp"]["message"])
         message.pop("security", None)
-        message_type = message.get("type")
         original_payload = envelope["lcp"].get("payload", {})
-        if message_type in {"lead", "call", "post", "ping"}:
-            payload = {
-                key: original_payload[key]
-                for key in ("lead_id", "ping_id", "event", "timestamp")
-                if key in original_payload
-            }
-        elif message_type == "event":
-            payload = {
-                key: original_payload[key]
-                for key in ("lead_id", "event", "timestamp")
-                if key in original_payload
-            }
-        else:
-            payload = {}
+        payload = {
+            key: original_payload[key]
+            for key in _redacted_payload_keys(message.get("type"))
+            if key in original_payload
+        }
         return self.encode_envelope(
             {
                 "lcp": {

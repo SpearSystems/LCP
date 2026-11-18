@@ -15,11 +15,15 @@ Usage:
   python3 conformance.py --tier L2
   python3 conformance.py --tier L3
   python3 conformance.py --tier NEG
+  python3 conformance.py --tier SALE   # LEP-0012 feature suite
+  python3 conformance.py --tier REG    # LEP-0013 feature suite
   python3 conformance.py --verbose    # show per-vector details
 """
 
 import argparse
 from datetime import datetime
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -27,6 +31,7 @@ import sys
 from uuid import UUID
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import quote
 
 try:
     import jsonschema
@@ -1595,6 +1600,17 @@ _TRACKING_KEYS = {"click_id", "sub1", "sub2", "sub3", "sub4", "sub5"}
 _TRACKING_VALUE_RE = re.compile(r"^[A-Za-z0-9._~:-]{0,255}$")
 _PHONE_RUN_RE = re.compile(r"\d{7,15}")
 _MAX_CENTS = 100_000_000
+_URL_TEMPLATE_MAX_BYTES = 2048
+_POSTBACK_URL_MAX_BYTES = 4096
+# ISO 4217 minor-unit exponents that differ from the default of 2.
+_CURRENCY_EXPONENTS = {
+    **dict.fromkeys(
+        ("BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF",
+         "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF"),
+        0,
+    ),
+    **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
+}
 
 
 def _parsed_minor(version: Any) -> Optional[Tuple[int, int]]:
@@ -1668,6 +1684,12 @@ def _check_url_template(vector: dict, envelope: dict, errors: List[str]) -> List
             "URL_TEMPLATE: LCP-100 field callback_url — macros are legal only "
             "in the query component"
         )
+    size = len(str(payload.get("callback_url", "")).encode("utf-8"))
+    if size > _URL_TEMPLATE_MAX_BYTES:
+        problems.append(
+            f"URL_TEMPLATE: LCP-100 field callback_url — template is {size} bytes; "
+            f"the limit is {_URL_TEMPLATE_MAX_BYTES} bytes UTF-8 before expansion"
+        )
     unknown = sorted(set(_URL_MACRO_RE.findall(query)) - _URL_TEMPLATE_MACROS)
     if unknown:
         problems.append(
@@ -1711,22 +1733,127 @@ def _check_sale_extensions(
     return problems
 
 
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _check_duplicate_disposition(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §1: a DUPLICATE ack repeats the original disposition byte for byte."""
+    payload = _payload_of(envelope)
+    if payload.get("status") != "DUPLICATE":
+        return ["DUPLICATE_DISPOSITION: the ack under test is not a DUPLICATE"]
+    original = vector.get("original_disposition")
+    if original is None:
+        return []
+    repeat = payload.get("disposition")
+    if repeat is None or _compact_json(repeat) != _compact_json(original):
+        return [
+            "DUPLICATE_DISPOSITION: the replay's disposition does not repeat the "
+            "original ack's byte for byte (LEP-0012 §1)"
+        ]
+    return []
+
+
+def _check_revision_monotonic(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §3: revision strictly increases per lead for one sender-receiver pair."""
+    revision = (_payload_of(envelope).get("details") or {}).get("revision")
+    prior = vector.get("prior_revisions") or []
+    if prior and isinstance(revision, int) and revision <= max(prior):
+        return [
+            f"REVISION: details.revision {revision} does not exceed {max(prior)}, "
+            "already sent for this lead (LEP-0012 §3)"
+        ]
+    return []
+
+
+def _format_payout(cents: int, currency: str) -> str:
+    exponent = _CURRENCY_EXPONENTS.get(currency, 2)
+    whole, fraction = divmod(abs(cents), 10**exponent)
+    sign = "-" if cents < 0 else ""
+    return f"{sign}{whole}.{fraction:0{exponent}d}" if exponent else f"{sign}{whole}"
+
+
+def _expand_postback(template: str, event: dict, lead: dict) -> str:
+    message = event.get("lcp", {}).get("message", {})
+    payload = _payload_of(event)
+    details = payload.get("details") or {}
+    tracking = (lead.get("extensions") or {}).get("lcp.affiliate.tracking") or {}
+    cents = details.get("payout_cents")
+    currency = details.get("currency")
+    has_cents = isinstance(cents, int) and not isinstance(cents, bool)
+    values = {
+        "lead_id": str(payload.get("lead_id", "")),
+        "external_id": str(lead.get("external_id") or ""),
+        **{key: str(tracking.get(key) or "") for key in _TRACKING_KEYS},
+        "event": str(payload.get("event", "")),
+        "payout": _format_payout(cents, currency) if has_cents and isinstance(currency, str) else "",
+        "payout_cents": str(cents) if has_cents else "",
+        "currency": currency if isinstance(currency, str) else "",
+        "revision": str(details.get("revision", "")),
+        "test": "1" if message.get("test") else "0",
+        "timestamp": str(payload.get("timestamp", "")),
+    }
+    return _URL_MACRO_RE.sub(lambda m: quote(values.get(m.group(1), ""), safe=""), template)
+
+
+def _check_postback_delivery(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0012 §4 rules 2-5: macro expansion, the 4096-byte cap, the GET signature."""
+    postback = vector.get("postback")
+    if not isinstance(postback, dict):
+        return ["POSTBACK: vector carries no postback block"]
+    url = _expand_postback(str(postback.get("template", "")), envelope, postback.get("lead") or {})
+    problems: List[str] = []
+    size = len(url.encode("utf-8"))
+    if size > _POSTBACK_URL_MAX_BYTES:
+        problems.append(
+            f"POSTBACK: expanded URL is {size} bytes; over {_POSTBACK_URL_MAX_BYTES} "
+            "it is a delivery failure, never a truncation (LEP-0012 §4)"
+        )
+    expected = postback.get("expanded_url")
+    if expected is not None and url != expected:
+        problems.append(f"POSTBACK: expanded {url!r}, expected {expected!r}")
+    if "signature_hex" in postback:
+        # spec/01-transport.md input with the expanded URL as the body; the
+        # idempotency key is the event id.
+        event_id = str(envelope.get("lcp", {}).get("message", {}).get("id", ""))
+        signing = f"{postback.get('timestamp', '')}\n{event_id}\n{url}".encode("utf-8")
+        digest = hmac.new(
+            str(postback.get("secret", "")).encode("utf-8"), signing, hashlib.sha256
+        ).hexdigest()
+        if digest != postback["signature_hex"]:
+            problems.append(f"POSTBACK: X-LCP-Signature {digest}, expected {postback['signature_hex']}")
+    return problems
+
+
 # --- LEP-0013 (v1.3): regulated identifiers -----------------------------------
 
-_TEST_SSN_RANGE = range(987654320, 987654330)
+# LEP-0013 §5: reserved test ranges, keyed by the schema's x-lcp-regulated
+# kind and the property it annotates. Only government_id/ssn has one.
+_REGULATED_TEST_RANGES = {("government_id", "ssn"): range(987654320, 987654330)}
 
 
-def _regulated_values(value: Any, definition: Any, path: str) -> List[Tuple[str, Any]]:
+def _regulated_values(
+    value: Any, definition: Any, path: str
+) -> List[Tuple[str, str, str, Any]]:
+    """Return (path, property, kind, value) for each x-lcp-regulated value."""
     if not isinstance(value, dict) or not isinstance(definition, dict):
         return []
     properties = definition.get("properties") or {}
-    found: List[Tuple[str, Any]] = []
+    found: List[Tuple[str, str, str, Any]] = []
     for name, child in value.items():
         child_definition = properties.get(name)
         child_path = f"{path}.{name}"
         if isinstance(child_definition, dict) and "x-lcp-regulated" in child_definition:
             if child is not None:
-                found.append((child_path, child))
+                found.append(
+                    (child_path, name, str(child_definition["x-lcp-regulated"]), child)
+                )
         else:
             found.extend(_regulated_values(child, child_definition, child_path))
     return found
@@ -1758,14 +1885,16 @@ def _check_regulated_identifiers(
         problems.append(f"REGULATED: LCP-100 field {first} — message is below 1.3.0")
     if vector.get("sender_enrolled") is not True:
         problems.append(f"REGULATED: LCP-100 field {first} — sender is not enrolled")
-    for path, value in found:
-        if not path.endswith(".ssn") or not str(value).isdigit():
+    for path, name, kind, value in found:
+        test_range = _REGULATED_TEST_RANGES.get((kind, name))
+        if test_range is None or not str(value).isdigit():
             continue
-        in_range = int(value) in _TEST_SSN_RANGE
+        span = f"{test_range.start}-{test_range.stop - 1}"
+        in_range = int(value) in test_range
         if message.get("test", False) and not in_range:
-            problems.append(f"REGULATED: LCP-013 field {path} — test ssn outside 987654320-987654329")
+            problems.append(f"REGULATED: LCP-013 field {path} — test {name} outside {span}")
         if not message.get("test", False) and in_range:
-            problems.append(f"REGULATED: LCP-013 field {path} — live ssn inside the test range")
+            problems.append(f"REGULATED: LCP-013 field {path} — live {name} inside the test range {span}")
     return problems
 
 
@@ -1843,6 +1972,9 @@ CHECKS = {
     "url_template": _check_url_template,
     "sale_extensions": _check_sale_extensions,
     "regulated_identifiers": _check_regulated_identifiers,
+    "duplicate_disposition": _check_duplicate_disposition,
+    "revision_monotonic": _check_revision_monotonic,
+    "postback_delivery": _check_postback_delivery,
     "vertical_schema": _schema_check("vertical"),
 }
 

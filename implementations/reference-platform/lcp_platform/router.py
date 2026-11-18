@@ -72,6 +72,7 @@ from .storage import (
     envelope_expiry,
     format_iso_datetime,
     is_expired,
+    is_redacted,
     now_iso,
     parse_iso_datetime,
 )
@@ -81,6 +82,7 @@ from .validation import (
     MESSAGE_TYPES,
     NEGOTIATION_MESSAGE_TYPES,
     SUPPORTED_LCP_VERSIONS,
+    URL_TEMPLATE_MACRO_RE,
     SubscriptionValidationError,
     ValidationError,
     SchemaValidator,
@@ -161,7 +163,16 @@ SALE_EVENTS = frozenset({"ACCEPTED", "REJECTED", "REFUNDED"})
 TEST_OUTCOME_PAYOUT_CENTS = 1000
 TEST_OUTCOME_CURRENCY = "USD"  # platform-priced, like offers; never read from lead attributes
 POSTBACK_URL_MAX_BYTES = 4096
-_URL_MACRO_RE = re.compile(r"\{([^{}]*)\}")
+# A conflict means another writer took the revision, so each retry follows
+# real progress; three covers any realistic pile-up on one lead.
+SALE_SYNC_ATTEMPTS = 3
+# How old a sale-result mark must be before the reconcile pass re-syncs it:
+# in-flight work (a state change, then its sync) finishes well inside this.
+SALE_RESULT_GRACE_SECONDS = 60
+
+
+class RedactedEnvelopeError(ValueError):
+    """A postback source envelope was redacted by retention or erasure."""
 
 
 def _lcp_version_supported(version: str) -> bool:
@@ -647,12 +658,8 @@ class Platform:
                 resource_id=existing["lead_id"],
                 metadata={"message_id": message["id"]},
             )
-            return build_ack(
-                envelope,
-                sender_id=self.config.platform_id,
-                status="DUPLICATE",
-                lead_id=existing["lead_id"],
-                disposition=self._lead_disposition(existing_envelope),
+            return self._duplicate_ack(
+                envelope, existing, lead_id=existing["lead_id"]
             )
 
         # LEP-0008 §5 pinned intake slot: after auth/rate-limit and BOTH
@@ -722,18 +729,19 @@ class Platform:
         ) == "exclusive"
         sender_tenant = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
         initial_status = "EXPIRED" if lead_expired else "NEW"
+        if lead_expired:
+            # Inserted terminal: a worker re-running the routing job skips a
+            # non-NEW lead, so the mark is what owes its REJECTED event.
+            self._mark_sale_result_due(payload["lead_id"])
         if not self.store.insert_lead(
             envelope, status=initial_status, tenant_id=sender_tenant
         ):
-            existing = self.store.get_lead_by_idempotency(
-                sender_id, message["idempotency_key"]
-            )
-            return build_ack(
+            return self._duplicate_ack(
                 envelope,
-                sender_id=self.config.platform_id,
-                status="DUPLICATE",
-                lead_id=existing["lead_id"] if existing else payload["lead_id"],
-                disposition=self._lead_disposition(envelope),
+                self.store.get_lead_by_idempotency(
+                    sender_id, message["idempotency_key"]
+                ),
+                lead_id=payload["lead_id"],
             )
 
         for offer, result in matches:
@@ -758,6 +766,11 @@ class Platform:
             )
         elif created_pings:
             self.store.update_lead_status(payload["lead_id"], "PINGED")
+        if lead_expired or not (created_pings or created_direct_posts):
+            # No buyer can take it: the pending lead resolves unsold now. This
+            # runs before the routing job completes, so a crash here leaves
+            # the job to a worker, whose re-route reports it.
+            self._sync_sale_result(payload["lead_id"], final=True)
         self.store.complete_routing_job(payload["lead_id"])
         self._enqueue_audit(
             tenant_id=sender_tenant,
@@ -771,9 +784,6 @@ class Platform:
                 "post_count": created_direct_posts,
             },
         )
-        if lead_expired or not (created_pings or created_direct_posts):
-            # No buyer can take it: the pending lead resolves unsold now.
-            self._sync_sale_result(payload["lead_id"], final=True)
 
         return build_ack(
             envelope,
@@ -789,11 +799,14 @@ class Platform:
         """LEP-0012 §6: the forced outcome this receiver honours, if any.
 
         Only on a 1.3.0+ test message, because the result is reported in the
-        disposition, and only when ``features.test_outcomes`` is on. Test
-        traffic itself reaches only a sandbox (LCP-013), so a production
-        deployment never takes this path.
+        disposition, and only when ``features.test_outcomes`` is on in a
+        sandbox (``test_mode``), the same pair of conditions that advertises
+        it. A production deployment never takes this path, even when the flag
+        is set by mistake.
         """
-        if not self.config.feature_test_outcomes or not _is_v13(envelope):
+        if not (self.config.feature_test_outcomes and self.config.test_mode):
+            return None
+        if not _is_v13(envelope):
             return None
         if not envelope["lcp"]["message"].get("test", False):
             return None
@@ -831,6 +844,27 @@ class Platform:
             }
         return {"outcome": outcome}
 
+    def _duplicate_ack(
+        self, envelope: dict[str, Any], existing: Any, *, lead_id: str
+    ) -> dict[str, Any]:
+        """A DUPLICATE ack whose disposition comes from the STORED lead.
+
+        LEP-0012 §1: a replay repeats the original ack's disposition byte for
+        byte, so it is derived from what was stored, never from the replay.
+        """
+        stored = (
+            self.store.decode_envelope(existing["envelope_json"])
+            if existing is not None
+            else None
+        )
+        return build_ack(
+            envelope,
+            sender_id=self.config.platform_id,
+            status="DUPLICATE",
+            lead_id=existing["lead_id"] if existing is not None else lead_id,
+            disposition=self._lead_disposition(stored) if stored is not None else None,
+        )
+
     def _ingest_forced_test_lead(
         self, envelope: dict[str, Any], forced: dict[str, Any], *, sender_id: str
     ) -> dict[str, Any]:
@@ -838,39 +872,28 @@ class Platform:
 
         The lead is stored for the integrator's own reads and events, but it
         is never matched, routed, billed, or counted: its status is terminal
-        at insert. A forced ``pending`` resolves at once (§6 allows 60 s).
+        at insert and it gets no routing job, so no worker can claim it. A
+        forced ``pending`` resolves at once (§6 allows 60 s).
         """
         message = envelope["lcp"]["message"]
         lead_id = envelope["lcp"]["payload"]["lead_id"]
         sold = forced["outcome"] in {"sold", "pending"}
         tenant = self.auth.tenant_for(sender_id) or self.config.routing_tenant_id
+        # Marked before the insert, so a crash between the insert and the
+        # event still owes the event to the reconcile pass.
+        self.store.mark_sale_result_due(lead_id)
         if not self.store.insert_lead(
-            envelope, status="ACCEPTED" if sold else "REJECTED", tenant_id=tenant
+            envelope,
+            status="ACCEPTED" if sold else "REJECTED",
+            tenant_id=tenant,
+            routing_job=False,
         ):
-            existing = self.store.get_lead_by_idempotency(
-                sender_id, message["idempotency_key"]
-            )
-            return build_ack(
+            return self._duplicate_ack(
                 envelope,
-                sender_id=self.config.platform_id,
-                status="DUPLICATE",
-                lead_id=existing["lead_id"] if existing else lead_id,
-                disposition=self._lead_disposition(envelope),
+                self.store.get_lead_by_idempotency(sender_id, message["idempotency_key"]),
+                lead_id=lead_id,
             )
-        self.store.complete_routing_job(lead_id)
-        if sold:
-            self._emit_sale_event(
-                envelope,
-                "ACCEPTED",
-                {
-                    "payout_cents": int(
-                        forced.get("payout_cents", TEST_OUTCOME_PAYOUT_CENTS)
-                    ),
-                    "currency": TEST_OUTCOME_CURRENCY,
-                    "sold_at": now_iso(),
-                },
-                prior=[],
-            )
+        self._sync_sale_result(lead_id, final=True)
         self._enqueue_audit(
             tenant_id=tenant,
             actor_id=sender_id,
@@ -903,9 +926,14 @@ class Platform:
         event_name: str,
         details: dict[str, Any],
         *,
-        prior: list[dict[str, Any]],
+        revision: int,
     ) -> None:
-        """Send one §3 event to the lead's publisher with the next revision."""
+        """Send one §3 event to the lead's publisher at ``revision``.
+
+        The message id is derived from (lead, revision), so two workers that
+        compute the same revision write the same event id. The store keeps
+        one; the other gets ``EventIdempotencyConflict`` and recomputes.
+        """
         message = lead_envelope["lcp"]["message"]
         lead_id = lead_envelope["lcp"]["payload"]["lead_id"]
         event = build_event(
@@ -914,72 +942,153 @@ class Platform:
             platform_id=self.config.platform_id,
             receiver_id=message["sender_id"],
             correlation_id=message["id"],
-            details={**details, "revision": len(prior) + 1},
+            details={**details, "revision": revision},
             test=bool(message.get("test", False)),
+            message_id=str(uuid5(NAMESPACE_URL, f"lcp:sale:{lead_id}:{revision}")),
         )
         self.validator.require_valid_envelope(event)
         self.store.insert_event(
             lead_id, event_name, event, record_stream=self.config.feature_events
         )
 
+    def _mark_sale_result_due(self, lead_id: str) -> None:
+        """Write-ahead intent before a change whose sale event follows it."""
+        if self.config.feature_sale_disposition:
+            self.store.mark_sale_result_due(lead_id)
+
     def _sync_sale_result(self, lead_id: str, *, final: bool = False) -> None:
         """LEP-0012 §3: report the lead's sale result to its publisher.
 
-        Reconciles what the platform owes for the lead (payable and disputed
-        records) against the signed deltas earlier events reported, and emits
-        only the difference: ACCEPTED for a positive delta, REFUNDED for a
-        negative one. ``final`` marks a terminal unsold state, reported once
-        as REJECTED when nothing was ever sold. Idempotent, so every payable
-        or terminal change can call it. The reference platform reports the
-        buyer price as the payout (it takes no fee); a deployment applies its
-        own.
+        Reconciles what the platform owes for the lead against the signed
+        deltas earlier events reported, and emits only the difference:
+        ACCEPTED for a positive delta, REFUNDED for a negative one. ``final``
+        marks a terminal unsold state, reported once as REJECTED when nothing
+        was ever sold. Idempotent, so every payable or terminal change, and
+        the reconcile pass, can call it.
+
+        Concurrency: a worker that loses the race for a revision re-reads and
+        emits only what is still owed, so concurrent calls never send two
+        events at one revision.
         """
-        # ponytail: concurrent workers could race to the same revision; add a
-        # per-lead lock if two workers ever settle one lead at once.
-        if not self.config.feature_sale_disposition:
+        if not (self.config.feature_sale_disposition or self.config.feature_test_outcomes):
             return
+        for attempt in range(SALE_SYNC_ATTEMPTS):
+            try:
+                self._sync_sale_result_once(lead_id, final=final)
+                return
+            except EventIdempotencyConflict:
+                if attempt + 1 == SALE_SYNC_ATTEMPTS:
+                    raise
+
+    def _sync_sale_result_once(self, lead_id: str, *, final: bool) -> None:
         row = self.store.get_lead(lead_id)
         if row is None:
             return
         envelope = self.store.decode_envelope(row["envelope_json"])
-        if not _is_v13(envelope) or self._forced_test_outcome(envelope) is not None:
+        if not _is_v13(envelope):
+            return
+        forced = self._forced_test_outcome(envelope)
+        if forced is None and not self.config.feature_sale_disposition:
             return
         prior = self._sale_events(lead_id)
-        reported = sum(
-            int((event.get("details") or {}).get("payout_cents", 0)) for event in prior
-        )
-        owed_rows = [
-            record
-            for record in self.store.payable_for_lead(lead_id)
-            if record["status"] in {"payable", "disputed"}
-        ]
-        delta = sum(int(record["price_cents"]) for record in owed_rows) - reported
-        currency = next(
-            (str(record["currency"]) for record in owed_rows if record["currency"]),
-            next(
-                (
-                    str(event["details"]["currency"])
-                    for event in prior
-                    if event["details"].get("currency")
-                ),
-                "",
-            ),
-        )
-        money = {"payout_cents": delta, **({"currency": currency} if currency else {})}
+        reported = sum(int(event["details"].get("payout_cents", 0)) for event in prior)
+        currencies = {
+            str(event["details"]["currency"])
+            for event in prior
+            if event["details"].get("currency")
+        }
+        if forced is None:
+            # Owed = payable and disputed records. The reference platform
+            # reports the buyer price as the payout (it takes no fee).
+            owed_rows = [
+                record
+                for record in self.store.payable_for_lead(lead_id)
+                if record["status"] in {"payable", "disputed"}
+            ]
+            owed = sum(int(record["price_cents"]) for record in owed_rows)
+            currencies |= {
+                str(record["currency"])
+                for record in owed_rows
+                if int(record["price_cents"])
+            }
+            # A zero-price payable is a sale that owes the publisher nothing.
+            # It emits no money event (payout_cents is never 0), and because
+            # a buyer took the lead it is never reported unsold either.
+            sold_without_payout = bool(owed_rows)
+            reason = "no_buyer"
+        else:
+            outcome = str(forced["outcome"])
+            owed = (
+                int(forced.get("payout_cents", TEST_OUTCOME_PAYOUT_CENTS))
+                if outcome in {"sold", "pending"}
+                else 0
+            )
+            currencies.add(TEST_OUTCOME_CURRENCY)
+            sold_without_payout = False
+            final = True  # a forced outcome is terminal at insert
+            reason = "price_too_high" if outcome == "price_rejected" else "no_buyer"
+        delta = owed - reported
+        if delta and (len(currencies) != 1 or "" in currencies):
+            # Never relabel: an amount summed across currencies, or one with
+            # no currency, has no single currency to report. Refuse and leave
+            # an audit row for the operator.
+            self._enqueue_audit(
+                tenant_id=str(row["tenant_id"]),
+                actor_id=self.config.platform_id,
+                action="lead.sale_result_refused",
+                resource_type="lead",
+                resource_id=lead_id,
+                metadata={
+                    "reason": "mixed_currency" if len(currencies) > 1 else "missing_currency",
+                    "currencies": sorted(currencies),
+                },
+            )
+            return
+        revision = len(prior) + 1
         if delta > 0:
             self._emit_sale_event(
-                envelope, "ACCEPTED", {**money, "sold_at": now_iso()}, prior=prior
+                envelope,
+                "ACCEPTED",
+                {"payout_cents": delta, "currency": next(iter(currencies)), "sold_at": now_iso()},
+                revision=revision,
             )
         elif delta < 0:
             self._emit_sale_event(
-                envelope, "REFUNDED", {**money, "returned_at": now_iso()}, prior=prior
+                envelope,
+                "REFUNDED",
+                {"payout_cents": delta, "currency": next(iter(currencies)), "returned_at": now_iso()},
+                revision=revision,
             )
-        elif final and not prior:
+        elif final and not prior and not sold_without_payout:
             self._emit_sale_event(
-                envelope, "REJECTED", {"rejection_reason": "no_buyer"}, prior=prior
+                envelope, "REJECTED", {"rejection_reason": reason}, revision=revision
             )
 
+    def _reconcile_sale_results(self) -> None:
+        """LEP-0012 §3 recovery: settle every sale result still marked due.
+
+        Every change that owes the publisher a sale event (expiry, a payable
+        change, a forced test outcome) is marked before it is made, so a
+        crash between the change and its event leaves the mark. Marks older
+        than the grace window, which in-flight work finishes well inside, are
+        re-synced here. The sync is idempotent, so a lead already reported
+        emits nothing.
+        """
+        before = format_iso_datetime(
+            datetime.now(timezone.utc) - timedelta(seconds=SALE_RESULT_GRACE_SECONDS)
+        )
+        for lead_id in self.store.list_sale_results_due(before):
+            row = self.store.get_lead(lead_id)
+            try:
+                self._sync_sale_result(
+                    lead_id, final=row is not None and row["status"] == "EXPIRED"
+                )
+            except Exception:  # the mark stays; the next pass retries this lead
+                continue
+            self.store.clear_sale_result_due(lead_id, before)
+
     def _expire_lead(self, lead_id: str) -> bool:
+        self._mark_sale_result_due(lead_id)
         expired = self.store.expire_lead(lead_id)
         if expired:
             self._sync_sale_result(lead_id, final=True)
@@ -989,17 +1098,22 @@ class Platform:
         """LEP-0012 §4: expand the closed macro set for one event.
 
         Every value comes from a public or internal source and is
-        percent-encoded (RFC 3986 unreserved characters kept).
+        percent-encoded (RFC 3986 unreserved characters kept). A redacted
+        event or lead (retention or erasure) is refused, never expanded with
+        empty money or tracking macros a tracker would misread.
         """
         message = event["lcp"]["message"]
         payload = event["lcp"]["payload"]
-        details = payload.get("details") or {}
         lead_row = self.store.get_lead(str(payload["lead_id"]))
-        lead = (
-            self.store.decode_envelope(lead_row["envelope_json"])["lcp"]["payload"]
+        lead_envelope = (
+            self.store.decode_envelope(lead_row["envelope_json"])
             if lead_row is not None
-            else {}
+            else None
         )
+        if is_redacted(event) or lead_envelope is None or is_redacted(lead_envelope):
+            raise RedactedEnvelopeError("postback source envelope is redacted")
+        details = payload.get("details") or {}
+        lead = lead_envelope["lcp"]["payload"]
         tracking = (lead.get("extensions") or {}).get(AFFILIATE_TRACKING) or {}
         cents = details.get("payout_cents")
         currency = details.get("currency")
@@ -1016,7 +1130,7 @@ class Platform:
             "test": "1" if message.get("test") else "0",
             "timestamp": str(payload["timestamp"]),
         }
-        return _URL_MACRO_RE.sub(
+        return URL_TEMPLATE_MACRO_RE.sub(
             lambda match: quote(values.get(match.group(1), ""), safe=""), template
         )
 
@@ -2791,6 +2905,10 @@ class Platform:
             self.store.update_lead_status(lead_id, "POSTED", reason="direct_delivery")
         elif created_pings:
             self.store.update_lead_status(lead_id, "PINGED")
+        else:
+            # LEP-0012 §3: no buyer took it, reported as on the intake path.
+            # The caller completes the routing job only after this returns.
+            self._sync_sale_result(lead_id, final=True)
 
     def process_once(self) -> None:
         """Process retention, durable routing jobs, webhooks, and auction expiry."""
@@ -2824,6 +2942,8 @@ class Platform:
         self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
+        # Before event fan-out, so a recovered sale event goes out this pass.
+        self._reconcile_sale_results()
         self._process_event_subscriptions()
         self._expire_unacknowledged_posts()
         self._process_attachment_deletions()
@@ -3397,6 +3517,7 @@ class Platform:
             "exclusivity", "shared"
         ) == "exclusive"
         if not candidates:
+            self._mark_sale_result_due(lead_id)
             self.store.update_lead_status(lead_id, "EXPIRED")
             self._sync_sale_result(lead_id, final=True)
             return
@@ -3468,6 +3589,8 @@ class Platform:
                 delivered += 1
                 if exclusive:
                     break
+        if not delivered:
+            self._mark_sale_result_due(lead_id)
         self.store.update_lead_status(lead_id, "POSTED" if delivered else "EXPIRED")
         if not delivered:
             self._sync_sale_result(lead_id, final=True)
@@ -3686,6 +3809,7 @@ class Platform:
             status, reason, seconds = "pending", "awaiting_call_outcome", None
         else:
             status, reason, seconds = "payable", "post_delivery_acknowledged", None
+        self._mark_sale_result_due(delivery["lead_id"])
         self.store.record_payable(
             offer_id=offer["offer_id"],
             lead_id=delivery["lead_id"],
@@ -4039,6 +4163,7 @@ class Platform:
                     status, reason = "payable", "buyer_acceptance"
                 if status:
                     post_payload = post["lcp"]["payload"]
+                    self._mark_sale_result_due(payload["lead_id"])
                     self.store.record_payable(
                         offer_id=offer["offer_id"],
                         lead_id=payload["lead_id"],
@@ -4545,11 +4670,9 @@ class Platform:
             # contain PII and are attacker-controlled.
             error = f"HTTP {response_status} from subscriber callback"
         except Exception as exc:  # delivery failures must enter the retry queue
-            # LEP-0012 §4.6: a template may embed the tracker's own token, so a
-            # postback failure never records the expanded URL.
-            error = (
-                type(exc).__name__ if url_template else f"{type(exc).__name__}: {exc}"
-            )
+            # Only the exception type: its message can carry the callback URL,
+            # and a URL can embed the subscriber's own token (LEP-0012 §4.6).
+            error = type(exc).__name__
 
         if attempts >= self.config.max_delivery_attempts:
             status = "FAILED"

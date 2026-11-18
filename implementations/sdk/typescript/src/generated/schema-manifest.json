@@ -1,7 +1,7 @@
 {
   "protocol_version": "1.0.0",
   "schema_files": {
-    "schemas/ack.json": "2ac39fd4db0aa36aae54507e8e292ec28273ffcde97c131b25375da06fb1fb60",
+    "schemas/ack.json": "a8b85b1c5939d46118e686a545d8adeb9ab0e511b3213569dacaec8439958707",
     "schemas/batch.json": "83937cb1ae04d74d78ee0efbb30df3f5bfb848766cf659d99ca1963d1cf13c2e",
     "schemas/bid.json": "f1b9bfd4185068915cf3cb9b9cabd7e93f74b71ad4d5bf8c53b48984023728fd",
     "schemas/call.json": "30ccf581dd1a501423e44ca08be5354a35c36a96d4a32802a3965b299015cbed",

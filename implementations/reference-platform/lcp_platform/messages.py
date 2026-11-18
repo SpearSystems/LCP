@@ -25,8 +25,9 @@ def _envelope(
     idempotency_key: str | None = None,
     test: bool = False,
     version: str = "1.0.0",
+    message_id: str | None = None,
 ) -> dict[str, Any]:
-    message_id = str(uuid4())
+    message_id = message_id or str(uuid4())
     return {
         "lcp": {
             "version": version,
@@ -343,6 +344,7 @@ def build_event(
     correlation_id: str | None = None,
     details: dict[str, Any] | None = None,
     test: bool = False,
+    message_id: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "lead_id": lead_id,
@@ -358,6 +360,7 @@ def build_event(
         payload,
         correlation_id=correlation_id,
         test=test,
+        message_id=message_id,
     )
 
 

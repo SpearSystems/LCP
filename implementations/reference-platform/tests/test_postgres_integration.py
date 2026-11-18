@@ -4,6 +4,8 @@ import base64
 import json
 import os
 from pathlib import Path
+import threading
+import time
 import unittest
 from uuid import uuid4
 
@@ -11,7 +13,8 @@ from lcp_platform.auth import signature_for
 from lcp_platform.config import PlatformConfig
 from lcp_platform.router import Platform
 from lcp_platform.service import PlatformService
-from lcp_platform.storage import now_iso
+from lcp_platform.messages import build_event
+from lcp_platform.storage import EventIdempotencyConflict, now_iso
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -192,6 +195,145 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(erased["status"], "ERASED")
         self.assertNotIn("jane.smith@example.com", erased["envelope_json"])
         self.assertNotIn("consumer", self.platform.store.decode_envelope(erased["envelope_json"])["lcp"]["payload"])
+
+
+# The event_subscriptions table as v1.2 created it, before LEP-0012 added
+# `delivery`. A v1.3 store must migrate it in place on startup.
+_V12_EVENT_SUBSCRIPTIONS = """
+    CREATE TABLE event_subscriptions (
+        subscription_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        subscriber_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        event_types_json TEXT NOT NULL,
+        callback_url TEXT NOT NULL,
+        filter_json TEXT NOT NULL,
+        secret_cipher TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        replay_from TEXT,
+        cursor_sequence INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(subscriber_id, idempotency_key)
+    )
+"""
+
+
+@unittest.skipUnless(
+    POSTGRES_URL,
+    "Set LCP_TEST_POSTGRES_URL to run the real Postgres migration tests",
+)
+class PostgresSaleLifecycleTests(unittest.TestCase):
+    """LEP-0012 storage on real Postgres, each test in its own schema."""
+
+    def setUp(self) -> None:
+        import psycopg
+        from psycopg.conninfo import make_conninfo
+
+        from lcp_platform.postgres import PostgresStore
+
+        self.psycopg = psycopg
+        self.store_class = PostgresStore
+        self.schema = f"lcp_sale_{uuid4().hex[:12]}"
+        with psycopg.connect(POSTGRES_URL, autocommit=True) as admin:
+            admin.execute(f'CREATE SCHEMA "{self.schema}"')
+        self.addCleanup(self._drop_schema)
+        self.dsn = make_conninfo(POSTGRES_URL, options=f"-c search_path={self.schema}")
+
+    def _drop_schema(self) -> None:
+        with self.psycopg.connect(POSTGRES_URL, autocommit=True) as admin:
+            admin.execute(f'DROP SCHEMA "{self.schema}" CASCADE')
+
+    def _store(self):
+        store = self.store_class(self.dsn, pii_encryption_key=TEST_ENCRYPTION_KEY)
+        self.addCleanup(store.close)
+        return store
+
+    def test_v12_subscriptions_gain_delivery_and_payables_gain_a_lead_index(self) -> None:
+        stamp = now_iso()
+        with self.psycopg.connect(self.dsn, autocommit=True) as old:
+            old.execute(_V12_EVENT_SUBSCRIPTIONS)
+            old.execute(
+                "INSERT INTO event_subscriptions VALUES "
+                "('sub_v12aaaaaaaa', 't', 'pub', 'k', '[]', 'https://example.com/h', "
+                "'{}', 'x', 1, NULL, 0, %s, %s)",
+                (stamp, stamp),
+            )
+        self._store()
+        with self.psycopg.connect(self.dsn) as check:
+            delivery = check.execute(
+                "SELECT delivery FROM event_subscriptions WHERE subscription_id = 'sub_v12aaaaaaaa'"
+            ).fetchone()[0]
+            indexes = {
+                row[0]
+                for row in check.execute(
+                    "SELECT indexname FROM pg_indexes WHERE schemaname = %s",
+                    (self.schema,),
+                )
+            }
+        self.assertEqual(delivery, "json")
+        self.assertIn("idx_payable_lead", indexes)
+        self.assertIn("idx_sale_result_jobs_due", indexes)
+
+    def test_concurrent_insert_of_one_event_id_is_judged_not_raised(self) -> None:
+        store = self._store()
+        message_id = str(uuid4())
+
+        def event(payout: int) -> dict:
+            return build_event(
+                "lead_pg_race",
+                "ACCEPTED",
+                platform_id="platform_pg",
+                receiver_id="pub_pg",
+                details={"payout_cents": payout, "currency": "USD", "revision": 1},
+                test=True,
+                message_id=message_id,
+            )
+
+        for racer_event, expected in ((event(4450), False), (event(9999), EventIdempotencyConflict)):
+            with self.subTest(expected=expected):
+                store_event = event(4450)
+                with self.psycopg.connect(self.dsn) as racer:
+                    # An uncommitted insert of the same id: the store's check
+                    # misses it, so its own insert waits on the unique index.
+                    racer.execute(
+                        "DELETE FROM lifecycle_events WHERE event_id = %s", (message_id,)
+                    )
+                    racer.commit()
+                    racer.execute(
+                        "INSERT INTO lifecycle_events "
+                        "(event_id, lead_id, event_name, timestamp, envelope_json) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (
+                            message_id,
+                            "lead_pg_race",
+                            "ACCEPTED",
+                            racer_event["lcp"]["payload"]["timestamp"],
+                            store.encode_envelope(racer_event),
+                        ),
+                    )
+                    outcome: dict = {}
+
+                    def insert() -> None:
+                        try:
+                            outcome["value"] = store.insert_event(
+                                "lead_pg_race", "ACCEPTED", store_event
+                            )
+                        except Exception as exc:  # noqa: BLE001 - asserted below
+                            outcome["value"] = exc
+
+                    thread = threading.Thread(target=insert)
+                    thread.start()
+                    time.sleep(0.5)
+                    # Still blocked on the racer's row: it reaches the unique
+                    # violation, not the pre-check.
+                    self.assertTrue(thread.is_alive())
+                    racer.commit()
+                    thread.join(timeout=10)
+                if expected is False:
+                    self.assertIs(outcome["value"], False)
+                else:
+                    self.assertIsInstance(outcome["value"], expected)
 
 
 if __name__ == "__main__":
