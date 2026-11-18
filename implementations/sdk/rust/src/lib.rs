@@ -160,19 +160,36 @@ pub struct HistoryParams<'a> {
     pub to: Option<&'a str>,
 }
 
+/// Wait before retry `attempt` (0-based), matching the Python SDK: a
+/// delta-seconds `Retry-After` wins; an absent, HTTP-date or malformed value
+/// falls back to 1 s, 2 s, 4 s, ... backoff.
+pub(crate) fn retry_delay(retry_after: Option<&str>, attempt: u32) -> Duration {
+    retry_after
+        .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(1 << attempt.min(30)))
+}
+
 pub struct Client { endpoint: String, sender_id: Option<String>, api_key: Option<String>, hmac_secret: Option<String>, http: HttpClient, max_retries: u32 }
 impl Client {
     pub fn new(endpoint: impl Into<String>) -> Self { Self { endpoint: endpoint.into().trim_end_matches('/').to_string(), sender_id: None, api_key: None, hmac_secret: None, http: HttpClient::builder().timeout(Duration::from_secs(30)).build().expect("HTTP client"), max_retries: 2 } }
     pub fn sender_id(mut self, value: impl Into<String>) -> Self { self.sender_id = Some(value.into()); self }
     pub fn api_key(mut self, value: impl Into<String>) -> Self { self.api_key = Some(value.into()); self }
     pub fn hmac_secret(mut self, value: impl Into<String>) -> Self { self.hmac_secret = Some(value.into()); self }
+    /// How many times a 429, 500, 502, 503 or 504 response, or a transport
+    /// failure, is retried after the first attempt (default 2). The wait
+    /// honours a delta-seconds `Retry-After`, else backs off 1 s, 2 s, 4 s, ...
+    pub fn max_retries(mut self, value: u32) -> Self { self.max_retries = value; self }
+    /// Bound each attempt (default 30 s).
+    pub fn timeout(mut self, value: Duration) -> Self { self.http = HttpClient::builder().timeout(value).build().expect("HTTP client"); self }
     pub fn request(&self, method: reqwest::Method, path: &str, payload: Option<Value>, test: bool) -> Result<Value, Box<dyn std::error::Error>> {
         self.request_with_retries(method, path, payload, test, self.max_retries)
     }
 
     fn request_with_retries(&self, method: reqwest::Method, path: &str, payload: Option<Value>, test: bool, max_retries: u32) -> Result<Value, Box<dyn std::error::Error>> {
         let body = payload.as_ref().map(|value| serde_json::to_vec(value)).transpose()?; let key = payload.as_ref().and_then(|value| value.pointer("/lcp/message/idempotency_key")).and_then(Value::as_str);
-        for attempt in 0..=max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = now_iso_utc(); request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(error) if attempt < max_retries => { std::thread::sleep(Duration::from_secs(1 << attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(Duration::from_secs(1 << attempt)); }
+        for attempt in 0..=max_retries { let mut request = self.http.request(method.clone(), format!("{}/{}", self.endpoint, path.trim_start_matches('/'))); if let Some(value) = &self.sender_id { request = request.header("X-LCP-Sender-Id", value); } if let Some(value) = &self.api_key { request = request.bearer_auth(value); } if let Some(value) = key { request = request.header("X-LCP-Idempotency-Key", value); } if test { request = request.header("X-LCP-Test", "true"); } if let Some(secret) = &self.hmac_secret { let timestamp = now_iso_utc(); request = request.header("X-LCP-Timestamp", &timestamp).header("X-LCP-Signature", sign_hmac(secret, &timestamp, key, body.as_deref().unwrap_or_default())); } if let Some(bytes) = &body { request = request.header("Content-Type", "application/json").body(bytes.clone()); } let response = match request.send() { Ok(value) => value, Err(_) if attempt < max_retries => { std::thread::sleep(retry_delay(None, attempt)); continue; }, Err(error) => return Err(Box::new(error)) }; let status = response.status(); let retry_after = response.headers().get("Retry-After").and_then(|value| value.to_str().ok()).map(str::to_owned); let value: Value = response.json().unwrap_or_else(|_| json!({})); if status.is_success() { return Ok(value); } if !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) || attempt == max_retries { return Err(format!("LCP HTTP {}: {}", status, value).into()); } std::thread::sleep(retry_delay(retry_after.as_deref(), attempt)); }
         Err("LCP request failed".into())
     }
 
@@ -424,6 +441,61 @@ mod tests {
             .map(|index| json!({"item_id": format!("item_{index}"), "idempotency_key": format!("key_{index}"), "payload": {}}))
             .collect();
         assert!(client.submit_leads_batch(&over_cap, None).is_err());
+    }
+
+    #[test]
+    fn retry_delay_policy() {
+        assert_eq!(retry_delay(Some("0"), 1), Duration::ZERO);
+        assert_eq!(retry_delay(Some("7"), 0), Duration::from_secs(7));
+        assert_eq!(retry_delay(None, 0), Duration::from_secs(1));
+        assert_eq!(retry_delay(Some("Wed, 21 Oct 2026 07:28:00 GMT"), 1), Duration::from_secs(2));
+        assert_eq!(retry_delay(Some("1.5"), 2), Duration::from_secs(4));
+        assert_eq!(retry_delay(Some("99999999999999999999"), 0), Duration::from_secs(1));
+    }
+
+    /// Retry parity with the Python SDK: 429/5xx retry up to `max_retries`,
+    /// `Retry-After: 0` replaces the backoff, other statuses fail at once, and
+    /// a batch is never retried.
+    #[test]
+    fn retries_honour_retry_after_and_max_retries() {
+        use std::io::{Read, Write};
+        fn serve(statuses: Vec<u16>) -> (String, std::thread::JoinHandle<usize>) {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = format!("http://{}", listener.local_addr().unwrap());
+            let handle = std::thread::spawn(move || {
+                for (hits, status) in statuses.iter().enumerate() {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut buffer = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    while !buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                        let read = stream.read(&mut chunk).unwrap();
+                        if read == 0 { return hits; }
+                        buffer.extend_from_slice(&chunk[..read]);
+                    }
+                    let body = r#"{"ok":true}"#;
+                    write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nRetry-After: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                }
+                statuses.len()
+            });
+            (address, handle)
+        }
+        let (address, server) = serve(vec![429, 503, 200]);
+        let started = std::time::Instant::now();
+        assert_eq!(Client::new(address).get_capabilities().unwrap()["ok"], true);
+        assert_eq!(server.join().unwrap(), 3);
+        assert!(started.elapsed() < Duration::from_millis(900), "Retry-After: 0 must replace the 1 s / 2 s backoff");
+
+        let (address, server) = serve(vec![503, 503]);
+        assert!(Client::new(address).max_retries(1).get_capabilities().unwrap_err().to_string().starts_with("LCP HTTP 503"));
+        assert_eq!(server.join().unwrap(), 2);
+
+        let (address, server) = serve(vec![400]);
+        assert!(Client::new(address.clone()).get_capabilities().is_err());
+        assert_eq!(server.join().unwrap(), 1);
+
+        let (address, server) = serve(vec![503]);
+        assert!(Client::new(address).submit_leads_batch(&[json!({"item_id":"a","idempotency_key":"k","payload":{}})], None).is_err());
+        assert_eq!(server.join().unwrap(), 1, "a batch is never retried as a whole");
     }
 
     #[test]

@@ -70,6 +70,9 @@ final class Signing
 
     public static function verify(string $secret, string $signature, string $timestamp, ?string $idempotencyKey, string $body, int $maxSkewSeconds = 300, ?DateTimeImmutable $now = null): void
     {
+        // DateTimeImmutable reads an unzoned value in the default timezone; the
+        // Python reference verifier rejects it, so the timestamp must name its zone.
+        if (!isset(date_parse($timestamp)['zone_type'])) throw new RuntimeException('X-LCP-Timestamp must include a timezone');
         try { $signedAt = new DateTimeImmutable($timestamp); } catch (\Exception $error) { throw new RuntimeException('Invalid X-LCP-Timestamp', 0, $error); }
         $current = $now ?? new DateTimeImmutable('now', new DateTimeZone('UTC'));
         if (abs($current->getTimestamp() - $signedAt->getTimestamp()) > $maxSkewSeconds) throw new RuntimeException('X-LCP-Timestamp is outside the replay window');
@@ -109,7 +112,21 @@ final class Envelope
 
 final class Client
 {
-    public function __construct(private readonly string $endpoint, private readonly ?string $senderId = null, private readonly ?string $apiKey = null, private readonly ?string $hmacSecret = null, private readonly int $maxRetries = 2) {}
+    private const RETRYABLE_STATUSES = [429, 500, 502, 503, 504];
+
+    /**
+     * $timeoutSeconds bounds each attempt. $maxRetries is how many times a 429,
+     * 500, 502, 503 or 504 response, or a transport failure, is retried after
+     * the first attempt; the wait honours a delta-seconds Retry-After and
+     * otherwise backs off 1 s, 2 s, 4 s, ... (the Python SDK policy).
+     */
+    public function __construct(private readonly string $endpoint, private readonly ?string $senderId = null, private readonly ?string $apiKey = null, private readonly ?string $hmacSecret = null, private readonly int $maxRetries = 2, private readonly int $timeoutSeconds = 30) {}
+
+    /** Wait before retry $attempt (0-based): a delta-seconds Retry-After wins, else backoff. */
+    public static function retryDelay(?string $retryAfter, int $attempt): int
+    {
+        return $retryAfter !== null && ctype_digit($retryAfter) && strlen($retryAfter) <= 18 ? (int)$retryAfter : 2 ** min($attempt, 30);
+    }
 
     public function request(string $method, string $path, ?array $payload = null, bool $test = false, ?int $maxRetries = null): array
     {
@@ -119,9 +136,11 @@ final class Client
         for ($attempt = 0; $attempt <= $retries; $attempt++) {
             $headers = ['Content-Type: application/json', 'Accept: application/json']; if ($this->senderId) $headers[] = 'X-LCP-Sender-Id: ' . $this->senderId; if ($this->apiKey) $headers[] = 'Authorization: Bearer ' . $this->apiKey; if ($key) $headers[] = 'X-LCP-Idempotency-Key: ' . $key; if ($test) $headers[] = 'X-LCP-Test: true';
             if ($this->hmacSecret) { $timestamp = gmdate('Y-m-d\\TH:i:s\\Z'); $headers[] = 'X-LCP-Timestamp: ' . $timestamp; $headers[] = 'X-LCP-Signature: ' . Signing::sign($this->hmacSecret, $timestamp, $key, $body); }
-            $handle = curl_init(rtrim($this->endpoint, '/') . '/' . ltrim($path, '/')); curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_POSTFIELDS => $body === '' ? null : $body, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30]); $responseBody = curl_exec($handle); $error = curl_error($handle); $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE); curl_close($handle);
-            if ($error !== '' && $attempt < $retries) { sleep(2 ** $attempt); continue; } if ($error !== '') throw new RuntimeException($error);
-            $result = json_decode((string)$responseBody, true) ?? ['raw' => $responseBody]; if ($status >= 200 && $status < 300) return $result; if (!in_array($status, [429, 500, 502, 503, 504], true) || $attempt === $retries) throw new RuntimeException("LCP HTTP $status: " . json_encode($result)); sleep(2 ** $attempt);
+            $retryAfter = null;
+            $captureRetryAfter = static function ($handle, string $line) use (&$retryAfter): int { if (stripos($line, 'retry-after:') === 0) $retryAfter = trim(substr($line, 12)); return strlen($line); };
+            $handle = curl_init(rtrim($this->endpoint, '/') . '/' . ltrim($path, '/')); curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_POSTFIELDS => $body === '' ? null : $body, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $this->timeoutSeconds, CURLOPT_HEADERFUNCTION => $captureRetryAfter]); $responseBody = curl_exec($handle); $error = curl_error($handle); $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE); curl_close($handle);
+            if ($error !== '' && $attempt < $retries) { sleep(self::retryDelay(null, $attempt)); continue; } if ($error !== '') throw new RuntimeException($error);
+            $result = json_decode((string)$responseBody, true) ?? ['raw' => $responseBody]; if ($status >= 200 && $status < 300) return $result; if (!in_array($status, self::RETRYABLE_STATUSES, true) || $attempt === $retries) throw new RuntimeException("LCP HTTP $status: " . json_encode($result)); sleep(self::retryDelay($retryAfter, $attempt));
         }
         throw new RuntimeException('LCP request failed');
     }

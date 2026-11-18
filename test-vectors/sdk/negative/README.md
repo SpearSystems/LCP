@@ -86,11 +86,11 @@ the lane override.
 
 | Invariant | Vectors / owner |
 |---|---|
-| 1 exact-bytes HMAC | `signature.json` (sig-001/002) + positive `hmac.json` |
+| 1 exact-bytes HMAC | `signature.json` (sig-001/002, sig-005 non-hex signature) + positive `hmac.json` |
 | 2 raw-body verify | `signature.json` (sig-003/004) |
-| 3 constant-time compare | not vectorizable by outcome — code-level audit / timing tests per SDK lane |
+| 3 constant-time compare | not vectorizable by outcome — enforced per SDK by the `constant_time_verify` behaviour row in `tools/sdk_surface.json` |
 | 4 TLS verify default-on | per-SDK client construction tests (not outcome vectors) |
-| 5 replay window before processing | `replay-window.json` |
+| 5 replay window before processing | `replay-window.json` (replay-006 fractional seconds accepted, replay-007 unzoned timestamp rejected) |
 | 6 idempotency reuse | platform concern (cached outcome on retry) — reference-platform suite |
 | 7 no PII in logs | static checker `tools/check_logging_hygiene.py` + runtime capture tests (log-lane) |
 | 8 test≠prod isolation | `test-mode.json` (gap-skipped at SDK level; platform LCP-013) |
@@ -126,7 +126,7 @@ verifier-side test/prod mode — invariant 8 is a platform concern (§ Gap polic
 | Kotlin | `implementations/sdk/kotlin/src/test/kotlin/com/spearsystems/lcp/NegativeVectorsTest.kt` | ✅ `LcpSdk.verifyHmac` (`Instant.parse` + `MessageDigest.isEqual`) | ✅ verify over raw `verify_body` bytes | ✅ `LcpSchemaValidator.validateEnvelope` | ✅ `LcpSchemaValidator.validateOffer` | ⚠️ GAP (`sdk_exercisable:false`) |
 | PHP | `implementations/sdk/php/tests/negative_vectors.php` | ✅ `Lcp\Signing::verify` (`hash_equals`; malformed ts rejects via constructor throw or signature mismatch — outcome-only, deterministic) | ✅ verify over raw `verify_body` bytes | ✅ `Lcp\SchemaValidator::validateEnvelope` | ✅ `Lcp\SchemaValidator::validateOffer` | ⚠️ GAP (`sdk_exercisable:false`) |
 
-Per-SDK totals with the current suite (14 vectors): **13 executed, 1 gap-skip**
+Per-SDK totals with the current suite (24 vectors): **23 executed, 1 gap-skip**
 (`lcp-neg-mode-001`).
 
 CI discovery: **Java** (`mvn test` → surefire auto-discovers `src/test/**/*Test.java`)
