@@ -28,13 +28,13 @@ module LcpSdk
       documents = {}
       Dir.glob(File.join(root, "**", "*.json")).each do |path|
         name = path.delete_prefix("#{root}/")
-        documents[name] = JSON.parse(File.read(path))
+        documents[name] = JSON.parse(File.read(path, encoding: "UTF-8"))
       end
       if File.basename(root.to_s) == "schemas"
         vertical_root = File.join(File.dirname(root), "verticals")
         Dir.glob(File.join(vertical_root, "**", "*.json")).each do |path|
           name = path.delete_prefix("#{vertical_root}/")
-          documents["verticals/#{name}"] = JSON.parse(File.read(path))
+          documents["verticals/#{name}"] = JSON.parse(File.read(path, encoding: "UTF-8"))
         end
       end
       new(documents)
