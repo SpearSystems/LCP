@@ -136,12 +136,14 @@ impl SchemaValidator {
         format!("verticals/{vertical}.json")
     }
 
+    /// Exact name first; otherwise a suffix on a `/` boundary only, so `ping`
+    /// never resolves to `buyer-mapping` (HashMap order is random).
     fn find_key(&self, name: &str) -> Option<&String> {
         let normalized = name.trim_start_matches('/').replace("schemas/", "").replace("verticals/", "vertical:").trim_end_matches(".json").to_string();
-        self.schemas.keys().find(|key| {
-            let candidate = key.trim_end_matches(".json").replace("schemas/", "").replace("verticals/", "vertical:");
-            candidate == normalized || candidate.ends_with(&normalized)
-        })
+        let candidate = |key: &String| key.trim_end_matches(".json").replace("schemas/", "").replace("verticals/", "vertical:");
+        let boundary = format!("/{normalized}");
+        self.schemas.keys().find(|key| candidate(key) == normalized)
+            .or_else(|| self.schemas.keys().find(|key| candidate(key).ends_with(&boundary)))
     }
 }
 
