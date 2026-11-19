@@ -3,11 +3,12 @@
 - **Title:** `personal_loans` vertical 2.0.0: an interoperable personal-loan vertical with whole-unit applicant amounts and an LEP-0013 identity container
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Accepted** — 2026-11-19 (maintainer;
+- **Status:** **Implemented** — shipped in v1.3.0 (PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), released
+  2026-11-19); Accepted 2026-11-19 (maintainer;
   [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
   window and independent review waived, maintainer security/privacy
-  sign-off under D3). Implementation: PR
-  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
+  sign-off under D3).
 - **Target version:** v1.3.0 (a new vertical file is additive. The file's
   own `schema_version` is `2.0.0`, so it can never be confused with the
   adopter's unpublished 1.0.0.)

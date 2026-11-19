@@ -81,6 +81,10 @@
   generated models, package release gates, and registry publishing.
 - [SDK validator capabilities](SDK-VALIDATION-CAPABILITIES.md) — the shared
   language-neutral validation contract and its corpus.
+- [v1.3.0 release record](RELEASE-TICKET-1.3.0.md) — published 2026-11-19;
+  verification evidence, coordinates, digest, and registry read-back.
+- [v1.3.0 decision record](DECISIONS-v1.3.md) — acceptance of LEP-0012,
+  LEP-0013 and LEP-0014, with the waivers and the sign-off conditions.
 - [v1.2.0 release record](RELEASE-TICKET-1.2.0.md) — published 2026-11-05;
   coordinates, digests, and registry read-back.
 - [Field dictionary](FIELD-DICTIONARY.md) — human-readable paths, types,
