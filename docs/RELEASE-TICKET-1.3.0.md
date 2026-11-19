@@ -97,7 +97,7 @@ Read back on 2026-11-19 after the tag workflows finished.
 | PyPI | `lcp-reference-platform` | 1.3.0 | JSON API 200 |
 | PyPI | `lcp-mcp-server` | 1.3.0 | JSON API 200 |
 | npm | `@spear-systems/lcp-sdk` | 1.3.0 | registry 200; provenance in the Sigstore transparency log |
-| NuGet | `LcpSdk` | 1.3.0 | push accepted (`201 Created`, "Your package was pushed"); flat-container index pending NuGet validation at read-back |
+| NuGet | `LcpSdk` | 1.3.0 | flat-container 200 (indexed after validation, confirmed 2026-11-19) |
 | crates.io | `lcp-sdk` | 1.3.0 | API version record |
 | RubyGems | `lcp-sdk` | 1.3.0 | versions API 200, registered 2026-11-19T01:47:53Z |
 | Maven Central | `systems.spear:lcp-sdk` | 1.3.0 | POM 200 |
