@@ -1,21 +1,24 @@
 # Release record — v1.3.0
 
-> **Status: NOT RELEASED — prepared on 2026-11-19.** No `v1.3.0` tag exists
-> yet, no registry carries a `1.3.0` package, and no container was published
-> for this version. A release exists only once the tag resolves, every tag
-> workflow is green, and each registry coordinate reads back its version.
+> **Status: RELEASED on 2026-11-19** from tag `v1.3.0` at merge commit
+> `52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8` (PR
+> [#249](https://github.com/SpearSystems/LCP/pull/249)). Every registry
+> coordinate in [§5](#5-verified-publication) was read back after publication.
 >
-> `v1.2.0` remains the current published release and stays immutable.
+> `v1.2.0` remains published and immutable.
 
 ## 1. Release identity
 
 - [x] `SDK_VERSION` and every package manifest that carries a version field:
       `1.3.0` (`python3 tools/check_sdk_versions.py --check` exits 0).
-- [ ] Release tag `v1.3.0` and Go module tag `implementations/sdk/go/v1.3.0`:
-      not created.
-- [ ] Published commit: none.
-- [ ] GitHub release, signed assets, SBOMs, provenance: none.
-- [ ] Reference container at `1.3.0`: not published.
+- [x] Release tag `v1.3.0` and Go module tag `implementations/sdk/go/v1.3.0`,
+      both annotated, both on the published commit.
+- [x] Published commit: `52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8`, the merge
+      of PR #249. Its tree is identical to the PR head `abdaf02`, on which the
+      full CI matrix passed.
+- [x] GitHub release with signed assets, SBOMs and provenance:
+      <https://github.com/SpearSystems/LCP/releases/tag/v1.3.0>.
+- [x] Reference container at `1.3.0`: published; digest in §5.
 - Shape: additive MINOR over `v1.2.0`. No envelope field is made required, no
   enum value is removed, and no error code is added. Every new surface is
   advertised through `capabilities()`.
@@ -77,6 +80,8 @@ commit before the tag is pushed.
 
 ## 4. Release steps
 
-Follow the [v1.3.0 release block](RELEASE.md#v130-release-block). Record
-the tag commit, the GitHub release, and each read-back registry coordinate
-here once published.
+Followed the [v1.3.0 release block](RELEASE.md#v130-release-block-published-2026-11-19):
+gates at the merge commit, the Go module tag before the root tag, the
+container public-pull pre-flight (anonymous pull token issued, package
+visibility `public`), the Packagist mirror dispatch, and approval of the
+protected publication jobs after every tag workflow passed.

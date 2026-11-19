@@ -3,11 +3,12 @@
 - **Title:** Sale lifecycle: synchronous lead disposition, money-bearing lifecycle events, URL-template postbacks, tracking passthrough, and defined test outcomes
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Accepted** — 2026-11-19 (maintainer;
+- **Status:** **Implemented** — shipped in v1.3.0 (PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), released
+  2026-11-19); Accepted 2026-11-19 (maintainer;
   [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
   window and independent review waived, maintainer security/privacy
-  sign-off under D3). Implementation: PR
-  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
+  sign-off under D3).
 - **Target version:** v1.3.0 (additive MINOR: one optional object on the
   closed `ack` payload, one optional property on `subscription`, documented
   `details` shapes on three existing event names, two registered extensions;

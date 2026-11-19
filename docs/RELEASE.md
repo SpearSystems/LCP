@@ -1,19 +1,19 @@
 > **Release page · Page 3 of 6**
 
-> **Current release:** `v1.2.0` was published on 2026-11-05 from tag `v1.2.0`
-> (merge commit `400c350b0e5ebf7ba3160e14b1fa78acb61ec57c`). The GitHub release
+> **Current release:** `v1.3.0` was published on 2026-11-19 from tag `v1.3.0`
+> (merge commit `52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8`). The GitHub release
 > and its signed evidence assets are at
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.2.0>; the record is
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.3.0>; the record is
+> [RELEASE-TICKET-1.3.0.md](RELEASE-TICKET-1.3.0.md).
+>
+> **Previous release:** `v1.2.0` (2026-11-05), merge commit
+> `400c350b0e5ebf7ba3160e14b1fa78acb61ec57c` —
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.2.0>, record at
 > [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md).
 >
-> **Previous release:** `v1.1.1` (2026-11-04), tag `fa290ab` —
+> **Earlier release:** `v1.1.1` (2026-11-04), tag `fa290ab` —
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>, record at
 > [RELEASE-TICKET-1.1.1.md](RELEASE-TICKET-1.1.1.md).
->
-> **Earlier release:** `v1.1.0` (2026-11-03), commit
-> `68a22b5f7f36ea6321a21428267fbc5ab8bdf92c` —
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.0>, record at
-> [RELEASE-TICKET-1.1.0.md](RELEASE-TICKET-1.1.0.md).
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -105,10 +105,11 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
-## v1.3.0 release block
+## v1.3.0 release block (published 2026-11-19)
 
-**State: prepared 2026-11-19.** The version files carry `1.3.0`. The record
-is [RELEASE-TICKET-1.3.0.md](RELEASE-TICKET-1.3.0.md) and the decisions are
+**State: released 2026-11-19** from tag `v1.3.0` at merge commit
+`52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8`. The record, with the registry
+read-back, is [RELEASE-TICKET-1.3.0.md](RELEASE-TICKET-1.3.0.md) and the decisions are
 in [DECISIONS-v1.3.md](DECISIONS-v1.3.md).
 
 `v1.3.0` is an additive MINOR over `v1.2.0`: LEP-0012 (sale lifecycle),
@@ -127,11 +128,11 @@ XCTest, so C#, Kotlin and Swift are covered by CI only.
 
 ## v1.2.0 release block (published 2026-11-05)
 
-**State: released 2026-11-05.** The version files carry `1.2.0`; the tag,
-the registry publications, the container, and the GitHub release do not exist
-yet. Nothing in this section has been executed for `v1.2.0`, and an approved
-checklist is not a release — only a pushed tag and read-back registry
-coordinates are.
+**State: released 2026-11-05.** The tag, the registry publications, the
+container digest, and the GitHub release are recorded in
+[RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md). The checklist below is
+the procedure later releases follow; an approved checklist is not a release —
+only a pushed tag and read-back registry coordinates are.
 
 `v1.2.0` is an additive MINOR over `v1.1.1`: batch submission, event
 subscriptions, negotiation, the `PROCESSED` acknowledgement, multi-currency
@@ -347,7 +348,7 @@ that repository before retrying the publication. The Rust bootstrap version is
 not part of the v1 release; the `1.0.0` publication came through the configured crates.io OIDC publisher.
 RubyGems now uses its active OIDC publisher for subsequent versions.
 
-The `v1.1.1` release is the current published LCP release; its signed tag and
+The `v1.3.0` release is the current published LCP release; its signed tag and
 release manifest identify the exact source commit and package evidence. The
 release manifest is the authoritative list for a specific tag. Package
 registries can take time to index a new version; verify the package's version

@@ -3,11 +3,12 @@
 - **Title:** Regulated identifiers: a capability-gated, never-persisted lane for government ID and bank account fields in allowlisted lending verticals
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Accepted** — 2026-11-19 (maintainer;
+- **Status:** **Implemented** — shipped in v1.3.0 (PR
+  [#249](https://github.com/SpearSystems/LCP/pull/249), released
+  2026-11-19); Accepted 2026-11-19 (maintainer;
   [v1.3 decision record](../../docs/DECISIONS-v1.3.md) D1–D4: review
   window and independent review waived, maintainer security/privacy
-  sign-off under D3). Implementation: PR
-  [#249](https://github.com/SpearSystems/LCP/pull/249), for v1.3.0.
+  sign-off under D3).
 - **Target version:** v1.3.0 (additive MINOR: one schema annotation
   keyword, one capability feature, and a bounded exception to the
   `prohibited` list. No class is added, so the change is not MAJOR under
