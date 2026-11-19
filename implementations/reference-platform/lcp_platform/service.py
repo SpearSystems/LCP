@@ -95,6 +95,8 @@ class PlatformService:
                     )
                 except RequestError as exc:
                     error: dict[str, Any] = {"code": exc.code, "message": str(exc)}
+                    if exc.field is not None:
+                        error["field"] = exc.field
                     if exc.details is not None:
                         error["details"] = exc.details
                     response_headers = (

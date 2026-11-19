@@ -46,8 +46,15 @@ export class LcpSchemaValidator {
 
   static async fromDirectory(root: string): Promise<LcpSchemaValidator> {
     const schemas: SchemaBundle = {};
-    for (const directory of ["schemas", "verticals"]) {
-      const files = await (await import("node:fs/promises")).readdir(join(root, directory));
+    // LEP-0016: frozen earlier vertical versions live in verticals/archive/.
+    for (const directory of ["schemas", "verticals", "verticals/archive"]) {
+      let files: string[];
+      try {
+        files = await (await import("node:fs/promises")).readdir(join(root, directory));
+      } catch (error) {
+        if (directory === "verticals/archive" && (error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
       for (const file of files.filter((value: string) => value.endsWith(".json"))) {
         const name = `${directory}/${file}`;
         schemas[name] = JSON.parse(await readFile(join(root, directory, file), "utf8")) as object;
@@ -64,7 +71,18 @@ export class LcpSchemaValidator {
   }
 
   validateVertical(vertical: string, value: unknown): void {
-    this.validate(`verticals/${vertical}.json`, value);
+    this.validate(this.verticalSchemaName(vertical, value), value);
+  }
+
+  /**
+   * LEP-0016: the schema for the version the attributes name. A frozen earlier
+   * version is `verticals/archive/{id}-{version}.json` and wins when present;
+   * otherwise the current file applies, so an unknown version fails its const.
+   */
+  verticalSchemaName(vertical: string, attributes: unknown): string {
+    const version = (attributes as { schema_version?: unknown } | null)?.schema_version;
+    const archived = `verticals/archive/${vertical}-${String(version)}.json`;
+    return typeof version === "string" && this.documents.has(archived) ? archived : `verticals/${vertical}.json`;
   }
 
   validateEnvelope(envelope: unknown, options: { receiverAdvertisedLcpVersions?: readonly string[] } = {}): void {
@@ -87,7 +105,7 @@ export class LcpSchemaValidator {
     const verticalAttributes = { ...attributes } as Record<string, unknown>;
     if (messageType === "ping") {
       verticalAttributes.vertical ??= vertical;
-      const schema = this.documents.get(`verticals/${vertical}.json`) as any;
+      const schema = this.documents.get(this.verticalSchemaName(vertical, attributes)) as any;
       verticalAttributes.schema_version ??= schema?.properties?.schema_version?.const ?? "1.0.0";
     }
     this.validateVertical(vertical, verticalAttributes);
@@ -95,7 +113,8 @@ export class LcpSchemaValidator {
   }
 
   private validatePingSafe(vertical: string, attributes: Record<string, unknown>): void {
-    const schema = this.documents.get(`verticals/${vertical}.json`) as any;
+    const schemaName = this.verticalSchemaName(vertical, attributes);
+    const schema = this.documents.get(schemaName) as any;
     if (!schema) throw new Error(`Vertical schema '${vertical}' not found for ping-safe validation`);
     const errors: ErrorObject[] = [];
     const walk = (value: unknown, definition: any, path: string): void => {
@@ -119,6 +138,6 @@ export class LcpSchemaValidator {
       }
     };
     walk(attributes, schema, "attributes");
-    if (errors.length) throw new LcpSchemaValidationError(`verticals/${vertical}.json`, errors);
+    if (errors.length) throw new LcpSchemaValidationError(schemaName, errors);
   }
 }

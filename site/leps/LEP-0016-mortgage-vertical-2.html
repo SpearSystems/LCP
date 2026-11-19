@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="governance/LEPs/LEP-0016-mortgage-vertical-2.md">
+<meta name="lcp-build" content="5de19378aae2">
+<title>LEP-0016 — mortgage vertical 2.0.0: whole-unit applicant amounts, a declared currency, and side-by-side vertical versions — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="lep-0016--mortgage-vertical-200-whole-unit-applicant-amounts-a-declared-currency-and-side-by-side-vertical-versions">LEP-0016 — <code>mortgage</code> vertical 2.0.0: whole-unit applicant amounts, a declared currency, and side-by-side vertical versions</h1>
+<ul>
+<li><strong>Title:</strong> <code>mortgage</code> vertical 2.0.0: whole-unit applicant amounts with a declared <code>amount_currency</code>, bounded values, and a rule for receivers that serve two versions of one vertical at once</li>
+<li><strong>Author(s):</strong> LCP maintainers</li>
+<li><strong>Date:</strong> 2026-11-19</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — 2026-11-19 (maintainer; <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">v1.4 decision record (<code>docs/DECISIONS-v1.4.md</code>)</span> D1–D4: review window and independent review waived). Implementation: PR <a href="https://github.com/SpearSystems/LCP/pull/251" rel="noopener">#251</a>, for v1.4.0.</li>
+<li><strong>Target version:</strong> v1.4.0. The vertical file gains a <code>2.0.0</code> schema alongside a frozen <code>1.0.0</code>.</li>
+<li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/258" rel="noopener">#258</a></li>
+<li><strong>Depends on:</strong> <a href="LEP-0014-personal-loans-vertical.html">LEP-0014</a>, for the whole-unit authoring rule. If LEP-0014 is rejected, this record is withdrawn with it.</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</h2>
+<p><strong>Accepted</strong> under <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">D1–D4 (<code>docs/DECISIONS-v1.4.md</code>)</span> of the v1.4 decision record. The review window closed early with no comments, and no reviewer independent of the author took part (D1, D2). No PII class changes, so no security/privacy condition applies beyond the v1.3 record.</p>
+<p>Conditions:</p>
+<ul>
+<li><code>mortgage</code> 1.0.0 stays served side by side for the 180-day window, frozen at <code>verticals/archive/mortgage-1.0.0.json</code>.</li>
+<li>The SDKs carry both versions in their schema bundles and validate by <code>attributes.schema_version</code>. No SDK has typed per-vertical builders, so "1.0.0 builder deprecated" is carried as <code>deprecated: true</code> on the archived schema (D4 scope notes).</li>
+<li>Any comment with new evidence on <a href="https://github.com/SpearSystems/LCP/issues/258" rel="noopener">#258</a> reopens this record. Re-evaluation: 2027-05-19.</li>
+</ul>
+<h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
+<p><strong>Mortgage amounts have no currency.</strong> <code>verticals/mortgage.json</code> 1.0.0 declares four applicant-declared amounts:</p>
+<ul>
+<li><code>loan_amount_cents</code></li>
+<li><code>property_value_cents</code></li>
+<li><code>annual_income_cents</code></li>
+<li><code>cash_out_amount_cents</code></li>
+</ul>
+<p>They are minor units of a currency the schema never names, so a GBP or AUD mortgage lead is indistinguishable from a USD one.</p>
+<p><strong>They have no upper bound.</strong> Each is <code>integer</code> with <code>minimum: 0</code> only. A value multiplied by 100 twice, the defect LEP-0014 records for <code>personal_loans</code>, is accepted without complaint.</p>
+<p><strong>They are typed by applicants in whole units.</strong> These are form answers, not platform-priced money. LEP-0014 sets the authoring rule:</p>
+<ul>
+<li>applicant-declared amounts are whole units of a declared <code>amount_currency</code>;</li>
+<li>machine-produced money stays integer <code>_cents</code>.</li>
+</ul>
+<p>Once LEP-0014 lands, mortgage is the only vertical that breaks that rule. No-code form tools that cannot multiply a field (LEP-0014, evidence) are used for mortgage forms too.</p>
+<p><strong>Receivers cannot serve two versions of a vertical.</strong> Capabilities already advertise <code>verticals[{id, schema_version}]</code> (spec/05 §capabilities), so a receiver can list <code>mortgage</code> 1.0.0 and 2.0.0. The spec says nothing about validating both. The reference platform keys vertical validators by <code>id</code> alone, so a breaking vertical revision has no migration window. That gap also applies to every future vertical major.</p>
+<h2 id="scope">Scope</h2>
+<ol>
+<li><p><strong><code>mortgage</code> 2.0.0:</strong></p>
+<ul>
+<li><code>amount_currency</code> (ISO 4217);</li>
+<li><code>loan_amount</code>, <code>property_value</code>, <code>annual_income</code> and <code>cash_out_amount</code> in whole units, each bounded;</li>
+<li>all other fields unchanged.</li>
+</ul></li>
+<li><strong>Frozen 1.0.0.</strong> The current file moves to <code>verticals/archive/mortgage-1.0.0.json</code> unchanged. <code>verticals/mortgage.json</code> becomes 2.0.0.</li>
+<li><p><strong>Side-by-side rule (normative):</strong></p>
+<ul>
+<li>A receiver that advertises two versions of one vertical MUST validate each lead against the version its <code>attributes.schema_version</code> names.</li>
+<li>It MUST refuse a version it does not advertise, with <code>LCP-100</code>, <code>field</code> = <code>attributes.schema_version</code>.</li>
+<li>Pings validate the same way.</li>
+</ul></li>
+<li><strong>Deprecation window:</strong> a receiver keeps 1.0.0 for at least 180 days after it first advertises 2.0.0.</li>
+</ol>
+<p><strong>Not in scope:</strong></p>
+<ul>
+<li>other verticals, which stay on their current versions;</li>
+<li>core money fields;</li>
+<li>converting the band enumerations;</li>
+<li>moving <code>property_address</code>, which is the property and may differ from the consumer's <code>location</code>.</li>
+</ul>
+<h2 id="proposed-wire-shape">Proposed wire shape</h2>
+<p>Differences from 1.0.0:</p>
+<table>
+<thead>
+<tr>
+<th>1.0.0</th>
+<th>2.0.0</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>—</td>
+<td><code>amount_currency</code> (string, ISO 4217, <code>^[A-Z]{3}$</code>), required when any amount is present (<code>dependentRequired</code>)</td>
+<td>Amounts finally have a currency.</td>
+</tr>
+<tr>
+<td><code>loan_amount_cents</code> (integer, <code>minimum: 0</code>)</td>
+<td><code>loan_amount</code> (integer, <code>1000</code>–<code>100000000</code>)</td>
+<td>Whole units, bounded.</td>
+</tr>
+<tr>
+<td><code>property_value_cents</code> (integer, <code>minimum: 0</code>)</td>
+<td><code>property_value</code> (integer, <code>1000</code>–<code>1000000000</code>)</td>
+<td>Same reason.</td>
+</tr>
+<tr>
+<td><code>annual_income_cents</code> (integer, <code>minimum: 0</code>)</td>
+<td><code>annual_income</code> (integer, <code>0</code>–<code>100000000</code>)</td>
+<td>Same reason.</td>
+</tr>
+<tr>
+<td><code>cash_out_amount_cents</code> (integer, <code>minimum: 0</code>)</td>
+<td><code>cash_out_amount</code> (integer, <code>0</code>–<code>100000000</code>)</td>
+<td>Same reason.</td>
+</tr>
+<tr>
+<td><code>schema_version</code> const <code>1.0.0</code></td>
+<td>const <code>2.0.0</code></td>
+<td>Breaking for 1.0.0 senders.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Unchanged:</strong></p>
+<ul>
+<li>every other field, its <code>x-lcp-pii</code> class and its <code>ping_safe</code> flag;</li>
+<li>the amounts stay <code>restricted</code> and <code>ping_safe: false</code>;</li>
+<li>the platform-derived bands (<code>loan_amount_band</code> and the others) remain the only amount data a ping may carry. They are read in units of <code>amount_currency</code>.</li>
+</ul>
+<h4 id="valid-1--minimal-lead">Valid 1 — minimal lead</h4>
+<pre class="code-block"><code class="language-json">{ "vertical": "mortgage", "schema_version": "2.0.0" }</code></pre>
+<h4 id="valid-2--refinance-with-amounts">Valid 2 — refinance with amounts</h4>
+<pre class="code-block"><code class="language-json">{
+  "vertical": "mortgage", "schema_version": "2.0.0", "amount_currency": "USD",
+  "loan_type": "refinance", "loan_amount": 350000, "property_value": 500000,
+  "annual_income": 120000, "cash_out_amount": 25000
+}</code></pre>
+<h4 id="invalid-a--amount-without-currency">Invalid A — amount without currency</h4>
+<p><code>"loan_amount": 350000</code> with no <code>amount_currency</code> is refused with <code>LCP-100</code>, <code>field</code> = <code>attributes.amount_currency</code>.</p>
+<h4 id="invalid-b--cents-sent-by-mistake">Invalid B — cents sent by mistake</h4>
+<p><code>"loan_amount": 35000000000</code> (meant as $350,000 in cents) is refused, because it is above <code>100000000</code>.</p>
+<p><strong>Known limit:</strong> cents for loans of $1,000,000 or less pass the bound. Bands and buyer requirement profiles surface those as out-of-pattern.</p>
+<h4 id="invalid-c--100-field-on-200">Invalid C — 1.0.0 field on 2.0.0</h4>
+<p><code>"loan_amount_cents": 35000000</code> with <code>schema_version</code> <code>2.0.0</code> is refused, because <code>additionalProperties</code> is <code>false</code>.</p>
+<h4 id="invalid-d--unadvertised-version">Invalid D — unadvertised version</h4>
+<p><code>"schema_version": "1.0.0"</code> sent to a receiver that advertises only 2.0.0 is refused with <code>LCP-100</code>, <code>field</code> = <code>attributes.schema_version</code>.</p>
+<h2 id="privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</h2>
+<ul>
+<li><strong>No class changes.</strong> The amounts stay <code>restricted</code> and <code>ping_safe: false</code>. <code>amount_currency</code> is <code>public</code> and <code>ping_safe: true</code>, because a currency code identifies no one.</li>
+<li><strong>Universal core:</strong> untouched. <code>amount_currency</code> is not named <code>currency</code>, because core owns that name (SPEC §12). This follows LEP-0014.</li>
+<li><strong>The side-by-side rule</strong> narrows what a receiver accepts. It never widens it.</li>
+</ul>
+<h2 id="compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</h2>
+<ul>
+<li><strong>For mortgage senders:</strong> breaking, with a window of at least 180 days. Senders on 1.0.0 keep working at any receiver that still advertises it.</li>
+<li><strong>Normalisation is optional, and refused when the currency is unknown.</strong> A receiver MAY normalise 1.0.0 at intake (divide by 100). It MUST NOT assume a currency for this. It uses the sender's configured market currency, and refuses the normalisation when none is configured.</li>
+<li><strong>SDKs</strong> carry both model versions during the window. The 1.0.0 builder is marked deprecated.</li>
+</ul>
+<h2 id="sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</h2>
+<ul>
+<li><strong>Schemas and SDKs:</strong> a <code>mortgage</code> 2.0.0 model in ten SDKs, with 1.0.0 kept and deprecated. Bundles and manifests carry both versions.</li>
+<li><strong>Reference platform:</strong> vertical validators keyed by <code>(id, schema_version)</code>, loading <code>verticals/archive/*.json</code>, and capabilities that list both entries.</li>
+<li><p><strong>Conformance:</strong></p>
+<ul>
+<li>vectors for every Valid and Invalid example;</li>
+<li>a side-by-side vector: the same receiver accepts 1.0.0 and 2.0.0, and refuses <code>9.9.9</code>;</li>
+<li>ping vectors for both versions.</li>
+</ul></li>
+<li><strong>OpenAPI and MCP:</strong> examples are regenerated on 2.0.0.</li>
+<li><strong>Metrics:</strong> per-sender counts of mortgage 1.0.0 traffic, to drive the end of the window.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered</h2>
+<ul>
+<li><strong>Add <code>amount_currency</code> to 1.x as a minor change and keep cents.</strong> It fixes the currency but not the unit rule or the bounds, and it leaves mortgage inconsistent with LEP-0014. Rejected.</li>
+<li><strong>Convert in place without a version window.</strong> That breaks every shipped mortgage sender at once. Rejected.</li>
+<li><strong>Wait for a mortgage-specific defect</strong> (LEP-0014's deferred trigger). The missing currency is a defect by itself, and the side-by-side rule is needed before any vertical major can ship safely. Rejected.</li>
+</ul>
+<h2 id="rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</h2>
+<ol>
+<li><strong>LCP:</strong> the side-by-side rule and the reference platform's versioned validators land first. That work is useful on its own.</li>
+<li><p><strong>Next:</strong></p>
+<ul>
+<li>the 2.0.0 file lands;</li>
+<li>1.0.0 moves to <code>verticals/archive/</code>;</li>
+<li>capabilities advertise both versions.</li>
+</ul></li>
+<li><strong>Senders migrate</strong> in one edit: rename four fields, drop the ×100 conversion, add <code>amount_currency</code> and set <code>schema_version</code> to <code>2.0.0</code>.</li>
+<li><strong>End of window:</strong> a receiver stops advertising 1.0.0 once its per-sender counts reach zero, or after 180 days with notice.</li>
+<li><strong>Rollback:</strong> a receiver keeps or restores the 1.0.0 advertisement. The archive file never changes.</li>
+</ol>
+<h2 id="deferred-questions">Deferred questions</h2>
+<ul>
+<li><strong>Bound values.</strong> <code>100000000</code> whole units suits USD, GBP and AUD markets but not high-denomination currencies such as JPY or KRW. Trigger: a receiver advertising mortgage in such a currency. The likely answer is bounds expressed per currency in the requirement profile.</li>
+<li><strong>Band labels per currency.</strong> The band enums read as US dollars (<code>under_100k</code>). Trigger: non-USD mortgage traffic.</li>
+<li><strong>A general archive policy for vertical majors.</strong> How long frozen files stay in the repository. Trigger: the third archived vertical version.</li>
+</ul>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--refinance-with-amounts">Valid 2 — refinance with amounts</a></li><li class="depth-4"><a href="#invalid-a--amount-without-currency">Invalid A — amount without currency</a></li><li class="depth-4"><a href="#invalid-b--cents-sent-by-mistake">Invalid B — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-c--100-field-on-200">Invalid C — 1.0.0 field on 2.0.0</a></li><li class="depth-4"><a href="#invalid-d--unadvertised-version">Invalid D — unadvertised version</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>governance/LEPs/LEP-0016-mortgage-vertical-2.md</code> · build <code>5de19378aae2</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

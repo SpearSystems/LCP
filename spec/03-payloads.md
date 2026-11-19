@@ -127,6 +127,29 @@ Agent-specific provenance (when `source_type` = `agent`):
 Vertical-specific, JSON Schema per vertical (see [verticals/](../verticals/)).
 `vertical` + `schema_version` required.
 
+**Side-by-side vertical versions (v1.4, LEP-0016).** A receiver may serve
+more than one version of a vertical; it lists each as its own
+`verticals[{id, schema_version}]` entry in capabilities (§8). A frozen
+earlier version ships as `verticals/archive/{id}-{schema_version}.json`.
+
+- A receiver that advertises two versions of one vertical MUST validate
+  each `lead`, `call`, or `post` against the version its
+  `attributes.schema_version` names.
+- It MUST refuse a version it does not advertise with `LCP-100`,
+  `field` = `attributes.schema_version`.
+- A `ping` validates the same way. A ping whose `attributes` omit
+  `schema_version` is read as the receiver's current version.
+- A receiver keeps the earlier version for at least 180 days after it first
+  advertises the new one, and stops advertising it once its per-sender
+  traffic reaches zero, or after that window with notice. A receiver MAY
+  normalise an earlier version at intake, but MUST NOT assume a currency to
+  do it: it uses the sender's configured market currency and refuses the
+  normalisation when none is configured.
+
+`mortgage` 2.0.0 is the first vertical served this way: its
+applicant-declared amounts are bounded whole units of `amount_currency`,
+and 1.0.0 (`*_cents`) is frozen in the archive.
+
 Every field in a vertical schema MUST be tagged `ping_safe: true` or
 `ping_safe: false`. The conformance runner (L2/L3) mechanically rejects
 any `ping` payload containing a non-`ping_safe` field. This closes the

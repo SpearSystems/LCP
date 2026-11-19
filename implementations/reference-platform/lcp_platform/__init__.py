@@ -29,7 +29,7 @@ __all__ = [
     "PublisherNormalizer",
     "RequestError",
 ]
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 
 def __getattr__(name: str) -> Any:

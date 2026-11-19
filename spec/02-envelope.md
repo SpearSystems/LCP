@@ -223,7 +223,7 @@ message can fail multiple field validations.
 | `errors` | array\<error\> | Zero or more error objects (see §5). |
 | `lead_id` | string | Assigned lead ID, if applicable. |
 | `request_id` | string | Server-side request ID for tracing. |
-| `rejection_reason` | string | Structured reason the lead was refused or not bought (open enum: `invalid_phone`, `duplicate`, `out_of_geography`, `credit_too_low`, `already_customer`, `compliance_fail`, `capacity_exceeded`, `no_buyer`, etc.). Enables publisher automation. |
+| `rejection_reason` | string | Structured reason the lead was refused or not bought (open enum: `invalid_phone`, `duplicate`, `out_of_geography`, `credit_too_low`, `already_customer`, `compliance_fail`, `capacity_exceeded`, `no_buyer`, `buyer_unconfirmed` (v1.4, LEP-0015), etc.). Enables publisher automation. |
 | `disposition` | object | v1.3 (LEP-0012 §1). The commercial result of an acknowledged `lead` or `post`; see below. |
 
 **Sale disposition (v1.3, LEP-0012).** `disposition.outcome` is `sold`,

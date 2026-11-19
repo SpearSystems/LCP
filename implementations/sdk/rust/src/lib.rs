@@ -276,6 +276,15 @@ mod tests {
     }
 
     #[test]
+    fn schema_lookup_never_matches_a_name_suffix() {
+        let mut schemas = std::collections::HashMap::new();
+        schemas.insert("schemas/buyer-mapping.json".to_string(), serde_json::json!({"required": ["format_version"]}));
+        let validator = SchemaValidator::new(schemas);
+        let error = validator.validate("schemas/ping.json", &serde_json::json!({})).unwrap_err();
+        assert!(error.to_string().contains("unknown LCP schema"), "{error}");
+    }
+
+    #[test]
     fn shared_hmac_vector() {
         let body = b"{\"hello\":\"world\"}";
         let signature = sign_hmac("sdk-shared-secret", "2026-08-15T10:20:00Z", Some("sdk-vector-001"), body);
@@ -287,7 +296,7 @@ mod tests {
     fn full_schema_vector() {
         use std::collections::HashMap;
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let root = format!("../../../{directory}");
             for entry in std::fs::read_dir(&root).unwrap() {
                 let path = entry.unwrap().path();
@@ -312,7 +321,7 @@ mod tests {
         use std::path::Path;
         let root = Path::new("../../..");
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let dir = root.join(directory);
             for entry in std::fs::read_dir(&dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -371,7 +380,7 @@ mod tests {
         assert!(!json.contains("currency"), "optional currency must be omitted: {json}");
 
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let root = format!("../../../{directory}");
             for entry in std::fs::read_dir(&root).unwrap() {
                 let path = entry.unwrap().path();

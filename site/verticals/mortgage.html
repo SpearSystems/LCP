@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="verticals/mortgage.json">
-<meta name="lcp-build" content="27abea4b68c4">
+<meta name="lcp-build" content="5de19378aae2">
 <title>LCP Mortgage Vertical Schema — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -17,18 +17,19 @@
 <main>
 <article>
 <h1 id="schema">LCP Mortgage Vertical Schema</h1>
-<p><code>https://lcp.dev/verticals/mortgage.json</code> · Mortgage lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
+<p><code>https://lcp.dev/verticals/mortgage.json</code> · Mortgage lead attributes (LEP-0016, 2.0.0). Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts (loan_amount, property_value, annual_income, cash_out_amount) are bounded whole units of amount_currency; the bands are read in the same currency. Version 1.0.0 is frozen at verticals/archive/mortgage-1.0.0.json; a receiver that advertises both validates each lead against the schema_version it names (SPEC §3). Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.</p>
 <h2 id="properties">Top-level properties</h2>
 <table>
 <thead>
 <tr><th>Property</th><th>Type</th><th>PII class</th><th>Ping-safe</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
+<tr><td><code>amount_currency</code></td><td><code>string</code></td><td><code>public</code></td><td>yes</td><td></td><td>ISO 4217 currency of every applicant-declared amount (loan_amount, property_value, annual_income, cash_out_amount), which are whole units of this currency. Required when any amount is present. Named amount_currency because core schemas own currency (SPEC §12).</td></tr>
+<tr><td><code>annual_income</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Annual income in whole units of amount_currency. Not cents. PII-adjacent — not ping_safe.</td></tr>
 <tr><td><code>annual_income_band</code></td><td>enum (<code>"under_40k"</code>, <code>"40k_60k"</code>, <code>"60k_80k"</code>, <code>"80k_100k"</code>, <code>"100k_150k"</code>, <code>"over_150k"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
-<tr><td><code>annual_income_cents</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Annual income. PII-adjacent — not ping_safe.</td></tr>
 <tr><td><code>bankruptcy_history</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Has the consumer filed for bankruptcy? Sensitive financial data; post-only.</td></tr>
+<tr><td><code>cash_out_amount</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Cash-out amount for a cash-out refinance, in whole units of amount_currency. Not cents. Not ping_safe.</td></tr>
 <tr><td><code>cash_out_amount_band</code></td><td>enum (<code>"none"</code>, <code>"under_25k"</code>, <code>"25k_50k"</code>, <code>"50k_100k"</code>, <code>"over_100k"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
-<tr><td><code>cash_out_amount_cents</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Cash-out amount for cash-out refinance. Not ping_safe.</td></tr>
 <tr><td><code>credit_rating_band</code></td><td>enum (<code>"excellent"</code>, <code>"good"</code>, <code>"fair"</code>, <code>"poor"</code>, <code>"unknown"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td>Credit classification is sensitive financial data; post-only.</td></tr>
 <tr><td><code>current_lender</code></td><td><code>string</code></td><td><code>internal</code></td><td>no</td><td></td><td>Current mortgage lender (refinance context). Company name — not ping_safe.</td></tr>
 <tr><td><code>desired_rate_term</code></td><td>enum (<code>"15_year_fixed"</code>, <code>"20_year_fixed"</code>, <code>"30_year_fixed"</code>, <code>"5_1_arm"</code>, <code>"7_1_arm"</code>, <code>"10_1_arm"</code>, <code>"interest_only"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Desired mortgage rate term.</td></tr>
@@ -37,8 +38,8 @@
 <tr><td><code>foreclosure_history</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Has the consumer had a foreclosure? Sensitive financial data; post-only.</td></tr>
 <tr><td><code>has_existing_mortgage</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
 <tr><td><code>is_first_home_buyer</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>loan_amount</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Requested loan amount in whole units of amount_currency, as the applicant entered it (350000 = $350,000). Not cents. Values outside 1000-100000000 are refused.</td></tr>
 <tr><td><code>loan_amount_band</code></td><td>enum (<code>"under_100k"</code>, <code>"100k_250k"</code>, <code>"250k_500k"</code>, <code>"500k_750k"</code>, <code>"750k_1m"</code>, <code>"over_1m"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Banded loan amount for ping use.</td></tr>
-<tr><td><code>loan_amount_cents</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Exact loan amount in cents. PII-adjacent — not ping_safe.</td></tr>
 <tr><td><code>loan_term_band</code></td><td>enum (<code>"under_15"</code>, <code>"15"</code>, <code>"20"</code>, <code>"30"</code>, <code>"over_30"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Banded loan term.</td></tr>
 <tr><td><code>loan_term_years</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Exact loan term in years. Not ping_safe.</td></tr>
 <tr><td><code>loan_type</code></td><td>enum (<code>"purchase"</code>, <code>"refinance"</code>, <code>"cash_out_refinance"</code>, <code>"debt_consolidation"</code>, <code>"first_home_buyer"</code>, <code>"investment"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
@@ -47,9 +48,9 @@
 <tr><td><code>mortgage_purpose</code></td><td>enum (<code>"new_mortgage"</code>, <code>"remortgage"</code>, <code>"equity_release"</code>, <code>"debt_consolidation"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
 <tr><td><code>property_address</code></td><td><code>string</code></td><td><code>contact</code></td><td>no</td><td></td><td>Full property address. PII — never in ping.</td></tr>
 <tr><td><code>property_type</code></td><td>enum (<code>"single_family"</code>, <code>"condo"</code>, <code>"townhouse"</code>, <code>"multi_family"</code>, <code>"investment_property"</code>, <code>"land"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>property_value</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Estimated property value in whole units of amount_currency. Not cents. Not ping_safe — could narrow identity.</td></tr>
 <tr><td><code>property_value_band</code></td><td>enum (<code>"under_200k"</code>, <code>"200k_400k"</code>, <code>"400k_600k"</code>, <code>"600k_800k"</code>, <code>"800k_1m"</code>, <code>"over_1m"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
-<tr><td><code>property_value_cents</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Estimated property value. Not ping_safe — could narrow identity.</td></tr>
-<tr><td><code>schema_version</code></td><td>const <code>"1.0.0"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
+<tr><td><code>schema_version</code></td><td>const <code>"2.0.0"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
 <tr><td><code>self_employed_income_verified</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>For self-employed leads, whether income has been verified; sensitive financial data, post-only.</td></tr>
 <tr><td><code>vertical</code></td><td>const <code>"mortgage"</code></td><td><code>public</code></td><td>—</td><td>yes</td><td></td></tr>
 <tr><td><code>veteran_status</code></td><td>enum (<code>"veteran"</code>, <code>"active_duty"</code>, <code>"reservist"</code>, <code>"non_veteran"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td>Veteran or military status is sensitive eligibility data; post-only.</td></tr>
@@ -60,7 +61,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lcp.dev/verticals/mortgage.json",
   "title": "LCP Mortgage Vertical Schema",
-  "description": "Mortgage lead attributes. Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
+  "description": "Mortgage lead attributes (LEP-0016, 2.0.0). Every field is tagged ping_safe: true|false — the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts (loan_amount, property_value, annual_income, cash_out_amount) are bounded whole units of amount_currency; the bands are read in the same currency. Version 1.0.0 is frozen at verticals/archive/mortgage-1.0.0.json; a receiver that advertises both validates each lead against the schema_version it names (SPEC §3). Created by Spear Systems (a Spear company). Open standard — Apache 2.0, free to implement.",
   "type": "object",
   "required": [
     "vertical",
@@ -75,7 +76,14 @@
     "schema_version": {
       "x-lcp-pii": "public",
       "type": "string",
-      "const": "1.0.0"
+      "const": "2.0.0"
+    },
+    "amount_currency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency of every applicant-declared amount (loan_amount, property_value, annual_income, cash_out_amount), which are whole units of this currency. Required when any amount is present. Named amount_currency because core schemas own currency (SPEC §12).",
+      "ping_safe": true
     },
     "loan_type": {
       "x-lcp-pii": "public",
@@ -90,11 +98,12 @@
       ],
       "ping_safe": true
     },
-    "loan_amount_cents": {
+    "loan_amount": {
       "x-lcp-pii": "restricted",
       "type": "integer",
-      "minimum": 0,
-      "description": "Exact loan amount in cents. PII-adjacent — not ping_safe.",
+      "minimum": 1000,
+      "maximum": 100000000,
+      "description": "Requested loan amount in whole units of amount_currency, as the applicant entered it (350000 = $350,000). Not cents. Values outside 1000-100000000 are refused.",
       "ping_safe": false
     },
     "loan_amount_band": {
@@ -124,11 +133,12 @@
       ],
       "ping_safe": true
     },
-    "property_value_cents": {
+    "property_value": {
       "x-lcp-pii": "restricted",
       "type": "integer",
-      "minimum": 0,
-      "description": "Estimated property value. Not ping_safe — could narrow identity.",
+      "minimum": 1000,
+      "maximum": 1000000000,
+      "description": "Estimated property value in whole units of amount_currency. Not cents. Not ping_safe — could narrow identity.",
       "ping_safe": false
     },
     "property_value_band": {
@@ -183,11 +193,12 @@
       ],
       "ping_safe": true
     },
-    "annual_income_cents": {
+    "annual_income": {
       "x-lcp-pii": "restricted",
       "type": "integer",
       "minimum": 0,
-      "description": "Annual income. PII-adjacent — not ping_safe.",
+      "maximum": 100000000,
+      "description": "Annual income in whole units of amount_currency. Not cents. PII-adjacent — not ping_safe.",
       "ping_safe": false
     },
     "annual_income_band": {
@@ -287,11 +298,12 @@
       "description": "Banded loan term.",
       "ping_safe": true
     },
-    "cash_out_amount_cents": {
+    "cash_out_amount": {
       "x-lcp-pii": "restricted",
       "type": "integer",
       "minimum": 0,
-      "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
+      "maximum": 100000000,
+      "description": "Cash-out amount for a cash-out refinance, in whole units of amount_currency. Not cents. Not ping_safe.",
       "ping_safe": false
     },
     "cash_out_amount_band": {
@@ -413,6 +425,20 @@
       "ping_safe": true
     }
   },
+  "dependentRequired": {
+    "loan_amount": [
+      "amount_currency"
+    ],
+    "property_value": [
+      "amount_currency"
+    ],
+    "annual_income": [
+      "amount_currency"
+    ],
+    "cash_out_amount": [
+      "amount_currency"
+    ]
+  },
   "additionalProperties": false
 }
 </code></pre>
@@ -426,7 +452,7 @@
 </aside>
 </div>
 <footer class="page">
-Source: <code>verticals/mortgage.json</code> · build <code>27abea4b68c4</code> ·
+Source: <code>verticals/mortgage.json</code> · build <code>5de19378aae2</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

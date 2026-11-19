@@ -71,7 +71,7 @@ fn version_string_membership_parses_full_semver() {
 fn slot_round_trip_and_capability_gate() {
     let root = repo_root();
     let mut schemas = std::collections::HashMap::new();
-    for directory in ["schemas", "verticals"] {
+    for directory in ["schemas", "verticals", "verticals/archive"] {
         let dir = root.join(directory);
         for entry in std::fs::read_dir(&dir).unwrap() {
             let path = entry.unwrap().path();

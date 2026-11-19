@@ -110,7 +110,7 @@ func validateEnvelopeVerticalPolicy(schemas map[string][]byte, messageType strin
 	if vertical == "" {
 		return nil
 	}
-	schemaName := "verticals/" + vertical + ".json"
+	schemaName := verticalSchemaName(schemas, vertical, attributes)
 	schemaRaw, ok := schemas[schemaName]
 	if !ok {
 		return fmt.Errorf("vertical schema %q not found", vertical)
@@ -150,6 +150,20 @@ func validateEnvelopeVerticalPolicy(schemas map[string][]byte, messageType strin
 	return nil
 }
 
+// verticalSchemaName picks the schema for the version the attributes name
+// (LEP-0016). A frozen earlier version is verticals/archive/{id}-{version}.json
+// and wins when the bundle has it; otherwise the current file applies, so an
+// unknown version fails its schema_version const.
+func verticalSchemaName(schemas map[string][]byte, vertical string, attributes map[string]any) string {
+	if version, ok := attributes["schema_version"].(string); ok {
+		archived := "verticals/archive/" + vertical + "-" + version + ".json"
+		if _, exists := schemas[archived]; exists {
+			return archived
+		}
+	}
+	return "verticals/" + vertical + ".json"
+}
+
 func validatePingSafeFields(value map[string]any, schema map[string]any, path string) error {
 	properties, _ := schema["properties"].(map[string]any)
 	for field, child := range value {
@@ -178,5 +192,7 @@ func ValidateOffer(schemas map[string][]byte, offer []byte) error {
 
 // ValidateVertical validates a vertical-specific attributes object.
 func ValidateVertical(vertical string, schemas map[string][]byte, attributes []byte) error {
-	return ValidateSchemaBundle("verticals/"+vertical+".json", schemas, attributes)
+	var decoded map[string]any
+	_ = json.Unmarshal(attributes, &decoded)
+	return ValidateSchemaBundle(verticalSchemaName(schemas, vertical, decoded), schemas, attributes)
 }

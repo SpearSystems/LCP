@@ -8,18 +8,19 @@ carry **zero** vertical-specific fields. A vertical is a typed extension block �
 [`verticals/`](../verticals/), and only fields that schema tags `ping_safe: true`
 may appear in `attributes` (SPEC §3 `attributes`, §6).
 
-Six vertical schemas ship in this repository. They are examples of the
+Seven vertical schemas ship in this repository. They are examples of the
 extension mechanism, not capabilities of the protocol — a platform may ship
 none of them and still conform.
 
 | Vertical id | Covers |
 |---|---|
-| `mortgage` | Loan purpose and product, property and value, credit and employment, country-scoped product enums |
+| `mortgage` | Loan purpose and product, property and value, credit and employment, country-scoped product enums. 2.0.0 (LEP-0016): whole-unit amounts in `amount_currency`; 1.0.0 is frozen in `verticals/archive/` |
 | `insurance` | Product and coverage, deductible and claim history, driver/vehicle bands |
 | `solar` | System size and roof, ownership and utility, bill band, storage interest |
 | `legal` | Case type, incident timing and state, representation, injury and fault bands |
 | `home_services` | Controlled service/subcategory taxonomy, project and urgency, property and budget bands |
 | `mva` | Motor-vehicle-accident bands; documents stay in attachments or the source system |
+| `personal_loans` | Short-term and installment loans (LEP-0014): whole-unit amounts in `amount_currency`, an LEP-0013 regulated identity container |
 
 ## What a vertical may and may not contain
 
@@ -57,6 +58,24 @@ The schema covers:
 The actual documents are never placed in `attributes` or `ping.attributes`.
 They are uploaded separately as described in [secure attachments](ATTACHMENTS.md)
 and referenced by attachment metadata only.
+
+## Versions side by side
+
+A breaking revision of a vertical ships as a new major `schema_version` in
+`verticals/<id>.json`, and the previous file moves unchanged (apart from its
+`$id` and a `deprecated: true` annotation) to
+`verticals/archive/<id>-<version>.json`. A receiver validates each message
+against the version its `attributes.schema_version` names, lists each served
+version in capabilities, and refuses an unserved one with `LCP-100` on
+`attributes.schema_version` (SPEC §3, LEP-0016). Every SDK bundles the archive
+and picks the archived schema when a message names that version.
+
+Migrating a `mortgage` sender from 1.0.0 to 2.0.0 is one edit: rename
+`loan_amount_cents`, `property_value_cents`, `annual_income_cents` and
+`cash_out_amount_cents` to `loan_amount`, `property_value`, `annual_income`
+and `cash_out_amount`, drop the ×100 conversion, add `amount_currency`, and
+set `schema_version` to `2.0.0`. A receiver keeps 1.0.0 for at least 180 days
+after it first advertises 2.0.0.
 
 ## Adding a vertical
 

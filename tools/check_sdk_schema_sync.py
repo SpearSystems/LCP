@@ -39,7 +39,7 @@ REQUIRED_MODELS = ("Lead", "Call", "Ping", "Post", "Bid", "Ack", "Event", "Offer
 
 # See tools/generate_sdk_models.NON_MESSAGE_SCHEMAS: read-surface schemas are
 # excluded from the SDK bundle/manifest just like the generator excludes them.
-NON_MESSAGE_SCHEMAS = frozenset({"history-request-row.json"})
+NON_MESSAGE_SCHEMAS = frozenset({"buyer-mapping.json", "history-request-row.json"})
 
 
 def expected_manifest() -> dict[str, object]:
@@ -50,6 +50,8 @@ def expected_manifest() -> dict[str, object]:
             if path.name not in NON_MESSAGE_SCHEMAS
         ]
         + list((ROOT / "verticals").glob("*.json"))
+        # LEP-0016: frozen earlier vertical versions ship beside the current one.
+        + list((ROOT / "verticals").glob("archive/*.json"))
     )
     return {
         "protocol_version": "1.0.0",
@@ -145,6 +147,7 @@ def main() -> int:
                         if path.name not in NON_MESSAGE_SCHEMAS
                     ),
                     *(ROOT / "verticals").glob("*.json"),
+                    *(ROOT / "verticals").glob("archive/*.json"),
                 ]
             ):
                 loose = sdk / "lcp_sdk" / src.relative_to(ROOT)

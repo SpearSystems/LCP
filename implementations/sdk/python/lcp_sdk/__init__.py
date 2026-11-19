@@ -40,4 +40,4 @@ __all__ = [
     "verify_http_request",
 ]
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"

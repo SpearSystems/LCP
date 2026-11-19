@@ -1026,12 +1026,33 @@ class SchemaValidator:
         self._offer = Draft202012Validator(
             self._load("offer"), registry=registry, format_checker=format_checker
         )
+        # LEP-0015: a platform document an operator uploads, not a message.
+        self._buyer_mapping = Draft202012Validator(
+            self._load("buyer-mapping"), format_checker=format_checker
+        )
+        # LEP-0016: one validator per (vertical, schema_version). The current
+        # file of each vertical is keyed by id as before; frozen earlier
+        # versions under verticals/archive/ are served side by side, and every
+        # loaded version is advertised (capabilities) and accepted.
         self._vertical_validators: dict[str, Draft202012Validator] = {}
-        for path in sorted(self.vertical_root.glob("*.json")):
+        self._vertical_versions: dict[tuple[str, str], Draft202012Validator] = {}
+        self._vertical_paths: dict[tuple[str, str], str] = {}
+        for path in sorted(self.vertical_root.glob("*.json")) + sorted(
+            self.vertical_root.glob("archive/*.json")
+        ):
             with path.open(encoding="utf-8") as handle:
-                self._vertical_validators[path.stem] = Draft202012Validator(
+                validator = Draft202012Validator(
                     json.load(handle), format_checker=format_checker
                 )
+            properties = validator.schema.get("properties", {})
+            vertical = properties.get("vertical", {}).get("const", path.stem)
+            version = properties.get("schema_version", {}).get("const", "1.0.0")
+            if path.parent == self.vertical_root:
+                self._vertical_validators[vertical] = validator
+            self._vertical_versions[(vertical, version)] = validator
+            self._vertical_paths[(vertical, version)] = str(
+                path.relative_to(self.vertical_root.parent)
+            )
         # D9/LEP-0011: refuse to start on a schema set that cannot be
         # classified, before any message arrives. `require_pii_classes` keeps
         # the walk available to a deployment loading its own extension schema
@@ -1046,8 +1067,8 @@ class SchemaValidator:
             for name, validator in sorted(self._validators.items())
         )
         documents.extend(
-            ("vertical", f"verticals/{name}.json", _schema_of(validator))
-            for name, validator in sorted(self._vertical_validators.items())
+            ("vertical", self._vertical_paths[key], _schema_of(validator))
+            for key, validator in sorted(self._vertical_versions.items())
         )
         self.require_pii_classes(documents)
 
@@ -1075,6 +1096,51 @@ class SchemaValidator:
             return frozenset()
         document = _schema_of(validator)
         return frozenset(document.get("properties", {}))
+
+    def buyer_mapping_errors(self, document: Any) -> list[str]:
+        """Schema errors for an LEP-0015 buyer mapping document."""
+        return [self._format(error) for error in self._buyer_mapping.iter_errors(document)]
+
+    def vertical_schema(self, vertical: str, version: str) -> dict[str, Any] | None:
+        """The schema document for one served (vertical, schema_version)."""
+        validator = self._vertical_versions.get((vertical, version))
+        return _schema_of(validator) if validator is not None else None
+
+    def vertical_versions(self) -> list[tuple[str, str]]:
+        """Every (vertical, schema_version) this validator accepts."""
+        return sorted(self._vertical_versions)
+
+    def vertical_version_error(
+        self, payload: dict[str, Any], *, message_type: str
+    ) -> str | None:
+        """LEP-0016 §3: refuse a vertical version this receiver does not serve.
+
+        A lead names its version in ``attributes.schema_version`` and is
+        validated against exactly that version. A ping that omits it is read
+        as the current version. Only a string naming a known vertical but an
+        unknown version is refused here; a missing or mistyped value is left
+        to the schema, which reports it on the same field.
+        """
+        attributes = payload.get("attributes")
+        if not isinstance(attributes, dict):
+            return None
+        vertical = (
+            payload.get("vertical") if message_type == "ping" else attributes.get("vertical")
+        )
+        version = attributes.get("schema_version")
+        if (
+            not isinstance(vertical, str)
+            or vertical not in self._vertical_validators
+            or not isinstance(version, str)
+            or (vertical, version) in self._vertical_versions
+        ):
+            return None
+        served = sorted(v for name, v in self._vertical_versions if name == vertical)
+        return (
+            f"attributes.schema_version {version!r} is not an advertised version "
+            f"of vertical {vertical!r} (advertised: {', '.join(served)}) "
+            "at attributes/schema_version"
+        )
 
     @staticmethod
     def _format(error: Any) -> str:
@@ -1142,6 +1208,12 @@ class SchemaValidator:
         validator = self._vertical_validators.get(vertical)
         if validator is None:
             return [f"vertical schema '{vertical}' was not found"]
+        version_error = self.vertical_version_error(payload, message_type=message_type)
+        if version_error:
+            return [version_error]
+        version = attributes.get("schema_version")
+        if isinstance(version, str):
+            validator = self._vertical_versions[(vertical, version)]
 
         vertical_attributes = dict(attributes)
         if message_type == "ping":

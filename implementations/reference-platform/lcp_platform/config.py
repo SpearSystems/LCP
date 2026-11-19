@@ -116,6 +116,15 @@ class PlatformConfig:
     feature_sale_disposition: bool = False
     feature_url_postbacks: bool = False
     feature_test_outcomes: bool = False
+    # LEP-0015 (v1.4): buyer delivery mapping. OFF by default. On, a post to
+    # a buyer with an active mapping is rendered by the mapping and the
+    # buyer's response decides the payable; a post to a buyer declaring
+    # lcp_versions 1.3.0 has its ack disposition read. Off, every buyer gets
+    # the LCP envelope at webhook_url exactly as in v1.3. Mapping secrets are
+    # read from LCP_BUYER_SECRET_<NAME> at send time. Enabling it adds egress
+    # to buyer hosts: docs/DECISIONS-v1.4.md D3 requires a named security and
+    # privacy sign-off before a deployment turns it on.
+    feature_buyer_mapping: bool = False
     # The entry-surface declaration: sender ids whose leads arrive through an
     # email/form relay. Only these can receive a platform-recorded entry, so an
     # empty list keeps intake bit-for-bit v1.2 whatever the flag says.
@@ -323,6 +332,7 @@ class PlatformConfig:
             feature_sale_disposition=_bool("LCP_FEATURE_SALE_DISPOSITION", False),
             feature_url_postbacks=_bool("LCP_FEATURE_URL_POSTBACKS", False),
             feature_test_outcomes=_bool("LCP_FEATURE_TEST_OUTCOMES", False),
+            feature_buyer_mapping=_bool("LCP_FEATURE_BUYER_MAPPING", False),
             email_form_publisher_ids=_csv("LCP_EMAIL_FORM_PUBLISHER_IDS"),
             event_cursor_ttl_seconds=int(
                 os.environ.get("LCP_EVENT_CURSOR_TTL_SECONDS", "86400")

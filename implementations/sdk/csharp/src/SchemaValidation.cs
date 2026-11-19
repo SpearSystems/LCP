@@ -94,7 +94,8 @@ public sealed class LcpSchemaValidator
             ? payload["vertical"]?.GetValue<string>()
             : attributes["vertical"]?.GetValue<string>();
         if (string.IsNullOrWhiteSpace(vertical)) return;
-        if (!documents.TryGetValue(Normalize($"verticals/{vertical}.json"), out var schema))
+        var schemaName = VerticalSchemaName(vertical, attributes);
+        if (!documents.TryGetValue(Normalize(schemaName), out var schema))
             throw new KeyNotFoundException($"Vertical schema '{vertical}' not found");
         var verticalAttributes = JsonNode.Parse(attributes.ToJsonString())!.AsObject();
         if (type == "ping")
@@ -102,7 +103,7 @@ public sealed class LcpSchemaValidator
             verticalAttributes["vertical"] ??= vertical;
             verticalAttributes["schema_version"] ??= schema["properties"]?["schema_version"]?["const"]?.DeepClone();
         }
-        Validate($"verticals/{vertical}.json", verticalAttributes);
+        Validate(schemaName, verticalAttributes);
         if (type == "ping") ValidatePingSafe(vertical, attributes, schema, "attributes");
     }
 
@@ -123,7 +124,25 @@ public sealed class LcpSchemaValidator
 
     public void ValidateOffer(JsonNode offer) => Validate("schemas/offer.json", offer);
 
-    public void ValidateVertical(string vertical, JsonNode attributes) => Validate($"verticals/{vertical}.json", attributes);
+    public void ValidateVertical(string vertical, JsonNode attributes) => Validate(VerticalSchemaName(vertical, attributes), attributes);
+
+    /// <summary>
+    /// LEP-0016: the schema for the version the attributes name. A frozen earlier
+    /// version is <c>verticals/archive/{id}-{version}.json</c> and wins when
+    /// present; otherwise the current file applies, so an unknown version fails
+    /// its <c>schema_version</c> const.
+    /// </summary>
+    private string VerticalSchemaName(string vertical, JsonNode attributes)
+    {
+        if (attributes is JsonObject objectValue
+            && objectValue["schema_version"] is JsonValue version
+            && version.TryGetValue<string>(out var text))
+        {
+            var archived = $"verticals/archive/{vertical}-{text}.json";
+            if (schemas.ContainsKey(Normalize(archived))) return archived;
+        }
+        return $"verticals/{vertical}.json";
+    }
 
     private static string Normalize(string value) => value.Replace('\\', '/').TrimStart('/').Replace("schemas/", "", StringComparison.OrdinalIgnoreCase).Replace("verticals/", "vertical:", StringComparison.OrdinalIgnoreCase).Replace(".json", "", StringComparison.OrdinalIgnoreCase);
 }

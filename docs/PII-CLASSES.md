@@ -879,8 +879,10 @@ and the tags already in the tree show it. `insurance.json` declares
 `at_fault`, `has_attorney`, and `claim_status` non-ping-safe —
 `restricted`.
 `mortgage.json` declares `bankruptcy_history`, `foreclosure_history`,
-`veteran_status`, `credit_rating_band`, `annual_income_cents`, and
-`loan_amount_cents` non-ping-safe — `restricted` — while
+`veteran_status`, `credit_rating_band`, `annual_income`, and
+`loan_amount` non-ping-safe — `restricted` (2.0.0, LEP-0016, renamed from
+the 1.0.0 `*_cents` fields with no class change; its new `amount_currency`
+is `public` and ping-safe) — while
 `property_address` is `contact`: the first vertical attribute that is a
 plaintext contact value rather than a sensitive description.
 `mva.json` declares `fault_position`, `injury_severity_band`,

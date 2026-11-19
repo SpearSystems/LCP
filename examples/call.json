@@ -44,7 +44,7 @@
       },
       "attributes": {
         "vertical": "mortgage",
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "loan_type": "first_home_buyer",
         "loan_amount_band": "250k_500k",
         "property_type": "condo",

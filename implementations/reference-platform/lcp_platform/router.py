@@ -11,10 +11,13 @@ from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import parse_qs, quote, urlsplit
 from uuid import NAMESPACE_URL, uuid4, uuid5
+import copy
 import hashlib
+import os
 import re
 import httpx
 
+from . import buyer_mapping
 from .attachments import (
     AttachmentError,
     FileAttachmentStore,
@@ -56,6 +59,7 @@ from .messages import (
     build_ping,
     build_post,
     hash_negotiation_token,
+    minor_unit_exponent as _minor_unit_exponent,
     new_negotiation_token,
     pair_phone_hash,
     webhook_headers,
@@ -102,10 +106,13 @@ class RequestError(ValueError):
         code: str,
         status_code: int = 400,
         details: list[str] | dict[str, Any] | None = None,
+        *,
+        field: str | None = None,
     ):
         self.code = code
         self.status_code = status_code
         self.details = details
+        self.field = field
         super().__init__(message)
 
 
@@ -169,6 +176,15 @@ SALE_SYNC_ATTEMPTS = 3
 # How old a sale-result mark must be before the reconcile pass re-syncs it:
 # in-flight work (a state change, then its sync) finishes well inside this.
 SALE_RESULT_GRACE_SECONDS = 60
+# LEP-0015 §5: how long a buyer's pending result may wait for operator
+# reconciliation before it is final as REJECTED buyer_unconfirmed.
+# ponytail: one platform-wide window; per-mapping windows if buyers differ.
+BUYER_PENDING_FINAL_SECONDS = 86_400
+
+
+def _buyer_secret(name: str) -> str | None:
+    """LEP-0015 secrets by reference: resolved at send time, never stored."""
+    return os.environ.get(f"LCP_BUYER_SECRET_{name.upper()}")
 
 
 class RedactedEnvelopeError(ValueError):
@@ -251,44 +267,6 @@ _SDK_VERSION_PATH = Path(__file__).resolve().parents[3] / "SDK_VERSION"
 _FX_RATE_RE = re.compile(r"\A(?:[1-9][0-9]*\.[0-9]{6,12}|0\.[0-9]*[1-9][0-9]{5,11})\Z")
 _FX_RATE_MAX = Decimal(1_000_000)
 _FX_METADATA_FIELDS = BID_FX_FIELDS
-
-# LEP-0010 §4.2: ISO 4217 minor-unit exponents are load-bearing —
-# settlement_minor = native_minor × 10^(exp_settlement − exp_native) ÷ rate.
-# Only the currencies that differ from the ISO 4217 default of two are
-# enumerated; every other alpha-3 code resolves to two. Dividing minor units
-# without the exponent factor is the 100× USD→JPY overcharge the LEP forbids.
-_FX_MINOR_UNIT_EXPONENTS = {
-    **dict.fromkeys(
-        (
-            "BIF",
-            "CLP",
-            "DJF",
-            "GNF",
-            "ISK",
-            "JPY",
-            "KMF",
-            "KRW",
-            "PYG",
-            "RWF",
-            "UGX",
-            "UYI",
-            "VND",
-            "VUV",
-            "XAF",
-            "XOF",
-            "XPF",
-        ),
-        0,
-    ),
-    **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
-}
-_FX_DEFAULT_MINOR_UNIT_EXPONENT = 2
-
-
-def _minor_unit_exponent(currency: str) -> int:
-    """ISO 4217 minor-unit exponent for a validated alpha-3 code."""
-    return _FX_MINOR_UNIT_EXPONENTS.get(currency, _FX_DEFAULT_MINOR_UNIT_EXPONENT)
-
 
 def _format_payout(cents: int, currency: str) -> str:
     """LEP-0012 §4 ``{payout}``: signed major units at the ISO 4217 exponent."""
@@ -373,6 +351,79 @@ class Platform:
                 "version": mapping["version"],
             },
         )
+
+    # ─── Buyer delivery mappings (LEP-0015) ───────────────────────────────
+
+    def _egress_url_error(self, url: str) -> str | None:
+        try:
+            validate_webhook_url(url, self.config)
+        except SecurityPolicyError as exc:
+            return str(exc)
+        return None
+
+    def _buyer_mapping_errors(self, mapping: Any) -> list[str]:
+        return self.validator.buyer_mapping_errors(mapping) or buyer_mapping.check(
+            mapping,
+            vertical_schema=self.validator.vertical_schema,
+            url_error=self._egress_url_error,
+        )
+
+    def upsert_buyer_mapping(self, mapping: dict[str, Any]) -> None:
+        """Store one mapping version; refuse it whole if any check fails."""
+        errors = self._buyer_mapping_errors(mapping)
+        if errors:
+            raise RequestError("Buyer mapping refused", "LCP-100", details=errors)
+        self.store.upsert_buyer_mapping(mapping)
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="buyer_mapping.upsert",
+            resource_type="buyer_mapping",
+            resource_id=str(mapping["mapping_id"]),
+            metadata={
+                "buyer_id": mapping["buyer_id"],
+                "version": mapping["version"],
+                "active": mapping.get("active", True),
+            },
+        )
+
+    def list_buyer_mappings(self, buyer_id: str | None = None) -> list[dict[str, Any]]:
+        return self.store.list_buyer_mappings(buyer_id)
+
+    def deactivate_buyer_mapping(self, mapping_id: str, version: str | None = None) -> None:
+        if not self.store.deactivate_buyer_mapping(mapping_id, version):
+            raise RequestError("Buyer mapping not found", "LCP-003", 404)
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id="operator",
+            action="buyer_mapping.deactivate",
+            resource_type="buyer_mapping",
+            resource_id=mapping_id,
+            metadata={"version": version},
+        )
+
+    def _active_buyer_mapping(
+        self, buyer_id: str, post: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """The highest active mapping version for this post's vertical version."""
+        attributes = post["lcp"]["payload"].get("attributes") or {}
+        candidates = [
+            mapping
+            for mapping in self.store.list_buyer_mappings(buyer_id, active_only=True)
+            if mapping["vertical"] == attributes.get("vertical")
+            and attributes.get("schema_version") in mapping["schema_versions"]
+        ]
+        return max(candidates, key=lambda m: _semver_tuple(m["version"]), default=None)
+
+    def _native_post_version(self, buyer_id: str) -> str | None:
+        """LEP-0015 §7: post at 1.3.0 to a buyer that declares it, flag on."""
+        if not self.config.feature_buyer_mapping:
+            return None
+        for element in self.auth.lcp_versions_for(buyer_id):
+            match = _FULL_SEMVER_RE.match(str(element).strip())
+            if match and int(match.group(1)) == 1 and int(match.group(2)) >= 3:
+                return "1.3.0"
+        return None
 
     def normalize_publisher_record(
         self,
@@ -1000,10 +1051,9 @@ class Platform:
         if forced is None:
             # Owed = payable and disputed records. The reference platform
             # reports the buyer price as the payout (it takes no fee).
+            records = self.store.payable_for_lead(lead_id)
             owed_rows = [
-                record
-                for record in self.store.payable_for_lead(lead_id)
-                if record["status"] in {"payable", "disputed"}
+                record for record in records if record["status"] in {"payable", "disputed"}
             ]
             owed = sum(int(record["price_cents"]) for record in owed_rows)
             currencies |= {
@@ -1015,7 +1065,12 @@ class Platform:
             # It emits no money event (payout_cents is never 0), and because
             # a buyer took the lead it is never reported unsold either.
             sold_without_payout = bool(owed_rows)
-            reason = "no_buyer"
+            # LEP-0015 §5: a buyer that never confirmed is named as such.
+            reason = (
+                "buyer_unconfirmed"
+                if any(record["reason"] == "buyer_unconfirmed" for record in records)
+                else "no_buyer"
+            )
         else:
             outcome = str(forced["outcome"])
             owed = (
@@ -1081,7 +1136,9 @@ class Platform:
             row = self.store.get_lead(lead_id)
             try:
                 self._sync_sale_result(
-                    lead_id, final=row is not None and row["status"] == "EXPIRED"
+                    lead_id,
+                    final=row is not None
+                    and (row["status"] == "EXPIRED" or self._buyers_declined(lead_id)),
                 )
             except Exception:  # the mark stays; the next pass retries this lead
                 continue
@@ -2942,6 +2999,8 @@ class Platform:
         self._process_attachment_deletions()
         self._process_routing_jobs()
         self._process_deliveries()
+        if self.config.feature_buyer_mapping:
+            self._resolve_unconfirmed_buyer_results()
         # Before event fan-out, so a recovered sale event goes out this pass.
         self._reconcile_sale_results()
         self._process_event_subscriptions()
@@ -3017,6 +3076,7 @@ class Platform:
             duplicate_resubmission=self.store.has_prior_post_delivery(
                 lead_payload["lead_id"], offer["buyer_id"]
             ),
+            version=self._native_post_version(offer["buyer_id"]),
         )
         self.validator.require_valid_envelope(post)
         # Direct awards pass the SAME single write-time decision point as
@@ -3557,6 +3617,7 @@ class Platform:
                 fx=bid_fx_evidence(bid_payload, price_cents=int(bid["bid_price_cents"]))
                 if str(bid["currency"]).upper() != str(offer["currency"]).upper()
                 else None,
+                version=self._native_post_version(offer["buyer_id"]),
             )
             self.validator.require_valid_envelope(post)
             # LEP-0003 §5 item 1: the remaining-budget check and the post
@@ -3655,6 +3716,20 @@ class Platform:
                 last_error=error,
             )
             return
+        if delivery["kind"] == "post" and self.config.feature_buyer_mapping:
+            mapping = self._active_buyer_mapping(delivery["buyer_id"], envelope)
+            if mapping is not None:
+                self._deliver_mapped(delivery, envelope, mapping, attempts)
+                return
+        # LEP-0015 §7: a 1.3.0 post (sent only to a buyer that declares
+        # 1.3.0, flag on) has the buyer's ack read; everything else keeps the
+        # response unread.
+        native = (
+            delivery["kind"] == "post"
+            and self.config.feature_buyer_mapping
+            and _is_v13(envelope)
+        )
+        response_body: list[bytes] = []
         try:
             validate_webhook_url(delivery["webhook_url"], self.config)
             validate_egress_host(
@@ -3677,6 +3752,8 @@ class Platform:
                             raise SecurityPolicyError(
                                 "Webhook response exceeded the configured limit"
                             )
+                        if native:
+                            response_body.append(chunk)
                     response_status = response.status_code
             if response_status == 409 or 200 <= response_status < 300:
                 self.store.mark_delivery(
@@ -3687,14 +3764,25 @@ class Platform:
                     worker_id=self.worker_id,
                 )
                 if delivery["kind"] == "post":
-                    self._mark_post_delivered(delivery, envelope)
+                    result = (
+                        self._native_buyer_result(b"".join(response_body), envelope)
+                        if native and response_status != 409
+                        else None
+                    )
+                    if result is None:
+                        self._mark_post_delivered(delivery, envelope)
+                    else:
+                        self._apply_buyer_result(delivery, envelope, result, mapping=None)
                     self._queue_delivery_event(delivery, envelope)
                 return
             # Do not persist arbitrary buyer response bodies; they may contain PII.
             error = f"HTTP {response_status} from buyer webhook"
         except Exception as exc:  # delivery failures must enter the retry queue
             error = f"{type(exc).__name__}: {exc}"
+        self._retry_or_fail(delivery, attempts, error)
 
+    def _retry_or_fail(self, delivery: Any, attempts: int, error: str) -> None:
+        """Re-queue a failed delivery, or fail and dead-letter it when exhausted."""
         if attempts >= self.config.max_delivery_attempts:
             status = "FAILED"
             next_attempt = now_iso()
@@ -3719,6 +3807,307 @@ class Platform:
                 lead_id=delivery["lead_id"],
                 attempts=attempts,
                 last_error=error,
+            )
+
+    # ─── Buyer results (LEP-0015) ──────────────────────────────────────────
+
+    def _fail_mapped_delivery(
+        self, delivery: Any, mapping: dict[str, Any], attempts: int, target: str
+    ) -> None:
+        """LEP-0015 §6: stopped before any bytes; the key is kept, never the value."""
+        error = f"mapping_failed: {target}"
+        self.store.mark_delivery(
+            delivery["delivery_id"],
+            status="FAILED",
+            attempts=attempts,
+            next_attempt_at=now_iso(),
+            last_error=error,
+            worker_id=self.worker_id,
+        )
+        self.store.record_dead_letter(
+            queue_type="delivery",
+            resource_id=delivery["delivery_id"],
+            lead_id=delivery["lead_id"],
+            attempts=attempts,
+            last_error=error,
+        )
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id=self.config.platform_id,
+            action="buyer_mapping.failed",
+            resource_type="delivery",
+            resource_id=delivery["delivery_id"],
+            metadata={
+                "mapping_id": mapping["mapping_id"],
+                "version": mapping["version"],
+                "target": target,
+            },
+        )
+
+    def _deliver_mapped(
+        self, delivery: Any, post: dict[str, Any], mapping: dict[str, Any], attempts: int
+    ) -> None:
+        """LEP-0015: render, send once, decode, then settle the buyer result."""
+        try:
+            if self._buyer_mapping_errors(mapping):
+                # §Privacy: the upsert checks run again at send, fail closed.
+                raise buyer_mapping.MappingFailure("mapping", "fails its upsert checks")
+            request = buyer_mapping.render(mapping, post, secret_for=_buyer_secret)
+        except buyer_mapping.MappingFailure as exc:
+            self._fail_mapped_delivery(delivery, mapping, attempts, exc.target)
+            return
+        if request is None:
+            # §4: a test post with no test_url is never delivered anywhere.
+            self.store.mark_delivery(
+                delivery["delivery_id"],
+                status="FAILED",
+                attempts=attempts,
+                next_attempt_at=now_iso(),
+                last_error="test post not delivered: mapping has no test_url",
+                worker_id=self.worker_id,
+            )
+            self._apply_buyer_result(
+                delivery, post, {"outcome": "unsold", "rule": "test_not_delivered"}, mapping
+            )
+            return
+        limit = min(
+            int(mapping["response"].get("max_bytes", 65536)),
+            self.config.max_webhook_response_bytes,
+        )
+        idempotent = "idempotency" in mapping["request"]
+        status: int | None = None
+        body: bytes | None = None
+        sent = False
+        error: str | None = None
+        try:
+            validate_webhook_url(request.url, self.config)
+            validate_egress_host(urlsplit(request.url).hostname or "", self.config)
+            with httpx.Client(
+                timeout=int(mapping["request"].get("timeout_ms", 10000)) / 1000,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                with client.stream(
+                    "POST", request.url, content=request.body, headers=request.headers
+                ) as response:
+                    status = response.status_code
+                    chunks: list[bytes] | None = []
+                    size = 0
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        if size > limit:
+                            chunks = None  # §5: an over-limit body is undecodable
+                            break
+                        chunks.append(chunk)
+                    body = b"".join(chunks) if chunks is not None else None
+        except (httpx.ConnectError, httpx.ConnectTimeout, SecurityPolicyError) as exc:
+            error = f"{type(exc).__name__}: {exc}"  # nothing was sent
+        except Exception as exc:  # after connect: the buyer may have it
+            error = f"{type(exc).__name__}: {exc}"
+            sent = True
+        retry_status = status is not None and status in mapping["response"].get(
+            "retry_on_status", []
+        )
+        if retry_status and idempotent:
+            error = f"HTTP {status} from buyer"
+        if error is not None:
+            exhausted = attempts >= self.config.max_delivery_attempts
+            if not sent or (idempotent and not (exhausted and status is None)):
+                # §4: re-send only what cannot double-sell.
+                self._retry_or_fail(delivery, attempts, error)
+                return
+            result: dict[str, Any] = {"outcome": "pending", "rule": "ambiguous"}
+        else:
+            assert status is not None
+            result = buyer_mapping.decode(
+                mapping, status, body, currency=str(post["lcp"]["payload"]["currency"])
+            )
+        self.store.mark_delivery(
+            delivery["delivery_id"],
+            status="DELIVERED",
+            attempts=attempts,
+            next_attempt_at=now_iso(),
+            worker_id=self.worker_id,
+        )
+        self._apply_buyer_result(delivery, post, result, mapping)
+
+    def _native_buyer_result(
+        self, body: bytes, post: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """LEP-0015 §7: a valid ack's status, rejection_reason and disposition.
+
+        ``None`` (no valid ack for this post) keeps today's 2xx behaviour.
+        The disposition's redirect_url is never kept.
+        """
+        try:
+            ack = json.loads(body)
+        except ValueError:
+            return None
+        if not isinstance(ack, dict) or self.validator.validate_envelope(ack):
+            return None
+        if ack["lcp"]["message"]["type"] != "ack":
+            return None
+        payload = ack["lcp"]["payload"]
+        if payload.get("original_message_id") != post["lcp"]["message"]["id"]:
+            return None
+        currency = post["lcp"]["payload"].get("currency")
+        reason = payload.get("rejection_reason")
+        disposition = payload.get("disposition")
+        if not isinstance(disposition, dict):
+            if payload.get("status") == "REJECTED":
+                return {"outcome": "unsold", "rule": "native", "rejection_reason": reason}
+            return None
+        outcome = disposition["outcome"]
+        if outcome == "sold":
+            if disposition.get("currency") != currency:
+                return {"outcome": "pending", "rule": "native_currency_mismatch"}
+            return {"outcome": "sold", "rule": "native", "price_cents": int(disposition["payout_cents"])}
+        if outcome == "pending":
+            return {"outcome": "pending", "rule": "native"}
+        result = {"outcome": outcome, "rule": "native"}
+        if reason:
+            result["rejection_reason"] = reason
+        return result
+
+    def _apply_buyer_result(
+        self,
+        delivery: Any,
+        post: dict[str, Any],
+        result: dict[str, Any],
+        mapping: dict[str, Any] | None,
+    ) -> None:
+        """Settle one buyer result into the payable and the sender's sale result.
+
+        Money is never invented: sold pays the decoded price, else the posted
+        one; pending waits for reconciliation; a price_rejected is a counter
+        re-post or unsold, never forwarded to the sender as-is (§8).
+        """
+        lead_id = delivery["lead_id"]
+        self.store.record_buyer_result(
+            message_id=str(post["lcp"]["message"]["id"]),
+            delivery_id=delivery["delivery_id"],
+            lead_id=lead_id,
+            buyer_id=delivery["buyer_id"],
+            mapping=mapping,
+            result=result,
+        )
+        offer = self.store.get_offer(delivery["offer_id"])
+        if not offer:
+            return
+        payload = post["lcp"]["payload"]
+        outcome = result["outcome"]
+        if outcome == "price_rejected":
+            if self._counter_repost(delivery, post, offer, mapping, result.get("counter_price_cents")):
+                return
+            outcome = "unsold"
+        posted = int(payload.get("price_cents", 0))
+        if outcome == "sold":
+            status, reason, price = "payable", "buyer_sold", int(result.get("price_cents", posted))
+        elif outcome == "pending":
+            status, reason, price = "pending", "buyer_pending", posted
+        else:
+            status, reason, price = "not_payable", "buyer_unsold", posted
+        self._mark_sale_result_due(lead_id)
+        self.store.record_payable(
+            offer_id=offer["offer_id"],
+            lead_id=lead_id,
+            buyer_id=delivery["buyer_id"],
+            month_key=self._month_key(offer),
+            channel=payload.get("channel", "call" if "call" in payload else "lead"),
+            status=status,
+            price_cents=price,
+            currency=str(payload.get("currency", offer.get("currency", ""))),
+            reason=reason,
+        )
+        self._sync_sale_result(lead_id, final=self._buyers_declined(lead_id))
+
+    def _counter_repost(
+        self,
+        delivery: Any,
+        post: dict[str, Any],
+        offer: dict[str, Any],
+        mapping: dict[str, Any] | None,
+        counter_cents: int | None,
+    ) -> bool:
+        """LEP-0015 §8: at most one re-post to the same buyer at its counter."""
+        policy = (mapping or {}).get("counter") or {}
+        if counter_cents is None or not policy.get("repost"):
+            return False
+        if int(policy.get("max_reposts", 1)) < 1:
+            return False
+        message = post["lcp"]["message"]
+        if str(message["idempotency_key"]).endswith(":r1"):
+            return False
+        # The floor is platform policy and is never sent to the buyer.
+        if counter_cents < int(offer["floor_price_cents"]):
+            return False
+        awarded = parse_iso_datetime(delivery["created_at"])
+        deadline = (awarded or datetime.min.replace(tzinfo=timezone.utc)) + timedelta(
+            seconds=self.config.post_response_timeout_seconds
+        )
+        if datetime.now(timezone.utc) >= deadline:
+            return False
+        repost = copy.deepcopy(post)
+        repost_message = repost["lcp"]["message"]
+        repost_message["id"] = str(uuid4())
+        repost_message["timestamp"] = now_iso()
+        repost_message["idempotency_key"] = f"{message['idempotency_key']}:r1"
+        repost_payload = repost["lcp"]["payload"]
+        repost_payload["price_cents"] = counter_cents
+        if isinstance(repost_payload.get("pricing"), dict):
+            repost_payload["pricing"]["final_price_cents"] = counter_cents
+        self.validator.require_valid_envelope(repost)
+        if not self.store.rearm_post_delivery(delivery["delivery_id"], repost):
+            return False
+        self.store.record_payable(
+            offer_id=offer["offer_id"],
+            lead_id=delivery["lead_id"],
+            buyer_id=delivery["buyer_id"],
+            month_key=self._month_key(offer),
+            channel=repost_payload.get("channel", "lead"),
+            status="pending",
+            price_cents=counter_cents,
+            currency=str(repost_payload.get("currency", offer.get("currency", ""))),
+            reason="buyer_counter_repost",
+        )
+        self.store.insert_audit(
+            tenant_id=self.config.routing_tenant_id,
+            actor_id=self.config.platform_id,
+            action="buyer_mapping.counter_repost",
+            resource_type="delivery",
+            resource_id=delivery["delivery_id"],
+            metadata={"repost_message_id": repost_message["id"], "counter_price_cents": counter_cents},
+        )
+        return True
+
+    def _buyers_declined(self, lead_id: str) -> bool:
+        """Every buyer that got this lead has a final unsold buyer result."""
+        rows = self.store.payable_for_lead(lead_id)
+        return bool(rows) and all(
+            row["status"] == "not_payable" and str(row["reason"] or "").startswith("buyer_")
+            for row in rows
+        )
+
+    def _resolve_unconfirmed_buyer_results(self) -> None:
+        """LEP-0015 §5: a buyer pending past the window is REJECTED buyer_unconfirmed."""
+        before = format_iso_datetime(
+            datetime.now(timezone.utc) - timedelta(seconds=BUYER_PENDING_FINAL_SECONDS)
+        )
+        for record in self.store.list_stale_buyer_pending(before):
+            self._mark_sale_result_due(record["lead_id"])
+            self.store.record_payable(
+                offer_id=record["offer_id"],
+                lead_id=record["lead_id"],
+                buyer_id=record["buyer_id"],
+                month_key=record["month_key"],
+                channel=record["channel"],
+                status="not_payable",
+                price_cents=int(record["price_cents"]),
+                currency=str(record["currency"]),
+                reason="buyer_unconfirmed",
+            )
+            self._sync_sale_result(
+                record["lead_id"], final=self._buyers_declined(record["lead_id"])
             )
 
     def _expire_unacknowledged_posts(self, *, now: datetime | None = None) -> None:
@@ -5150,9 +5539,11 @@ class Platform:
                 # the subscription surface is enabled.
                 *(["subscription"] if self.config.feature_events else []),
             ],
+            # LEP-0016: one entry per served (id, schema_version), so a
+            # vertical in its migration window is listed once per version.
             "verticals": [
-                {"id": path.stem, "schema_version": "1.0.0"}
-                for path in (self.validator.vertical_root.glob("*.json"))
+                {"id": vertical, "schema_version": version}
+                for vertical, version in self.validator.vertical_versions()
             ],
             "countries": [],
             "auth_methods": ["bearer", "hmac"],
@@ -5333,6 +5724,21 @@ class Platform:
                             f"lcp/payload/consumer/{phone_field}"
                         ],
                     )
+        # LEP-0016 §3: a vertical version this receiver does not advertise is
+        # LCP-100 on attributes.schema_version, named as the field so a sender
+        # can tell "wrong version" from a schema error inside the attributes.
+        if isinstance(message, dict) and message.get("type") in {"lead", "call", "post", "ping"} and isinstance(payload, dict):
+            version_error = self.validator.vertical_version_error(
+                payload, message_type=message["type"]
+            )
+            if version_error:
+                raise RequestError(
+                    "LCP validation failed",
+                    "LCP-100",
+                    400,
+                    details=[version_error],
+                    field="attributes.schema_version",
+                )
         try:
             self.validator.require_valid_envelope(envelope)
         except ValidationError as exc:

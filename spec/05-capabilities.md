@@ -46,6 +46,10 @@ additive MINOR change, not a breaking MAJOR change.
 verticals[{id, schema_version}], countries, auth_methods, events,
 conformance_level, delivery_windows[], capacity, features }`.
 
+`verticals` lists one `{id, schema_version}` entry per vertical version the
+receiver validates, so a vertical in its migration window appears once per
+served version (v1.4, LEP-0016; validation rule in §3 `attributes`).
+
 **Version-string membership (v1.1, LEP-0003 F6, normative).** Every
 `lcp_versions` element MUST be a full `major.minor.patch` semantic
 version (`^\d+\.\d+\.\d+$`). A peer supports protocol extensions of
