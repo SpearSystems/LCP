@@ -1,19 +1,20 @@
 > **Release page · Page 3 of 6**
 
-> **Current release:** `v1.3.0` was published on 2026-11-19 from tag `v1.3.0`
-> (merge commit `52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8`). The GitHub release
+> **Current release:** `v1.4.0` was published on 2026-11-19 from tag `v1.4.0`
+> (merge commit `e7f8275f7ca4c793245b2cd205d603273a328444`). The GitHub release
 > and its signed evidence assets are at
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.3.0>; the record is
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.4.0>; the record is
+> [RELEASE-TICKET-1.4.0.md](RELEASE-TICKET-1.4.0.md).
+>
+> **Previous release:** `v1.3.0` (2026-11-19), merge commit
+> `52a11fb46c75b8aeec6c67f5eac9336dbdbb66a8` —
+> <https://github.com/SpearSystems/LCP/releases/tag/v1.3.0>, record at
 > [RELEASE-TICKET-1.3.0.md](RELEASE-TICKET-1.3.0.md).
 >
-> **Previous release:** `v1.2.0` (2026-11-05), merge commit
+> **Earlier release:** `v1.2.0` (2026-11-05), merge commit
 > `400c350b0e5ebf7ba3160e14b1fa78acb61ec57c` —
 > <https://github.com/SpearSystems/LCP/releases/tag/v1.2.0>, record at
 > [RELEASE-TICKET-1.2.0.md](RELEASE-TICKET-1.2.0.md).
->
-> **Earlier release:** `v1.1.1` (2026-11-04), tag `fa290ab` —
-> <https://github.com/SpearSystems/LCP/releases/tag/v1.1.1>, record at
-> [RELEASE-TICKET-1.1.1.md](RELEASE-TICKET-1.1.1.md).
 >
 > This page explains how maintainers create a versioned LCP release and how
 > adopters verify the release record before installing packages or deploying
@@ -105,10 +106,11 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
-## v1.4.0 release block
+## v1.4.0 release block (published 2026-11-19)
 
-**State: prepared 2026-11-19.** The version files carry `1.4.0`. The record
-is [RELEASE-TICKET-1.4.0.md](RELEASE-TICKET-1.4.0.md) and the decisions are
+**State: released 2026-11-19** from tag `v1.4.0` at merge commit
+`e7f8275f7ca4c793245b2cd205d603273a328444`. The record, with the registry
+read-back, is [RELEASE-TICKET-1.4.0.md](RELEASE-TICKET-1.4.0.md) and the decisions are
 in [DECISIONS-v1.4.md](DECISIONS-v1.4.md).
 
 `v1.4.0` is an additive MINOR over `v1.3.0`: LEP-0015 (buyer delivery

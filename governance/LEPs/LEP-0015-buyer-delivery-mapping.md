@@ -3,11 +3,12 @@
 - **Title:** Buyer delivery mapping: a declarative document that turns an LCP post into a buyer API request and the buyer's response into an LEP-0012 disposition
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Accepted** — 2026-11-19 (maintainer;
+- **Status:** **Implemented** — shipped in v1.4.0 (PR
+  [#251](https://github.com/SpearSystems/LCP/pull/251), released
+  2026-11-19); Accepted 2026-11-19 (maintainer;
   [v1.4 decision record](../../docs/DECISIONS-v1.4.md) D1–D4: review
   window and independent review waived, maintainer security/privacy
-  sign-off under D3). Implementation: PR
-  [#251](https://github.com/SpearSystems/LCP/pull/251), for v1.4.0.
+  sign-off under D3).
 - **Target version:** v1.4.0 (additive: a new platform document format,
   conformance vectors and an optional buyer-side ack read)
 - **Discussion:** [#257](https://github.com/SpearSystems/LCP/issues/257)

@@ -296,8 +296,7 @@ jobs:
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         if: steps.rubygems-existing.outputs.published != 'true'
         with:
-          # Same Ruby as the SDK compatibility job. The floating "ruby" alias moved
-          # to 4.0, where rubygems-await 0.5.4 crashes after a successful push.
+          # Same Ruby as the SDK compatibility job.
           ruby-version: "3.3"
           working-directory: implementations/sdk/ruby
           bundler-cache: true
@@ -307,6 +306,11 @@ jobs:
         if: steps.rubygems-existing.outputs.published != 'true'
         with:
           working-directory: implementations/sdk/ruby
+          # rubygems-await 0.5.4 crashes after a successful push on Ruby 3.3 and
+          # 4.0 alike ("undefined method 'dependencies'"), failing a published
+          # release (v1.3.0 and v1.4.0). The gem is read back by the release
+          # record instead (tools/check_release_registries.py --expect-present).
+          await-release: "false"
 
   indexed-registries:
     name: Verify tag-indexed SDKs

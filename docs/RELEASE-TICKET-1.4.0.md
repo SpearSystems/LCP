@@ -1,21 +1,23 @@
 # Release record — v1.4.0
 
-> **Status: NOT RELEASED — prepared on 2026-11-19.** No `v1.4.0` tag exists
-> yet, no registry carries a `1.4.0` package, and no container was published
-> for this version. A release exists only once the tag resolves, every tag
-> workflow is green, and each registry coordinate reads back its version.
+> **Status: RELEASED on 2026-11-19** from tag `v1.4.0` at merge commit
+> `e7f8275f7ca4c793245b2cd205d603273a328444` (PR
+> [#251](https://github.com/SpearSystems/LCP/pull/251)). Every registry
+> coordinate in [§5](#5-verified-publication) was read back after publication.
 >
-> `v1.3.0` remains the current published release and stays immutable.
+> `v1.3.0` remains published and immutable.
 
 ## 1. Release identity
 
 - [x] `SDK_VERSION` and every package manifest that carries a version field:
       `1.4.0` (`python3 tools/check_sdk_versions.py --check` exits 0).
-- [ ] Release tag `v1.4.0` and Go module tag `implementations/sdk/go/v1.4.0`:
-      not created.
-- [ ] Published commit: none.
-- [ ] GitHub release, signed assets, SBOMs, provenance: none.
-- [ ] Reference container at `1.4.0`: not published.
+- [x] Release tag `v1.4.0` and Go module tag `implementations/sdk/go/v1.4.0`,
+      both annotated, both on the published commit.
+- [x] Published commit: `e7f8275f7ca4c793245b2cd205d603273a328444`, the merge
+      of PR #251.
+- [x] GitHub release with signed assets, SBOMs and provenance (published 2026-11-19T05:01:18Z):
+      <https://github.com/SpearSystems/LCP/releases/tag/v1.4.0>.
+- [x] Reference container at `v1.4.0`: published; digest in §5.
 - Shape: additive MINOR over `v1.3.0`. No envelope field is made required, no
   enum value is removed, and no error code is added. No new `lcp.version`:
   neither LEP gates a wire field on one, so `lcp_versions` still ends at
@@ -85,6 +87,45 @@ The reported gap is `lcp-neg-mode-001`. It is a platform invariant (`LCP-013`) t
 
 ## 4. Release steps
 
-Follow the [v1.4.0 release block](RELEASE.md#v140-release-block). Record
-the tag commit, the GitHub release, and each read-back registry coordinate
-here once published.
+Followed the [v1.4.0 release block](RELEASE.md#v140-release-block-published-2026-11-19):
+gates at the merge commit, the Go module tag before the root tag, the
+container public-pull pre-flight (anonymous pull token issued, package
+visibility `public`), the Packagist mirror dispatch, and approval of the
+protected publication jobs after every tag workflow passed.
+
+## 5. Verified publication
+
+Read back on 2026-11-19 after the tag workflows finished.
+
+| Registry | Coordinate | Version | Evidence |
+|---|---|---|---|
+| PyPI | `lcp-sdk` | 1.4.0 | JSON API 200 |
+| PyPI | `lcp-reference-platform` | 1.4.0 | JSON API 200 |
+| PyPI | `lcp-mcp-server` | 1.4.0 | JSON API 200 |
+| npm | `@spear-systems/lcp-sdk` | 1.4.0 | registry 200; SLSA provenance in the Sigstore transparency log |
+| NuGet | `LcpSdk` | 1.4.0 | flat-container 200 |
+| crates.io | `lcp-sdk` | 1.4.0 | API version record, created 2026-11-19T04:39:41Z |
+| RubyGems | `lcp-sdk` | 1.4.0 | versions API 200, registered 2026-11-19T04:38:52Z |
+| Maven Central | `systems.spear:lcp-sdk` | 1.4.0 | POM 200 |
+| Maven Central | `systems.spear:lcp-sdk-kotlin` | 1.4.0 | POM 200 |
+| Packagist | `spearsystems/lcp-sdk` | v1.4.0 | mirror tag pushed by `mirror.yml`; p2 metadata lists `v1.4.0` |
+| Go module | `github.com/SpearSystems/LCP/implementations/sdk/go` | v1.4.0 | proxy.golang.org resolves the nested tag to `e7f8275` |
+| Swift Package Manager | `https://github.com/SpearSystems/LCP` | 1.4.0 | resolves from tag `v1.4.0` |
+| GHCR | `ghcr.io/spearsystems/lcp-reference-platform:v1.4.0` | `sha256:b4923fb1bae42bc1ecda095a7617e79c9f80b17a66bbad8a1170e8411719b2a6` | anonymous token + manifest 200 |
+| GitHub release | `v1.4.0` | 79 assets | signed manifest, SBOMs, provenance |
+
+Deploy the container by digest only.
+
+`python3 tools/check_release_registries.py --version 1.4.0 --expect-present`
+passes for all ten registry coordinates it checks.
+
+## 6. Post-release notes
+
+- **RubyGems verification step, again.** The gem was registered at
+  04:38:52Z. The `rubygems/release-gem` post-push wait then crashed as in
+  v1.3.0 (`rubygems-await` 0.5.4, `undefined method 'dependencies'`), this
+  time on Ruby 3.3.13, so the v1.3.0 Ruby pin was not the cause. The job
+  failed, and so did the signed-release gate. The rerun skipped the push
+  through the job's existing-version check, so no version was pushed twice;
+  the gate rerun then passed. The release workflow now sets
+  `await-release: "false"` and relies on this record's read-back.
