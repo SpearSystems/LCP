@@ -1,0 +1,650 @@
+{
+  "suite": "REG",
+  "description": "LEP-0013 (v1.3) regulated identifiers: the receiver intake gate, version and enrollment conditions, and the test SSN range; plus LEP-0014 personal_loans 2.0.0 shape vectors.",
+  "vectors": [
+    {
+      "id": "REG-001",
+      "name": "enrolled_test_lead_with_regulated_fields",
+      "expect": "pass",
+      "description": "LEP-0013 Valid 1: an enrolled sender's 1.3.0 test lead to an advertising receiver, test SSN in the reserved range.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": true,
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001301",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1301",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1301",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987654321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-002",
+      "name": "receiver_without_feature",
+      "expect": "fail",
+      "description": "LEP-0013 Invalid A: a receiver that does not advertise regulated_identifiers refuses with LCP-100 naming the field.",
+      "receiver_features": {},
+      "sender_enrolled": true,
+      "error_contains": "LCP-100 field attributes.us_details",
+      "checks": [
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001302",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1302",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1302",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987654321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-003",
+      "name": "real_looking_ssn_in_test",
+      "expect": "fail",
+      "description": "LEP-0013 Invalid D: a test message's SSN must be in 987654320-987654329.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": true,
+      "error_contains": "LCP-013",
+      "checks": [
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001303",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1303",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1303",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "123456789",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-004",
+      "name": "test_ssn_on_live_traffic",
+      "expect": "fail",
+      "description": "LEP-0013 §5: a live message's SSN must not be in the test range.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": true,
+      "error_contains": "LCP-013",
+      "checks": [
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001304",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1304",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1304",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987654321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-005",
+      "name": "regulated_fields_below_v13",
+      "expect": "fail",
+      "description": "LEP-0013 §2.3: regulated fields need lcp.version 1.3.0 or later.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": true,
+      "error_contains": "below 1.3.0",
+      "checks": [
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.2.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001305",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1305",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1305",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987654321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-006",
+      "name": "unenrolled_sender",
+      "expect": "fail",
+      "description": "LEP-0013 §2.4: the sender's credential must be enrolled for the vertical.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": false,
+      "error_contains": "not enrolled",
+      "checks": [
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001306",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1306",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1306",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987654321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-007",
+      "name": "personal_loans_without_us_details",
+      "expect": "pass",
+      "description": "LEP-0014: a personal_loans 2.0.0 lead without us_details needs no regulated feature.",
+      "receiver_features": {},
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "regulated_identifiers"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001307",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1307",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1307",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-008",
+      "name": "loan_amount_in_cents",
+      "expect": "fail",
+      "description": "LEP-0014: loan_amount is whole units 100-50000; a cents value is out of range.",
+      "error_contains": "loan_amount",
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001308",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1308",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1308",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 100000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "REG-009",
+      "name": "dashed_ssn",
+      "expect": "fail",
+      "description": "LEP-0013 §1: ssn is nine digits with no separators.",
+      "receiver_lcp_versions": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ],
+      "receiver_features": {
+        "regulated_identifiers": "1.3.0"
+      },
+      "sender_enrolled": true,
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1200000-0000-4000-8000-000000001309",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1309",
+            "test": true
+          },
+          "payload": {
+            "lead_id": "lead_1309",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143",
+              "dob": "1990-01-15"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "personal_loans",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_amount": 1000,
+              "monthly_income": 3000,
+              "income_source": "employment",
+              "income_frequency": "biweekly",
+              "account_type": "checking",
+              "us_details": {
+                "country_code": "US",
+                "ssn": "987-65-4321",
+                "license_number": "TEST1234",
+                "license_state": "TX",
+                "account_number": "000123456789",
+                "routing_number": "123456780"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

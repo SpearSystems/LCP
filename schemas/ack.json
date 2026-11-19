@@ -49,8 +49,145 @@
     "rejection_reason": {
       "x-lcp-pii": "internal",
       "type": "string",
-      "description": "Structured rejection reason when status = REJECTED. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged. Open enumeration.",
+      "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer. Open enumeration.",
       "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)"
+    },
+    "disposition": {
+      "x-lcp-pii": "restricted",
+      "type": "object",
+      "description": "v1.3 (LEP-0012 \u00a71): the commercial result of the acknowledged lead or post. A lead is sold if, and only if, outcome = sold. Sent only when the acknowledged message's lcp.version is 1.3.0 or later, and only on an ack whose status is RECEIVED, ACCEPTED or DUPLICATE; a DUPLICATE ack repeats the original disposition. Classed restricted because redirect_url is session-bearing.",
+      "required": [
+        "outcome"
+      ],
+      "properties": {
+        "outcome": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "enum": [
+            "sold",
+            "unsold",
+            "pending",
+            "price_rejected"
+          ]
+        },
+        "payout_cents": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000,
+          "description": "sold only: what the receiver will pay the sender for this lead, in minor units of currency, after any receiver fee."
+        },
+        "currency": {
+          "$ref": "core.json#/$defs/currency"
+        },
+        "counter_price_cents": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000,
+          "description": "price_rejected only: the lowest price the receiver would pay. Informational in v1.3."
+        },
+        "redirect_url": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^https://",
+          "maxLength": 2048,
+          "description": "sold only: the consumer's next page. The sender sends the consumer's browser there as a top-level navigation and never fetches it server-side (LEP-0012 \u00a72). Never logged."
+        },
+        "redirect_expires_at": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "format": "date-time"
+        },
+        "final_by": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "format": "date-time",
+          "description": "pending only: the latest time the final ACCEPTED or REJECTED event will be sent."
+        }
+      },
+      "dependentRequired": {
+        "payout_cents": [
+          "currency"
+        ],
+        "counter_price_cents": [
+          "currency"
+        ],
+        "redirect_expires_at": [
+          "redirect_url"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "sold",
+                "x-lcp-pii": "internal"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "payout_cents"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "payout_cents"
+                  ]
+                },
+                {
+                  "required": [
+                    "redirect_url"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "price_rejected",
+                "x-lcp-pii": "internal"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "counter_price_cents"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "counter_price_cents"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "final_by"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "pending",
+                "x-lcp-pii": "internal"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
     },
     "negotiation": {
       "x-lcp-pii": "internal",
@@ -111,5 +248,26 @@
       "additionalProperties": false
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "enum": [
+              "RECEIVED",
+              "ACCEPTED",
+              "DUPLICATE"
+            ],
+            "x-lcp-pii": "public"
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

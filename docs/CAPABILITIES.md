@@ -35,7 +35,13 @@ sequenceDiagram
 ```
 
 Gate: none. Batch uses the same path per item (`features.batch`, off by
-default); see diagram 3 for routing.
+default); see diagram 3 for routing. v1.3 (LEP-0012): with
+`features.sale_disposition` a `1.3.0` lead's ack carries
+`disposition` (`pending` on this asynchronous platform), and the result
+follows as an `ACCEPTED`, `REJECTED`, or `REFUNDED` event with a signed
+`payout_cents` delta and a `revision`. With `features.test_outcomes` (sandbox
+only) a test lead's `lcp.test.outcome` extension forces the answer and the
+lead is never routed.
 
 ## 2. Auction and shared slots
 
@@ -115,6 +121,9 @@ sequenceDiagram
 ```
 
 Gate: `features.event_subscriptions` (`LCP_FEATURE_EVENTS`, off by default).
+v1.3 (LEP-0012 §4): `features.url_postbacks` (`LCP_FEATURE_URL_POSTBACKS`)
+adds `delivery: "url_template"`, a signed GET with query-only macros that
+fires only for sale events the platform sends to the subscriber.
 Filters are closed to core enums and identifiers — a consumer field is refused
 by name.
 

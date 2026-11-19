@@ -10,7 +10,17 @@
 
 > **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, multi-language SDKs, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** v1.2.0 is the published, stable protocol and reference implementation release. The signed `v1.2.0` tag publishes to <https://github.com/SpearSystems/LCP/releases/tag/v1.2.0> with the signed manifest, SBOMs, provenance, and package evidence for every published coordinate; the release record pins the merge commit digest. v1.2.0 is additive over v1.1.1 — no breaking wire change — and adds bounded batch submission, event subscriptions, agent-to-agent negotiation, the `PROCESSED` acknowledgement, multi-currency pricing with ISO 4217 exponent handling, `street_address` and raw `ip_address`, the PII taxonomy with ping-side extension admission, versioned requirement profiles with allowlisted predicates and service-area datasets, retention and archive tooling, a generated specification site, `lcp-doctor`, an error guide, a buyer webhook kit, and no-code recipes. The three stateful surfaces remain off by default and every capability is advertised through `capabilities()`.
+**Status:** **v1.3.0** is the current release ([release notes](https://github.com/SpearSystems/LCP/releases/tag/v1.3.0), [changelog](CHANGELOG.md)). Every 1.x release is additive: a 1.0 peer still interoperates, and each new surface is opt-in through `capabilities()`. Tagged releases ship with a signed manifest, SBOMs and provenance for every package ([how to verify](docs/RELEASE.md)).
+
+**New in 1.3.0:**
+
+- **Sale results at post time.** The ack can say whether a lead sold, the payout, and where to send the consumer next (`ack.disposition`).
+- **Postbacks as plain URLs.** An event subscription can fire a signed `GET` to a URL template, the format affiliate trackers expect.
+- **Test outcomes.** A test lead can force `sold`, `unsold` or `price_rejected`, so an integration can be tested end to end without billing anyone.
+- **Regulated identifiers.** A gated, never-persisted lane for SSN and bank details in lending verticals. It stays off unless a deployment enrolls both sender and buyer.
+- **`personal_loans` 2.0.0.** A personal-loan vertical with whole-dollar amounts.
+
+Earlier releases added batch submission, event subscriptions, negotiation, multi-currency pricing and the PII taxonomy (1.2), and shared-lead slots, agent attestation and request history (1.1).
 
 [![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
 
@@ -165,39 +175,58 @@ Facebook Lead Ads, Google Lead Forms, Twilio, Typeform, HubSpot, Salesforce,
 and TikTok. Copy-paste Python, Node.js, cURL, and buyer webhook templates are
 in [`examples/integrations/`](examples/integrations/).
 
-### Python SDK
+### Sale results and postbacks (1.3)
 
-For Python integrations, the standalone SDK provides envelope construction, JSON Schema validation, canonical HMAC signing, idempotency, and HTTP helpers. It does not depend on MCP or include platform routing:
+A receiver that advertises `features.sale_disposition` answers a lead with
+the result in the ack: `sold` with `payout_cents` and an optional consumer
+`redirect_url`, `unsold`, `pending`, or `price_rejected`. Send the consumer
+to `redirect_url` in the browser straight away; it is session-bearing and
+expires. Later changes (a sale confirmed, a return, a refund) arrive as signed
+`ACCEPTED`, `REJECTED` and `REFUNDED` events on an event subscription, as
+JSON or, when the receiver advertises `features.url_postbacks`, as a URL
+postback. See the
+[`ack` payload](spec/02-envelope.md#ack) and
+[LEP-0012](governance/LEPs/LEP-0012-sale-lifecycle.md).
 
-```bash
-python3 -m pip install -e ./implementations/sdk/python
-```
+To test without billing, send a `1.3.0` message with `message.test` set to
+`true` and the `lcp.test.outcome` extension naming the result. A receiver
+advertising `features.test_outcomes` answers with that outcome and never
+routes, bills or counts the lead.
 
-See the [Python SDK README](implementations/sdk/python/README.md).
+### Install an SDK
 
-### Official SDK program
+Every SDK provides envelope construction, JSON Schema validation, canonical
+HMAC signing, idempotency, webhook verification, and HTTP helpers with retry.
+None of them depends on MCP or includes platform routing.
 
-LCP maintains SDKs for the main publisher, buyer, platform, and enterprise
-languages. TypeScript, Go, and C# are Tier 1 alongside Python; Java, PHP,
-Rust, Ruby, Kotlin, and Swift have reference implementations with lower
-maintenance tiers. Every SDK follows the same signing, validation, idempotency,
-webhook, and test-vector contract. See the [SDK index](implementations/sdk/)
-and [SDK support policy](docs/SDK-ROADMAP.md) for package paths, maturity,
-and release gates.
+| Language | Install |
+|---|---|
+| Python | `pip install lcp-sdk` |
+| TypeScript / JavaScript | `npm install @spear-systems/lcp-sdk` |
+| Go | `go get github.com/SpearSystems/LCP/implementations/sdk/go` |
+| C# | `dotnet add package LcpSdk` |
+| Java | `systems.spear:lcp-sdk` (Maven Central) |
+| Kotlin | `systems.spear:lcp-sdk-kotlin` (Maven Central) |
+| PHP | `composer require spearsystems/lcp-sdk` |
+| Rust | `cargo add lcp-sdk` |
+| Ruby | `gem install lcp-sdk` |
+| Swift | Swift Package Manager: `https://github.com/SpearSystems/LCP.git` |
+
+TypeScript, Go and C# are Tier 1 alongside Python. Java, PHP, Rust, Ruby,
+Kotlin and Swift are reference implementations with lower maintenance tiers.
+All ten follow the same signing, validation, idempotency, webhook and
+test-vector contract. See the [SDK index](implementations/sdk/) and
+[SDK support policy](docs/SDK-ROADMAP.md) for maturity and release gates.
 
 ### Optional MCP adapter for AI agents
 
 The MCP adapter is useful when a publisher or AI agent needs to interact with an LCP-compatible REST endpoint through an MCP client. It is not required for HTTP integrations and does not deploy an LCP endpoint.
 
-From a checkout of this repository:
-
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate                 # Windows: .venv\\Scripts\\activate
-python -m pip install -e ./implementations/sdk/python -e ./implementations/mcp-server
+python3 -m pip install lcp-mcp-server
 ```
 
-The local editable install creates the `lcp-mcp-server` command. The tagged release workflow publishes the adapter and shared SDK to PyPI; before a release is available, use the repository install above. Verify the published version and signed release manifest using [the release guide](docs/RELEASE.md).
+This installs the `lcp-mcp-server` command and the shared `lcp-sdk`. To run from a checkout instead, use `python -m pip install -e ./implementations/sdk/python -e ./implementations/mcp-server`.
 
 Configure the adapter with the endpoint and one partner credential:
 
@@ -274,7 +303,7 @@ The platform's bid endpoint is documented as `POST /v1/lcp/bids` in the [OpenAPI
 
 ### Signature verification
 
-For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. The reference profile signs `<timestamp>\n<idempotency-key>\n<raw-request-body>` with HMAC-SHA256. See [the implementation decisions](docs/IMPLEMENTATION-DECISIONS.md) for the exact signing profile.
+For HMAC-authenticated HTTP messages, the binding requires a signature and timestamp; HTTP messages should also carry an idempotency key. The receiver must reject missing or invalid credentials and stale timestamps before processing PII. The reference profile signs `<timestamp>\n<idempotency-key>\n<raw-request-body>` with HMAC-SHA256. `X-LCP-Timestamp` is sent in the canonical whole-second UTC form `YYYY-MM-DDTHH:MM:SSZ`, and the HMAC covers the exact transmitted string ([SPEC.md §9](SPEC.md#9-security), LEP-0002). See [the implementation decisions](docs/IMPLEMENTATION-DECISIONS.md) for the exact signing profile.
 
 Illustrative verification logic:
 
@@ -394,7 +423,7 @@ The reference MCP server is a stateless adapter that calls an existing LCP-compa
 # Install the conformance runner's dependencies if needed.
 python3 -m pip install jsonschema referencing
 
-# Run 30 L1/L2/L3 vectors.
+# Run the L1/L2/L3 tiers and the feature suites.
 python3 test-vectors/conformance.py --verbose
 
 # Run the local reference platform (after installing it).
@@ -415,9 +444,9 @@ Schemas are available directly in [`schemas/`](schemas/) and [`verticals/`](vert
 
 ```
 schemas/         ── Envelope, core, and message JSON Schemas
-verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services, mva)
+verticals/       ── Per-vertical schemas (mortgage, insurance, solar, legal, home_services, mva, personal_loans)
 examples/        ── Sample payloads, onboarding templates, integrations, and the synthetic sandbox
-test-vectors/    ── 30 conformance vectors across L1/L2/L3
+test-vectors/    ── Conformance vectors: L1/L2/L3 tiers, negative vectors, and feature suites
 implementations/ ── Multi-language SDKs, reference platform/router, and MCP adapter
 docs/            ── Integration guides, implementation decisions, and design notes
 api/             ── OpenAPI 3.1 HTTP transport definition
@@ -458,9 +487,8 @@ SPEC.md          ── Canonical protocol specification
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
-- [v1.1.1 release](https://github.com/SpearSystems/LCP/releases/tag/v1.1.1) ([record](docs/RELEASE-TICKET-1.1.1.md)) ([record](docs/RELEASE-TICKET-1.1.0.md))
-- [v1.0.2 release record](docs/RELEASE-TICKET-1.0.2.md)
-- [v1.0.1 release record](docs/RELEASE-TICKET-1.0.1.md)
+- [All releases](https://github.com/SpearSystems/LCP/releases) and their records: [1.3.0](docs/RELEASE-TICKET-1.3.0.md), [1.2.0](docs/RELEASE-TICKET-1.2.0.md), [1.1.1](docs/RELEASE-TICKET-1.1.1.md), [1.1.0](docs/RELEASE-TICKET-1.1.0.md), [1.0.2](docs/RELEASE-TICKET-1.0.2.md), [1.0.1](docs/RELEASE-TICKET-1.0.1.md)
+- Decision records: [v1.3](docs/DECISIONS-v1.3.md), [v1.2](docs/DECISIONS-v1.2.md)
 - [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
 - [Adoption readiness](docs/ADOPTION-READINESS.md)
 - [v1.1 roadmap](docs/V1.1-ROADMAP.md)
@@ -471,7 +499,7 @@ SPEC.md          ── Canonical protocol specification
 - [Security policy](governance/SECURITY.md)
 - [LEP proposal process](governance/LEP.md)
 - [LEP process adoption plan](governance/LEP-PROCESS-PLAN.md)
-- [LEP-0001 batch/subscription draft](governance/LEPs/LEP-0001-batch-submission-and-event-subscriptions.md)
+- [LEP registry](governance/LEP-REGISTRY.md): every proposal, its status and decision
 - [Extension registry](governance/EXTENSION-REGISTRY.md)
 - [Trademark and conformance claims](governance/TRADEMARK.md)
 
@@ -479,7 +507,3 @@ SPEC.md          ── Canonical protocol specification
 
 Apache 2.0. Free to implement — no membership, no approval, no fees.
 See [governance/](governance/) for anti-capture and trademark policies.
-
-`X-LCP-Timestamp` and every envelope `lcp.message.timestamp` default are
-emitted in the canonical whole-second UTC wire form `YYYY-MM-DDTHH:MM:SSZ`
-(SPEC.md §9, LEP-0002); the HMAC signs the exact transmitted string.

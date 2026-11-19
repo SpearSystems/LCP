@@ -823,6 +823,16 @@ components:
           type: string
         request_id:
           type: string
+        rejection_reason:
+          type: string
+          description: Open enum. Why the lead was refused (status REJECTED) or not bought (v1.3 disposition outcome unsold or
+            price_rejected), e.g. invalid_phone, duplicate, price_too_high, capacity_exceeded, no_buyer.
+        disposition:
+          description: 'v1.3 (LEP-0012 §1): the commercial result of an acknowledged lead or post. Sent only when the acknowledged
+            message is lcp.version 1.3.0 or later, on RECEIVED, ACCEPTED, or DUPLICATE acks. A lead is sold if, and only if, outcome
+            = sold; payout_cents is integer minor units. redirect_url is a consumer browser top-level navigation, never fetched
+            server-side.'
+          $ref: '../schemas/ack.json#/properties/disposition'
     Ack:
       type: object
       description: LCP envelope wrapping an ack payload.
@@ -856,7 +866,9 @@ components:
             ARCHIVED, CONTACTED (v1.1, LEP-0003 §4: slot holder attempted contact; details SHOULD carry contacted_hashes (per-pair 64-hex), contacted_at, via),
             FINAL_PRICING (v1.1, LEP-0006 Track A: publisher-reported sale outcome of a ping, external or in-auction; details SHOULD
             carry ping_id, sale_scope, winning_price_cents (integer minor units), currency, duration_seconds, sold_at. Settlement-neutral:
-            never a payable or lifecycle signal). Event details MUST NOT carry consumer PII - contact values travel only as per-pair
+            never a payable or lifecycle signal). v1.3 (LEP-0012 §3): ACCEPTED, REJECTED, and REFUNDED reporting the sale
+            result of a lead to its sender carry details.payout_cents (signed integer delta in minor units: > 0 sold, < 0 returned), currency,
+            and revision (strictly increasing per lead). Event details MUST NOT carry consumer PII - contact values travel only as per-pair
             keyed digests; plaintext contact values are ingest rejections (LCP-100).'
         timestamp:
           type: string
@@ -1081,6 +1093,15 @@ components:
                 items:
                   type: string
                 description: Optional — restricts window to specific channels (e.g. call-only).
+        features:
+          type: object
+          description: 'v1.2 (SPEC.md §8 features): surface name to the minimum protocol version of that surface. Absence of a key means the surface is off on this deployment. A sender uses a surface only when its key is present and lcp_versions holds a 1.x element at least that minor, compared as parsed versions. Registered keys: processed_ack, multi_currency, batch, negotiation, event_subscriptions, email_form_entry (1.2.0); sale_disposition, url_postbacks, test_outcomes (LEP-0012), regulated_identifiers (LEP-0013) (1.3.0). Readers ignore unknown keys.'
+          additionalProperties:
+            type: string
+            pattern: ^\d+\.\d+\.\d+$
+          example:
+            processed_ack: "1.2.0"
+            sale_disposition: "1.3.0"
         capacity:
           type: object
           description: Current lead acceptance capacity. Absent = unlimited.

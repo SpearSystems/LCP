@@ -172,14 +172,14 @@ means the value is emitted when the message's own allowlist or
 registration admits the field — the class never widens an allowlist.
 `refuse` means the message is rejected.
 
-| Class | `ping` | `bid` | `lead` | `post` | `event` | history row | logs, metrics, traces |
-|---|---|---|---|---|---|---|---|
-| `public` | allow | allow | allow | allow | allow | allow | allow |
-| `internal` | allow | allow | allow | allow | allow | allow | allow |
-| `contact`, plaintext | **refuse** (`LCP-008`) | **refuse** (`LCP-100`) | allow | allow | **refuse** (`LCP-100`) | **refuse** (`LCP-100`) | **never** |
-| `contact`, hash projection | allow (declared projections only) | **never** (no projection is defined on `bid`) | allow | allow | allow (declared projections, e.g. `CONTACTED` digests) | allow (`caller_phone_hash`) | **never** |
-| `restricted` | **refuse** (`LCP-008`) | **refuse** (`LCP-100`) | allow | allow | **refuse** (`LCP-100`) | **refuse** (`LCP-100`) | **never** |
-| `prohibited` | **refuse** (`LCP-100`, naming the field; `LCP-008` also applies) | refuse | refuse | refuse | refuse | refuse | **never** |
+| Class | `ping` | `bid` | `lead` | `post` | `event` | `ack` | history row | logs, metrics, traces |
+|---|---|---|---|---|---|---|---|---|
+| `public` | allow | allow | allow | allow | allow | allow | allow | allow |
+| `internal` | allow | allow | allow | allow | allow | allow | allow | allow |
+| `contact`, plaintext | **refuse** (`LCP-008`) | **refuse** (`LCP-100`) | allow | allow | **refuse** (`LCP-100`) | **never** | **refuse** (`LCP-100`) | **never** |
+| `contact`, hash projection | allow (declared projections only) | **never** (no projection is defined on `bid`) | allow | allow | allow (declared projections, e.g. `CONTACTED` digests) | **never** | allow (`caller_phone_hash`) | **never** |
+| `restricted` | **refuse** (`LCP-008`) | **refuse** (`LCP-100`) | allow | allow | **refuse** (`LCP-100`) | `disposition.redirect_url` only, to the sender of the acknowledged `lead`/`post` (v1.3, LEP-0012 §2) | **refuse** (`LCP-100`) | **never** |
+| `prohibited` | **refuse** (`LCP-100`, naming the field; `LCP-008` also applies) | refuse | refuse | refuse | refuse | refuse | refuse | **never** |
 
 Notes that the matrix does not show:
 
@@ -198,6 +198,12 @@ Notes that the matrix does not show:
   and the `event` column refuses `restricted`. A `FINAL_PRICING` or
   `CONVERTED` report carries `public`/`internal` values and `contact`
   digests only.
+- **`ack` carries one restricted value (v1.3, LEP-0012).**
+  `disposition.redirect_url` is a session-bearing URL, so it is
+  `restricted`. It goes only back to the sender of the acknowledged
+  `lead` or `post`, which already holds the consumer record. It is never
+  logged, never copied into an event, and never a postback macro. Every
+  other `ack` field is `public` or `internal`.
 - **History rows carry hashes, not values.** `schemas/history-request-row.json`
   admits `caller_phone_hash` (a `contact` hash projection keyed to the
   requesting credential) and no other consumer field.
@@ -294,6 +300,22 @@ receiver unable to decide whether the sender is trustworthy.
   deterministic DLP or pattern check. A conformant sender simply never
   produces such a value, so a detector's false negatives cost nothing on
   conforming traffic.
+
+**Regulated-identifier exception (v1.3, LEP-0013).** A US SSN or ITIN,
+a US driver's licence number, a bank account number, and an ABA routing
+number may travel in a `lead` or `post` only in a vertical property
+annotated `x-lcp-regulated`, and only when every condition of LEP-0013 §2
+holds: the receiver advertises `features.regulated_identifiers`, the
+message is `1.3.0` or later, and the sender is enrolled for the vertical.
+Such a property is classed `restricted`, sits in a `restricted`
+country-scoped container, and is `ping_safe: false`. It is never written
+to durable storage and is forwarded only to an enrolled buyer whose
+requirement profile names it in `regulated_fields` (LEP-0013 §3–§4). The
+same value anywhere else, including an extension, `lcp.intake.raw_form`,
+or event `details`, is still `prohibited` and refused. A receiver that
+does not advertise the feature refuses every regulated value with
+`LCP-100`, naming the field. Every other family above stays prohibited
+without exception.
 
 No property in the v1.2.0 core is classed `prohibited` — the mapping table
 below shows none, which is a statement about the core, not about what
@@ -716,6 +738,14 @@ or `container` (never directly; its children decide).
 | `lead_id` | `internal` | no | |
 | `request_id` | `internal` | no | |
 | `rejection_reason` | `internal` | no | Open enum of routing reasons. |
+| `disposition` | `restricted` | no | v1.3 (LEP-0012 §1). Container; max of `redirect_url`. Sent only when the acknowledged message is `1.3.0` or later. |
+| `disposition.outcome` | `internal` | no | `sold` \| `unsold` \| `pending` \| `price_rejected`. |
+| `disposition.payout_cents` | `internal` | no | What the receiver pays the sender; integer minor units. |
+| `disposition.currency` | `internal` | no | ISO 4217. |
+| `disposition.counter_price_cents` | `internal` | no | `price_rejected` only. |
+| `disposition.redirect_url` | `restricted` | no | Session-bearing consumer URL. Browser top-level navigation only; never fetched server-side, never logged (LEP-0012 §2). |
+| `disposition.redirect_expires_at` | `internal` | no | |
+| `disposition.final_by` | `internal` | no | `pending` only. |
 
 ### `schemas/event.json`
 
@@ -860,6 +890,13 @@ non-ping-safe — `restricted`; `budget_band` and the rest of its controlled
 taxonomy stay `public`, which is why they are the banded derivatives that
 exist so the exact values never travel. `solar.json` declares no
 non-ping-safe attribute.
+`personal_loans.json` (v1.3, LEP-0014) adds 30 attributes, all tagged.
+Its applicant finances (`loan_amount`, `monthly_income`, pay dates,
+employer, bank details, military status) are `restricted` and post-only,
+with `loan_amount_band` and `monthly_income_band` as the `public` ping
+derivatives. Its `us_details` container is `restricted` and holds the four
+`x-lcp-regulated` identifiers of LEP-0013 (`ssn`, `license_number`,
+`account_number`, `routing_number`).
 
 Most of the non-ping-safe attributes above are `restricted`;
 `property_address` is `contact`; and a few describe the transaction rather

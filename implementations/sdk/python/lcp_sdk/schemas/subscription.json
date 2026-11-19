@@ -48,7 +48,17 @@
       "type": "string",
       "pattern": "^https?://",
       "maxLength": 2048,
-      "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses."
+      "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses. With delivery = url_template (v1.3, LEP-0012 §4) this is a GET template: macros only in the query component, from the closed set {lead_id} {external_id} {click_id} {sub1}-{sub5} {event} {payout} {payout_cents} {currency} {revision} {test} {timestamp}."
+    },
+    "delivery": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "enum": [
+        "json",
+        "url_template"
+      ],
+      "default": "json",
+      "description": "v1.3 (LEP-0012 §4): json is the signed JSON POST (LEP-0001); url_template is a signed GET postback to a tracker URL template, fired only for events addressed to the subscriber."
     },
     "filter": {
       "x-lcp-pii": "internal",

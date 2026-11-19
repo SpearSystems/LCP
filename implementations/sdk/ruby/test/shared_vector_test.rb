@@ -7,8 +7,8 @@ raise signature unless signature == expected
 LcpSdk::Signing.verify("sdk-shared-secret", signature, "2026-08-15T10:20:00Z", "sdk-vector-001", body, now: Time.utc(2026, 8, 15, 10, 20, 1))
 root = File.expand_path("../../../..", __dir__)
 validator = LcpSdk::SchemaValidator.from_directory(File.join(root, "schemas"))
-validator.validate_envelope(JSON.parse(File.read(File.join(root, "examples", "lead.json"))))
-corpus = JSON.parse(File.read(File.join(root, "test-vectors", "sdk", "validation-corpus.json")))
+validator.validate_envelope(JSON.parse(File.read(File.join(root, "examples", "lead.json"), encoding: "UTF-8")))
+corpus = JSON.parse(File.read(File.join(root, "test-vectors", "sdk", "validation-corpus.json"), encoding: "UTF-8"))
 failures = []
 corpus.fetch("fixtures").each do |fixture|
   is_offer = fixture.key?("offer")

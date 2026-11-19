@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="spec/05-capabilities.md">
-<meta name="lcp-build" content="5071512caddb">
+<meta name="lcp-build" content="4cb84d4aa480">
 <title>LCP — Lead Context Protocol Specification — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -74,8 +74,79 @@
 </table>
 <p>This ensures that adding a new <code>status</code> (e.g. a future <code>PARTIALLY_REFUNDED</code>) or a new <code>channel</code> (e.g. <code>video</code>, <code>iot</code>) is an additive MINOR change, not a breaking MAJOR change.</p>
 <h2 id="8-capability-discovery">8. Capability discovery</h2>
-<p><code>GET /v1/lcp/capabilities</code> → <code>{ lcp_versions, message_types, verticals[{id, schema_version}], countries, auth_methods, events, conformance_level, delivery_windows[], capacity }</code>.</p>
+<p><code>GET /v1/lcp/capabilities</code> → <code>{ lcp_versions, message_types, verticals[{id, schema_version}], countries, auth_methods, events, conformance_level, delivery_windows[], capacity, features }</code>.</p>
 <p><strong>Version-string membership (v1.1, LEP-0003 F6, normative).</strong> Every <code>lcp_versions</code> element MUST be a full <code>major.minor.patch</code> semantic version (<code>^\d+\.\d+\.\d+$</code>). A peer supports protocol extensions of minor <code>m</code> when its advertised set contains an element with <code>major == 1</code> and <code>minor &gt;= m</code>; senders MUST compare parsed versions, never string literals or prefixes (exact membership of <code>1.1</code> is unsatisfiable by the full-semver forms the same section mandates, and prefix matching on <code>1.1</code> wrongly matches <code>1.10.0</code>). Every endpoint that initiates traffic to a counterparty (ping senders included) MUST host <code>GET /v1/lcp/capabilities</code> for that counterparty. Consequences: v1.1 slot fields (<code>slots_available</code>, <code>slots_claimed</code>, <code>contacted_hashes</code>) and <code>CONTACTED</code> reports are gated on a receiver's set containing a v1.1-or-higher minor element (e.g. <code>1.1.0</code>); a sender MUST NOT send those fields to a receiver advertising v1.0 minors only, because the receiver's closed-object allowlist rejects them (§4 capability gate, §6 closed-vs-open rule).</p>
+<h3 id="features">features</h3>
+<p>Optional (v1.2). An object that maps a surface name to the minimum protocol version of that surface, as a full <code>major.minor.patch</code> string. It names the additive surfaces this deployment has switched on.</p>
+<pre class="code-block"><code class="language-json">"features": { "processed_ack": "1.2.0", "sale_disposition": "1.3.0" }</code></pre>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Minimum version</th>
+<th>Surface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>processed_ack</code></td>
+<td><code>1.2.0</code></td>
+<td><code>ack.status = PROCESSED</code> for a <code>post</code> the buyer received (<a href="02-envelope.html">02-envelope</a>).</td>
+</tr>
+<tr>
+<td><code>multi_currency</code></td>
+<td><code>1.2.0</code></td>
+<td><code>post.pricing</code> settlement and FX fields; bid-side FX fields (LEP-0010).</td>
+</tr>
+<tr>
+<td><code>batch</code></td>
+<td><code>1.2.0</code></td>
+<td><code>POST /v1/lcp/leads/batch</code> (LEP-0001 W2).</td>
+</tr>
+<tr>
+<td><code>negotiation</code></td>
+<td><code>1.2.0</code></td>
+<td><code>quote</code> and <code>counter</code> (LEP-0009).</td>
+</tr>
+<tr>
+<td><code>event_subscriptions</code></td>
+<td><code>1.2.0</code></td>
+<td><code>subscription</code> registration, delivery and replay (LEP-0001 W3).</td>
+</tr>
+<tr>
+<td><code>email_form_entry</code></td>
+<td><code>1.2.0</code></td>
+<td>The declared email-form entry surface (LEP-0003 follow-up).</td>
+</tr>
+<tr>
+<td><code>sale_disposition</code></td>
+<td><code>1.3.0</code></td>
+<td><code>ack.disposition</code> and money-bearing sale events (LEP-0012 §1, §3).</td>
+</tr>
+<tr>
+<td><code>url_postbacks</code></td>
+<td><code>1.3.0</code></td>
+<td><code>subscription.delivery = url_template</code> (LEP-0012 §4).</td>
+</tr>
+<tr>
+<td><code>test_outcomes</code></td>
+<td><code>1.3.0</code></td>
+<td><code>lcp.test.outcome</code> on sandbox test traffic (LEP-0012 §6).</td>
+</tr>
+<tr>
+<td><code>regulated_identifiers</code></td>
+<td><code>1.3.0</code></td>
+<td>Intake of <code>x-lcp-regulated</code> fields (LEP-0013 §2).</td>
+</tr>
+</tbody>
+</table>
+<p>Rules (normative):</p>
+<ol>
+<li><strong>Absence is the switch.</strong> A missing key means the surface does not exist on that deployment. A sender MUST NOT use a surface the receiver does not advertise. A <code>404</code> from an unadvertised route is not retryable.</li>
+<li><strong>The version gate still applies.</strong> A sender uses a surface only when the receiver advertises its key and <code>lcp_versions</code> holds an element with <code>major == 1</code> and <code>minor</code> at least the key's minor. Both are compared as parsed versions, never as strings.</li>
+<li><strong>Per deployment, not per protocol version.</strong> A peer may advertise <code>1.3.0</code> in <code>lcp_versions</code> and omit <code>sale_disposition</code>, because its operator left the surface off.</li>
+<li><strong>Open map.</strong> A reader ignores keys it does not know. A new key is registered by the LEP that defines its surface.</li>
+</ol>
 <h3 id="capacity">capacity</h3>
 <p>Optional. Declares the endpoint's current lead acceptance capacity.</p>
 <table>
@@ -289,12 +360,12 @@
 <aside class="toc" aria-label="On this page">
 <h2>On this page</h2>
 <ul>
-<li class="depth-2"><a href="#6-versioning--extensibility">6. Versioning &amp; extensibility</a></li><li class="depth-3"><a href="#open-vs-closed-enumerations">Open vs. closed enumerations</a></li><li class="depth-2"><a href="#8-capability-discovery">8. Capability discovery</a></li><li class="depth-3"><a href="#capacity">capacity</a></li><li class="depth-3"><a href="#offer-restrictions">offer restrictions</a></li>
+<li class="depth-2"><a href="#6-versioning--extensibility">6. Versioning &amp; extensibility</a></li><li class="depth-3"><a href="#open-vs-closed-enumerations">Open vs. closed enumerations</a></li><li class="depth-2"><a href="#8-capability-discovery">8. Capability discovery</a></li><li class="depth-3"><a href="#features">features</a></li><li class="depth-3"><a href="#capacity">capacity</a></li><li class="depth-3"><a href="#offer-restrictions">offer restrictions</a></li>
 </ul>
 </aside>
 </div>
 <footer class="page">
-Source: <code>spec/05-capabilities.md</code> · build <code>5071512caddb</code> ·
+Source: <code>spec/05-capabilities.md</code> · build <code>4cb84d4aa480</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

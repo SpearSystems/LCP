@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="spec/02-envelope.md">
-<meta name="lcp-build" content="5071512caddb">
+<meta name="lcp-build" content="4cb84d4aa480">
 <title>LCP — Lead Context Protocol Specification — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -39,6 +39,7 @@
 }</code></pre>
 <p>The envelope is transport-agnostic. <code>sender_id</code> and <code>receiver_id</code> live in the envelope (not transport headers) so the message is self-describing on any transport (HTTP, message queue, WebSocket).</p>
 <p>The <code>test</code> field is canonical in the envelope. For the HTTP binding, <code>X-LCP-Test: true</code> MUST also be sent as a header so infrastructure can filter test traffic without parsing the JSON body.</p>
+<p><strong>Test outcomes (v1.3, LEP-0012 §6).</strong> A receiver that advertises <code>features.test_outcomes</code> answers a <code>1.3.0</code>+ test <code>lead</code> or <code>post</code> that carries the registered extension <code>lcp.test.outcome</code> (<code>{"outcome": "sold", "payout_cents": 4450}</code>) with exactly that <code>disposition</code>. When <code>payout_cents</code> is absent, a forced <code>sold</code> or <code>pending</code> pays the fixed synthetic <code>1000</code> minor units of <code>USD</code>, and a forced <code>price_rejected</code> counters at <code>1000</code> <code>USD</code>. It never routes, bills, or counts such a lead. A forced <code>pending</code> is resolved by an <code>ACCEPTED</code> event within 60 seconds, and every event the test produces carries <code>message.test</code> = <code>true</code>. The extension is legal only on test traffic: on a live message it is refused with <code>LCP-013</code>. A test lead without the extension follows the receiver's ordinary test policy.</p>
 <p>Schema: <a href="../schemas/envelope.html">schemas/envelope.json</a></p>
 <h2 id="4-message-types">4. Message types</h2>
 <table>
@@ -305,9 +306,10 @@ Platform ──post──► Buyer A (full PII delivered)</code></pre>
 <td><code>RECEIVED</code> \</td>
 <td><code>VALIDATED</code> \</td>
 <td><code>ACCEPTED</code> \</td>
+<td><code>PROCESSED</code> \</td>
 <td><code>REJECTED</code> \</td>
 <td><code>DUPLICATE</code> \</td>
-<td><code>ERROR</code></td>
+<td><code>ERROR</code>. <code>PROCESSED</code> (v1.2, <code>features.processed_ack</code>) acknowledges a <code>post</code> the buyer received and is sent only to a peer whose <code>lcp_versions</code> has a <code>1.2.0</code>-or-higher minor.</td>
 </tr>
 <tr>
 <td><code>errors</code></td>
@@ -327,13 +329,54 @@ Platform ──post──► Buyer A (full PII delivered)</code></pre>
 <tr>
 <td><code>rejection_reason</code></td>
 <td>string</td>
-<td>Structured rejection reason (open enum: <code>invalid_phone</code>, <code>duplicate</code>, <code>out_of_geography</code>, <code>credit_too_low</code>, <code>already_customer</code>, <code>compliance_fail</code>, <code>capacity_exceeded</code>, etc.). Enables publisher automation.</td>
+<td>Structured reason the lead was refused or not bought (open enum: <code>invalid_phone</code>, <code>duplicate</code>, <code>out_of_geography</code>, <code>credit_too_low</code>, <code>already_customer</code>, <code>compliance_fail</code>, <code>capacity_exceeded</code>, <code>no_buyer</code>, etc.). Enables publisher automation.</td>
+</tr>
+<tr>
+<td><code>disposition</code></td>
+<td>object</td>
+<td>v1.3 (LEP-0012 §1). The commercial result of an acknowledged <code>lead</code> or <code>post</code>; see below.</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Sale disposition (v1.3, LEP-0012).</strong> <code>disposition.outcome</code> is <code>sold</code>, <code>unsold</code>, <code>pending</code>, or <code>price_rejected</code>. A <code>sold</code> disposition carries <code>payout_cents</code> (integer minor units, <code>1</code>–<code>100000000</code>, what the receiver pays the sender after any receiver fee) and <code>currency</code>, and MAY carry <code>redirect_url</code> and <code>redirect_expires_at</code>. A <code>price_rejected</code> disposition carries <code>counter_price_cents</code> and <code>currency</code>. A <code>pending</code> disposition MAY carry <code>final_by</code>. The schema enforces these pairings.</p>
+<ul>
+<li>A receiver includes <code>disposition</code> only on an ack with <code>status</code> <code>RECEIVED</code>, <code>ACCEPTED</code>, or <code>DUPLICATE</code>, and only when the acknowledged message's <code>lcp.version</code> is <code>1.3.0</code> or later (parsed semver). <code>ack</code> is a closed object, so a 1.2 sender never receives it.</li>
+<li>A <code>DUPLICATE</code> ack repeats the original disposition byte for byte.</li>
+<li><strong>Sender rule:</strong> a lead is sold if, and only if, <code>disposition.outcome</code> = <code>sold</code>. HTTP 2xx and <code>status</code> = <code>ACCEPTED</code> alone never mean sold. <code>status</code> = <code>REJECTED</code> without a disposition means unsold.</li>
+<li>A <code>pending</code> lead resolves by an <code>ACCEPTED</code> or <code>REJECTED</code> event (below). After <code>final_by</code> with no event, the sender treats it as unsold until a later event says otherwise.</li>
+<li><strong>Consumer redirect.</strong> <code>redirect_url</code> is session-bearing and classed <code>restricted</code>. The sender MUST deliver it to the consumer's browser as a top-level navigation (an HTTP <code>302</code>/<code>303</code> or a script navigation) and MUST NOT fetch, prefetch, preload, iframe, or link-preview it from a server: the receiver measures the redirect from the consumer's own client. A relay hop MUST use an opaque, unguessable token, HTTPS, and <code>404</code> for an unknown token, and MUST NOT add consumer data to the URL. <code>redirect_url</code> is never logged, never copied into an event, and never a postback macro.</li>
+</ul>
 <h3 id="event">event</h3>
 <p><code>lead_id</code>, <code>event</code> (DELIVERED|ACCEPTED|REJECTED|DISPUTED|REFUNDED| EXPIRED|CONVERTED|ARCHIVED; v1.1 adds <code>FINAL_PRICING</code> and <code>CONTACTED</code>, both documented below), <code>timestamp</code>, <code>details</code>, <code>external_reference</code>.</p>
 <p><strong>Class rule — no consumer PII.</strong> Event <code>details</code> MUST NOT carry consumer PII — contact values travel only as per-pair keyed digests where a message defines them. This holds for every event name and both reporting directions (publisher and buyer). <code>details</code> is <code>additionalProperties: true</code> by design, so this is a receiver ingest rule, not a schema rule: a receiver MUST reject a plaintext contact value anywhere in <code>details</code> (a phone-number-shaped run of 7-15 digits, or an email address) as a validation rejection (<code>LCP-100</code>), not a store. <code>LCP-008 PII_IN_PING</code> stays the ping-allowlist code; the event class has no allowlist to violate.</p>
+<p><strong>Sale result events (v1.3, LEP-0012 §3).</strong> When the receiver of a lead reports that lead's commercial fate to its sender, <code>details</code> SHOULD use these shapes. All values are <code>internal</code>; the class rule above still holds.</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Meaning</th>
+<th><code>details</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ACCEPTED</code></td>
+<td>Sold, including a sale already reported in the ack.</td>
+<td><code>payout_cents</code> (&gt; 0), <code>currency</code>, <code>revision</code>, <code>sold_at</code></td>
+</tr>
+<tr>
+<td><code>REJECTED</code></td>
+<td>Unsold after <code>pending</code>. Also emitted for an unsold result already reported synchronously, so a postback subscriber learns of it.</td>
+<td><code>revision</code>, optional <code>rejection_reason</code></td>
+</tr>
+<tr>
+<td><code>REFUNDED</code></td>
+<td>Returned or reversed after a sale.</td>
+<td><code>payout_cents</code> (&lt; 0), <code>currency</code>, <code>revision</code>, <code>returned_at</code>, optional <code>return_reason</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>payout_cents</code> is a signed delta (<code>-100000000</code>–<code>100000000</code>, never <code>0</code>): the change this event makes to what the receiver owes the sender for the lead, so the sum over a lead's events is the net amount. <code>revision</code> is an integer ≥ 1 that strictly increases per <code>lead_id</code> for one sender–receiver pair; a sender keeps the highest revision it has seen and ignores a lower or equal one. <code>return_reason</code> is an open enum (<code>invalid_contact</code>, <code>duplicate</code>, <code>compliance_fail</code>, <code>fraud</code>, <code>consumer_dispute</code>, <code>buyer_error</code>). These shapes report; they do not invoice, and <code>post.pricing</code> remains the platform–buyer billing record.</p>
 <p>For <code>CONVERTED</code> events, <code>details</code> SHOULD include:</p>
 <table>
 <thead>
@@ -530,7 +573,7 @@ Platform ──post──► Buyer A (full PII delivered)</code></pre>
 </aside>
 </div>
 <footer class="page">
-Source: <code>spec/02-envelope.md</code> · build <code>5071512caddb</code> ·
+Source: <code>spec/02-envelope.md</code> · build <code>4cb84d4aa480</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

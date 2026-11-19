@@ -25,8 +25,9 @@ def _envelope(
     idempotency_key: str | None = None,
     test: bool = False,
     version: str = "1.0.0",
+    message_id: str | None = None,
 ) -> dict[str, Any]:
-    message_id = str(uuid4())
+    message_id = message_id or str(uuid4())
     return {
         "lcp": {
             "version": version,
@@ -101,6 +102,7 @@ def build_ack(
     rejection_reason: str | None = None,
     errors: list[dict[str, Any]] | None = None,
     negotiation: dict[str, Any] | None = None,
+    disposition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     original_message = original["lcp"]["message"]
     payload: dict[str, Any] = {
@@ -117,6 +119,10 @@ def build_ack(
         # LEP-0009 §5: present on every ack for a quote/counter (and on a
         # successful bid redemption), so a buyer never infers state from prose.
         payload["negotiation"] = negotiation
+    if disposition is not None:
+        # LEP-0012 §1: the caller has already applied the version gate (the
+        # acknowledged message is 1.3.0 or later), so the ack is a 1.3 shape.
+        payload["disposition"] = disposition
     return _envelope(
         "ack",
         sender_id,
@@ -124,6 +130,7 @@ def build_ack(
         payload,
         correlation_id=original_message["id"],
         test=original_message.get("test", False),
+        **({"version": "1.3.0"} if disposition is not None else {}),
     )
 
 
@@ -337,6 +344,7 @@ def build_event(
     correlation_id: str | None = None,
     details: dict[str, Any] | None = None,
     test: bool = False,
+    message_id: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "lead_id": lead_id,
@@ -352,6 +360,7 @@ def build_event(
         payload,
         correlation_id=correlation_id,
         test=test,
+        message_id=message_id,
     )
 
 

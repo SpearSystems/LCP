@@ -3,8 +3,166 @@
     "$id": "https://lcp.dev/schemas/ack.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "required": [
+            "disposition"
+          ]
+        },
+        "then": {
+          "properties": {
+            "status": {
+              "enum": [
+                "RECEIVED",
+                "ACCEPTED",
+                "DUPLICATE"
+              ],
+              "x-lcp-pii": "public"
+            }
+          }
+        }
+      }
+    ],
     "description": "Response to any message. Uses errors[] array \u2014 a single message can fail multiple field validations. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
+      "disposition": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "payout_cents"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "redirect_url"
+                    ]
+                  }
+                ]
+              }
+            },
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "sold",
+                  "x-lcp-pii": "internal"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "payout_cents"
+              ]
+            }
+          },
+          {
+            "else": {
+              "not": {
+                "required": [
+                  "counter_price_cents"
+                ]
+              }
+            },
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "price_rejected",
+                  "x-lcp-pii": "internal"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "counter_price_cents"
+              ]
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "final_by"
+              ]
+            },
+            "then": {
+              "properties": {
+                "outcome": {
+                  "const": "pending",
+                  "x-lcp-pii": "internal"
+                }
+              }
+            }
+          }
+        ],
+        "dependentRequired": {
+          "counter_price_cents": [
+            "currency"
+          ],
+          "payout_cents": [
+            "currency"
+          ],
+          "redirect_expires_at": [
+            "redirect_url"
+          ]
+        },
+        "description": "v1.3 (LEP-0012 \u00a71): the commercial result of the acknowledged lead or post. A lead is sold if, and only if, outcome = sold. Sent only when the acknowledged message's lcp.version is 1.3.0 or later, and only on an ack whose status is RECEIVED, ACCEPTED or DUPLICATE; a DUPLICATE ack repeats the original disposition. Classed restricted because redirect_url is session-bearing.",
+        "properties": {
+          "counter_price_cents": {
+            "description": "price_rejected only: the lowest price the receiver would pay. Informational in v1.3.",
+            "maximum": 100000000,
+            "minimum": 1,
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          },
+          "currency": {
+            "$ref": "core.json#/$defs/currency"
+          },
+          "final_by": {
+            "description": "pending only: the latest time the final ACCEPTED or REJECTED event will be sent.",
+            "format": "date-time",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "outcome": {
+            "enum": [
+              "sold",
+              "unsold",
+              "pending",
+              "price_rejected"
+            ],
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "payout_cents": {
+            "description": "sold only: what the receiver will pay the sender for this lead, in minor units of currency, after any receiver fee.",
+            "maximum": 100000000,
+            "minimum": 1,
+            "type": "integer",
+            "x-lcp-pii": "internal"
+          },
+          "redirect_expires_at": {
+            "format": "date-time",
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "redirect_url": {
+            "description": "sold only: the consumer's next page. The sender sends the consumer's browser there as a top-level navigation and never fetches it server-side (LEP-0012 \u00a72). Never logged.",
+            "maxLength": 2048,
+            "pattern": "^https://",
+            "type": "string",
+            "x-lcp-pii": "restricted"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object",
+        "x-lcp-pii": "restricted"
+      },
       "errors": {
         "description": "Zero or more error objects. Present when status = ERROR or REJECTED.",
         "items": {
@@ -84,7 +242,7 @@
       },
       "rejection_reason": {
         "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)",
-        "description": "Structured rejection reason when status = REJECTED. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged. Open enumeration.",
+        "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer. Open enumeration.",
         "type": "string",
         "x-lcp-pii": "internal"
       },
@@ -2882,7 +3040,7 @@
         "x-lcp-pii": "internal"
       },
       "callback_url": {
-        "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses.",
+        "description": "HTTPS callback destination (http only in an explicitly configured sandbox). Validated with the conformance runner's SSRF rule: no embedded credentials, a valid port, and only public resolved addresses. With delivery = url_template (v1.3, LEP-0012 \u00a74) this is a GET template: macros only in the query component, from the closed set {lead_id} {external_id} {click_id} {sub1}-{sub5} {event} {payout} {payout_cents} {currency} {revision} {test} {timestamp}.",
         "maxLength": 2048,
         "pattern": "^https?://",
         "type": "string",
@@ -2891,6 +3049,16 @@
       "created_at": {
         "description": "Registration time in whole-second UTC form.",
         "format": "date-time",
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "delivery": {
+        "default": "json",
+        "description": "v1.3 (LEP-0012 \u00a74): json is the signed JSON POST (LEP-0001); url_template is a signed GET postback to a tracker URL template, fired only for events addressed to the subscriber.",
+        "enum": [
+          "json",
+          "url_template"
+        ],
         "type": "string",
         "x-lcp-pii": "internal"
       },
@@ -4283,6 +4451,303 @@
       "schema_version"
     ],
     "title": "LCP Motor Vehicle Accident Vertical Schema",
+    "type": "object"
+  },
+  "verticals/personal_loans.json": {
+    "$id": "https://lcp.dev/verticals/personal_loans.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Short-term and installment personal loan lead attributes (LEP-0014). Every field is tagged ping_safe: true|false; the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts are whole units of amount_currency; regulated identifiers in us_details follow LEP-0013. Buyers require further fields through requirement profiles, not this schema. Created by Spear Systems (a Spear company). Open standard - Apache 2.0, free to implement.",
+    "properties": {
+      "account_age_months": {
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "account_type": {
+        "enum": [
+          "checking",
+          "savings"
+        ],
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "alternate_phone": {
+        "pattern": "^\\+[1-9]\\d{1,14}$",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "contact"
+      },
+      "amount_currency": {
+        "description": "ISO 4217 currency of every applicant-declared amount (loan_amount, monthly_income), which are whole units of this currency. Named amount_currency because core schemas own currency (SPEC \u00a712).",
+        "enum": [
+          "USD"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "bank_name": {
+        "maxLength": 100,
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "bank_phone": {
+        "pattern": "^\\+[1-9]\\d{1,14}$",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "credit_card_debt_10k_plus": {
+        "description": "Sensitive financial data; post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "credit_rating_band": {
+        "description": "Self-reported credit classification is sensitive financial data; post-only.",
+        "enum": [
+          "excellent",
+          "good",
+          "fair",
+          "poor",
+          "unknown"
+        ],
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "direct_deposit": {
+        "ping_safe": true,
+        "type": "boolean",
+        "x-lcp-pii": "public"
+      },
+      "employer_name": {
+        "description": "Company name. Not ping_safe.",
+        "maxLength": 150,
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "employment_months": {
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "following_pay_date": {
+        "format": "date",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "has_tax_debt": {
+        "description": "Sensitive financial data; post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "income_frequency": {
+        "enum": [
+          "weekly",
+          "biweekly",
+          "twice_monthly",
+          "monthly"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "income_source": {
+        "enum": [
+          "employment",
+          "benefits",
+          "self_employment"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "is_active_duty": {
+        "description": "Military status is sensitive eligibility data; post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "is_homeowner": {
+        "ping_safe": true,
+        "type": "boolean",
+        "x-lcp-pii": "public"
+      },
+      "job_title": {
+        "maxLength": 150,
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "loan_amount": {
+        "description": "Requested amount in whole units of amount_currency, exactly as the applicant entered it (1000 = $1,000). Not cents. Values outside 100-50000 are refused; a cents value sent by mistake fails the bound for most requests.",
+        "maximum": 50000,
+        "minimum": 100,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "loan_amount_band": {
+        "description": "Banded loan amount for ping use. Derived by the platform from loan_amount; publishers do not send it.",
+        "enum": [
+          "under_500",
+          "500_1k",
+          "1k_2500",
+          "2500_5k",
+          "5k_10k",
+          "over_10k"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "loan_purpose": {
+        "enum": [
+          "debt_relief",
+          "home_purchase",
+          "major_purchase",
+          "car_financing",
+          "car_repair",
+          "business",
+          "moving",
+          "medical",
+          "other"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "monthly_income": {
+        "description": "Monthly income in whole units of amount_currency, as the applicant entered it (3000 = $3,000). Not cents.",
+        "maximum": 50000,
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "monthly_income_band": {
+        "description": "Banded monthly income for ping use. Derived by the platform from monthly_income; publishers do not send it.",
+        "enum": [
+          "under_1k",
+          "1k_2k",
+          "2k_3k",
+          "3k_5k",
+          "5k_8k",
+          "over_8k"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "months_at_address": {
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "next_pay_date": {
+        "format": "date",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "owns_vehicle": {
+        "ping_safe": true,
+        "type": "boolean",
+        "x-lcp-pii": "public"
+      },
+      "schema_version": {
+        "const": "2.0.0",
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "us_details": {
+        "additionalProperties": false,
+        "description": "US identity and bank identifiers. Every field except country_code and license_state is a regulated identifier (LEP-0013): accepted only by a receiver advertising features.regulated_identifiers from an enrolled sender, forwarded only to enrolled buyers whose profile names the field, never persisted, never logged. Post-only.",
+        "ping_safe": false,
+        "properties": {
+          "account_number": {
+            "description": "Bank account number.",
+            "pattern": "^\\d{4,17}$",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "restricted",
+            "x-lcp-regulated": "bank_account"
+          },
+          "country_code": {
+            "const": "US",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "license_number": {
+            "description": "Driver's licence number.",
+            "pattern": "^[A-Za-z0-9*-]{1,20}$",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "restricted",
+            "x-lcp-regulated": "government_id"
+          },
+          "license_state": {
+            "description": "Issuing state, USPS code.",
+            "pattern": "^[A-Z]{2}$",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "restricted"
+          },
+          "routing_number": {
+            "description": "ABA routing number; receivers also verify the ABA checksum.",
+            "pattern": "^\\d{9}$",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "restricted",
+            "x-lcp-regulated": "bank_account"
+          },
+          "ssn": {
+            "description": "SSN or ITIN, 9 digits, no separators. Test traffic: 987654320-987654329 only.",
+            "pattern": "^\\d{9}$",
+            "ping_safe": false,
+            "type": "string",
+            "x-lcp-pii": "restricted",
+            "x-lcp-regulated": "government_id"
+          }
+        },
+        "required": [
+          "country_code"
+        ],
+        "type": "object",
+        "x-lcp-pii": "restricted"
+      },
+      "vertical": {
+        "const": "personal_loans",
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "work_phone": {
+        "pattern": "^\\+[1-9]\\d{1,14}$",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "contact"
+      }
+    },
+    "required": [
+      "vertical",
+      "schema_version",
+      "amount_currency",
+      "loan_amount"
+    ],
+    "title": "LCP Personal Loans Vertical Schema",
     "type": "object"
   },
   "verticals/solar.json": {

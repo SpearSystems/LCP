@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lcp-source" content="verticals/personal_loans.json">
+<meta name="lcp-build" content="4cb84d4aa480">
+<title>LCP Personal Loans Vertical Schema — LCP</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<header class="site">
+<span class="brand">LCP — Lead Context Protocol</span>
+<nav aria-label="Sections"><a href="../index.html">LCP</a><a href="../spec/index.html">Specification</a><a href="../schemas/index.html">Schemas</a><a href="../verticals/index.html">Verticals</a><a href="../leps/index.html">LEPs</a></nav>
+</header>
+<div class="layout">
+<main>
+<article>
+<h1 id="schema">LCP Personal Loans Vertical Schema</h1>
+<p><code>https://lcp.dev/verticals/personal_loans.json</code> · Short-term and installment personal loan lead attributes (LEP-0014). Every field is tagged ping_safe: true|false; the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts are whole units of amount_currency; regulated identifiers in us_details follow LEP-0013. Buyers require further fields through requirement profiles, not this schema. Created by Spear Systems (a Spear company). Open standard - Apache 2.0, free to implement.</p>
+<h2 id="properties">Top-level properties</h2>
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>PII class</th><th>Ping-safe</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>account_age_months</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>account_type</code></td><td>enum (<code>"checking"</code>, <code>"savings"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>alternate_phone</code></td><td><code>string</code></td><td><code>contact</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>amount_currency</code></td><td>enum (<code>"USD"</code>)</td><td><code>public</code></td><td>yes</td><td>yes</td><td>ISO 4217 currency of every applicant-declared amount (loan_amount, monthly_income), which are whole units of this currency. Named amount_currency because core schemas own currency (SPEC §12).</td></tr>
+<tr><td><code>bank_name</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>bank_phone</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>credit_card_debt_10k_plus</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Sensitive financial data; post-only.</td></tr>
+<tr><td><code>credit_rating_band</code></td><td>enum (<code>"excellent"</code>, <code>"good"</code>, <code>"fair"</code>, <code>"poor"</code>, <code>"unknown"</code>)</td><td><code>restricted</code></td><td>no</td><td></td><td>Self-reported credit classification is sensitive financial data; post-only.</td></tr>
+<tr><td><code>direct_deposit</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>employer_name</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Company name. Not ping_safe.</td></tr>
+<tr><td><code>employment_months</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>following_pay_date</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>has_tax_debt</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Sensitive financial data; post-only.</td></tr>
+<tr><td><code>income_frequency</code></td><td>enum (<code>"weekly"</code>, <code>"biweekly"</code>, <code>"twice_monthly"</code>, <code>"monthly"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>income_source</code></td><td>enum (<code>"employment"</code>, <code>"benefits"</code>, <code>"self_employment"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>is_active_duty</code></td><td><code>boolean</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Military status is sensitive eligibility data; post-only.</td></tr>
+<tr><td><code>is_homeowner</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>job_title</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>loan_amount</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td>yes</td><td>Requested amount in whole units of amount_currency, exactly as the applicant entered it (1000 = $1,000). Not cents. Values outside 100-50000 are refused; a cents value sent by mistake fails the bound for most requests.</td></tr>
+<tr><td><code>loan_amount_band</code></td><td>enum (<code>"under_500"</code>, <code>"500_1k"</code>, <code>"1k_2500"</code>, <code>"2500_5k"</code>, <code>"5k_10k"</code>, <code>"over_10k"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Banded loan amount for ping use. Derived by the platform from loan_amount; publishers do not send it.</td></tr>
+<tr><td><code>loan_purpose</code></td><td>enum (<code>"debt_relief"</code>, <code>"home_purchase"</code>, <code>"major_purchase"</code>, <code>"car_financing"</code>, <code>"car_repair"</code>, <code>"business"</code>, <code>"moving"</code>, <code>"medical"</code>, <code>"other"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>monthly_income</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td>Monthly income in whole units of amount_currency, as the applicant entered it (3000 = $3,000). Not cents.</td></tr>
+<tr><td><code>monthly_income_band</code></td><td>enum (<code>"under_1k"</code>, <code>"1k_2k"</code>, <code>"2k_3k"</code>, <code>"3k_5k"</code>, <code>"5k_8k"</code>, <code>"over_8k"</code>)</td><td><code>public</code></td><td>yes</td><td></td><td>Banded monthly income for ping use. Derived by the platform from monthly_income; publishers do not send it.</td></tr>
+<tr><td><code>months_at_address</code></td><td><code>integer</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>next_pay_date</code></td><td><code>string</code></td><td><code>restricted</code></td><td>no</td><td></td><td></td></tr>
+<tr><td><code>owns_vehicle</code></td><td><code>boolean</code></td><td><code>public</code></td><td>yes</td><td></td><td></td></tr>
+<tr><td><code>schema_version</code></td><td>const <code>"2.0.0"</code></td><td><code>public</code></td><td>yes</td><td>yes</td><td></td></tr>
+<tr><td><code>us_details</code></td><td><code>object</code></td><td><code>restricted</code></td><td>no</td><td></td><td>US identity and bank identifiers. Every field except country_code and license_state is a regulated identifier (LEP-0013): accepted only by a receiver advertising features.regulated_identifiers from an enrolled sender, forwarded only to enrolled buyers whose profile names the field, never persisted, never logged. Post-only.</td></tr>
+<tr><td><code>vertical</code></td><td>const <code>"personal_loans"</code></td><td><code>public</code></td><td>yes</td><td>yes</td><td></td></tr>
+<tr><td><code>work_phone</code></td><td><code>string</code></td><td><code>contact</code></td><td>no</td><td></td><td></td></tr>
+</tbody>
+</table>
+<h2 id="document">Document</h2>
+<pre class="code-block"><code class="language-json">{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/verticals/personal_loans.json",
+  "title": "LCP Personal Loans Vertical Schema",
+  "description": "Short-term and installment personal loan lead attributes (LEP-0014). Every field is tagged ping_safe: true|false; the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts are whole units of amount_currency; regulated identifiers in us_details follow LEP-0013. Buyers require further fields through requirement profiles, not this schema. Created by Spear Systems (a Spear company). Open standard - Apache 2.0, free to implement.",
+  "type": "object",
+  "required": [
+    "vertical",
+    "schema_version",
+    "amount_currency",
+    "loan_amount"
+  ],
+  "properties": {
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "personal_loans",
+      "ping_safe": true
+    },
+    "schema_version": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "const": "2.0.0",
+      "ping_safe": true
+    },
+    "amount_currency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "USD"
+      ],
+      "description": "ISO 4217 currency of every applicant-declared amount (loan_amount, monthly_income), which are whole units of this currency. Named amount_currency because core schemas own currency (SPEC §12).",
+      "ping_safe": true
+    },
+    "work_phone": {
+      "x-lcp-pii": "contact",
+      "type": "string",
+      "pattern": "^\\+[1-9]\\d{1,14}$",
+      "ping_safe": false
+    },
+    "alternate_phone": {
+      "x-lcp-pii": "contact",
+      "type": "string",
+      "pattern": "^\\+[1-9]\\d{1,14}$",
+      "ping_safe": false
+    },
+    "months_at_address": {
+      "x-lcp-pii": "restricted",
+      "type": "integer",
+      "minimum": 0,
+      "ping_safe": false
+    },
+    "loan_amount": {
+      "x-lcp-pii": "restricted",
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 50000,
+      "description": "Requested amount in whole units of amount_currency, exactly as the applicant entered it (1000 = $1,000). Not cents. Values outside 100-50000 are refused; a cents value sent by mistake fails the bound for most requests.",
+      "ping_safe": false
+    },
+    "loan_amount_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_500",
+        "500_1k",
+        "1k_2500",
+        "2500_5k",
+        "5k_10k",
+        "over_10k"
+      ],
+      "description": "Banded loan amount for ping use. Derived by the platform from loan_amount; publishers do not send it.",
+      "ping_safe": true
+    },
+    "loan_purpose": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "debt_relief",
+        "home_purchase",
+        "major_purchase",
+        "car_financing",
+        "car_repair",
+        "business",
+        "moving",
+        "medical",
+        "other"
+      ],
+      "ping_safe": true
+    },
+    "employer_name": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "maxLength": 150,
+      "description": "Company name. Not ping_safe.",
+      "ping_safe": false
+    },
+    "job_title": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "maxLength": 150,
+      "ping_safe": false
+    },
+    "employment_months": {
+      "x-lcp-pii": "restricted",
+      "type": "integer",
+      "minimum": 0,
+      "ping_safe": false
+    },
+    "income_source": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "employment",
+        "benefits",
+        "self_employment"
+      ],
+      "ping_safe": true
+    },
+    "monthly_income": {
+      "x-lcp-pii": "restricted",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50000,
+      "description": "Monthly income in whole units of amount_currency, as the applicant entered it (3000 = $3,000). Not cents.",
+      "ping_safe": false
+    },
+    "monthly_income_band": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "under_1k",
+        "1k_2k",
+        "2k_3k",
+        "3k_5k",
+        "5k_8k",
+        "over_8k"
+      ],
+      "description": "Banded monthly income for ping use. Derived by the platform from monthly_income; publishers do not send it.",
+      "ping_safe": true
+    },
+    "income_frequency": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "enum": [
+        "weekly",
+        "biweekly",
+        "twice_monthly",
+        "monthly"
+      ],
+      "ping_safe": true
+    },
+    "next_pay_date": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "format": "date",
+      "ping_safe": false
+    },
+    "following_pay_date": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "format": "date",
+      "ping_safe": false
+    },
+    "direct_deposit": {
+      "x-lcp-pii": "public",
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "is_active_duty": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Military status is sensitive eligibility data; post-only.",
+      "ping_safe": false
+    },
+    "bank_name": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "maxLength": 100,
+      "ping_safe": false
+    },
+    "bank_phone": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "pattern": "^\\+[1-9]\\d{1,14}$",
+      "ping_safe": false
+    },
+    "account_type": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "enum": [
+        "checking",
+        "savings"
+      ],
+      "ping_safe": false
+    },
+    "account_age_months": {
+      "x-lcp-pii": "restricted",
+      "type": "integer",
+      "minimum": 0,
+      "ping_safe": false
+    },
+    "credit_rating_band": {
+      "x-lcp-pii": "restricted",
+      "type": "string",
+      "enum": [
+        "excellent",
+        "good",
+        "fair",
+        "poor",
+        "unknown"
+      ],
+      "description": "Self-reported credit classification is sensitive financial data; post-only.",
+      "ping_safe": false
+    },
+    "owns_vehicle": {
+      "x-lcp-pii": "public",
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "is_homeowner": {
+      "x-lcp-pii": "public",
+      "type": "boolean",
+      "ping_safe": true
+    },
+    "credit_card_debt_10k_plus": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Sensitive financial data; post-only.",
+      "ping_safe": false
+    },
+    "has_tax_debt": {
+      "x-lcp-pii": "restricted",
+      "type": "boolean",
+      "description": "Sensitive financial data; post-only.",
+      "ping_safe": false
+    },
+    "us_details": {
+      "x-lcp-pii": "restricted",
+      "type": "object",
+      "description": "US identity and bank identifiers. Every field except country_code and license_state is a regulated identifier (LEP-0013): accepted only by a receiver advertising features.regulated_identifiers from an enrolled sender, forwarded only to enrolled buyers whose profile names the field, never persisted, never logged. Post-only.",
+      "properties": {
+        "country_code": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "const": "US",
+          "ping_safe": false
+        },
+        "ssn": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^\\d{9}$",
+          "description": "SSN or ITIN, 9 digits, no separators. Test traffic: 987654320-987654329 only.",
+          "ping_safe": false,
+          "x-lcp-regulated": "government_id"
+        },
+        "license_number": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9*-]{1,20}$",
+          "description": "Driver's licence number.",
+          "ping_safe": false,
+          "x-lcp-regulated": "government_id"
+        },
+        "license_state": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Issuing state, USPS code.",
+          "ping_safe": false
+        },
+        "account_number": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^\\d{4,17}$",
+          "description": "Bank account number.",
+          "ping_safe": false,
+          "x-lcp-regulated": "bank_account"
+        },
+        "routing_number": {
+          "x-lcp-pii": "restricted",
+          "type": "string",
+          "pattern": "^\\d{9}$",
+          "description": "ABA routing number; receivers also verify the ABA checksum.",
+          "ping_safe": false,
+          "x-lcp-regulated": "bank_account"
+        }
+      },
+      "required": [
+        "country_code"
+      ],
+      "additionalProperties": false,
+      "ping_safe": false
+    }
+  },
+  "additionalProperties": false
+}
+</code></pre>
+</article>
+</main>
+<aside class="toc" aria-label="On this page">
+<h2>On this page</h2>
+<ul>
+<li class="depth-2"><a href="#properties">Top-level properties</a></li><li class="depth-2"><a href="#document">Document</a></li>
+</ul>
+</aside>
+</div>
+<footer class="page">
+Source: <code>verticals/personal_loans.json</code> · build <code>4cb84d4aa480</code> ·
+generated by <code>tools/build_spec_site.py</code> — do not edit this file.
+</footer>
+</body>
+</html>

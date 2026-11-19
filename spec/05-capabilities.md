@@ -44,7 +44,7 @@ additive MINOR change, not a breaking MAJOR change.
 
 `GET /v1/lcp/capabilities` → `{ lcp_versions, message_types,
 verticals[{id, schema_version}], countries, auth_methods, events,
-conformance_level, delivery_windows[], capacity }`.
+conformance_level, delivery_windows[], capacity, features }`.
 
 **Version-string membership (v1.1, LEP-0003 F6, normative).** Every
 `lcp_versions` element MUST be a full `major.minor.patch` semantic
@@ -62,6 +62,44 @@ set containing a v1.1-or-higher minor element (e.g. `1.1.0`); a sender
 MUST NOT send those fields to a receiver advertising v1.0 minors only,
 because the receiver's closed-object allowlist rejects them (§4
 capability gate, §6 closed-vs-open rule).
+
+### features
+
+Optional (v1.2). An object that maps a surface name to the minimum
+protocol version of that surface, as a full `major.minor.patch` string.
+It names the additive surfaces this deployment has switched on.
+
+```json
+"features": { "processed_ack": "1.2.0", "sale_disposition": "1.3.0" }
+```
+
+| Key | Minimum version | Surface |
+|---|---|---|
+| `processed_ack` | `1.2.0` | `ack.status = PROCESSED` for a `post` the buyer received ([02-envelope](02-envelope.md)). |
+| `multi_currency` | `1.2.0` | `post.pricing` settlement and FX fields; bid-side FX fields (LEP-0010). |
+| `batch` | `1.2.0` | `POST /v1/lcp/leads/batch` (LEP-0001 W2). |
+| `negotiation` | `1.2.0` | `quote` and `counter` (LEP-0009). |
+| `event_subscriptions` | `1.2.0` | `subscription` registration, delivery and replay (LEP-0001 W3). |
+| `email_form_entry` | `1.2.0` | The declared email-form entry surface (LEP-0003 follow-up). |
+| `sale_disposition` | `1.3.0` | `ack.disposition` and money-bearing sale events (LEP-0012 §1, §3). |
+| `url_postbacks` | `1.3.0` | `subscription.delivery = url_template` (LEP-0012 §4). |
+| `test_outcomes` | `1.3.0` | `lcp.test.outcome` on sandbox test traffic (LEP-0012 §6). |
+| `regulated_identifiers` | `1.3.0` | Intake of `x-lcp-regulated` fields (LEP-0013 §2). |
+
+Rules (normative):
+
+1. **Absence is the switch.** A missing key means the surface does not
+   exist on that deployment. A sender MUST NOT use a surface the receiver
+   does not advertise. A `404` from an unadvertised route is not retryable.
+2. **The version gate still applies.** A sender uses a surface only when
+   the receiver advertises its key and `lcp_versions` holds an element with
+   `major == 1` and `minor` at least the key's minor. Both are compared as
+   parsed versions, never as strings.
+3. **Per deployment, not per protocol version.** A peer may advertise
+   `1.3.0` in `lcp_versions` and omit `sale_disposition`, because its
+   operator left the surface off.
+4. **Open map.** A reader ignores keys it does not know. A new key is
+   registered by the LEP that defines its surface.
 
 ### capacity
 

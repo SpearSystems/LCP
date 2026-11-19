@@ -203,6 +203,9 @@ class PostgresStore(Store):
             "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS encryption TEXT NOT NULL DEFAULT 'application_encrypted'"
         )
         db.execute("ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TEXT")
+        db.execute(
+            "ALTER TABLE event_subscriptions ADD COLUMN IF NOT EXISTS delivery TEXT NOT NULL DEFAULT 'json'"
+        )
 
     def close(self) -> None:
         self.flush_history()

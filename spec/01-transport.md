@@ -232,6 +232,25 @@ routing).
 Webhook delivery is a platform implementation concern — the protocol
 defines the message format and signing, not the delivery mechanism.
 
+**URL-template postbacks (v1.3, LEP-0012 §4).** A subscription registered
+with `delivery` = `url_template` is delivered as an HTTPS `GET` to its
+`callback_url` with macros expanded, for trackers that cannot verify a
+JSON body. The scheme, host, port, and path are literal; macros appear only
+in the query and come from a closed set (`{lead_id}` `{external_id}`
+`{click_id}` `{sub1}`–`{sub5}` `{event}` `{payout}` `{payout_cents}`
+`{currency}` `{revision}` `{test}` `{timestamp}`), so a registration with
+any other token is refused (`LCP-100`, `field` = `callback_url`). Values
+are percent-encoded; `{payout}` is the signed major-unit amount at the
+currency's ISO 4217 exponent (`4450` USD → `44.50`, `4450` JPY → `4450`).
+The expanded URL MUST NOT exceed 4096 bytes and redirects are not
+followed. The request carries the same headers as a JSON delivery, and
+the signature input substitutes the expanded URL for the body:
+`<timestamp>\n<event_id>\n<expanded-url>`. A postback fires only for
+events the receiver addresses to the subscriber about its own lead. No
+macro resolves to a `contact`, `restricted`, or `prohibited` value, and a
+receiver MUST NOT log the expanded query string, which may hold the
+tracker's own token.
+
 ### Agent-as-consumer timeout
 
 When a buyer's agent evaluates a delivered lead (post), the agent MUST
