@@ -3,8 +3,11 @@
 - **Title:** Buyer delivery mapping: a declarative document that turns an LCP post into a buyer API request and the buyer's response into an LEP-0012 disposition
 - **Author(s):** LCP maintainers (draft from SpearPointX adopter evidence)
 - **Date:** 2026-11-19
-- **Status:** **Review** — public review open until 2026-12-03. Not accepted. No implementation is authorized
-  (LEP.md stage 5). This record carries no candidate implementation.
+- **Status:** **Accepted** — 2026-11-19 (maintainer;
+  [v1.4 decision record](../../docs/DECISIONS-v1.4.md) D1–D4: review
+  window and independent review waived, maintainer security/privacy
+  sign-off under D3). Implementation: PR
+  [#251](https://github.com/SpearSystems/LCP/pull/251), for v1.4.0.
 - **Target version:** v1.4.0 (additive: a new platform document format,
   conformance vectors and an optional buyer-side ack read)
 - **Discussion:** [#257](https://github.com/SpearSystems/LCP/issues/257)
@@ -12,6 +15,25 @@
   disposition vocabulary and [LEP-0013](LEP-0013-regulated-identifiers.md)
   for regulated-field forwarding. Both were Accepted on 2026-11-19 and
   ship in v1.3.0.
+
+## Decision (maintainer, 2026-11-19)
+
+**Accepted** under [D1–D4](../../docs/DECISIONS-v1.4.md) of the v1.4 decision
+record. The review window closed early with no comments, and no reviewer
+independent of the author took part (D1, D2). The maintainer signed off on
+the buyer egress surface and restricted forwarding (D3).
+
+Conditions:
+
+- The reference executor ships **off** (`LCP_FEATURE_BUYER_MAPPING`). A
+  deployment that turns it on first records a sign-off from a named human
+  security/privacy reviewer (D3 condition 4).
+- The reference platform enrols no buyer for regulated identifiers, so it
+  refuses every regulated path in a mapping.
+- Normative execution rules: [BUYER-MAPPING](../../docs/BUYER-MAPPING.md).
+- Any comment with new evidence on
+  [#257](https://github.com/SpearSystems/LCP/issues/257) reopens this record.
+  Re-evaluation: 2027-05-19.
 
 ## Problem statement and evidence
 
