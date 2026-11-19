@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name = "lcp-sdk"
-  spec.version = "1.3.0"
+  spec.version = "1.4.0"
   spec.summary = "LCP Lead Context Protocol SDK"
   spec.description = "Signing, envelopes, webhooks, and HTTP helpers for LCP."
   spec.authors = ["Spear Systems"]

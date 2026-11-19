@@ -6,6 +6,67 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-11-19
+
+Additive MINOR. A platform can deliver to a buyer that does not speak LCP
+through a declarative buyer delivery mapping, and read the buyer's answer
+as a sale result. `mortgage` ships at 2.0.0 next to a frozen 1.0.0, and
+every receiver validates a lead against the vertical version it names.
+LEP-0015 and LEP-0016 were accepted on 2026-11-19 under the
+[v1.4 decision record](docs/DECISIONS-v1.4.md). No wire field is gated on a
+new `lcp.version`: `lcp_versions` still advertises up to `1.3.0`, and a peer
+without a mapping or a declared 1.3.0 buyer profile sees no changed byte.
+
+### Added
+
+- **Buyer delivery mapping (LEP-0015).** `schemas/buyer-mapping.json`
+  (`format_version` `1.0`) is a closed, non-executable platform document
+  that turns a `post` into one static `https` `POST` to a buyer's API, and
+  the response into `sold`, `unsold`, `pending` or `price_rejected`. It has
+  a closed path grammar, a closed transform set (including an exact
+  `cents_to_units`), first-match response rules whose default is never
+  `sold`, secrets by reference only, and test posts only to `test_url`.
+  Money is never invented and ambiguity stays `pending`. Normative rules:
+  [BUYER-MAPPING](docs/BUYER-MAPPING.md). The mapping is never sent on the
+  wire, and SDK bundles do not carry it.
+- **Buyer-reported dispositions.** A buyer that declares `lcp_versions`
+  `1.3.0` receives `1.3.0` posts, and its `ack.disposition` is read as the
+  buyer's result. One bounded counter re-post at the buyer's
+  `counter_price` is allowed per post.
+- **Conformance suite `BMAP`** (`test-vectors/buyer-mapping.json`): render,
+  decode and refusal vectors, schema-checked by the conformance runner and
+  executed by the reference platform's executor.
+- **Reference platform.** The buyer-mapping executor, behind
+  `LCP_FEATURE_BUYER_MAPPING` (default `off`; off, delivery is exactly as in
+  v1.3.0), with `lcp-platform-admin buyer-mapping upsert|list|deactivate`.
+  It refuses every `x-lcp-regulated` path at upsert and at send, never
+  stores response bodies or redirect URLs, and dead-letters a mapping
+  failure with the target key and never the value. A deployment that turns
+  it on needs the named security/privacy sign-off in DECISIONS-v1.4 D3.
+- **`mortgage` vertical 2.0.0 (LEP-0016).** `amount_currency` plus bounded
+  whole-unit `loan_amount`, `property_value`, `annual_income` and
+  `cash_out_amount`, the same amount rule as `personal_loans` 2.0.0.
+  `mortgage` 1.0.0 is frozen at `verticals/archive/mortgage-1.0.0.json` with
+  `deprecated: true`, and stays served for at least 180 days.
+- **Side-by-side vertical versions.** Every SDK, the conformance runner and
+  the reference platform validate a message against the
+  `attributes.schema_version` it names, and refuse an unserved version with
+  `LCP-100` on that field. Suite `VER` (`test-vectors/vertical-versions.json`)
+  covers both `mortgage` versions.
+
+### Changed
+
+- `rejection_reason` gains the known value `buyer_unconfirmed`: a buyer
+  result that stayed `pending` past the platform's final window.
+- Bumps `SDK_VERSION` and every package manifest to `1.4.0`.
+
+### Fixed
+
+- **Rust SDK schema lookup.** `SchemaValidator` matched a schema by any
+  name suffix in random order, so `from_directory` on a checkout that
+  contains `buyer-mapping.json` could validate a ping against it. The
+  lookup is now exact, with a suffix accepted only on a `/` boundary.
+
 ## [1.3.0] — 2026-11-19
 
 Additive MINOR. A sender can learn at post time whether a lead sold, for how

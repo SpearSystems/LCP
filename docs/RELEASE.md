@@ -105,6 +105,27 @@ release record itself is also created inside the protected environment. Do not
 replace OIDC or protected environments with long-lived credentials just to make
 a release pass.
 
+## v1.4.0 release block
+
+**State: prepared 2026-11-19.** The version files carry `1.4.0`. The record
+is [RELEASE-TICKET-1.4.0.md](RELEASE-TICKET-1.4.0.md) and the decisions are
+in [DECISIONS-v1.4.md](DECISIONS-v1.4.md).
+
+`v1.4.0` is an additive MINOR over `v1.3.0`: LEP-0015 (buyer delivery
+mapping) and LEP-0016 (`mortgage` 2.0.0 and side-by-side vertical
+versions). It adds no `lcp.version`: `lcp_versions` still ends at `1.3.0`.
+The reference container ships the buyer-mapping executor **off**
+(`LCP_FEATURE_BUYER_MAPPING`), and a deployment that turns it on first
+records the named security/privacy sign-off of DECISIONS-v1.4 D3.
+
+The steps are those of the v1.2.0 checklist below, with `1.4.0` in place of
+`1.2.0`: gates from the merge commit, both tags (Go module tag first), the
+container public-pull pre-flight, the Packagist mirror, approval of the
+protected jobs, and registry read-back into the release record. The release
+workflow pins Ruby `3.3` since v1.3.0. The host used on 2026-11-19 has no
+.NET SDK, no JDK 17 toolchain for Gradle, and no XCTest, so C#, Kotlin and
+Swift are covered by CI only.
+
 ## v1.3.0 release block (published 2026-11-19)
 
 **State: released 2026-11-19** from tag `v1.3.0` at merge commit

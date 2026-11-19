@@ -1,6 +1,6 @@
 {
   "name": "@spear-systems/lcp-sdk",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "LCP Lead Context Protocol SDK for TypeScript and JavaScript",
   "type": "module",
   "license": "Apache-2.0",

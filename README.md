@@ -10,17 +10,15 @@
 
 > **Important:** LCP is an open wire protocol, not a hosted lead marketplace or exchange. This repository contains the specification, schemas, examples, conformance tests, OpenAPI definition, multi-language SDKs, and a production-oriented reference platform. A production deployment still needs TLS, secret management, database operations, monitoring, retention policy, and CRM integrations.
 
-**Status:** **v1.3.0** is the current release ([release notes](https://github.com/SpearSystems/LCP/releases/tag/v1.3.0), [changelog](CHANGELOG.md)). Every 1.x release is additive: a 1.0 peer still interoperates, and each new surface is opt-in through `capabilities()`. Tagged releases ship with a signed manifest, SBOMs and provenance for every package ([how to verify](docs/RELEASE.md)).
+**Status:** **v1.4.0** is the current release ([release notes](https://github.com/SpearSystems/LCP/releases/tag/v1.4.0), [changelog](CHANGELOG.md)). Every 1.x release is additive: a 1.0 peer still interoperates, and each new surface is opt-in through `capabilities()`. Tagged releases ship with a signed manifest, SBOMs and provenance for every package ([how to verify](docs/RELEASE.md)).
 
-**New in 1.3.0:**
+**New in 1.4.0:**
 
-- **Sale results at post time.** The ack can say whether a lead sold, the payout, and where to send the consumer next (`ack.disposition`).
-- **Postbacks as plain URLs.** An event subscription can fire a signed `GET` to a URL template, the format affiliate trackers expect.
-- **Test outcomes.** A test lead can force `sold`, `unsold` or `price_rejected`, so an integration can be tested end to end without billing anyone.
-- **Regulated identifiers.** A gated, never-persisted lane for SSN and bank details in lending verticals. It stays off unless a deployment enrolls both sender and buyer.
-- **`personal_loans` 2.0.0.** A personal-loan vertical with whole-dollar amounts.
+- **Buyers with their own API.** A [buyer delivery mapping](docs/BUYER-MAPPING.md) turns a post into a request to the buyer's existing API, and the buyer's answer into a sale result. It is data, not code: closed transforms, closed rules, secrets by reference. Off by default in the reference platform.
+- **Buyer-reported results.** A buyer that speaks LCP 1.3.0 can say in its ack whether it bought the lead and for how much.
+- **`mortgage` 2.0.0.** Whole-dollar amounts and a declared currency. 1.0.0 stays served side by side, and every receiver validates a lead against the version it names.
 
-Earlier releases added batch submission, event subscriptions, negotiation, multi-currency pricing and the PII taxonomy (1.2), and shared-lead slots, agent attestation and request history (1.1).
+1.3 added sale results at post time, URL postbacks, test outcomes, regulated identifiers and `personal_loans` 2.0.0. Earlier releases added batch submission, event subscriptions, negotiation, multi-currency pricing and the PII taxonomy (1.2), and shared-lead slots, agent attestation and request history (1.1).
 
 [![Test](https://github.com/SpearSystems/LCP/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/test.yml) [![Performance](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/performance.yml) [![Security and supply chain](https://github.com/SpearSystems/LCP/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/security.yml) [![SDK compatibility](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/sdk.yml) [![Container release](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml/badge.svg?branch=main)](https://github.com/SpearSystems/LCP/actions/workflows/container-release.yml)
 
@@ -462,6 +460,7 @@ SPEC.md          ── Canonical protocol specification
 - [Publisher mapping and normalization](docs/PUBLISHER-MAPPING.md)
 - [Requirement profiles and service areas](docs/REQUIREMENT-PROFILES.md)
 - [Buyer onboarding](docs/BUYER-ONBOARDING.md)
+- [Buyer delivery mapping](docs/BUYER-MAPPING.md)
 - [Calls and telephony](docs/CALLS-AND-TELEPHONY.md)
 - [Secure attachments](docs/ATTACHMENTS.md)
 - [Vertical schemas](docs/VERTICALS.md)
@@ -487,8 +486,8 @@ SPEC.md          ── Canonical protocol specification
 - [Supply-chain security](docs/SUPPLY-CHAIN-SECURITY.md)
 - [Container signing and provenance](docs/CONTAINER-SUPPLY-CHAIN.md)
 - [Tagged releases and artifact verification](docs/RELEASE.md)
-- [All releases](https://github.com/SpearSystems/LCP/releases) and their records: [1.3.0](docs/RELEASE-TICKET-1.3.0.md), [1.2.0](docs/RELEASE-TICKET-1.2.0.md), [1.1.1](docs/RELEASE-TICKET-1.1.1.md), [1.1.0](docs/RELEASE-TICKET-1.1.0.md), [1.0.2](docs/RELEASE-TICKET-1.0.2.md), [1.0.1](docs/RELEASE-TICKET-1.0.1.md)
-- Decision records: [v1.3](docs/DECISIONS-v1.3.md), [v1.2](docs/DECISIONS-v1.2.md)
+- [All releases](https://github.com/SpearSystems/LCP/releases) and their records: [1.4.0](docs/RELEASE-TICKET-1.4.0.md), [1.3.0](docs/RELEASE-TICKET-1.3.0.md), [1.2.0](docs/RELEASE-TICKET-1.2.0.md), [1.1.1](docs/RELEASE-TICKET-1.1.1.md), [1.1.0](docs/RELEASE-TICKET-1.1.0.md), [1.0.2](docs/RELEASE-TICKET-1.0.2.md), [1.0.1](docs/RELEASE-TICKET-1.0.1.md)
+- Decision records: [v1.4](docs/DECISIONS-v1.4.md), [v1.3](docs/DECISIONS-v1.3.md), [v1.2](docs/DECISIONS-v1.2.md)
 - [Branch protection and release environment](docs/MAINTAINER-RELEASE-SETUP.md)
 - [Adoption readiness](docs/ADOPTION-READINESS.md)
 - [v1.1 roadmap](docs/V1.1-ROADMAP.md)
