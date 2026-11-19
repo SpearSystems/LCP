@@ -862,6 +862,34 @@ class Store:
                     ON offer_candidate_index(tenant_id, dimension, value, offer_id);
                 CREATE INDEX IF NOT EXISTS idx_offers_discovery
                     ON offers(active, tenant_id, vertical, offer_id);
+                CREATE TABLE IF NOT EXISTS buyer_mappings (
+                    mapping_id TEXT NOT NULL,
+                    buyer_id TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    vertical TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    mapping_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (mapping_id, version)
+                );
+                CREATE INDEX IF NOT EXISTS idx_buyer_mappings_buyer
+                    ON buyer_mappings(buyer_id, vertical, active);
+                CREATE TABLE IF NOT EXISTS buyer_results (
+                    message_id TEXT PRIMARY KEY,
+                    delivery_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
+                    buyer_id TEXT NOT NULL,
+                    mapping_id TEXT,
+                    mapping_version TEXT,
+                    outcome TEXT NOT NULL,
+                    rejection_reason TEXT,
+                    rule TEXT,
+                    buyer_reference TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_buyer_results_lead
+                    ON buyer_results(lead_id);
                 CREATE TABLE IF NOT EXISTS publisher_mappings (
                     mapping_id TEXT NOT NULL,
                     publisher_id TEXT NOT NULL,
@@ -1644,6 +1672,157 @@ class Store:
         with self._lock:
             rows = self._connection.execute(query, values).fetchall()
         return [json.loads(row["mapping_json"]) for row in rows]
+
+    # ─── Buyer mappings (LEP-0015) ─────────────────────────────────────────
+
+    def upsert_buyer_mapping(self, mapping: dict[str, Any]) -> None:
+        timestamp = now_iso()
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO buyer_mappings
+                    (mapping_id, buyer_id, version, vertical, active, mapping_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(mapping_id, version) DO UPDATE SET
+                    buyer_id=excluded.buyer_id,
+                    vertical=excluded.vertical,
+                    active=excluded.active,
+                    mapping_json=excluded.mapping_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    mapping["mapping_id"],
+                    mapping["buyer_id"],
+                    mapping["version"],
+                    mapping["vertical"],
+                    int(mapping.get("active", True)),
+                    json.dumps(mapping, separators=(",", ":"), ensure_ascii=False),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+    def list_buyer_mappings(
+        self, buyer_id: str | None = None, *, active_only: bool = False
+    ) -> list[dict[str, Any]]:
+        query = "SELECT mapping_json, active FROM buyer_mappings"
+        clauses: list[str] = []
+        values: list[Any] = []
+        if buyer_id:
+            clauses.append("buyer_id = ?")
+            values.append(buyer_id)
+        if active_only:
+            clauses.append("active = 1")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY buyer_id, mapping_id, version"
+        with self._lock:
+            rows = self._connection.execute(query, values).fetchall()
+        # The column is the source of truth for active; deactivation does not
+        # rewrite the stored document.
+        return [
+            {**json.loads(row["mapping_json"]), "active": bool(row["active"])}
+            for row in rows
+        ]
+
+    def deactivate_buyer_mapping(self, mapping_id: str, version: str | None = None) -> int:
+        query = "UPDATE buyer_mappings SET active = 0, updated_at = ? WHERE mapping_id = ?"
+        values: list[Any] = [now_iso(), mapping_id]
+        if version:
+            query += " AND version = ?"
+            values.append(version)
+        with self.transaction() as db:
+            return db.execute(query, values).rowcount
+
+    def record_buyer_result(
+        self,
+        *,
+        message_id: str,
+        delivery_id: str,
+        lead_id: str,
+        buyer_id: str,
+        mapping: dict[str, Any] | None,
+        result: dict[str, Any],
+    ) -> None:
+        """One decoded buyer result per delivery: reconciliation and drift counts.
+
+        Only decoded fields are kept. Response bodies, buyer free text and
+        redirect URLs are never stored (LEP-0015 §5).
+        """
+        with self.transaction() as db:
+            db.execute(
+                """
+                INSERT INTO buyer_results
+                    (message_id, delivery_id, lead_id, buyer_id, mapping_id, mapping_version,
+                     outcome, rejection_reason, rule, buyer_reference, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(message_id) DO NOTHING
+                """,
+                (
+                    message_id,
+                    delivery_id,
+                    lead_id,
+                    buyer_id,
+                    mapping["mapping_id"] if mapping else None,
+                    mapping["version"] if mapping else None,
+                    result["outcome"],
+                    result.get("rejection_reason"),
+                    str(result["rule"]) if "rule" in result else None,
+                    result.get("buyer_reference"),
+                    now_iso(),
+                ),
+            )
+
+    def rearm_post_delivery(self, delivery_id: str, envelope: dict[str, Any]) -> bool:
+        """LEP-0015 §8: the counter re-post reuses the awarded slot's row.
+
+        The award stays one (lead, offer) row (idx_deliveries_post_award); the
+        re-post replaces its envelope, message id and idempotency key and
+        queues it once more. Only a delivered post can be re-armed.
+        """
+        message = envelope["lcp"]["message"]
+        timestamp = now_iso()
+        with self.transaction() as db:
+            cursor = db.execute(
+                """
+                UPDATE deliveries
+                SET message_id = ?, idempotency_key = ?, envelope_json = ?,
+                    status = 'PENDING', attempts = 0, next_attempt_at = ?,
+                    last_error = NULL, lease_owner = NULL, lease_until = NULL,
+                    updated_at = ?
+                WHERE delivery_id = ? AND kind = 'post' AND status = 'DELIVERED'
+                """,
+                (
+                    message["id"],
+                    message["idempotency_key"],
+                    self.encode_envelope(envelope),
+                    timestamp,
+                    timestamp,
+                    delivery_id,
+                ),
+            )
+            return cursor.rowcount == 1
+
+    def buyer_results_for_lead(self, lead_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM buyer_results WHERE lead_id = ? ORDER BY created_at, delivery_id",
+                (lead_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_stale_buyer_pending(self, updated_before: str) -> list[dict[str, Any]]:
+        """Payables a buyer left pending past the platform's final window."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM payable_records
+                WHERE status = 'pending' AND reason = 'buyer_pending' AND updated_at <= ?
+                ORDER BY updated_at, payable_id
+                """,
+                (updated_before,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def insert_mapping_application(
         self,

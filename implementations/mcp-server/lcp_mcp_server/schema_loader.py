@@ -26,6 +26,8 @@ def list_schemas() -> list[str]:
         names.extend(f.stem for f in SCHEMAS_DIR.glob("*.json"))
     if VERTICALS_DIR.exists():
         names.extend(f"verticals/{f.stem}" for f in VERTICALS_DIR.glob("*.json"))
+        # LEP-0016: frozen earlier vertical versions are served too.
+        names.extend(f"verticals/archive/{f.stem}" for f in VERTICALS_DIR.glob("archive/*.json"))
     return sorted(names)
 
 

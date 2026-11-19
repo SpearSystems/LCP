@@ -66,8 +66,9 @@ class SchemaValidator:
         self._offer = self._validators["offer"]
         self._verticals: dict[str, Draft202012Validator] = {}
         if self.vertical_root.exists():
-            for path in self.vertical_root.glob("*.json"):
-                self._verticals[path.stem] = Draft202012Validator(
+            for path in [*self.vertical_root.glob("*.json"), *self.vertical_root.glob("archive/*.json")]:
+                key = path.stem if path.parent == self.vertical_root else f"archive/{path.stem}"
+                self._verticals[key] = Draft202012Validator(
                     json.loads(path.read_text(encoding="utf-8")),
                     registry=registry,
                     format_checker=self._format_checker,
@@ -166,7 +167,7 @@ class SchemaValidator:
                 attributes.get("vertical") if isinstance(attributes, dict) else None
             )
             if isinstance(vertical, str) and isinstance(attributes, dict):
-                vertical_validator = self._verticals.get(vertical)
+                vertical_validator = self._vertical_for(vertical, attributes)
                 if vertical_validator is None:
                     suffix = " for ping-safe validation" if message_type == "ping" else ""
                     errors.append(f"vertical schema '{vertical}' not found{suffix}")
@@ -185,6 +186,17 @@ class SchemaValidator:
                     if message_type == "ping":
                         errors.extend(self._ping_safe_errors(payload, vertical_validator.schema))
         return errors
+
+    def _vertical_for(self, vertical: str, attributes: dict[str, Any]) -> Draft202012Validator | None:
+        """LEP-0016: the schema for the version the attributes name.
+
+        A frozen earlier version lives at ``verticals/archive/{id}-{version}.json``
+        and is chosen when it exists; otherwise the current file applies, so an
+        unknown version fails its ``schema_version`` const.
+        """
+        version = attributes.get("schema_version")
+        archived = self._verticals.get(f"archive/{vertical}-{version}") if isinstance(version, str) else None
+        return archived or self._verticals.get(vertical)
 
     def require_valid_envelope(self, envelope: dict[str, Any], *, receiver_advertised_lcp_versions: list[str] | None = None) -> None:
         errors = self.validate_envelope(envelope, receiver_advertised_lcp_versions=receiver_advertised_lcp_versions)

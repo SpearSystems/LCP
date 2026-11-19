@@ -27,7 +27,7 @@ func TestSharedHMACVector(t *testing.T) {
 func TestFullSchemaValidation(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	schemas := map[string][]byte{}
-	for _, directory := range []string{"schemas", "verticals"} {
+	for _, directory := range []string{"schemas", "verticals", "verticals/archive"} {
 		entries, err := os.ReadDir(filepath.Join(root, directory))
 		if err != nil {
 			t.Fatal(err)
@@ -63,7 +63,7 @@ func TestFullSchemaValidation(t *testing.T) {
 func TestSharedValidationCorpus(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	schemas := map[string][]byte{}
-	for _, directory := range []string{"schemas", "verticals"} {
+	for _, directory := range []string{"schemas", "verticals", "verticals/archive"} {
 		entries, err := os.ReadDir(filepath.Join(root, directory))
 		if err != nil {
 			t.Fatal(err)

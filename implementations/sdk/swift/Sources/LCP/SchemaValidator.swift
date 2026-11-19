@@ -88,8 +88,9 @@ public final class LCPValidator {
         guard ["lead", "call", "post", "ping"].contains(type), let payloadObject = payload as? [String: Any], let attributes = payloadObject["attributes"] as? [String: Any] else { return }
         let vertical = type == "ping" ? payloadObject["vertical"] as? String : attributes["vertical"] as? String
         guard let vertical, !vertical.isEmpty else { return }
-        guard let schema = documents[Self.normalize("verticals/\(vertical).json")] as? [String: Any] else {
-            throw LCPValidationError.unknownSchema("verticals/\(vertical).json")
+        let schemaName = verticalSchemaName(vertical, attributes: attributes)
+        guard let schema = documents[Self.normalize(schemaName)] as? [String: Any] else {
+            throw LCPValidationError.unknownSchema(schemaName)
         }
         var verticalAttributes = attributes
         if type == "ping" {
@@ -102,7 +103,7 @@ public final class LCPValidator {
             }
         }
         let verticalJSON = String(data: try JSONSerialization.data(withJSONObject: verticalAttributes), encoding: .utf8)!
-        try validate("verticals/\(vertical).json", instance: verticalJSON)
+        try validate(schemaName, instance: verticalJSON)
         if type == "ping" { try validatePingSafe(vertical, value: attributes, schema: schema, path: "attributes") }
     }
 
@@ -122,7 +123,21 @@ public final class LCPValidator {
     }
 
     public func validateOffer(_ offer: String) throws { try validate("schemas/offer.json", instance: offer) }
-    public func validateVertical(_ vertical: String, attributes: String) throws { try validate("verticals/\(vertical).json", instance: attributes) }
+    public func validateVertical(_ vertical: String, attributes: String) throws {
+        let decoded = try? JSONSerialization.jsonObject(with: Data(attributes.utf8)) as? [String: Any]
+        try validate(verticalSchemaName(vertical, attributes: decoded ?? [:]), instance: attributes)
+    }
+
+    /// LEP-0016: the schema for the version the attributes name. A frozen earlier
+    /// version is `verticals/archive/{id}-{version}.json` and wins when present;
+    /// otherwise the current file applies, so an unknown version fails its const.
+    private func verticalSchemaName(_ vertical: String, attributes: [String: Any]) -> String {
+        if let version = attributes["schema_version"] as? String {
+            let archived = "verticals/archive/\(vertical)-\(version).json"
+            if names[normalize(archived)] != nil { return archived }
+        }
+        return "verticals/\(vertical).json"
+    }
 
     private static func inlineCoreReferences(_ value: Any, core: Any?) -> Any {
         if let object = value as? [String: Any] {

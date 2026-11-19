@@ -47,8 +47,9 @@ MANIFEST_FILES = {"typescript": "src/generated/schema-manifest.json"}
 # Read-surface schemas that live under schemas/ but are NOT LCP message or
 # envelope schemas: they describe platform read projections (LEP-0005), are
 # never sent on the wire, and must not enter the SDK validation bundle or its
-# manifest digests.
-NON_MESSAGE_SCHEMAS = frozenset({"history-request-row.json"})
+# manifest digests. buyer-mapping.json (LEP-0015) is a platform document an
+# operator uploads; SDKs never send or receive it.
+NON_MESSAGE_SCHEMAS = frozenset({"buyer-mapping.json", "history-request-row.json"})
 
 
 def canonical_files() -> list[Path]:
@@ -59,6 +60,8 @@ def canonical_files() -> list[Path]:
             if path.name not in NON_MESSAGE_SCHEMAS
         ]
         + list(ROOT.joinpath("verticals").glob("*.json"))
+        # LEP-0016: frozen earlier vertical versions ship beside the current one.
+        + list(ROOT.joinpath("verticals").glob("archive/*.json"))
     )
 
 

@@ -17,6 +17,8 @@ Usage:
   python3 conformance.py --tier NEG
   python3 conformance.py --tier SALE   # LEP-0012 feature suite
   python3 conformance.py --tier REG    # LEP-0013 feature suite
+  python3 conformance.py --tier VER    # LEP-0016 vertical versions
+  python3 conformance.py --tier BMAP   # LEP-0015 buyer mapping (schema half)
   python3 conformance.py --verbose    # show per-vector details
 """
 
@@ -118,6 +120,36 @@ _vertical_schemas: Dict[str, dict] = {
 _vertical_validators: Dict[str, Draft202012Validator] = {
     name: make_validator(schema) for name, schema in _vertical_schemas.items()
 }
+# LEP-0016: every shipped (vertical, schema_version), current and archived.
+_vertical_versions: Dict[Tuple[str, str], dict] = {}
+for _path in [*VERTICALS_DIR.glob("*.json"), *VERTICALS_DIR.glob("archive/*.json")]:
+    _doc = load_json(_path)
+    _props = _doc.get("properties", {})
+    _vertical_versions[
+        (_props["vertical"]["const"], _props["schema_version"]["const"])
+    ] = _doc
+_vertical_version_validators: Dict[Tuple[str, str], Draft202012Validator] = {
+    key: make_validator(schema) for key, schema in _vertical_versions.items()
+}
+
+
+def vertical_schema_for(vertical: str, attributes: Any) -> Optional[dict]:
+    """LEP-0016 §3: the schema of the version the attributes name.
+
+    A shipped version (current or archived) is chosen exactly; otherwise the
+    current file applies, so an unknown version fails its const.
+    """
+    version = attributes.get("schema_version") if isinstance(attributes, dict) else None
+    if isinstance(version, str) and (vertical, version) in _vertical_versions:
+        return _vertical_versions[(vertical, version)]
+    return _vertical_schemas.get(vertical)
+
+
+def _vertical_validator_for(vertical: str, attributes: Any) -> Optional[Draft202012Validator]:
+    version = attributes.get("schema_version") if isinstance(attributes, dict) else None
+    if isinstance(version, str) and (vertical, version) in _vertical_version_validators:
+        return _vertical_version_validators[(vertical, version)]
+    return _vertical_validators.get(vertical)
 
 # --- Ping-safe enforcement ---------------------------------------------------
 
@@ -167,7 +199,7 @@ def check_ping_safe(payload: dict) -> List[str]:
     vertical = payload.get("vertical")
     if not isinstance(vertical, str) or not isinstance(attrs, dict):
         return []
-    schema = _vertical_schemas.get(vertical)
+    schema = vertical_schema_for(vertical, attrs)
     if schema is None:
         return [
             f"PII_IN_PING: vertical schema '{vertical}' not found — cannot validate ping_safe"
@@ -294,7 +326,7 @@ def validate_message(envelope: dict) -> List[str]:
             else (attributes.get("vertical") if isinstance(attributes, dict) else None)
         )
         if isinstance(vertical, str) and isinstance(attributes, dict):
-            vertical_validator = _vertical_validators.get(vertical)
+            vertical_validator = _vertical_validator_for(vertical, attributes)
             if vertical_validator is None:
                 errors.append(f"vertical: unknown vertical schema '{vertical}'")
             else:
@@ -817,6 +849,44 @@ def _check_attributes_vertical_version(
         return ["payload.attributes missing"]
     if "vertical" not in attributes or "schema_version" not in attributes:
         return ["payload.attributes lacks vertical/schema_version envelope keys"]
+    return []
+
+
+def _check_vertical_version(
+    vector: dict, envelope: dict, errors: List[str]
+) -> List[str]:
+    """LEP-0016 §3: the receiver validates against the version it advertises.
+
+    ``receiver_verticals`` is the receiver's advertisement
+    (``[{"id", "schema_version"}]``); absent, it is every shipped version.
+    A message naming a version the receiver does not advertise is refused
+    with LCP-100 on ``attributes.schema_version``. A ping without one is read
+    as the current version.
+    """
+    payload = _payload_of(envelope)
+    message_type = envelope.get("lcp", {}).get("message", {}).get("type")
+    attributes = payload.get("attributes")
+    if not isinstance(attributes, dict):
+        return []
+    vertical = payload.get("vertical") if message_type == "ping" else attributes.get("vertical")
+    version = attributes.get("schema_version")
+    if not isinstance(vertical, str):
+        return []
+    if version is None and message_type == "ping":
+        current = _vertical_schemas.get(vertical, {})
+        version = current.get("properties", {}).get("schema_version", {}).get("const")
+    advertised = vector.get("receiver_verticals")
+    served = (
+        {(item["id"], item["schema_version"]) for item in advertised}
+        if isinstance(advertised, list)
+        else set(_vertical_versions)
+    )
+    if (vertical, version) not in served:
+        listed = sorted(v for name, v in served if name == vertical)
+        return [
+            f"LCP-100 field attributes.schema_version: {version!r} is not an "
+            f"advertised version of {vertical!r} (advertised: {listed})"
+        ]
     return []
 
 
@@ -1976,6 +2046,8 @@ CHECKS = {
     "revision_monotonic": _check_revision_monotonic,
     "postback_delivery": _check_postback_delivery,
     "vertical_schema": _schema_check("vertical"),
+    # LEP-0016 (v1.4): side-by-side vertical versions.
+    "vertical_version": _check_vertical_version,
 }
 
 
@@ -2105,6 +2177,79 @@ def run_tier(tier_file: str) -> List[TestResult]:
     return results
 
 
+def _apply_json_patch(document: Any, operations: Optional[List[dict]]) -> Any:
+    """RFC 6902 add/replace/remove on object members, as BMAP vectors use."""
+    document = json.loads(json.dumps(document))
+    for operation in operations or []:
+        parts = [
+            part.replace("~1", "/").replace("~0", "~")
+            for part in operation["path"].split("/")[1:]
+        ]
+        parent = document
+        for part in parts[:-1]:
+            parent = parent[int(part)] if isinstance(parent, list) else parent[part]
+        if operation["op"] == "remove":
+            del parent[parts[-1]]
+        else:
+            parent[parts[-1]] = operation["value"]
+    return document
+
+
+def run_bmap_tier(tier_file: str) -> List[TestResult]:
+    """LEP-0015 BMAP: the schema half of the buyer-mapping vectors.
+
+    Render and decode vectors need an executor, so each platform runs them
+    itself (the reference platform: tests/test_buyer_mapping.py). This tier
+    pins what the schema alone decides: the base mapping and every render
+    variant are valid, the base post is a valid post, every ``by: schema``
+    refusal is refused with its error text, and every ``by: platform``
+    refusal is schema-valid, so the platform's upsert check must catch it.
+    """
+    path = VECTORS_DIR / tier_file
+    if not path.exists():
+        print(f"  WARNING: {tier_file} not found, skipping")
+        return []
+    suite = load_json(path)
+    validator = Draft202012Validator(
+        load_schema("buyer-mapping"), format_checker=FormatChecker()
+    )
+
+    def schema_errors(document: Any) -> List[str]:
+        return [
+            f"{error.message} at {'/'.join(str(p) for p in error.path) or '(root)'}"
+            for error in validator.iter_errors(document)
+        ]
+
+    results = [
+        TestResult("BMAP-M-000", "base_mapping_is_schema_valid",
+                   not schema_errors(suite["mapping"]), schema_errors(suite["mapping"])),
+    ]
+    post_errors = validate_message(suite["post"])
+    results.append(TestResult("BMAP-P-000", "base_post_is_a_valid_post", not post_errors, post_errors))
+    for vector in suite.get("render", []):
+        errors = schema_errors(_apply_json_patch(suite["mapping"], vector.get("mapping_patch")))
+        results.append(TestResult(vector["id"], vector["name"], not errors, errors))
+    for vector in suite.get("refuse", []):
+        errors = schema_errors(_apply_json_patch(suite["mapping"], vector["mapping_patch"]))
+        if vector["by"] == "schema":
+            missing = vector["error_contains"] not in " ".join(errors)
+            failure = (
+                ["expected the schema to refuse the mapping"]
+                if not errors
+                else [f"expected error text not found: {vector['error_contains']}"] + errors
+                if missing
+                else []
+            )
+        else:
+            failure = (
+                [f"by platform, but the schema already refuses it: {errors}"]
+                if errors
+                else []
+            )
+        results.append(TestResult(vector["id"], vector["name"], not failure, failure))
+    return results
+
+
 def run_contract_checks() -> TestResult:
     """Cross-artifact contracts: evaluated once per run, not per vector."""
     errors = _check_history_filter_pattern_equivalence({}, {}, [])
@@ -2123,7 +2268,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="LCP Conformance Runner")
     parser.add_argument(
         "--tier",
-        choices=["L1", "L2", "L3", "NEG", "SALE", "REG", "all"],
+        choices=["L1", "L2", "L3", "NEG", "SALE", "REG", "VER", "BMAP", "all"],
         default="all",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -2139,6 +2284,11 @@ def main() -> None:
         # LEP-0012 (id prefix SALE) and LEP-0013/0014 (id prefix REG).
         "SALE": "sale-lifecycle.json",
         "REG": "regulated-identifiers.json",
+        # LEP-0016 (id prefix VER): mortgage 2.0.0 and side-by-side versions.
+        "VER": "vertical-versions.json",
+        # LEP-0015 (id prefix BMAP): buyer mapping. Its own file shape
+        # (render/decode/refuse), so it has its own runner.
+        "BMAP": "buyer-mapping.json",
     }
 
     if args.tier != "all":
@@ -2148,7 +2298,10 @@ def main() -> None:
     total_fail = 0
 
     suites = [
-        (f"{tier_name} - {tier_file}", run_tier(tier_file))
+        (
+            f"{tier_name} - {tier_file}",
+            run_bmap_tier(tier_file) if tier_name == "BMAP" else run_tier(tier_file),
+        )
         for tier_name, tier_file in sorted(tiers.items())
     ]
     suites.append(("CONTRACT - OpenAPI <-> JSON Schema", [run_contract_checks()]))

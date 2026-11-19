@@ -75,8 +75,9 @@ module LcpSdk
       return unless attributes.is_a?(Hash)
       vertical = type == "ping" ? payload["vertical"] : attributes["vertical"]
       return unless vertical.is_a?(String) && !vertical.empty?
-      schema = @documents[normalize("verticals/#{vertical}.json")] ||
-        @documents["verticals/#{vertical}.json"] ||
+      schema_name = vertical_schema_name(vertical, attributes)
+      schema = @documents[normalize(schema_name)] ||
+        @documents[schema_name] ||
         @documents["#{vertical}.json"]
       raise SchemaValidationError, "Vertical schema '#{vertical}' not found" unless schema.is_a?(Hash)
       vertical_attributes = JSON.parse(JSON.generate(attributes))
@@ -106,7 +107,20 @@ module LcpSdk
     end
 
     def validate_vertical(vertical, attributes)
-      validate("verticals/#{vertical}.json", attributes)
+      validate(vertical_schema_name(vertical, attributes), attributes)
+    end
+
+    # LEP-0016: the schema for the version the attributes name. A frozen
+    # earlier version is verticals/archive/{id}-{version}.json and wins when
+    # present; otherwise the current file applies, so an unknown version fails
+    # its schema_version const.
+    def vertical_schema_name(vertical, attributes)
+      version = attributes.is_a?(Hash) ? attributes["schema_version"] : nil
+      if version.is_a?(String)
+        archived = "verticals/archive/#{vertical}-#{version}.json"
+        return archived if @ids.key?(normalize(archived))
+      end
+      "verticals/#{vertical}.json"
     end
 
     private

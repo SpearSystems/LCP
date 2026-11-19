@@ -1,0 +1,757 @@
+{
+  "suite": "VER",
+  "description": "LEP-0016 (v1.4) mortgage 2.0.0 and side-by-side vertical versions: a receiver validates each message against the schema_version it names and refuses one it does not advertise with LCP-100 on attributes.schema_version.",
+  "vectors": [
+    {
+      "id": "VER-001",
+      "name": "mortgage_2_minimal_lead",
+      "expect": "pass",
+      "description": "LEP-0016 Valid 1: the minimal mortgage 2.0.0 lead.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001601",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1601",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1601",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-002",
+      "name": "mortgage_2_refinance_with_amounts",
+      "expect": "pass",
+      "description": "LEP-0016 Valid 2: whole-unit amounts with amount_currency.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001602",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1602",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1602",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount": 350000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-003",
+      "name": "mortgage_2_amount_without_currency",
+      "expect": "fail",
+      "description": "LEP-0016 Invalid A: loan_amount with no amount_currency is refused (dependentRequired).",
+      "error_contains": "amount_currency",
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001603",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1603",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1603",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0",
+              "loan_type": "refinance",
+              "loan_amount": 350000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-004",
+      "name": "mortgage_2_cents_sent_by_mistake",
+      "expect": "fail",
+      "description": "LEP-0016 Invalid B: 35000000000 (cents for $350,000) is above the 100000000 whole-unit bound.",
+      "error_contains": "100000000",
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001604",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1604",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1604",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount": 35000000000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-005",
+      "name": "mortgage_2_rejects_1_0_field",
+      "expect": "fail",
+      "description": "LEP-0016 Invalid C: loan_amount_cents on a 2.0.0 lead is refused (additionalProperties false).",
+      "error_contains": "loan_amount_cents",
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001605",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1605",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1605",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount": 350000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000,
+              "loan_amount_cents": 35000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-006",
+      "name": "unadvertised_version_refused",
+      "expect": "fail",
+      "description": "LEP-0016 Invalid D: a 1.0.0 lead to a receiver that advertises only 2.0.0 is LCP-100 on attributes.schema_version.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "error_contains": [
+        "LCP-100",
+        "attributes.schema_version"
+      ],
+      "checks": [
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001606",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1606",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1606",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 35000000,
+              "property_value_cents": 50000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-007",
+      "name": "side_by_side_accepts_1_0",
+      "expect": "pass",
+      "description": "LEP-0016 \u00a73 side-by-side: a receiver advertising 1.0.0 and 2.0.0 validates a 1.0.0 lead against the frozen 1.0.0 schema.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "1.0.0"
+        },
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001607",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1607",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1607",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_cents": 35000000,
+              "property_value_cents": 50000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-008",
+      "name": "side_by_side_accepts_2_0",
+      "expect": "pass",
+      "description": "LEP-0016 \u00a73 side-by-side: the same receiver validates a 2.0.0 lead against 2.0.0.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "1.0.0"
+        },
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "lead_schema",
+        "vertical_schema",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001608",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1608",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1608",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "2.0.0",
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount": 350000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-009",
+      "name": "side_by_side_refuses_unknown",
+      "expect": "fail",
+      "description": "LEP-0016 \u00a73 side-by-side: the same receiver refuses schema_version 9.9.9.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "1.0.0"
+        },
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "error_contains": "attributes.schema_version",
+      "checks": [
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.3.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001609",
+            "type": "lead",
+            "timestamp": "2026-11-19T10:00:00Z",
+            "sender_id": "pub_example",
+            "receiver_id": "platform_001",
+            "correlation_id": null,
+            "idempotency_key": "pub_example-lead-1609",
+            "test": false
+          },
+          "payload": {
+            "lead_id": "lead_1609",
+            "submitted_at": "2026-11-19T09:59:58Z",
+            "status": "NEW",
+            "channel": "form",
+            "consumer": {
+              "first_name": "Test",
+              "last_name": "Applicant",
+              "email": "test.applicant@example.com",
+              "phone": "+12025550143"
+            },
+            "location": {
+              "country_code": "US",
+              "state_region": "TX",
+              "postal_code": "75001"
+            },
+            "compliance": {
+              "consent_timestamp": "2026-11-19T09:59:50Z",
+              "consent_source_url": "https://lp.example.com/apply",
+              "consent_text_version": "consent-v1"
+            },
+            "attributes": {
+              "vertical": "mortgage",
+              "schema_version": "9.9.9",
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount": 350000,
+              "property_value": 500000,
+              "annual_income": 120000,
+              "cash_out_amount": 25000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-010",
+      "name": "ping_mortgage_2",
+      "expect": "pass",
+      "description": "LEP-0016: a 2.0.0 ping carries amount_currency (public, ping_safe) and bands only.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "1.0.0"
+        },
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "ping_schema",
+        "ping_safe_attributes_only",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001610",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-ping-1610"
+          },
+          "payload": {
+            "ping_id": "ping_1610",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "amount_currency": "USD",
+              "loan_type": "refinance",
+              "loan_amount_band": "250k_500k"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": false
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-011",
+      "name": "ping_mortgage_1_named",
+      "expect": "pass",
+      "description": "LEP-0016 \u00a73: a ping that names schema_version 1.0.0 validates against 1.0.0.",
+      "receiver_verticals": [
+        {
+          "id": "mortgage",
+          "schema_version": "1.0.0"
+        },
+        {
+          "id": "mortgage",
+          "schema_version": "2.0.0"
+        }
+      ],
+      "checks": [
+        "envelope_schema",
+        "ping_schema",
+        "ping_safe_attributes_only",
+        "vertical_version"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001611",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-ping-1611"
+          },
+          "payload": {
+            "ping_id": "ping_1611",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "schema_version": "1.0.0",
+              "loan_type": "refinance",
+              "loan_amount_band": "250k_500k"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": false
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-012",
+      "name": "ping_mortgage_2_amount_not_ping_safe",
+      "expect": "fail",
+      "description": "LEP-0016: loan_amount stays restricted and ping_safe false in 2.0.0.",
+      "error_contains": "PII_IN_PING",
+      "checks": [
+        "ping_safe_attributes_only"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001612",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-ping-1612"
+          },
+          "payload": {
+            "ping_id": "ping_1612",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "amount_currency": "USD",
+              "loan_amount": 350000
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": false
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    {
+      "id": "VER-013",
+      "name": "ping_mortgage_1_has_no_amount_currency",
+      "expect": "fail",
+      "description": "LEP-0016: amount_currency does not exist in 1.0.0, so a 1.0.0 ping carrying it fails that version's schema.",
+      "error_contains": "amount_currency",
+      "checks": [
+        "vertical_schema"
+      ],
+      "payload": {
+        "lcp": {
+          "version": "1.0.0",
+          "message": {
+            "id": "d1600000-0000-4000-8000-000000001613",
+            "type": "ping",
+            "timestamp": "2026-08-15T12:00:00Z",
+            "sender_id": "platform_001",
+            "receiver_id": "buyer_002",
+            "idempotency_key": "platform-ping-1613"
+          },
+          "payload": {
+            "ping_id": "ping_1613",
+            "lead_reference": "ref_dedup_001",
+            "phone_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "country_code": "US",
+            "state_region": "CA",
+            "vertical": "mortgage",
+            "attributes": {
+              "schema_version": "1.0.0",
+              "amount_currency": "USD",
+              "loan_type": "refinance"
+            },
+            "compliance_flags": {
+              "consent": true,
+              "otp_verified": false
+            },
+            "floor_price_cents": 2000,
+            "currency": "USD"
+          }
+        }
+      }
+    }
+  ]
+}

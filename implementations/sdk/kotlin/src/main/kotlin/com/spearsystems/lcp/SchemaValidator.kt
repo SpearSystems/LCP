@@ -63,7 +63,8 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
         val vertical = if (type == "ping") payload.path("vertical").asText("")
         else attributes.path("vertical").asText("")
         if (vertical.isEmpty()) return
-        val schema = documents[normalize("verticals/$vertical.json")]
+        val schemaName = verticalSchemaName(vertical, attributes)
+        val schema = documents[normalize(schemaName)]
             ?: error("Vertical schema '$vertical' not found")
         val verticalAttributes = mapper.readTree(attributes.toString()) as ObjectNode
         if (type == "ping") {
@@ -73,7 +74,7 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
                 if (!version.isMissingNode) verticalAttributes.set("schema_version", version)
             }
         }
-        validate("verticals/$vertical.json", verticalAttributes.toString())
+        validate(schemaName, verticalAttributes.toString())
         if (type == "ping") validatePingSafe(vertical, attributes, schema, "attributes")
     }
 
@@ -92,7 +93,22 @@ class LcpSchemaValidator(schemaTexts: Map<String, String>) {
     }
 
     fun validateOffer(offer: String) = validate("schemas/offer.json", offer)
-    fun validateVertical(vertical: String, attributes: String) = validate("verticals/$vertical.json", attributes)
+    fun validateVertical(vertical: String, attributes: String) =
+        validate(verticalSchemaName(vertical, mapper.readTree(attributes)), attributes)
+
+    /**
+     * LEP-0016: the schema for the version the attributes name. A frozen earlier
+     * version is `verticals/archive/{id}-{version}.json` and wins when present;
+     * otherwise the current file applies, so an unknown version fails its const.
+     */
+    private fun verticalSchemaName(vertical: String, attributes: JsonNode): String {
+        val version = attributes.path("schema_version")
+        if (version.isTextual) {
+            val archived = "verticals/archive/$vertical-${version.asText()}.json"
+            if (ids.containsKey(normalize(archived))) return archived
+        }
+        return "verticals/$vertical.json"
+    }
 
     companion object {
         fun fromDirectory(root: Path): LcpSchemaValidator {

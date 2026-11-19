@@ -49,7 +49,7 @@
     "rejection_reason": {
       "x-lcp-pii": "internal",
       "type": "string",
-      "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer. Open enumeration.",
+      "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer, buyer_unconfirmed (v1.4, LEP-0015: a buyer's pending result was never confirmed before the platform's final window). Open enumeration.",
       "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)"
     },
     "disposition": {

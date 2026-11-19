@@ -67,6 +67,12 @@ PATH_REGISTRY: Mapping[str, str] = {
     "attributes.property_value_cents": _INTEGER,
     "attributes.existing_rate_percent": _NUMBER,
     "attributes.annual_income_cents": _INTEGER,
+    # LEP-0016 mortgage 2.0.0 (and LEP-0014 personal_loans): whole units of
+    # amount_currency. The 1.0.0 *_cents paths stay for the migration window.
+    "attributes.amount_currency": _STRING,
+    "attributes.loan_amount": _INTEGER,
+    "attributes.property_value": _INTEGER,
+    "attributes.annual_income": _INTEGER,
     "attributes.is_first_home_buyer": _BOOLEAN,
     "attributes.time_to_contact_deadline_days": _INTEGER,
     "attributes.injury_present": _BOOLEAN,

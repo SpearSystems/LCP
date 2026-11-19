@@ -27,6 +27,19 @@ the platform before the ping expires. Full PII is sent only if you win.
 platform → ping (no PII) → buyer decision → bid → winning post (full PII)
 ```
 
+### Buyer with its own API (v1.4)
+
+A buyer that does not speak LCP keeps its own API. The platform operator
+writes a [buyer delivery mapping](BUYER-MAPPING.md) that renders each post
+into the buyer's request and decodes the buyer's response into sold, unsold,
+pending or price-rejected. A buyer that does speak LCP and declares
+`lcp_versions` 1.3.0 gets posts at 1.3.0, and its ack `disposition` is read
+directly.
+
+```text
+platform → post → buyer mapping → buyer API → decoded outcome → payable
+```
+
 ### Buyer-operated platform
 
 A buyer or technology provider can run the reference platform and accept

@@ -15,6 +15,44 @@ from .auth import signature_for
 from .storage import is_expired, now_iso, parse_iso_datetime
 
 
+# LEP-0010 §4.2: ISO 4217 minor-unit exponents are load-bearing —
+# settlement_minor = native_minor × 10^(exp_settlement − exp_native) ÷ rate.
+# Only the currencies that differ from the ISO 4217 default of two are
+# enumerated; every other alpha-3 code resolves to two. Dividing minor units
+# without the exponent factor is the 100× USD→JPY overcharge the LEP forbids.
+MINOR_UNIT_EXPONENTS = {
+    **dict.fromkeys(
+        (
+            "BIF",
+            "CLP",
+            "DJF",
+            "GNF",
+            "ISK",
+            "JPY",
+            "KMF",
+            "KRW",
+            "PYG",
+            "RWF",
+            "UGX",
+            "UYI",
+            "VND",
+            "VUV",
+            "XAF",
+            "XOF",
+            "XPF",
+        ),
+        0,
+    ),
+    **dict.fromkeys(("BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"), 3),
+}
+DEFAULT_MINOR_UNIT_EXPONENT = 2
+
+
+def minor_unit_exponent(currency: str) -> int:
+    """ISO 4217 minor-unit exponent for a validated alpha-3 code."""
+    return MINOR_UNIT_EXPONENTS.get(currency, DEFAULT_MINOR_UNIT_EXPONENT)
+
+
 def _envelope(
     message_type: str,
     sender_id: str,
@@ -170,9 +208,14 @@ def build_ping(
     if not phone_hash:
         raise ValueError("A routable lead must contain phone or phone_hash")
 
-    vertical_path = (
-        Path(__file__).resolve().parents[3] / "verticals" / f"{vertical}.json"
-    )
+    vertical_root = Path(__file__).resolve().parents[3] / "verticals"
+    vertical_path = vertical_root / f"{vertical}.json"
+    # LEP-0016: project a lead on an archived version through that version's
+    # own ping_safe tags, never the current file's.
+    version = attributes.get("schema_version")
+    archived = vertical_root / "archive" / f"{vertical}-{version}.json"
+    if isinstance(version, str) and "/" not in version and archived.exists():
+        vertical_path = archived
     safe_attributes: dict[str, Any] = {}
     if vertical_path.exists():
         with vertical_path.open(encoding="utf-8") as handle:
@@ -267,6 +310,7 @@ def build_post(
     extensions: dict[str, Any] | None = None,
     duplicate_resubmission: bool = False,
     fx: dict[str, Any] | None = None,
+    version: str | None = None,
 ) -> dict[str, Any]:
     lead = lead_envelope["lcp"]["payload"]
     payload: dict[str, Any] = {
@@ -329,9 +373,13 @@ def build_post(
         correlation_id=correlation_id,
         idempotency_key=f"{platform_id}-post-{lead['lead_id']}-{offer['offer_id']}",
         test=lead_envelope["lcp"]["message"].get("test", False),
-        version="1.1.0"
-        if contacted_hashes is not None or extensions is not None
-        else "1.0.0",
+        # LEP-0015 §7: the caller names 1.3.0 for a buyer that declares it.
+        version=version
+        or (
+            "1.1.0"
+            if contacted_hashes is not None or extensions is not None
+            else "1.0.0"
+        ),
     )
 
 

@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lcp.dev/schemas/buyer-mapping.json",
+  "title": "LCP Buyer Delivery Mapping (LEP-0015, format 1.0)",
+  "description": "A platform document, not a message type. It turns an LCP post into one buyer API request and the buyer's response into an LEP-0012 outcome. Data, not code: no expressions, a closed transform set and a closed rule language. Every object is closed. The normative execution rules are in docs/BUYER-MAPPING.md; a platform also refuses at upsert what this schema cannot express (attribute paths that the declared vertical versions do not define, regulated paths for an unenrolled buyer, egress-rule failures).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format_version",
+    "mapping_id",
+    "buyer_id",
+    "version",
+    "vertical",
+    "schema_versions",
+    "request",
+    "body",
+    "response"
+  ],
+  "properties": {
+    "format_version": {
+      "x-lcp-pii": "public",
+      "const": "1.0",
+      "description": "Document format. A platform refuses a format_version it does not implement."
+    },
+    "mapping_id": {
+      "x-lcp-pii": "internal",
+      "$ref": "#/$defs/identifier"
+    },
+    "buyer_id": {
+      "x-lcp-pii": "internal",
+      "$ref": "#/$defs/identifier"
+    },
+    "version": {
+      "x-lcp-pii": "internal",
+      "$ref": "#/$defs/semver",
+      "description": "Version of this mapping. Activation upserts a new version, tests it, then deactivates the old one."
+    },
+    "active": {
+      "x-lcp-pii": "internal",
+      "type": "boolean",
+      "default": true
+    },
+    "vertical": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "schema_versions": {
+      "x-lcp-pii": "public",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/semver"
+      },
+      "description": "Vertical schema versions this mapping renders. Every payload.attributes path must exist at each one."
+    },
+    "request": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "url",
+        "encoding"
+      ],
+      "properties": {
+        "method": {
+          "x-lcp-pii": "public",
+          "const": "POST"
+        },
+        "url": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/static_url"
+        },
+        "test_url": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/static_url",
+          "description": "Where a post with message.test = true goes. Absent: test posts are not delivered. A test post never reaches url."
+        },
+        "encoding": {
+          "x-lcp-pii": "public",
+          "enum": [
+            "json",
+            "form"
+          ]
+        },
+        "timeout_ms": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 30000,
+          "default": 10000
+        },
+        "headers": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "maxProperties": 20,
+          "propertyNames": {
+            "$ref": "#/$defs/header_name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/header_value"
+          },
+          "description": "Static or secret-backed headers only. Lead data never rides a header."
+        },
+        "idempotency": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "header",
+            "from"
+          ],
+          "properties": {
+            "header": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/header_name"
+            },
+            "from": {
+              "x-lcp-pii": "internal",
+              "const": "message.idempotency_key"
+            }
+          },
+          "description": "With it, the stable key rides every attempt and a retry after sending is allowed. Without it, only failures before any request bytes were sent are retried."
+        }
+      }
+    },
+    "body": {
+      "x-lcp-pii": "restricted",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 200,
+      "propertyNames": {
+        "$ref": "#/$defs/target_key"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/body_value"
+      },
+      "description": "Target key to value source. With encoding json, dots in a key build nested objects; with form, the key is sent as written and values must be scalar. Classed restricted because the rendered body carries whatever restricted paths the mapping reads."
+    },
+    "response": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "rules",
+        "default"
+      ],
+      "properties": {
+        "encoding": {
+          "x-lcp-pii": "public",
+          "enum": [
+            "json",
+            "form"
+          ]
+        },
+        "max_bytes": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576,
+          "default": 65536,
+          "description": "Read limit, further capped by the platform's own limit."
+        },
+        "rules": {
+          "x-lcp-pii": "internal",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/rule"
+          },
+          "description": "Evaluated in order; the first match wins."
+        },
+        "default": {
+          "x-lcp-pii": "public",
+          "enum": [
+            "pending",
+            "unsold"
+          ],
+          "description": "Outcome when no rule matches. Never sold: a mapping cannot make an unrecognised response into a sale."
+        },
+        "fields": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "price": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/money_field"
+            },
+            "counter_price": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/money_field"
+            },
+            "redirect_url": {
+              "x-lcp-pii": "restricted",
+              "$ref": "#/$defs/plain_field"
+            },
+            "buyer_reference": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/plain_field"
+            },
+            "reason": {
+              "x-lcp-pii": "internal",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "x-lcp-pii": "internal",
+                  "$ref": "#/$defs/response_path"
+                },
+                "map": {
+                  "x-lcp-pii": "internal",
+                  "type": "object",
+                  "maxProperties": 100,
+                  "additionalProperties": {
+                    "$ref": "#/$defs/rejection_reason"
+                  }
+                },
+                "map_default": {
+                  "x-lcp-pii": "internal",
+                  "$ref": "#/$defs/rejection_reason"
+                }
+              }
+            }
+          }
+        },
+        "retry_on_status": {
+          "x-lcp-pii": "internal",
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          }
+        }
+      }
+    },
+    "counter": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repost"
+      ],
+      "properties": {
+        "repost": {
+          "x-lcp-pii": "internal",
+          "type": "boolean"
+        },
+        "max_reposts": {
+          "x-lcp-pii": "internal",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1,
+          "description": "Capped at 1 in format 1.0."
+        },
+        "price_from": {
+          "x-lcp-pii": "internal",
+          "const": "counter_price"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
+    "semver": {
+      "x-lcp-pii": "public",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "static_url": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^\\s{}$<>\"'`\\\\^|#]+$",
+      "not": {
+        "pattern": "%7[BbDd]|%24"
+      },
+      "description": "Static https URL: no macros, no fragment. Egress (SSRF, no redirects) is checked by the platform at upsert and at send."
+    },
+    "header_name": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+    },
+    "secret_name": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "description": "A reference into the platform secret store. Secret values never appear in a mapping, a vector, a log or an audit record."
+    },
+    "scalar": {
+      "x-lcp-pii": "internal",
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
+    },
+    "source_path": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^(message|payload)((\\.[A-Za-z_][A-Za-z0-9_]*)|(\\[\"[^\"\\\\]{1,128}\"\\])|(\\[[0-9]{1,4}\\]))+$",
+      "description": "Rooted at the post's lcp object. A segment is a property name, [\"...\"] for a key containing a dot, or [n] for an array index. No wildcards, filters or functions."
+    },
+    "response_path": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^([A-Za-z_][A-Za-z0-9_-]*|\\[\"[^\"\\\\]{1,128}\"\\]|\\[[0-9]{1,4}\\])((\\.[A-Za-z_][A-Za-z0-9_-]*)|(\\[\"[^\"\\\\]{1,128}\"\\])|(\\[[0-9]{1,4}\\]))*$"
+    },
+    "target_key": {
+      "x-lcp-pii": "internal",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_\\[\\]-]+(\\.[A-Za-z0-9_\\[\\]-]+)*$"
+    },
+    "transform": {
+      "x-lcp-pii": "public",
+      "enum": [
+        "trim",
+        "lower",
+        "upper",
+        "string",
+        "integer",
+        "boolean",
+        "e164",
+        "phone_national",
+        "date",
+        "date_time_utc",
+        "cents_to_units",
+        "units_to_cents"
+      ]
+    },
+    "body_value": {
+      "x-lcp-pii": "restricted",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from"
+          ],
+          "properties": {
+            "from": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/source_path"
+            },
+            "transform": {
+              "x-lcp-pii": "internal",
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "$ref": "#/$defs/transform"
+              }
+            },
+            "map": {
+              "x-lcp-pii": "internal",
+              "type": "object",
+              "maxProperties": 200,
+              "additionalProperties": {
+                "$ref": "#/$defs/scalar"
+              }
+            },
+            "map_default": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/scalar"
+            },
+            "default": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/scalar"
+            },
+            "required": {
+              "x-lcp-pii": "internal",
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/const_value"
+        },
+        {
+          "$ref": "#/$defs/secret_value"
+        }
+      ]
+    },
+    "const_value": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "const"
+      ],
+      "properties": {
+        "const": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/scalar"
+        }
+      }
+    },
+    "secret_value": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ],
+      "properties": {
+        "secret": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/secret_name"
+        },
+        "prefix": {
+          "x-lcp-pii": "internal",
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9 _:-]*$"
+        }
+      }
+    },
+    "header_value": {
+      "x-lcp-pii": "internal",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/const_value"
+        },
+        {
+          "$ref": "#/$defs/secret_value"
+        }
+      ]
+    },
+    "outcome": {
+      "x-lcp-pii": "public",
+      "enum": [
+        "sold",
+        "unsold",
+        "pending",
+        "price_rejected"
+      ]
+    },
+    "rejection_reason": {
+      "x-lcp-pii": "internal",
+      "enum": [
+        "invalid_phone",
+        "invalid_email",
+        "duplicate",
+        "out_of_geography",
+        "out_of_scope",
+        "credit_too_low",
+        "already_customer",
+        "data_quality_fail",
+        "compliance_fail",
+        "price_too_high",
+        "capacity_exceeded",
+        "consent_expired",
+        "litigator_flagged",
+        "no_buyer",
+        "other"
+      ],
+      "description": "The known ack.rejection_reason values a mapping may produce, plus other. buyer_unconfirmed is assigned by the platform, never by a mapping."
+    },
+    "rule": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "when",
+        "outcome"
+      ],
+      "properties": {
+        "when": {
+          "x-lcp-pii": "internal",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "status": {
+              "x-lcp-pii": "internal",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599
+              }
+            },
+            "path": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/response_path"
+            },
+            "equals": {
+              "x-lcp-pii": "internal",
+              "$ref": "#/$defs/scalar"
+            },
+            "in": {
+              "x-lcp-pii": "internal",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "$ref": "#/$defs/scalar"
+              }
+            },
+            "exists": {
+              "x-lcp-pii": "internal",
+              "type": "boolean"
+            }
+          },
+          "dependentRequired": {
+            "equals": [
+              "path"
+            ],
+            "in": [
+              "path"
+            ],
+            "exists": [
+              "path"
+            ]
+          },
+          "if": {
+            "required": [
+              "path"
+            ]
+          },
+          "then": {
+            "oneOf": [
+              {
+                "required": [
+                  "equals"
+                ]
+              },
+              {
+                "required": [
+                  "in"
+                ]
+              },
+              {
+                "required": [
+                  "exists"
+                ]
+              }
+            ]
+          }
+        },
+        "outcome": {
+          "x-lcp-pii": "public",
+          "$ref": "#/$defs/outcome"
+        },
+        "reason": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/rejection_reason"
+        }
+      }
+    },
+    "money_field": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "unit"
+      ],
+      "properties": {
+        "path": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/response_path"
+        },
+        "unit": {
+          "x-lcp-pii": "public",
+          "enum": [
+            "units",
+            "cents"
+          ]
+        }
+      }
+    },
+    "plain_field": {
+      "x-lcp-pii": "internal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "x-lcp-pii": "internal",
+          "$ref": "#/$defs/response_path"
+        }
+      }
+    }
+  }
+}

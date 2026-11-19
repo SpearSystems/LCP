@@ -242,7 +242,7 @@
       },
       "rejection_reason": {
         "$comment": "Open enum \u2014 enables publisher automation (route invalid_phone to retry, duplicate to dedup, etc.)",
-        "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer. Open enumeration.",
+        "description": "Structured reason the lead was refused or not bought: with status = REJECTED, or (v1.3, LEP-0012) with disposition.outcome = unsold or price_rejected. Known values: invalid_phone, invalid_email, duplicate, out_of_geography, out_of_scope, credit_too_low, already_customer, data_quality_fail, compliance_fail, price_too_high, capacity_exceeded, consent_expired, litigator_flagged, no_buyer, buyer_unconfirmed (v1.4, LEP-0015: a buyer's pending result was never confirmed before the platform's final window). Open enumeration.",
         "type": "string",
         "x-lcp-pii": "internal"
       },
@@ -3214,6 +3214,366 @@
     "title": "LCP Subscription Message",
     "type": "object"
   },
+  "verticals/archive/mortgage-1.0.0.json": {
+    "$id": "https://lcp.dev/verticals/archive/mortgage-1.0.0.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "deprecated": true,
+    "description": "Mortgage lead attributes. Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "properties": {
+      "annual_income_band": {
+        "enum": [
+          "under_40k",
+          "40k_60k",
+          "60k_80k",
+          "80k_100k",
+          "100k_150k",
+          "over_150k"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "annual_income_cents": {
+        "description": "Annual income. PII-adjacent \u2014 not ping_safe.",
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "bankruptcy_history": {
+        "description": "Has the consumer filed for bankruptcy? Sensitive financial data; post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "cash_out_amount_band": {
+        "enum": [
+          "none",
+          "under_25k",
+          "25k_50k",
+          "50k_100k",
+          "over_100k"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "cash_out_amount_cents": {
+        "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "credit_rating_band": {
+        "description": "Credit classification is sensitive financial data; post-only.",
+        "enum": [
+          "excellent",
+          "good",
+          "fair",
+          "poor",
+          "unknown"
+        ],
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      },
+      "current_lender": {
+        "description": "Current mortgage lender (refinance context). Company name \u2014 not ping_safe.",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "internal"
+      },
+      "desired_rate_term": {
+        "description": "Desired mortgage rate term.",
+        "enum": [
+          "15_year_fixed",
+          "20_year_fixed",
+          "30_year_fixed",
+          "5_1_arm",
+          "7_1_arm",
+          "10_1_arm",
+          "interest_only",
+          "other"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "employment_status": {
+        "enum": [
+          "employed",
+          "self_employed",
+          "retired",
+          "unemployed",
+          "student"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "existing_rate_percent": {
+        "description": "Current interest rate. Not ping_safe \u2014 can narrow identity.",
+        "maximum": 30,
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "number",
+        "x-lcp-pii": "restricted"
+      },
+      "foreclosure_history": {
+        "description": "Has the consumer had a foreclosure? Sensitive financial data; post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "has_existing_mortgage": {
+        "ping_safe": true,
+        "type": "boolean",
+        "x-lcp-pii": "public"
+      },
+      "is_first_home_buyer": {
+        "ping_safe": true,
+        "type": "boolean",
+        "x-lcp-pii": "public"
+      },
+      "loan_amount_band": {
+        "description": "Banded loan amount for ping use.",
+        "enum": [
+          "under_100k",
+          "100k_250k",
+          "250k_500k",
+          "500k_750k",
+          "750k_1m",
+          "over_1m"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "loan_amount_cents": {
+        "description": "Exact loan amount in cents. PII-adjacent \u2014 not ping_safe.",
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "loan_term_band": {
+        "description": "Banded loan term.",
+        "enum": [
+          "under_15",
+          "15",
+          "20",
+          "30",
+          "over_30"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "loan_term_years": {
+        "description": "Exact loan term in years. Not ping_safe.",
+        "maximum": 40,
+        "minimum": 1,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "loan_type": {
+        "enum": [
+          "purchase",
+          "refinance",
+          "cash_out_refinance",
+          "debt_consolidation",
+          "first_home_buyer",
+          "investment"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "ltv_ratio_band": {
+        "description": "Loan-to-value ratio band.",
+        "enum": [
+          "under_60",
+          "60_70",
+          "70_80",
+          "80_90",
+          "90_95",
+          "over_95"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "mortgage_product": {
+        "additionalProperties": false,
+        "description": "Country-specific mortgage product. Include only fields relevant to your country; all others MAY be null or omitted. Follows the country-scoping rule in AGENTS.md \u00a77.",
+        "ping_safe": true,
+        "properties": {
+          "au_product": {
+            "description": "Australian mortgage product type. Null if not AU.",
+            "enum": [
+              "principal_and_interest",
+              "interest_only",
+              "offset",
+              null
+            ],
+            "ping_safe": true,
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-lcp-pii": "public"
+          },
+          "ca_product": {
+            "description": "Canadian mortgage product type. Null if not CA.",
+            "enum": [
+              "insured",
+              "insurable",
+              "uninsured",
+              null
+            ],
+            "ping_safe": true,
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-lcp-pii": "public"
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code (e.g. US, CA, GB, AU).",
+            "ping_safe": true,
+            "type": "string",
+            "x-lcp-pii": "internal"
+          },
+          "gb_product": {
+            "description": "UK mortgage product type. Null if not GB.",
+            "enum": [
+              "standard_variable",
+              "discount",
+              "tracker",
+              "offset",
+              null
+            ],
+            "ping_safe": true,
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-lcp-pii": "public"
+          },
+          "us_product": {
+            "description": "US mortgage product type. Null if not US.",
+            "enum": [
+              "conventional",
+              "fha",
+              "va",
+              "heloc",
+              "jumbo",
+              "usda",
+              null
+            ],
+            "ping_safe": true,
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-lcp-pii": "public"
+          }
+        },
+        "required": [
+          "country_code"
+        ],
+        "type": "object",
+        "x-lcp-pii": "internal"
+      },
+      "mortgage_purpose": {
+        "enum": [
+          "new_mortgage",
+          "remortgage",
+          "equity_release",
+          "debt_consolidation"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "property_address": {
+        "description": "Full property address. PII \u2014 never in ping.",
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "contact"
+      },
+      "property_type": {
+        "enum": [
+          "single_family",
+          "condo",
+          "townhouse",
+          "multi_family",
+          "investment_property",
+          "land"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "property_value_band": {
+        "enum": [
+          "under_200k",
+          "200k_400k",
+          "400k_600k",
+          "600k_800k",
+          "800k_1m",
+          "over_1m"
+        ],
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "property_value_cents": {
+        "description": "Estimated property value. Not ping_safe \u2014 could narrow identity.",
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
+      "schema_version": {
+        "const": "1.0.0",
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "self_employed_income_verified": {
+        "description": "For self-employed leads, whether income has been verified; sensitive financial data, post-only.",
+        "ping_safe": false,
+        "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "vertical": {
+        "const": "mortgage",
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "veteran_status": {
+        "description": "Veteran or military status is sensitive eligibility data; post-only.",
+        "enum": [
+          "veteran",
+          "active_duty",
+          "reservist",
+          "non_veteran"
+        ],
+        "ping_safe": false,
+        "type": "string",
+        "x-lcp-pii": "restricted"
+      }
+    },
+    "required": [
+      "vertical",
+      "schema_version"
+    ],
+    "title": "LCP Mortgage Vertical Schema",
+    "type": "object"
+  },
   "verticals/home_services.json": {
     "$id": "https://lcp.dev/verticals/home_services.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3861,8 +4221,37 @@
     "$id": "https://lcp.dev/verticals/mortgage.json",
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "description": "Mortgage lead attributes. Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
+    "dependentRequired": {
+      "annual_income": [
+        "amount_currency"
+      ],
+      "cash_out_amount": [
+        "amount_currency"
+      ],
+      "loan_amount": [
+        "amount_currency"
+      ],
+      "property_value": [
+        "amount_currency"
+      ]
+    },
+    "description": "Mortgage lead attributes (LEP-0016, 2.0.0). Every field is tagged ping_safe: true|false \u2014 the conformance runner rejects any ping containing a non-ping_safe field. Applicant-declared amounts (loan_amount, property_value, annual_income, cash_out_amount) are bounded whole units of amount_currency; the bands are read in the same currency. Version 1.0.0 is frozen at verticals/archive/mortgage-1.0.0.json; a receiver that advertises both validates each lead against the schema_version it names (SPEC \u00a73). Created by Spear Systems (a Spear company). Open standard \u2014 Apache 2.0, free to implement.",
     "properties": {
+      "amount_currency": {
+        "description": "ISO 4217 currency of every applicant-declared amount (loan_amount, property_value, annual_income, cash_out_amount), which are whole units of this currency. Required when any amount is present. Named amount_currency because core schemas own currency (SPEC \u00a712).",
+        "pattern": "^[A-Z]{3}$",
+        "ping_safe": true,
+        "type": "string",
+        "x-lcp-pii": "public"
+      },
+      "annual_income": {
+        "description": "Annual income in whole units of amount_currency. Not cents. PII-adjacent \u2014 not ping_safe.",
+        "maximum": 100000000,
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
       "annual_income_band": {
         "enum": [
           "under_40k",
@@ -3876,17 +4265,18 @@
         "type": "string",
         "x-lcp-pii": "public"
       },
-      "annual_income_cents": {
-        "description": "Annual income. PII-adjacent \u2014 not ping_safe.",
-        "minimum": 0,
-        "ping_safe": false,
-        "type": "integer",
-        "x-lcp-pii": "restricted"
-      },
       "bankruptcy_history": {
         "description": "Has the consumer filed for bankruptcy? Sensitive financial data; post-only.",
         "ping_safe": false,
         "type": "boolean",
+        "x-lcp-pii": "restricted"
+      },
+      "cash_out_amount": {
+        "description": "Cash-out amount for a cash-out refinance, in whole units of amount_currency. Not cents. Not ping_safe.",
+        "maximum": 100000000,
+        "minimum": 0,
+        "ping_safe": false,
+        "type": "integer",
         "x-lcp-pii": "restricted"
       },
       "cash_out_amount_band": {
@@ -3900,13 +4290,6 @@
         "ping_safe": true,
         "type": "string",
         "x-lcp-pii": "public"
-      },
-      "cash_out_amount_cents": {
-        "description": "Cash-out amount for cash-out refinance. Not ping_safe.",
-        "minimum": 0,
-        "ping_safe": false,
-        "type": "integer",
-        "x-lcp-pii": "restricted"
       },
       "credit_rating_band": {
         "description": "Credit classification is sensitive financial data; post-only.",
@@ -3979,6 +4362,14 @@
         "type": "boolean",
         "x-lcp-pii": "public"
       },
+      "loan_amount": {
+        "description": "Requested loan amount in whole units of amount_currency, as the applicant entered it (350000 = $350,000). Not cents. Values outside 1000-100000000 are refused.",
+        "maximum": 100000000,
+        "minimum": 1000,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
       "loan_amount_band": {
         "description": "Banded loan amount for ping use.",
         "enum": [
@@ -3992,13 +4383,6 @@
         "ping_safe": true,
         "type": "string",
         "x-lcp-pii": "public"
-      },
-      "loan_amount_cents": {
-        "description": "Exact loan amount in cents. PII-adjacent \u2014 not ping_safe.",
-        "minimum": 0,
-        "ping_safe": false,
-        "type": "integer",
-        "x-lcp-pii": "restricted"
       },
       "loan_term_band": {
         "description": "Banded loan term.",
@@ -4160,6 +4544,14 @@
         "type": "string",
         "x-lcp-pii": "public"
       },
+      "property_value": {
+        "description": "Estimated property value in whole units of amount_currency. Not cents. Not ping_safe \u2014 could narrow identity.",
+        "maximum": 1000000000,
+        "minimum": 1000,
+        "ping_safe": false,
+        "type": "integer",
+        "x-lcp-pii": "restricted"
+      },
       "property_value_band": {
         "enum": [
           "under_200k",
@@ -4173,15 +4565,8 @@
         "type": "string",
         "x-lcp-pii": "public"
       },
-      "property_value_cents": {
-        "description": "Estimated property value. Not ping_safe \u2014 could narrow identity.",
-        "minimum": 0,
-        "ping_safe": false,
-        "type": "integer",
-        "x-lcp-pii": "restricted"
-      },
       "schema_version": {
-        "const": "1.0.0",
+        "const": "2.0.0",
         "type": "string",
         "x-lcp-pii": "public"
       },

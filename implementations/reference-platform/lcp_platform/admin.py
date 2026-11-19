@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from .config import PlatformConfig
-from .router import Platform
+from .router import Platform, RequestError
 
 
 def main() -> None:
@@ -49,6 +49,20 @@ def main() -> None:
     mapping_sub = mapping.add_subparsers(dest="mapping_command", required=True)
     upsert_mapping = mapping_sub.add_parser("upsert")
     upsert_mapping.add_argument("--file", required=True, type=Path)
+
+    buyer_mapping = commands.add_parser(
+        "buyer-mapping", help="Manage buyer delivery mappings (LEP-0015)"
+    )
+    buyer_mapping_sub = buyer_mapping.add_subparsers(dest="buyer_mapping_command", required=True)
+    upsert_buyer_mapping = buyer_mapping_sub.add_parser("upsert")
+    upsert_buyer_mapping.add_argument("--file", required=True, type=Path)
+    list_buyer_mappings = buyer_mapping_sub.add_parser("list")
+    list_buyer_mappings.add_argument("--buyer-id", default=None)
+    deactivate_buyer_mapping = buyer_mapping_sub.add_parser("deactivate")
+    deactivate_buyer_mapping.add_argument("--mapping-id", required=True)
+    deactivate_buyer_mapping.add_argument(
+        "--version", default=None, help="Deactivate one version; default is every version"
+    )
 
     offer = commands.add_parser("offer", help="Manage buyer offers")
     offer_sub = offer.add_subparsers(dest="offer_command", required=True)
@@ -98,6 +112,23 @@ def main() -> None:
             for item in mappings:
                 platform.upsert_mapping(item)
                 print(f"Upserted mapping {item['mapping_id']} v{item['version']}")
+        elif args.command == "buyer-mapping":
+            if args.buyer_mapping_command == "upsert":
+                with args.file.open(encoding="utf-8") as handle:
+                    document = json.load(handle)
+                try:
+                    platform.upsert_buyer_mapping(document)
+                except RequestError as exc:
+                    raise SystemExit("Refused: " + "; ".join(exc.details or [str(exc)]))
+                print(f"Upserted buyer mapping {document['mapping_id']} v{document['version']}")
+            elif args.buyer_mapping_command == "list":
+                print(json.dumps(platform.list_buyer_mappings(args.buyer_id), indent=2))
+            elif args.buyer_mapping_command == "deactivate":
+                try:
+                    platform.deactivate_buyer_mapping(args.mapping_id, args.version)
+                except RequestError as exc:
+                    raise SystemExit(str(exc))
+                print(f"Deactivated buyer mapping {args.mapping_id}" + (f" v{args.version}" if args.version else ""))
         elif args.command == "offer":
             with args.file.open(encoding="utf-8") as handle:
                 offer_data = json.load(handle)

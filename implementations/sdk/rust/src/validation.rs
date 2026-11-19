@@ -90,7 +90,7 @@ impl SchemaValidator {
             attributes.get("vertical").and_then(Value::as_str)
         };
         let Some(vertical) = vertical else { return Ok(()); };
-        let schema_name = format!("verticals/{vertical}.json");
+        let schema_name = self.vertical_schema_name(vertical, attributes.get("schema_version"));
         let key = self.find_key(&schema_name).ok_or_else(|| {
             SchemaValidationError(format!("vertical schema '{vertical}' not found"))
         })?;
@@ -119,7 +119,22 @@ impl SchemaValidator {
     }
 
     pub fn validate_offer(&self, offer: &Value) -> Result<(), SchemaValidationError> { self.validate("schemas/offer.json", offer) }
-    pub fn validate_vertical(&self, vertical: &str, attributes: &Value) -> Result<(), SchemaValidationError> { self.validate(&format!("verticals/{vertical}.json"), attributes) }
+    pub fn validate_vertical(&self, vertical: &str, attributes: &Value) -> Result<(), SchemaValidationError> {
+        self.validate(&self.vertical_schema_name(vertical, attributes.get("schema_version")), attributes)
+    }
+
+    /// LEP-0016: the schema for the version the attributes name. A frozen earlier
+    /// version is `verticals/archive/{id}-{version}.json` and wins when present;
+    /// otherwise the current file applies, so an unknown version fails its const.
+    fn vertical_schema_name(&self, vertical: &str, version: Option<&Value>) -> String {
+        if let Some(version) = version.and_then(Value::as_str) {
+            let archived = format!("verticals/archive/{vertical}-{version}.json");
+            if self.find_key(&archived).is_some() {
+                return archived;
+            }
+        }
+        format!("verticals/{vertical}.json")
+    }
 
     fn find_key(&self, name: &str) -> Option<&String> {
         let normalized = name.trim_start_matches('/').replace("schemas/", "").replace("verticals/", "vertical:").trim_end_matches(".json").to_string();

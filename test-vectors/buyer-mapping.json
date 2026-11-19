@@ -1,0 +1,796 @@
+{
+  "suite": "BMAP",
+  "description": "LEP-0015 buyer delivery mapping golden vectors (format 1.0). Plain JSON so any platform's executor, in any language, can run them. Render: the base post, patched with post_patch (RFC 6902 add/replace/remove), rendered with the base mapping patched with mapping_patch, gives exactly expect (url, headers, and the body as a JSON object for encoding json or as ordered key/value pairs for encoding form), expect null (the post is not delivered), or expect_failure (delivery stops before any bytes, naming the target key and never the value). Secrets render as secret_placeholder with {name} replaced. Decode: status plus the UTF-8 body, decoded with the base mapping and the post currency, gives exactly expect; rule is the index of the first matching rule, default, undecodable (a 2xx body that failed to decode) or price_undecodable (a sold response whose declared price failed to decode). Refuse: the patched mapping is refused at upsert; by = schema means schemas/buyer-mapping.json refuses it, by = platform means the schema accepts it and the platform's upsert check must refuse it. The LEP's example purposes are adapted to the personal_loans 2.0.0 loan_purpose enum (debt_relief, home_purchase).",
+  "secret_placeholder": "<secret:{name}>",
+  "mapping": {
+    "format_version": "1.0",
+    "mapping_id": "example-loans-direct-v2",
+    "buyer_id": "buyer_example_loans",
+    "version": "2.0.0",
+    "active": true,
+    "vertical": "personal_loans",
+    "schema_versions": [
+      "2.0.0"
+    ],
+    "request": {
+      "method": "POST",
+      "url": "https://api.buyer.example/v2/leads",
+      "test_url": "https://sandbox.buyer.example/v2/leads",
+      "encoding": "json",
+      "timeout_ms": 10000,
+      "headers": {
+        "X-Api-Key": {
+          "secret": "example_loans_api_key"
+        },
+        "X-Source": {
+          "const": "lcp"
+        }
+      },
+      "idempotency": {
+        "header": "Idempotency-Key",
+        "from": "message.idempotency_key"
+      }
+    },
+    "body": {
+      "source.reference": {
+        "from": "message.id"
+      },
+      "source.test": {
+        "from": "message.test",
+        "default": false
+      },
+      "applicant.first_name": {
+        "from": "payload.consumer.first_name",
+        "transform": [
+          "trim"
+        ],
+        "required": true
+      },
+      "applicant.last_name": {
+        "from": "payload.consumer.last_name",
+        "transform": [
+          "trim"
+        ],
+        "required": true
+      },
+      "applicant.phone": {
+        "from": "payload.consumer.phone",
+        "transform": [
+          "phone_national"
+        ],
+        "required": true
+      },
+      "applicant.email": {
+        "from": "payload.consumer.email",
+        "transform": [
+          "lower"
+        ]
+      },
+      "applicant.zip": {
+        "from": "payload.location.postal_code",
+        "transform": [
+          "trim"
+        ]
+      },
+      "loan.amount": {
+        "from": "payload.attributes.loan_amount",
+        "required": true
+      },
+      "loan.purpose": {
+        "from": "payload.attributes.loan_purpose",
+        "map": {
+          "debt_relief": "DEBT",
+          "home_purchase": "HOME"
+        },
+        "map_default": "OTHER"
+      },
+      "pricing.min_price": {
+        "from": "payload.price_cents",
+        "transform": [
+          "cents_to_units"
+        ]
+      },
+      "tracking.sub_id": {
+        "from": "payload.extensions[\"lcp.affiliate.tracking\"].sub_id"
+      }
+    },
+    "response": {
+      "encoding": "json",
+      "max_bytes": 65536,
+      "rules": [
+        {
+          "when": {
+            "status": [
+              200,
+              201
+            ],
+            "path": "result",
+            "in": [
+              "accepted"
+            ]
+          },
+          "outcome": "sold"
+        },
+        {
+          "when": {
+            "path": "result",
+            "equals": "price_rejected"
+          },
+          "outcome": "price_rejected"
+        },
+        {
+          "when": {
+            "path": "result",
+            "in": [
+              "rejected",
+              "invalid",
+              "duplicate"
+            ]
+          },
+          "outcome": "unsold"
+        },
+        {
+          "when": {
+            "status": [
+              409
+            ]
+          },
+          "outcome": "unsold",
+          "reason": "duplicate"
+        }
+      ],
+      "default": "pending",
+      "fields": {
+        "price": {
+          "path": "price",
+          "unit": "units"
+        },
+        "counter_price": {
+          "path": "min_price",
+          "unit": "units"
+        },
+        "redirect_url": {
+          "path": "redirect_url"
+        },
+        "buyer_reference": {
+          "path": "lead_id"
+        },
+        "reason": {
+          "path": "reason",
+          "map": {
+            "dup": "duplicate",
+            "low_credit": "credit_too_low",
+            "bad_phone": "invalid_phone"
+          },
+          "map_default": "other"
+        }
+      },
+      "retry_on_status": [
+        429,
+        502,
+        503,
+        504
+      ]
+    },
+    "counter": {
+      "repost": true,
+      "max_reposts": 1,
+      "price_from": "counter_price"
+    }
+  },
+  "post": {
+    "lcp": {
+      "version": "1.3.0",
+      "message": {
+        "id": "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10",
+        "type": "post",
+        "timestamp": "2026-11-19T10:00:05Z",
+        "sender_id": "platform_001",
+        "receiver_id": "buyer_example_loans",
+        "correlation_id": "d1500000-0000-4000-8000-000000001501",
+        "idempotency_key": "platform_001-post-lead_1501-offer_example_loans",
+        "test": false
+      },
+      "payload": {
+        "lead_id": "lead_1501",
+        "delivered_at": "2026-11-19T10:00:05Z",
+        "submitted_at": "2026-11-19T09:59:58Z",
+        "offer_id": "offer_example_loans",
+        "price_cents": 5000,
+        "currency": "USD",
+        "buyer_id": "buyer_example_loans",
+        "consumer": {
+          "first_name": " Test ",
+          "last_name": "Applicant",
+          "email": "Test@Example.com",
+          "phone": "+12025550143"
+        },
+        "location": {
+          "country_code": "US",
+          "state_region": "DC",
+          "postal_code": "20001"
+        },
+        "attributes": {
+          "vertical": "personal_loans",
+          "schema_version": "2.0.0",
+          "amount_currency": "USD",
+          "loan_amount": 1000,
+          "loan_purpose": "debt_relief"
+        },
+        "pricing": {
+          "floor_price_cents": 3000,
+          "final_price_cents": 5000,
+          "price_guardrails": true,
+          "payable_definition": "bilateral_definition",
+          "payable_status": "pending",
+          "is_duplicate_resub": false
+        },
+        "matched_preferences": {
+          "offer_id": "offer_example_loans",
+          "vertical": "personal_loans",
+          "countries": [
+            "US"
+          ]
+        },
+        "extensions": {
+          "lcp.affiliate.tracking": {
+            "sub_id": "s-42"
+          }
+        }
+      }
+    }
+  },
+  "render": [
+    {
+      "id": "BMAP-R-001",
+      "name": "live_post_renders_the_exact_request",
+      "description": "LEP-0015 Valid 1: loan_amount 1000, price_cents 5000 USD, message.test false. The request goes to url with the idempotency key and the secret placeholder.",
+      "expect": {
+        "url": "https://api.buyer.example/v2/leads",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Api-Key": "<secret:example_loans_api_key>",
+          "X-Source": "lcp",
+          "Idempotency-Key": "platform_001-post-lead_1501-offer_example_loans"
+        },
+        "body": {
+          "source": {
+            "reference": "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10",
+            "test": false
+          },
+          "applicant": {
+            "first_name": "Test",
+            "last_name": "Applicant",
+            "phone": "2025550143",
+            "email": "test@example.com",
+            "zip": "20001"
+          },
+          "loan": {
+            "amount": 1000,
+            "purpose": "DEBT"
+          },
+          "pricing": {
+            "min_price": 50
+          },
+          "tracking": {
+            "sub_id": "s-42"
+          }
+        }
+      }
+    },
+    {
+      "id": "BMAP-R-002",
+      "name": "test_post_goes_only_to_test_url",
+      "description": "LEP-0015 §4: message.test true renders to test_url, never url.",
+      "post_patch": [
+        {
+          "op": "replace",
+          "path": "/lcp/message/test",
+          "value": true
+        }
+      ],
+      "expect": {
+        "url": "https://sandbox.buyer.example/v2/leads",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Api-Key": "<secret:example_loans_api_key>",
+          "X-Source": "lcp",
+          "Idempotency-Key": "platform_001-post-lead_1501-offer_example_loans"
+        },
+        "body": {
+          "source": {
+            "reference": "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10",
+            "test": true
+          },
+          "applicant": {
+            "first_name": "Test",
+            "last_name": "Applicant",
+            "phone": "2025550143",
+            "email": "test@example.com",
+            "zip": "20001"
+          },
+          "loan": {
+            "amount": 1000,
+            "purpose": "DEBT"
+          },
+          "pricing": {
+            "min_price": 50
+          },
+          "tracking": {
+            "sub_id": "s-42"
+          }
+        }
+      }
+    },
+    {
+      "id": "BMAP-R-003",
+      "name": "test_post_without_test_url_is_not_delivered",
+      "description": "LEP-0015 §4: with no test_url a test post is not delivered at all.",
+      "mapping_patch": [
+        {
+          "op": "remove",
+          "path": "/request/test_url"
+        }
+      ],
+      "post_patch": [
+        {
+          "op": "replace",
+          "path": "/lcp/message/test",
+          "value": true
+        }
+      ],
+      "expect": null
+    },
+    {
+      "id": "BMAP-R-004",
+      "name": "inexact_cents_to_units_is_a_mapping_failure",
+      "description": "LEP-0015 Invalid D: price_cents 5050 through cents_to_units is never rounded to 50 or 51.",
+      "post_patch": [
+        {
+          "op": "replace",
+          "path": "/lcp/payload/price_cents",
+          "value": 5050
+        }
+      ],
+      "expect_failure": {
+        "target": "pricing.min_price"
+      }
+    },
+    {
+      "id": "BMAP-R-005",
+      "name": "missing_required_source_stops_the_delivery",
+      "description": "LEP-0015 §3/§6: a missing required target stops the delivery before any bytes.",
+      "post_patch": [
+        {
+          "op": "remove",
+          "path": "/lcp/payload/consumer/first_name"
+        }
+      ],
+      "expect_failure": {
+        "target": "applicant.first_name"
+      }
+    },
+    {
+      "id": "BMAP-R-006",
+      "name": "phone_national_refuses_a_non_plus_one_number",
+      "description": "LEP-0015 §3: a transform that cannot apply is a failure, never a coercion.",
+      "post_patch": [
+        {
+          "op": "replace",
+          "path": "/lcp/payload/consumer/phone",
+          "value": "+61412345678"
+        }
+      ],
+      "expect_failure": {
+        "target": "applicant.phone"
+      }
+    },
+    {
+      "id": "BMAP-R-007",
+      "name": "missing_optional_source_omits_the_target",
+      "description": "LEP-0015 §3: a missing source with no default omits the target; map_default applies to an unmapped value.",
+      "post_patch": [
+        {
+          "op": "remove",
+          "path": "/lcp/payload/extensions"
+        },
+        {
+          "op": "replace",
+          "path": "/lcp/payload/attributes/loan_purpose",
+          "value": "medical"
+        }
+      ],
+      "expect": {
+        "url": "https://api.buyer.example/v2/leads",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Api-Key": "<secret:example_loans_api_key>",
+          "X-Source": "lcp",
+          "Idempotency-Key": "platform_001-post-lead_1501-offer_example_loans"
+        },
+        "body": {
+          "source": {
+            "reference": "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10",
+            "test": false
+          },
+          "applicant": {
+            "first_name": "Test",
+            "last_name": "Applicant",
+            "phone": "2025550143",
+            "email": "test@example.com",
+            "zip": "20001"
+          },
+          "loan": {
+            "amount": 1000,
+            "purpose": "OTHER"
+          },
+          "pricing": {
+            "min_price": 50
+          }
+        }
+      }
+    },
+    {
+      "id": "BMAP-R-008",
+      "name": "form_encoding_sends_keys_as_written",
+      "description": "LEP-0015 §2: with encoding form the dotted key is sent as written and values are scalar.",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/request/encoding",
+          "value": "form"
+        }
+      ],
+      "expect": {
+        "url": "https://api.buyer.example/v2/leads",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Api-Key": "<secret:example_loans_api_key>",
+          "X-Source": "lcp",
+          "Idempotency-Key": "platform_001-post-lead_1501-offer_example_loans"
+        },
+        "body_form": [
+          [
+            "source.reference",
+            "6f1c2c1e-2b1d-4c35-9c55-3f2a1d9b8e10"
+          ],
+          [
+            "source.test",
+            "false"
+          ],
+          [
+            "applicant.first_name",
+            "Test"
+          ],
+          [
+            "applicant.last_name",
+            "Applicant"
+          ],
+          [
+            "applicant.phone",
+            "2025550143"
+          ],
+          [
+            "applicant.email",
+            "test@example.com"
+          ],
+          [
+            "applicant.zip",
+            "20001"
+          ],
+          [
+            "loan.amount",
+            "1000"
+          ],
+          [
+            "loan.purpose",
+            "DEBT"
+          ],
+          [
+            "pricing.min_price",
+            "50"
+          ],
+          [
+            "tracking.sub_id",
+            "s-42"
+          ]
+        ]
+      }
+    }
+  ],
+  "decode": [
+    {
+      "id": "BMAP-D-001",
+      "name": "accepted_is_sold_at_the_decoded_price",
+      "status": 200,
+      "body": "{\"result\":\"accepted\",\"price\":42,\"lead_id\":\"B-9\",\"redirect_url\":\"https://buyer.example/offer/abc\"}",
+      "expect": {
+        "outcome": "sold",
+        "rule": 0,
+        "price_cents": 4200,
+        "buyer_reference": "B-9",
+        "redirect_url": "https://buyer.example/offer/abc"
+      }
+    },
+    {
+      "id": "BMAP-D-002",
+      "name": "price_rejected_carries_the_counter",
+      "status": 200,
+      "body": "{\"result\":\"price_rejected\",\"min_price\":30}",
+      "expect": {
+        "outcome": "price_rejected",
+        "rule": 1,
+        "counter_price_cents": 3000
+      }
+    },
+    {
+      "id": "BMAP-D-003",
+      "name": "rejected_maps_the_buyer_reason",
+      "status": 200,
+      "body": "{\"result\":\"rejected\",\"reason\":\"dup\"}",
+      "expect": {
+        "outcome": "unsold",
+        "rule": 2,
+        "rejection_reason": "duplicate"
+      }
+    },
+    {
+      "id": "BMAP-D-004",
+      "name": "status_only_rule_matches_an_empty_body",
+      "status": 409,
+      "body": "",
+      "expect": {
+        "outcome": "unsold",
+        "rule": 3,
+        "rejection_reason": "duplicate"
+      }
+    },
+    {
+      "id": "BMAP-D-005",
+      "name": "unrecognised_result_falls_to_default_pending",
+      "status": 200,
+      "body": "{\"result\":\"queued\"}",
+      "expect": {
+        "outcome": "pending",
+        "rule": "default"
+      }
+    },
+    {
+      "id": "BMAP-D-006",
+      "name": "sold_with_fractional_minor_unit_price_is_pending",
+      "description": "LEP-0015 §5: a float with a fractional minor unit is a decode failure; money is never invented, so the sale is pending.",
+      "status": 200,
+      "body": "{\"result\":\"accepted\",\"price\":42.555,\"lead_id\":\"B-10\"}",
+      "expect": {
+        "outcome": "pending",
+        "rule": "price_undecodable",
+        "buyer_reference": "B-10"
+      }
+    },
+    {
+      "id": "BMAP-D-007",
+      "name": "sold_without_the_declared_price_is_pending",
+      "status": 200,
+      "body": "{\"result\":\"accepted\"}",
+      "expect": {
+        "outcome": "pending",
+        "rule": "price_undecodable"
+      }
+    },
+    {
+      "id": "BMAP-D-008",
+      "name": "undecodable_2xx_body_is_pending",
+      "status": 200,
+      "body": "<html>accepted</html>",
+      "expect": {
+        "outcome": "pending",
+        "rule": "undecodable"
+      }
+    },
+    {
+      "id": "BMAP-D-009",
+      "name": "unmapped_reason_becomes_map_default",
+      "description": "LEP-0015 §5: free text from the buyer is never retained.",
+      "status": 200,
+      "body": "{\"result\":\"invalid\",\"reason\":\"applicant failed our internal score\"}",
+      "expect": {
+        "outcome": "unsold",
+        "rule": 2,
+        "rejection_reason": "other"
+      }
+    },
+    {
+      "id": "BMAP-D-010",
+      "name": "non_https_redirect_is_dropped",
+      "status": 201,
+      "body": "{\"result\":\"accepted\",\"price\":\"42.50\",\"redirect_url\":\"http://buyer.example/offer/abc\"}",
+      "expect": {
+        "outcome": "sold",
+        "rule": 0,
+        "price_cents": 4250
+      }
+    }
+  ],
+  "refuse": [
+    {
+      "id": "BMAP-X-001",
+      "name": "default_sold_is_refused",
+      "description": "LEP-0015 Invalid A: a default can never make a sale.",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/response/default",
+          "value": "sold"
+        }
+      ],
+      "error_contains": "response/default"
+    },
+    {
+      "id": "BMAP-X-002",
+      "name": "url_macro_is_refused",
+      "description": "LEP-0015 Invalid B: URLs are static.",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/request/url",
+          "value": "https://api.buyer.example/leads?phone={phone}"
+        }
+      ],
+      "error_contains": "request/url"
+    },
+    {
+      "id": "BMAP-X-003",
+      "name": "regulated_path_without_enrolment_is_refused",
+      "description": "LEP-0015 Invalid C: payload.attributes.us_details.ssn for a buyer not enrolled under LEP-0013.",
+      "by": "platform",
+      "mapping_patch": [
+        {
+          "op": "add",
+          "path": "/body/applicant.ssn",
+          "value": {
+            "from": "payload.attributes.us_details.ssn"
+          }
+        }
+      ],
+      "error_contains": "regulated identifier"
+    },
+    {
+      "id": "BMAP-X-004",
+      "name": "unknown_transform_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/body/applicant.first_name/transform",
+          "value": [
+            "titlecase"
+          ]
+        }
+      ],
+      "error_contains": "body/applicant.first_name"
+    },
+    {
+      "id": "BMAP-X-005",
+      "name": "unknown_key_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "add",
+          "path": "/script",
+          "value": "return lead"
+        }
+      ],
+      "error_contains": "script"
+    },
+    {
+      "id": "BMAP-X-006",
+      "name": "unknown_rule_operator_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "add",
+          "path": "/response/rules/0/when/matches",
+          "value": "^acc"
+        }
+      ],
+      "error_contains": "response/rules/0/when"
+    },
+    {
+      "id": "BMAP-X-007",
+      "name": "attribute_path_outside_the_vertical_is_refused",
+      "by": "platform",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/body/loan.amount/from",
+          "value": "payload.attributes.loan_amount_cents"
+        }
+      ],
+      "error_contains": "is not defined by personal_loans 2.0.0"
+    },
+    {
+      "id": "BMAP-X-008",
+      "name": "unknown_format_version_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/format_version",
+          "value": "2.0"
+        }
+      ],
+      "error_contains": "format_version"
+    },
+    {
+      "id": "BMAP-X-009",
+      "name": "path_outside_the_two_roots_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/body/applicant.phone/from",
+          "value": "lead.consumer.phone"
+        }
+      ],
+      "error_contains": "body/applicant.phone"
+    },
+    {
+      "id": "BMAP-X-010",
+      "name": "lead_data_in_a_header_is_refused",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "add",
+          "path": "/request/headers/X-Phone",
+          "value": {
+            "from": "payload.consumer.phone"
+          }
+        }
+      ],
+      "error_contains": "request/headers/X-Phone"
+    },
+    {
+      "id": "BMAP-X-011",
+      "name": "reserved_header_is_refused",
+      "by": "platform",
+      "mapping_patch": [
+        {
+          "op": "add",
+          "path": "/request/headers/Content-Type",
+          "value": {
+            "const": "text/plain"
+          }
+        }
+      ],
+      "error_contains": "content-type is set by the platform"
+    },
+    {
+      "id": "BMAP-X-012",
+      "name": "counter_repost_without_counter_price_is_refused",
+      "by": "platform",
+      "mapping_patch": [
+        {
+          "op": "remove",
+          "path": "/response/fields/counter_price"
+        }
+      ],
+      "error_contains": "counter.repost"
+    },
+    {
+      "id": "BMAP-X-013",
+      "name": "second_repost_is_refused",
+      "description": "LEP-0015 §8: max_reposts is capped at 1 in format 1.0.",
+      "by": "schema",
+      "mapping_patch": [
+        {
+          "op": "replace",
+          "path": "/counter/max_reposts",
+          "value": 2
+        }
+      ],
+      "error_contains": "counter/max_reposts"
+    }
+  ]
+}

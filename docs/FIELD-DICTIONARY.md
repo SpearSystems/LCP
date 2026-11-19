@@ -147,7 +147,7 @@ untrusted.
 | Block / path | Type / format | Presence | Meaning |
 |---|---|---|---|
 | `attributes.vertical` | string | `req` in attributes | Vertical schema identifier. |
-| `attributes.schema_version` | string | `req` in attributes | Version of the selected vertical schema. |
+| `attributes.schema_version` | string | `req` in attributes | Version of the selected vertical schema. A receiver validates against exactly this version and refuses one it does not advertise with `LCP-100` on this field (v1.4, LEP-0016). |
 | `status` | open string | message-dependent | Lifecycle status; unknown values are passed through. |
 | `channel` | open string | message-dependent | Lead channel; `call` messages use the constant `call`. |
 | `currency` | three uppercase letters | message-dependent | ISO 4217 currency code. |
@@ -354,7 +354,9 @@ and duplicate-resubmission handling.
 
 Everything vertical-specific belongs under `attributes` and is typed by the
 selected file in [`verticals/`](../verticals/). Current vertical schemas include
-mortgage, insurance, solar, legal, home services, and motor-vehicle accident.
+mortgage, insurance, solar, legal, home services, motor-vehicle accident, and
+personal loans. A frozen earlier version of a vertical lives in
+`verticals/archive/` (LEP-0016).
 Every vertical field is explicitly tagged `ping_safe: true` or `false`, and
 verticals must not redefine reserved universal core names such as `phone`,
 `email`, `first_name`, `last_name`, `full_name`, or `country_code`.

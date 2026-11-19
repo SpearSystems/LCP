@@ -287,7 +287,7 @@ mod tests {
     fn full_schema_vector() {
         use std::collections::HashMap;
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let root = format!("../../../{directory}");
             for entry in std::fs::read_dir(&root).unwrap() {
                 let path = entry.unwrap().path();
@@ -312,7 +312,7 @@ mod tests {
         use std::path::Path;
         let root = Path::new("../../..");
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let dir = root.join(directory);
             for entry in std::fs::read_dir(&dir).unwrap() {
                 let path = entry.unwrap().path();
@@ -371,7 +371,7 @@ mod tests {
         assert!(!json.contains("currency"), "optional currency must be omitted: {json}");
 
         let mut schemas = HashMap::new();
-        for directory in ["schemas", "verticals"] {
+        for directory in ["schemas", "verticals", "verticals/archive"] {
             let root = format!("../../../{directory}");
             for entry in std::fs::read_dir(&root).unwrap() {
                 let path = entry.unwrap().path();

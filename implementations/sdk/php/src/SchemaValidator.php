@@ -85,7 +85,7 @@ final class SchemaValidator
         if (!is_array($attributes)) return;
         $vertical = $type === 'ping' ? ($payload['vertical'] ?? null) : ($attributes['vertical'] ?? null);
         if (!is_string($vertical) || $vertical === '') return;
-        $schema = $this->documents[$this->normalize("verticals/$vertical.json")] ?? null;
+        $schema = $this->documents[$this->normalize($this->verticalSchemaName($vertical, $attributes))] ?? null;
         if (!is_array($schema)) throw new RuntimeException("Vertical schema '$vertical' not found");
         $verticalAttributes = $attributes;
         if ($type === 'ping') {
@@ -113,7 +113,24 @@ final class SchemaValidator
     }
 
     public function validateOffer(array $offer): void { $this->validate('schemas/offer.json', $offer); }
-    public function validateVertical(string $vertical, array $attributes): void { $this->validate("verticals/$vertical.json", $attributes); }
+    public function validateVertical(string $vertical, array $attributes): void { $this->validate($this->verticalSchemaName($vertical, $attributes), $attributes); }
+
+    /**
+     * LEP-0016: the schema for the version the attributes name. A frozen earlier
+     * version is `verticals/archive/{id}-{version}.json` and wins when present;
+     * otherwise the current file applies, so an unknown version fails its const.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    private function verticalSchemaName(string $vertical, array $attributes): string
+    {
+        $version = $attributes['schema_version'] ?? null;
+        if (is_string($version)) {
+            $archived = "verticals/archive/$vertical-$version.json";
+            if (isset($this->idsByName[$this->normalize($archived)])) return $archived;
+        }
+        return "verticals/$vertical.json";
+    }
 
     private function jsonValue(mixed $value): mixed
     {

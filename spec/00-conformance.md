@@ -58,6 +58,8 @@ suite. An endpoint that does not advertise the key need not run it.
 | `NEG` | `test-vectors/negotiation.json` | LEP-0009 quote/counter negotiation | `negotiation` |
 | `SALE` | `test-vectors/sale-lifecycle.json` | LEP-0012 (v1.3): ack disposition and its version gate, money-bearing sale events and revisions, URL-template postbacks (macro expansion, the 4096-byte limit, the GET signature), the tracking and test-outcome extensions | `sale_disposition`, `url_postbacks`, `test_outcomes` |
 | `REG` | `test-vectors/regulated-identifiers.json` | LEP-0013 (v1.3): the regulated-identifier intake gate and the test SSN range, plus LEP-0014 `personal_loans` 2.0.0 shapes | `regulated_identifiers` |
+| `VER` | `test-vectors/vertical-versions.json` | LEP-0016 (v1.4): side-by-side vertical versions (validation by `attributes.schema_version`, LCP-100 on an unserved version, per-version ping tags) and `mortgage` 2.0.0 shapes | none: applies to a receiver that serves more than one version of a vertical |
+| `BMAP` | `test-vectors/buyer-mapping.json` | LEP-0015 (v1.4): buyer delivery mapping documents. The runner checks the schema half; render, decode and refusal vectors run against the platform's own executor ([BUYER-MAPPING](../docs/BUYER-MAPPING.md)) | none: applies to a platform that executes buyer mappings |
 
 Run one suite with `python3 test-vectors/conformance.py --tier SALE`.
 

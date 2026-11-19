@@ -109,7 +109,8 @@ public final class SchemaValidator {
             ? payload.path("vertical").asText("")
             : attributes.path("vertical").asText("");
         if (vertical.isEmpty()) return;
-        JsonNode schema = documents.get(normalize("verticals/" + vertical + ".json"));
+        String schemaName = verticalSchemaName(vertical, attributes);
+        JsonNode schema = documents.get(normalize(schemaName));
         if (schema == null) throw new IllegalArgumentException("Vertical schema '" + vertical + "' not found");
         ObjectNode verticalAttributes = (ObjectNode) attributes.deepCopy();
         if (type.equals("ping")) {
@@ -119,7 +120,7 @@ public final class SchemaValidator {
                 if (!version.isMissingNode()) verticalAttributes.set("schema_version", version);
             }
         }
-        validate("verticals/" + vertical + ".json", verticalAttributes.toString());
+        validate(schemaName, verticalAttributes.toString());
         if (type.equals("ping")) validatePingSafe(vertical, attributes, schema, "attributes");
     }
 
@@ -142,7 +143,22 @@ public final class SchemaValidator {
 
     public void validateOffer(String offer) throws IOException { validate("schemas/offer.json", offer); }
     public void validateVertical(String vertical, String attributes) throws IOException {
-        validate("verticals/" + vertical + ".json", attributes);
+        validate(verticalSchemaName(vertical, mapper.readTree(attributes)), attributes);
+    }
+
+    /**
+     * LEP-0016: the schema for the version the attributes name. A frozen earlier
+     * version is {@code verticals/archive/{id}-{version}.json} and wins when
+     * present; otherwise the current file applies, so an unknown version fails
+     * its {@code schema_version} const.
+     */
+    private String verticalSchemaName(String vertical, JsonNode attributes) {
+        JsonNode version = attributes.path("schema_version");
+        if (version.isTextual()) {
+            String archived = "verticals/archive/" + vertical + "-" + version.asText() + ".json";
+            if (idsByName.containsKey(normalize(archived))) return archived;
+        }
+        return "verticals/" + vertical + ".json";
     }
 
     private static String normalize(String value) {
