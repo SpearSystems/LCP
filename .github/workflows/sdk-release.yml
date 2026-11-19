@@ -296,7 +296,9 @@ jobs:
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         if: steps.rubygems-existing.outputs.published != 'true'
         with:
-          ruby-version: ruby
+          # Same Ruby as the SDK compatibility job. The floating "ruby" alias moved
+          # to 4.0, where rubygems-await 0.5.4 crashes after a successful push.
+          ruby-version: "3.3"
           working-directory: implementations/sdk/ruby
           bundler-cache: true
       - run: python3 tools/generate_sdk_models.py --write

@@ -50,7 +50,8 @@ review.
 
 | Suite | Command | Result |
 |---|---|---|
-| Reference platform | `PYTHONPATH=implementations/reference-platform python -m unittest discover -s implementations/reference-platform/tests` | 381 tests OK, 5 skipped (PostgreSQL integration runs in CI) |
+| Reference platform | `PYTHONPATH=implementations/reference-platform python -m unittest discover -s implementations/reference-platform/tests` | 381 tests OK, 5 skipped (PostgreSQL integration, run separately below) |
+| PostgreSQL integration | `tests/test_postgres_integration.py` against a throwaway local PostgreSQL cluster, removed afterwards | 4 tests OK, including the LEP-0012 concurrent sale-event insert |
 | Repository tools | `python -m unittest discover -s tools/tests` | 263 tests OK |
 | Conformance | `python test-vectors/conformance.py` | 139 passed, 0 failed |
 | Registry and policy checks | `check_lep_registry`, `check_logging_hygiene`, `check_universal_core`, `check_pii_annotations`, `check_reserved_fields`, `check_doc_citations --strict`, `check_coverage_matrix`, `check_mermaid_blocks` | all pass |
@@ -85,3 +86,38 @@ gates at the merge commit, the Go module tag before the root tag, the
 container public-pull pre-flight (anonymous pull token issued, package
 visibility `public`), the Packagist mirror dispatch, and approval of the
 protected publication jobs after every tag workflow passed.
+
+## 5. Verified publication
+
+Read back on 2026-11-19 after the tag workflows finished.
+
+| Registry | Coordinate | Version | Evidence |
+|---|---|---|---|
+| PyPI | `lcp-sdk` | 1.3.0 | JSON API 200 |
+| PyPI | `lcp-reference-platform` | 1.3.0 | JSON API 200 |
+| PyPI | `lcp-mcp-server` | 1.3.0 | JSON API 200 |
+| npm | `@spear-systems/lcp-sdk` | 1.3.0 | registry 200; provenance in the Sigstore transparency log |
+| NuGet | `LcpSdk` | 1.3.0 | push accepted (`201 Created`, "Your package was pushed"); flat-container index pending NuGet validation at read-back |
+| crates.io | `lcp-sdk` | 1.3.0 | API version record |
+| RubyGems | `lcp-sdk` | 1.3.0 | versions API 200, registered 2026-11-19T01:47:53Z |
+| Maven Central | `systems.spear:lcp-sdk` | 1.3.0 | POM 200 |
+| Maven Central | `systems.spear:lcp-sdk-kotlin` | 1.3.0 | POM 200 |
+| Packagist | `spearsystems/lcp-sdk` | v1.3.0 | mirror tag pushed by `mirror.yml`; p2 metadata lists `v1.3.0` |
+| Go module | `github.com/SpearSystems/LCP/implementations/sdk/go` | v1.3.0 | proxy.golang.org resolves the nested tag to `52a11fb` |
+| Swift Package Manager | `https://github.com/SpearSystems/LCP` | 1.3.0 | resolves from tag `v1.3.0` |
+| GHCR | `ghcr.io/spearsystems/lcp-reference-platform:v1.3.0` | `sha256:e8db16204d67a391252b06d73fffa132acb945d9357a610be560cc6335393b85` | anonymous token + manifest 200 |
+| GitHub release | `v1.3.0` | 79 assets | signed manifest, SBOMs, provenance |
+
+Deploy the container by digest only.
+
+## 6. Post-release notes
+
+- **RubyGems verification step.** The gem was registered at 01:47:53Z, but
+  the `rubygems/release-gem` post-push wait then crashed (`rubygems-await`
+  0.5.4, `undefined method 'dependencies'` on Ruby 4.0.9) and failed the
+  job, which in turn failed the release gate. The job's existing-version
+  check made the rerun skip the push, so no version was pushed twice. The
+  release workflow uses the floating `ruby` alias; it now pins Ruby `3.3`,
+  the version the SDK compatibility job tests.
+- **Swift CI.** The first Swift job on PR #249 was cancelled because no
+  hosted macOS runner picked it up; the rerun passed.
