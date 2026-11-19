@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="governance/LEPs/LEP-0016-mortgage-vertical-2.md">
-<meta name="lcp-build" content="ca343d9323b2">
+<meta name="lcp-build" content="5de19378aae2">
 <title>LEP-0016 — mortgage vertical 2.0.0: whole-unit applicant amounts, a declared currency, and side-by-side vertical versions — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -21,10 +21,18 @@
 <li><strong>Title:</strong> <code>mortgage</code> vertical 2.0.0: whole-unit applicant amounts with a declared <code>amount_currency</code>, bounded values, and a rule for receivers that serve two versions of one vertical at once</li>
 <li><strong>Author(s):</strong> LCP maintainers</li>
 <li><strong>Date:</strong> 2026-11-19</li>
-<li><strong>Status:</strong> <strong>Review</strong> — public review open until 2026-12-03. Not accepted. No implementation is authorized (LEP.md stage 5).</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — 2026-11-19 (maintainer; <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">v1.4 decision record (<code>docs/DECISIONS-v1.4.md</code>)</span> D1–D4: review window and independent review waived). Implementation: PR <a href="https://github.com/SpearSystems/LCP/pull/251" rel="noopener">#251</a>, for v1.4.0.</li>
 <li><strong>Target version:</strong> v1.4.0. The vertical file gains a <code>2.0.0</code> schema alongside a frozen <code>1.0.0</code>.</li>
 <li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/258" rel="noopener">#258</a></li>
 <li><strong>Depends on:</strong> <a href="LEP-0014-personal-loans-vertical.html">LEP-0014</a>, for the whole-unit authoring rule. If LEP-0014 is rejected, this record is withdrawn with it.</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</h2>
+<p><strong>Accepted</strong> under <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">D1–D4 (<code>docs/DECISIONS-v1.4.md</code>)</span> of the v1.4 decision record. The review window closed early with no comments, and no reviewer independent of the author took part (D1, D2). No PII class changes, so no security/privacy condition applies beyond the v1.3 record.</p>
+<p>Conditions:</p>
+<ul>
+<li><code>mortgage</code> 1.0.0 stays served side by side for the 180-day window, frozen at <code>verticals/archive/mortgage-1.0.0.json</code>.</li>
+<li>The SDKs carry both versions in their schema bundles and validate by <code>attributes.schema_version</code>. No SDK has typed per-vertical builders, so "1.0.0 builder deprecated" is carried as <code>deprecated: true</code> on the archived schema (D4 scope notes).</li>
+<li>Any comment with new evidence on <a href="https://github.com/SpearSystems/LCP/issues/258" rel="noopener">#258</a> reopens this record. Re-evaluation: 2027-05-19.</li>
 </ul>
 <h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
 <p><strong>Mortgage amounts have no currency.</strong> <code>verticals/mortgage.json</code> 1.0.0 declares four applicant-declared amounts:</p>
@@ -188,12 +196,12 @@
 <aside class="toc" aria-label="On this page">
 <h2>On this page</h2>
 <ul>
-<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--refinance-with-amounts">Valid 2 — refinance with amounts</a></li><li class="depth-4"><a href="#invalid-a--amount-without-currency">Invalid A — amount without currency</a></li><li class="depth-4"><a href="#invalid-b--cents-sent-by-mistake">Invalid B — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-c--100-field-on-200">Invalid C — 1.0.0 field on 2.0.0</a></li><li class="depth-4"><a href="#invalid-d--unadvertised-version">Invalid D — unadvertised version</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-4"><a href="#valid-1--minimal-lead">Valid 1 — minimal lead</a></li><li class="depth-4"><a href="#valid-2--refinance-with-amounts">Valid 2 — refinance with amounts</a></li><li class="depth-4"><a href="#invalid-a--amount-without-currency">Invalid A — amount without currency</a></li><li class="depth-4"><a href="#invalid-b--cents-sent-by-mistake">Invalid B — cents sent by mistake</a></li><li class="depth-4"><a href="#invalid-c--100-field-on-200">Invalid C — 1.0.0 field on 2.0.0</a></li><li class="depth-4"><a href="#invalid-d--unadvertised-version">Invalid D — unadvertised version</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
 </ul>
 </aside>
 </div>
 <footer class="page">
-Source: <code>governance/LEPs/LEP-0016-mortgage-vertical-2.md</code> · build <code>ca343d9323b2</code> ·
+Source: <code>governance/LEPs/LEP-0016-mortgage-vertical-2.md</code> · build <code>5de19378aae2</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>

@@ -1,6 +1,6 @@
 {
   "generator": "tools/build_spec_site.py",
-  "build_hash": "ca343d9323b2",
+  "build_hash": "5de19378aae2",
   "pages": [
     {
       "path": "assets/site.css",
@@ -111,6 +111,11 @@
       "path": "schemas/bid.html",
       "source": "schemas/bid.json",
       "title": "LCP Bid Message"
+    },
+    {
+      "path": "schemas/buyer-mapping.html",
+      "source": "schemas/buyer-mapping.json",
+      "title": "LCP Buyer Delivery Mapping (LEP-0015, format 1.0)"
     },
     {
       "path": "schemas/call.html",
@@ -255,8 +260,10 @@
   ],
   "out_of_scope_links": [
     "LICENSE",
+    "docs/BUYER-MAPPING.md",
     "docs/DECISIONS-v1.2.md",
     "docs/DECISIONS-v1.3.md",
+    "docs/DECISIONS-v1.4.md",
     "docs/PII-CLASSES.md",
     "docs/PUBLISHER-MAPPING.md",
     "docs/RELEASE.md",

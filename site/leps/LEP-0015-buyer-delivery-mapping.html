@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="lcp-source" content="governance/LEPs/LEP-0015-buyer-delivery-mapping.md">
-<meta name="lcp-build" content="ca343d9323b2">
+<meta name="lcp-build" content="5de19378aae2">
 <title>LEP-0015 — Buyer delivery mapping: declarative outbound adapters and buyer-reported dispositions — LCP</title>
 <link rel="stylesheet" href="../assets/site.css">
 </head>
@@ -21,10 +21,19 @@
 <li><strong>Title:</strong> Buyer delivery mapping: a declarative document that turns an LCP post into a buyer API request and the buyer's response into an LEP-0012 disposition</li>
 <li><strong>Author(s):</strong> LCP maintainers (draft from SpearPointX adopter evidence)</li>
 <li><strong>Date:</strong> 2026-11-19</li>
-<li><strong>Status:</strong> <strong>Review</strong> — public review open until 2026-12-03. Not accepted. No implementation is authorized (LEP.md stage 5). This record carries no candidate implementation.</li>
+<li><strong>Status:</strong> <strong>Accepted</strong> — 2026-11-19 (maintainer; <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">v1.4 decision record (<code>docs/DECISIONS-v1.4.md</code>)</span> D1–D4: review window and independent review waived, maintainer security/privacy sign-off under D3). Implementation: PR <a href="https://github.com/SpearSystems/LCP/pull/251" rel="noopener">#251</a>, for v1.4.0.</li>
 <li><strong>Target version:</strong> v1.4.0 (additive: a new platform document format, conformance vectors and an optional buyer-side ack read)</li>
 <li><strong>Discussion:</strong> <a href="https://github.com/SpearSystems/LCP/issues/257" rel="noopener">#257</a></li>
 <li><strong>Depends on:</strong> <a href="LEP-0012-sale-lifecycle.html">LEP-0012</a> for the disposition vocabulary and <a href="LEP-0013-regulated-identifiers.html">LEP-0013</a> for regulated-field forwarding. Both were Accepted on 2026-11-19 and ship in v1.3.0.</li>
+</ul>
+<h2 id="decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</h2>
+<p><strong>Accepted</strong> under <span class="unpublished" title="Not published in the specification site: docs/DECISIONS-v1.4.md">D1–D4 (<code>docs/DECISIONS-v1.4.md</code>)</span> of the v1.4 decision record. The review window closed early with no comments, and no reviewer independent of the author took part (D1, D2). The maintainer signed off on the buyer egress surface and restricted forwarding (D3).</p>
+<p>Conditions:</p>
+<ul>
+<li>The reference executor ships <strong>off</strong> (<code>LCP_FEATURE_BUYER_MAPPING</code>). A deployment that turns it on first records a sign-off from a named human security/privacy reviewer (D3 condition 4).</li>
+<li>The reference platform enrols no buyer for regulated identifiers, so it refuses every regulated path in a mapping.</li>
+<li>Normative execution rules: <span class="unpublished" title="Not published in the specification site: docs/BUYER-MAPPING.md">BUYER-MAPPING (<code>docs/BUYER-MAPPING.md</code>)</span>.</li>
+<li>Any comment with new evidence on <a href="https://github.com/SpearSystems/LCP/issues/257" rel="noopener">#257</a> reopens this record. Re-evaluation: 2027-05-19.</li>
 </ul>
 <h2 id="problem-statement-and-evidence">Problem statement and evidence</h2>
 <p><strong>Most buyers do not speak LCP.</strong> A platform that routes leads delivers to buyer APIs that each have their own JSON or form body, field names, units, authentication header and response format. LCP defines the inbound side declaratively (<span class="unpublished" title="Not published in the specification site: docs/PUBLISHER-MAPPING.md">PUBLISHER-MAPPING (<code>docs/PUBLISHER-MAPPING.md</code>)</span>), but has nothing for the outbound side. The reference platform can deliver only an LCP envelope to <code>webhook_url</code>, and it discards the buyer's response body.</p>
@@ -344,12 +353,12 @@
 <aside class="toc" aria-label="On this page">
 <h2>On this page</h2>
 <ul>
-<li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-document">1. Document</a></li><li class="depth-3"><a href="#2-paths">2. Paths</a></li><li class="depth-3"><a href="#3-values">3. Values</a></li><li class="depth-3"><a href="#4-request">4. Request</a></li><li class="depth-3"><a href="#5-response">5. Response</a></li><li class="depth-3"><a href="#6-failures-before-sending">6. Failures before sending</a></li><li class="depth-3"><a href="#7-native-buyers-no-mapping">7. Native buyers (no mapping)</a></li><li class="depth-3"><a href="#8-counter-re-post">8. Counter re-post</a></li><li class="depth-4"><a href="#valid-1--rendered-request-vector-bmap-r-001">Valid 1 — rendered request (vector BMAP-R-001)</a></li><li class="depth-4"><a href="#valid-2--decoded-responses-vectors-bmap-d-001005">Valid 2 — decoded responses (vectors BMAP-D-001…005)</a></li><li class="depth-4"><a href="#invalid-a--default-sold">Invalid A — default: sold</a></li><li class="depth-4"><a href="#invalid-b--url-macro">Invalid B — URL macro</a></li><li class="depth-4"><a href="#invalid-c--regulated-path-without-enrolment">Invalid C — regulated path without enrolment</a></li><li class="depth-4"><a href="#invalid-d--inexact-unit-conversion">Invalid D — inexact unit conversion</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
+<li class="depth-2"><a href="#decision-maintainer-2026-11-19">Decision (maintainer, 2026-11-19)</a></li><li class="depth-2"><a href="#problem-statement-and-evidence">Problem statement and evidence</a></li><li class="depth-2"><a href="#scope">Scope</a></li><li class="depth-2"><a href="#proposed-wire-shape">Proposed wire shape</a></li><li class="depth-3"><a href="#1-document">1. Document</a></li><li class="depth-3"><a href="#2-paths">2. Paths</a></li><li class="depth-3"><a href="#3-values">3. Values</a></li><li class="depth-3"><a href="#4-request">4. Request</a></li><li class="depth-3"><a href="#5-response">5. Response</a></li><li class="depth-3"><a href="#6-failures-before-sending">6. Failures before sending</a></li><li class="depth-3"><a href="#7-native-buyers-no-mapping">7. Native buyers (no mapping)</a></li><li class="depth-3"><a href="#8-counter-re-post">8. Counter re-post</a></li><li class="depth-4"><a href="#valid-1--rendered-request-vector-bmap-r-001">Valid 1 — rendered request (vector BMAP-R-001)</a></li><li class="depth-4"><a href="#valid-2--decoded-responses-vectors-bmap-d-001005">Valid 2 — decoded responses (vectors BMAP-D-001…005)</a></li><li class="depth-4"><a href="#invalid-a--default-sold">Invalid A — default: sold</a></li><li class="depth-4"><a href="#invalid-b--url-macro">Invalid B — URL macro</a></li><li class="depth-4"><a href="#invalid-c--regulated-path-without-enrolment">Invalid C — regulated path without enrolment</a></li><li class="depth-4"><a href="#invalid-d--inexact-unit-conversion">Invalid D — inexact unit conversion</a></li><li class="depth-2"><a href="#privacy-security-and-universal-core-audit">Privacy, security, and universal-core audit</a></li><li class="depth-2"><a href="#compatibility-versioning-and-deprecation-impact">Compatibility, versioning, and deprecation impact</a></li><li class="depth-2"><a href="#sdk-openapi-mcp-conformance-and-operational-impact">SDK, OpenAPI, MCP, conformance, and operational impact</a></li><li class="depth-2"><a href="#alternatives-considered">Alternatives considered</a></li><li class="depth-2"><a href="#rollout-migration-observability-and-rollback">Rollout, migration, observability, and rollback</a></li><li class="depth-2"><a href="#deferred-questions">Deferred questions</a></li>
 </ul>
 </aside>
 </div>
 <footer class="page">
-Source: <code>governance/LEPs/LEP-0015-buyer-delivery-mapping.md</code> · build <code>ca343d9323b2</code> ·
+Source: <code>governance/LEPs/LEP-0015-buyer-delivery-mapping.md</code> · build <code>5de19378aae2</code> ·
 generated by <code>tools/build_spec_site.py</code> — do not edit this file.
 </footer>
 </body>
